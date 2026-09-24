@@ -49,8 +49,9 @@ const INIT = `${RRWEB}
   send("storage", { area: "session", op: "snapshot", value: dump(sessionStorage) });
 })();`;
 
-export async function record(browser, { name, url, viewport = { width: 1280, height: 800 }, colorScheme = "light" }) {
-  const context = await browser.newContext({ viewport, colorScheme });
+// stage: "ui" (a page, rrweb) or "http" (no page; API calls, webhooks, DB changes are the show).
+export async function record(browser, { name, url, stage = "ui", viewport = { width: 1280, height: 800 }, colorScheme = "light" }) {
+  const context = await browser.newContext({ viewport, colorScheme, baseURL: url });
   const startedAt = Date.now();
   const s = { rrweb: [], console: [], network: [], storage: [], steps: [] };
   const now = () => Date.now();
@@ -112,15 +113,39 @@ export async function record(browser, { name, url, viewport = { width: 1280, hei
     s.storage.push({ t: now(), area: "cookie", op: "snapshot", value: cookies });
   };
 
-  const page = await context.newPage();
+  const page = stage === "ui" ? await context.newPage() : null;
 
-  const pause = (ms) => page.waitForTimeout(ms);
+  const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+  const hex = (n) => [...crypto.getRandomValues(new Uint8Array(n))].map((b) => b.toString(16).padStart(2, "0")).join("");
+  const onStep = []; // hooks run at every step boundary (e.g. DB snapshot)
+
+  // API calls: Playwright's request client does the HTTP (cookies shared with the browser context),
+  // but emits no events and isn't in library-mode traces — so we record the call ourselves.
+  const call = (method) => async (path, opts = {}) => {
+    const traceId = hex(16), spanId = hex(8);
+    const headers = { traceparent: `00-${traceId}-${spanId}-01`, ...(opts.headers ?? {}) };
+    const body = opts.data === undefined ? undefined : typeof opts.data === "string" ? opts.data : JSON.stringify(opts.data);
+    const entry = { id: nextId++, t: now(), method, url: new URL(path, url).href, type: "api", requestHeaders: headers, requestBody: body, traceId, spanId };
+    s.network.push(entry);
+    const res = await context.request.fetch(path, { method, headers: { ...(body ? { "content-type": "application/json" } : {}), ...headers }, data: body, failOnStatusCode: false });
+    entry.end = now();
+    entry.duration = entry.end - entry.t;
+    entry.status = res.status();
+    entry.responseHeaders = res.headers();
+    const text = await res.text();
+    entry.responseBody = text.length > BODY_LIMIT ? text.slice(0, BODY_LIMIT) + "…[truncated]" : text;
+    await cookieCheck();
+    let json;
+    try { json = JSON.parse(text); } catch {}
+    return { status: entry.status, headers: entry.responseHeaders, text, json };
+  };
   const api = {
     page,
     /** Caption + timeline marker. Also groups the Playwright trace. */
-    async say(text, readMs = 1200) {
+    async say(text, readMs = stage === "ui" ? 1200 : 900) {
+      for (const hook of onStep) await hook(text);
       s.steps.push({ t: now(), text });
-      await page.evaluate((text) => window.rrweb?.record.addCustomEvent("step", { text }), text).catch(() => {});
+      if (page) await page.evaluate((text) => window.rrweb?.record.addCustomEvent("step", { text }), text).catch(() => {});
       await pause(readMs);
     },
     async go(path) { await page.goto(new URL(path, url).href); await pause(600); },
@@ -134,18 +159,27 @@ export async function record(browser, { name, url, viewport = { width: 1280, hei
     },
     async type(selector, text) { await page.locator(selector).pressSequentially(text, { delay: 55 }); await pause(300); },
     pause,
+    http: { get: call("GET"), post: call("POST"), put: call("PUT"), patch: call("PATCH"), delete: call("DELETE") },
+    /** Poll until fn() is truthy — for effects that happen after the response (jobs, webhooks, retries). */
+    async until(fn, { timeout = 10000, every = 100 } = {}) {
+      const end = Date.now() + timeout;
+      while (!(await fn())) { if (Date.now() > end) throw new Error("until: timed out"); await pause(every); }
+    },
+    onStep,
+    stream(name) { return (s[name] ??= []); },
 
     /** extra: optional backend streams, e.g. { server: [...], spans: [...] } */
     async finish(outDir = "out", extra = {}) {
       await pause(800);
       await Promise.allSettled([...reqs.keys()].map((r) => r.response()));
+      for (const hook of onStep) await hook(null);
       const dir = `${outDir}/${name}`;
       mkdirSync(dir, { recursive: true });
       await context.tracing.stop({ path: `${dir}/trace.zip` });
       await context.close();
 
       return writeBundle(outDir, {
-        name, url, recorder: "playwright",
+        name, url, recorder: "playwright", stage,
         startedAt: new Date(startedAt).toISOString(),
         durationMs: Date.now() - startedAt,
         viewport, colorScheme,

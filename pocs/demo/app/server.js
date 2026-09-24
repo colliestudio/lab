@@ -1,6 +1,8 @@
 // Tiny demo app: login (cookie + localStorage), todos via fetch, one broken endpoint.
 import { createServer } from "node:http";
 import { readFileSync } from "node:fs";
+import { createHmac, randomBytes } from "node:crypto";
+import { DatabaseSync } from "node:sqlite";
 import { writeBundle } from "../src/bundle.js";
 import { buildPlayer } from "../src/player.js";
 
@@ -9,7 +11,17 @@ const RECORDER = () =>
   readFileSync(new URL("../node_modules/rrweb/umd/rrweb.min.js", import.meta.url), "utf8").replace(/\n\/\/# sourceMappingURL=.*$/, "") +
   "\n;" + readFileSync(new URL("../src/inpage.js", import.meta.url), "utf8");
 
-const todos = [{ id: 1, text: "Buy milk", done: false }];
+// SQLite so the runner can watch rows change (DB_PATH=file); in-memory otherwise.
+const sql = new DatabaseSync(process.env.DB_PATH || ":memory:");
+sql.exec(`
+  drop table if exists todos; drop table if exists webhooks; drop table if exists deliveries;
+  create table todos (id integer primary key, text text not null, done integer not null default 0);
+  create table webhooks (id integer primary key, url text not null, secret text not null);
+  create table deliveries (id integer primary key, webhook_id integer not null, event text not null,
+    status text not null, attempts integer not null default 0, last_status integer, next_attempt_at text);
+  insert into todos (text) values ('Buy milk');
+`);
+const listTodos = () => sql.prepare("select id, text, done = 1 as done from todos order by id").all().map((t) => ({ ...t, done: !!t.done }));
 
 // Optional OpenTelemetry: a no-op unless the process was started with an SDK (e.g. --import auto-instrumentation).
 const otel = await import("@opentelemetry/api").catch(() => null);
@@ -26,6 +38,42 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const reports = createServer((req, res) => { setTimeout(() => { res.writeHead(503).end("report worker down"); }, 40); });
 await new Promise((r) => reports.listen(0, r));
 reports.unref(); // do not keep the process alive
+// ---- Webhooks: every created todo is delivered to each registered URL, signed, with retries ----
+const BACKOFF = [300, 600, 1200]; // ms before attempts 2, 3, 4; then dead-lettered
+function enqueue(event, payload) {
+  for (const hook of sql.prepare("select * from webhooks").all()) {
+    const { lastInsertRowid } = sql.prepare("insert into deliveries (webhook_id, event, status) values (?, ?, 'pending')").run(hook.id, event);
+    log("delivery", lastInsertRowid, "queued for webhook", hook.id);
+    // setTimeout keeps the active trace context, so retries stay in the originating request's trace.
+    setTimeout(() => attempt(Number(lastInsertRowid), hook, event, payload), 50);
+  }
+}
+async function attempt(id, hook, event, payload) {
+  const n = sql.prepare("update deliveries set attempts = attempts + 1, status = 'sending' where id = ? returning attempts").get(id).attempts;
+  const body = JSON.stringify({ id, event, data: payload });
+  const sig = createHmac("sha256", hook.secret).update(body).digest("hex");
+  const run = async () => {
+    let status = 0;
+    try {
+      const res = await fetch(hook.url, { method: "POST", headers: { "content-type": "application/json", "x-webhook-event": event, "x-webhook-signature": "sha256=" + sig, "x-webhook-attempt": String(n) }, body });
+      status = res.status;
+    } catch {}
+    if (status >= 200 && status < 300) {
+      sql.prepare("update deliveries set status = 'delivered', last_status = ?, next_attempt_at = null where id = ?").run(status, id);
+      return log("delivery", id, "delivered on attempt", n);
+    }
+    if (n > BACKOFF.length) {
+      sql.prepare("update deliveries set status = 'dead', last_status = ?, next_attempt_at = null where id = ?").run(status, id);
+      return console.error(new Date().toISOString(), `trace=${traceId()}`, "delivery", id, "dead after", n, "attempts, last status", status);
+    }
+    const wait = BACKOFF[n - 1];
+    sql.prepare("update deliveries set status = 'retrying', last_status = ?, next_attempt_at = ? where id = ?").run(status, new Date(Date.now() + wait).toISOString(), id);
+    console.warn(new Date().toISOString(), `trace=${traceId()}`, "delivery", id, "attempt", n, "got", status, "- retry in", wait, "ms");
+    setTimeout(() => attempt(id, hook, event, payload), wait);
+  };
+  return tracer ? tracer.startActiveSpan(`webhook.deliver`, { attributes: { "delivery.id": id, "delivery.attempt": n } }, async (span) => { try { await run(); } finally { span.end(); } }) : run();
+}
+
 const html = () => readFileSync(new URL("./index.html", import.meta.url));
 
 export function start(port = 7100, { record = false } = {}) {
@@ -69,13 +117,28 @@ export function start(port = 7100, { record = false } = {}) {
       log("signed in", name);
       return json(200, { name }, { "set-cookie": `session=${Buffer.from(name).toString("base64")}; Path=/; HttpOnly` });
     }
-    if (url.pathname === "/api/todos" && req.method === "GET") return json(200, await db("todos.select", async () => { await sleep(5); return todos; }));
+    if (url.pathname === "/api/todos" && req.method === "GET") return json(200, await db("todos.select", async () => { await sleep(5); return listTodos(); }));
     if (url.pathname === "/api/todos" && req.method === "POST") {
       const { text } = await body();
       await sleep(250); // validation, etc. — feel like a real API
-      const todo = await db("todos.insert", async () => { await sleep(40); const t = { id: todos.length + 1, text, done: false }; todos.push(t); return t; });
+      const todo = await db("todos.insert", async () => {
+        await sleep(40);
+        return sql.prepare("insert into todos (text) values (?) returning id, text, done = 1 as done").get(text);
+      });
+      todo.done = !!todo.done;
       log("created todo", todo.id);
+      enqueue("todo.created", todo);
       return json(201, todo);
+    }
+    if (url.pathname === "/api/webhooks" && req.method === "POST") {
+      const { url: target } = await body();
+      const secret = "whsec_" + randomBytes(12).toString("hex");
+      const hook = sql.prepare("insert into webhooks (url, secret) values (?, ?) returning id, url, secret").get(target, secret);
+      log("webhook", hook.id, "registered", target);
+      return json(201, hook);
+    }
+    if (url.pathname === "/api/deliveries" && req.method === "GET") {
+      return json(200, sql.prepare("select id, webhook_id, event, status, attempts, last_status from deliveries order by id").all());
     }
     if (url.pathname === "/api/report") {
       await db("todos.select", () => sleep(8));

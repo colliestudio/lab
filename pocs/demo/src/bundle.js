@@ -5,12 +5,12 @@ import { zipSync, strToU8 } from "fflate";
 
 export const STREAMS = ["rrweb", "steps", "console", "network", "storage"];
 // Opt-in backend streams: only written when the recording has them, so .replay stays small otherwise.
-export const OPTIONAL = ["server", "spans"];
+export const OPTIONAL = ["server", "spans", "inbound", "db"];
 
 export function writeBundle(outDir, manifest, streams) {
   const dir = `${outDir}/${manifest.name}`;
   // Entries can arrive out of order (e.g. the in-page navigation entry is back-dated); the player expects time order.
-  for (const k of ["console", "network", "storage", "steps", "server"]) streams[k]?.sort((a, b) => a.t - b.t);
+  for (const k of ["console", "network", "storage", "steps", "server", "inbound", "db"]) streams[k]?.sort((a, b) => a.t - b.t);
   const names = [...STREAMS, ...OPTIONAL.filter((k) => streams[k]?.length)];
   mkdirSync(dir, { recursive: true });
   const hasTrace = existsSync(`${dir}/trace.zip`);

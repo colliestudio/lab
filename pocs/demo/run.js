@@ -1,7 +1,10 @@
-// Runner: starts the app as a child process, records the journey, and (opt-in) captures the backend.
-//   node run.js                 browser only (same as demo.js, app out of process)
-//   node run.js --logs          + server stdout/stderr on the replay clock      → server.json
-//   node run.js --otel          + logs + OpenTelemetry spans via a local OTLP receiver → spans.json
+// Runner: starts the app as a child process, records a journey, and (opt-in) captures the backend.
+//   node run.js [--journey todo|webhooks] [--logs|--otel]
+//   --logs   server stdout/stderr on the replay clock                  → server.json
+//   --otel   + OpenTelemetry spans via a local OTLP receiver           → spans.json
+// Always available to journeys (streams only written if used):
+//   r.catcher  a programmable webhook receiver                          → inbound.json
+//   DB watch   row-level changes in the app's SQLite file                → db.json
 // The app needs no code change for --otel: it is started with Node's zero-code auto-instrumentation.
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
@@ -9,12 +12,19 @@ import { createInterface } from "node:readline";
 import { chromium } from "playwright";
 import { record } from "./src/recorder.js";
 import { buildPlayer } from "./src/player.js";
-import journey from "./journeys/todo.js";
+import { mkdirSync, rmSync } from "node:fs";
+import { catcher, dbWatch } from "./src/backend.js";
+
+const journeyName = process.argv[process.argv.indexOf("--journey") + 1] && process.argv.includes("--journey") ? process.argv[process.argv.indexOf("--journey") + 1] : "todo";
+const { default: journey, stage = "ui" } = await import(`./journeys/${journeyName}.js`);
 
 const otel = process.argv.includes("--otel");
 const logs = otel || process.argv.includes("--logs");
 const APP_PORT = 7105, OTLP_PORT = 7104;
-const name = "todo-" + (otel ? "otel" : logs ? "logs" : "browser");
+const name = journeyName + "-" + (otel ? "otel" : logs ? "logs" : "plain");
+mkdirSync("out/.tmp", { recursive: true });
+const DB_PATH = "out/.tmp/app.db";
+rmSync(DB_PATH, { force: true });
 
 // ---- OTLP/HTTP JSON receiver: the app's exporter posts batches here ----
 const spans = [];
@@ -43,7 +53,7 @@ if (otel) {
 }
 
 // ---- the app, as a child process ----
-const env = { ...process.env, PORT: String(APP_PORT) };
+const env = { ...process.env, PORT: String(APP_PORT), DB_PATH, NODE_NO_WARNINGS: "1" };
 const args = ["app/server.js"];
 if (otel) {
   // ESM apps: the loader hook lets instrumentation patch `import { createServer } from "node:http"`.
@@ -77,11 +87,18 @@ for (let i = 0; ; i++) {
 // ---- record ----
 const t0 = Date.now();
 const browser = await chromium.launch();
-const r = await record(browser, { name, url: `http://localhost:${APP_PORT}` });
+const r = await record(browser, { name, stage, url: `http://localhost:${APP_PORT}` });
+r.catcher = await catcher();
+const watch = dbWatch(DB_PATH);
+watch.start();
 await journey(r);
 const { dir, manifest } = await r.finish("out", async () => {
   if (otel) await new Promise((res) => setTimeout(res, 600)); // let the exporter's last batch land
+  watch.stop();
+  r.catcher.close();
   return {
+    inbound: r.catcher.inbound,
+    db: watch.events,
     ...(logs ? { server: server.filter((l) => l.t >= t0) } : {}),
     ...(otel ? { spans: spans.filter((s) => s.start >= t0 - 1000) } : {}),
   };

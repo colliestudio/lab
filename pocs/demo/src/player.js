@@ -18,6 +18,8 @@ export function buildPlayer(dir) {
     // Opt-in backend streams.
     server: existsSync(`${dir}/server.json`) ? read("server.json") : null,
     spans: existsSync(`${dir}/spans.json`) ? read("spans.json") : null,
+    inbound: existsSync(`${dir}/inbound.json`) ? read("inbound.json") : null,
+    db: existsSync(`${dir}/db.json`) ? read("db.json") : null,
   };
   const json = JSON.stringify(data).replaceAll("</", "<\\/");
   const html = `<!doctype html>
@@ -70,6 +72,24 @@ export function buildPlayer(dir) {
   .wf .bar { position: absolute; top: 1px; bottom: 1px; border-radius: 2px; background: #60a5fa; min-width: 2px; }
   .wf .bar.client { background: #94a3b8; } .wf .bar.db { background: #34d399; } .wf .bar.error { background: var(--red); }
   .wf .dur { color: var(--mute); text-align: right; }
+  /* http stage: the story as cards, revealed as the clock passes them */
+  #cards { height: calc(100vh - 170px); overflow: auto; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+  .card { border: 1px solid var(--line); border-left: 4px solid #94a3b8; border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; cursor: pointer; background: #fff; }
+  .card.future { display: none; }
+  .card.latest { box-shadow: 0 0 0 2px var(--amber); }
+  .card.step { border: 0; background: #0f172a; color: #fff; font-weight: 600; }
+  .card.api { border-left-color: #2563eb; } .card.in { border-left-color: #7c3aed; } .card.db { border-left-color: #059669; }
+  .card.bad { border-left-color: var(--red); }
+  .card .h { display: flex; gap: 8px; align-items: baseline; font-family: ui-monospace, monospace; font-size: 12px; }
+  .card .h time { color: var(--mute); min-width: 44px; }
+  .card .kind { font: 600 10px ui-sans-serif, system-ui; text-transform: uppercase; color: var(--mute); min-width: 56px; }
+  .card .st { font-weight: 700; } .card .st.bad { color: var(--red); } .card .st.ok { color: #059669; }
+  .card pre { margin: 6px 0 0; font: 11px/1.35 ui-monospace, monospace; color: #334155; white-space: pre-wrap; max-height: 120px; overflow: auto; }
+  .card .diff { font: 11px ui-monospace, monospace; margin-top: 4px; } .card .diff b { color: #059669; font-weight: 600; } .card .diff s { color: var(--red); }
+  #clock { display: flex; gap: 10px; align-items: center; padding: 8px 4px; }
+  #clock button { font: inherit; border: 0; border-radius: 6px; padding: 5px 12px; background: #0f172a; color: #fff; cursor: pointer; }
+  #clock input[type=range] { flex: 1; accent-color: var(--amber); }
+  #clock span { font: 12px ui-monospace, monospace; color: var(--mute); min-width: 90px; text-align: right; }
   .changed td { background: var(--hi); transition: background 1s; }
   .empty { padding: 6px 10px; color: var(--mute); }
   @media (max-width: 1000px) { main { grid-template-columns: 1fr; height: auto; } aside { height: 60vh; } }
@@ -92,7 +112,8 @@ export function buildPlayer(dir) {
 <script>
 const D = ${json};
 const $ = (id) => document.getElementById(id);
-const t0 = D.rrweb[0].timestamp;
+const HTTP = D.manifest.stage === "http" || !D.rrweb.length;
+const t0 = HTTP ? Date.parse(D.manifest.startedAt) : D.rrweb[0].timestamp;
 const rel = (t) => t - t0;
 const fmt = (ms) => (ms / 1000).toFixed(1) + "s";
 const esc = (s) => String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
@@ -100,15 +121,83 @@ const path = (u) => { try { const x = new URL(u); return x.pathname + x.search; 
 let now = 0, tab = "steps", selected = null;
 
 $("title").textContent = D.manifest.name;
-$("meta").textContent = new Date(D.manifest.startedAt).toLocaleString() + " · " + fmt(D.manifest.durationMs) + " · " + D.manifest.viewport.width + "×" + D.manifest.viewport.height;
+$("meta").textContent = new Date(D.manifest.startedAt).toLocaleString() + " · " + fmt(D.manifest.durationMs) + (HTTP ? " · backend demo" : " · " + D.manifest.viewport.width + "×" + D.manifest.viewport.height);
 
 const stage = $("stage");
-const width = Math.min(stage.clientWidth || 900, 1280);
-const player = new (rrwebPlayer.default ?? rrwebPlayer)({
-  target: stage,
-  props: { events: D.rrweb, width, height: Math.round(width * 0.625), autoPlay: false, showController: true, tags: { step: "#f59e0b" } },
-});
-const seek = (t) => { player.goto(Math.max(0, rel(t) - 50), true); };
+let seek;
+if (!HTTP) {
+  const width = Math.min(stage.clientWidth || 900, 1280);
+  const player = new (rrwebPlayer.default ?? rrwebPlayer)({
+    target: stage,
+    props: { events: D.rrweb, width, height: Math.round(width * 0.625), autoPlay: false, showController: true, tags: { step: "#f59e0b" } },
+  });
+  seek = (t) => { player.goto(Math.max(0, rel(t) - 50), true); };
+  player.addEventListener("ui-update-current-time", ({ payload }) => setNow(payload));
+} else {
+  seek = httpStage();
+}
+
+// ---- http stage: API calls, inbound webhooks and DB changes as cards on one clock ----
+function httpStage() {
+  const total = D.manifest.durationMs;
+  const items = [
+    ...D.steps.map((x) => ({ t: x.t, kind: "step", x })),
+    ...D.network.map((x, i) => ({ t: x.t, kind: "api", x, i })),
+    ...(D.inbound || []).map((x) => ({ t: x.t, kind: "in", x })),
+    // One card per (moment, table): row changes seen in the same poll.
+    ...Object.values((D.db || []).filter((e) => e.op !== "snapshot").reduce((g, e) => ((g[e.t + e.table] ??= { t: e.t, kind: "db", x: [] }).x.push(e), g), {})),
+  ].sort((a, b) => a.t - b.t || (a.kind === "step" ? -1 : 1));
+  const pretty = (b) => { try { return JSON.stringify(JSON.parse(b), null, 1).slice(0, 600); } catch { return String(b ?? "").slice(0, 600); } };
+  const val = (v) => (v === null ? "null" : typeof v === "string" && v.length > 28 ? JSON.stringify(v.slice(0, 26) + "…") : JSON.stringify(v));
+  const card = ({ t, kind, x, i }) => {
+    const time = "<time>" + fmt(rel(t)) + "</time>";
+    if (kind === "step") return '<div class="card step" data-t="' + t + '">' + esc(x.text) + "</div>";
+    if (kind === "api") {
+      const bad = x.error || x.status >= 400;
+      return '<div class="card api ' + (bad ? "bad" : "") + '" data-t="' + t + '" data-i="' + i + '"><div class="h">' + time + '<span class="kind">API</span><b>' + x.method + "</b> " + esc(path(x.url)) + ' → <span class="st ' + (bad ? "bad" : "ok") + '">' + (x.status ?? "…") + '</span> <span style="color:var(--mute)">' + (x.duration ?? "") + "ms</span></div>" +
+        (x.requestBody ? "<pre>→ " + esc(pretty(x.requestBody)) + "</pre>" : "") + (x.responseBody ? "<pre>← " + esc(pretty(x.responseBody)) + "</pre>" : "") + "</div>";
+    }
+    if (kind === "in") {
+      const bad = x.status >= 300;
+      const h = x.headers;
+      return '<div class="card in ' + (bad ? "bad" : "") + '" data-t="' + t + '"' + (x.traceId ? ' data-trace="' + x.traceId + '"' : "") + '><div class="h">' + time + '<span class="kind">Received</span><b>' + x.method + "</b> " + esc(x.path) + (h["x-webhook-event"] ? " · " + esc(h["x-webhook-event"]) : "") + (h["x-webhook-attempt"] ? " · attempt " + esc(h["x-webhook-attempt"]) : "") + ' → answered <span class="st ' + (bad ? "bad" : "ok") + '">' + x.status + "</span></div>" +
+        (h["x-webhook-signature"] ? '<pre>signature ' + esc(h["x-webhook-signature"].slice(0, 30)) + "…</pre>" : "") + (Number(h["x-webhook-attempt"] || 1) > 1 ? "" : "<pre>" + esc(pretty(x.body)) + "</pre>") + "</div>";
+    }
+    return '<div class="card db" data-t="' + t + '"><div class="h">' + time + '<span class="kind">DB</span>' + x.map((e) => e.table).filter((v, i, a) => a.indexOf(v) === i).join(", ") + "</div>" + x.map((e) =>
+      '<div class="diff">' + (e.op === "insert" ? "<b>+ insert</b> " + e.table + " #" + e.key + " " + esc(Object.entries(e.after).map(([k, v]) => k + "=" + val(v)).join(" "))
+        : e.op === "delete" ? "<s>− delete</s> " + e.table + " #" + e.key
+        : "~ " + e.table + " #" + e.key + " " + esc(e.changed.map((c) => c + ": " + val(e.before[c]) + " → ").join("")).split(" → ").map((part, j) => j < e.changed.length ? part + " → <b>" + esc(val(e.after[e.changed[j]])) + "</b>" : "").join("  ")) + "</div>").join("") + "</div>";
+  };
+  stage.innerHTML = '<div id="cards">' + items.map(card).join("") + '</div><div id="clock"><button id="play">▶ Play</button><input id="scrub" type="range" min="0" max="' + total + '" value="0" step="10"><span id="tlabel"></span><select id="speed"><option>1</option><option selected>2</option><option>4</option></select>×</div>';
+  const cards = [...stage.querySelectorAll(".card")];
+  let playing = false, last;
+  const render = () => {
+    let latest;
+    for (const c of cards) { const f = rel(Number(c.dataset.t)) > now; c.classList.toggle("future", f); c.classList.remove("latest"); if (!f) latest = c; }
+    latest?.classList.add("latest");
+    if (latest !== render.prev) latest?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    render.prev = latest;
+    $("scrub").value = now;
+    $("tlabel").textContent = fmt(now) + " / " + fmt(total);
+  };
+  const tick = (ts) => {
+    if (!playing) return;
+    if (last != null) now = Math.min(total, now + (ts - last) * Number($("speed").value));
+    last = ts;
+    setNow(now); render();
+    if (now >= total) { playing = false; $("play").textContent = "▶ Play"; return; }
+    requestAnimationFrame(tick);
+  };
+  $("play").onclick = () => { playing = !playing; last = null; if (playing && now >= total) now = 0; $("play").textContent = playing ? "❚❚ Pause" : "▶ Play"; if (playing) requestAnimationFrame(tick); };
+  $("scrub").oninput = () => { now = Number($("scrub").value); setNow(now); render(); };
+  $("cards").onclick = (e) => {
+    const c = e.target.closest(".card"); if (!c) return;
+    if (c.dataset.i) { tab = "network"; selected = Number(c.dataset.i); drawTabs(); draw(); showRequest(selected); }
+    else if (c.dataset.trace) { const i = D.network.findIndex((n) => n.traceId === c.dataset.trace); if (i >= 0) { tab = "network"; selected = i; drawTabs(); draw(); showRequest(i); } }
+  };
+  setTimeout(() => { setNow(0); render(); });
+  return (t) => { now = Math.max(0, rel(t)); setNow(now); render(); };
+}
 
 const errors = D.console.filter((c) => c.level === "error").length;
 const failed = D.network.filter((n) => n.error || n.status >= 400).length;
@@ -201,7 +290,9 @@ function showRequest(i) {
 // Backend for one request: the browser request is the root span; server spans hang off it by parentSpanId.
 function backend(n) {
   if (!n.traceId || !D.spans) return "";
-  const spans = D.spans.filter((x) => x.traceId === n.traceId);
+  // The catcher's received requests join the tree too: their traceparent names the outbound span as parent.
+  const spans = [...D.spans.filter((x) => x.traceId === n.traceId),
+    ...(D.inbound || []).filter((x) => x.traceId === n.traceId).map((x, k) => ({ spanId: "in" + k, parentSpanId: x.parentSpanId, name: "receiver answered " + x.status, start: x.t, end: x.t + 1, kind: "receiver", status: x.status >= 300 ? "error" : undefined, attributes: {} }))];
   const logs = (D.server || []).filter((l) => l.traceId === n.traceId);
   if (!spans.length && !logs.length) return "";
   const start = n.t, end = Math.max(n.end ?? n.t, ...spans.map((x) => x.end));
@@ -209,7 +300,7 @@ function backend(n) {
   const kids = (id) => spans.filter((x) => x.parentSpanId === id).sort((a, b) => a.start - b.start);
   const rows = [];
   const walk = (x, depth) => { rows.push([x, depth]); kids(x.spanId).forEach((k) => walk(k, depth + 1)); };
-  const root = { spanId: n.spanId, name: "browser " + n.method + " " + path(n.url), start: n.t, end: n.end ?? n.t, kind: "browser" };
+  const root = { spanId: n.spanId, name: (n.type === "api" ? "client " : "browser ") + n.method + " " + path(n.url), start: n.t, end: n.end ?? n.t, kind: "browser" };
   walk(root, 0);
   // Spans whose parent we never saw (shouldn't happen) still get shown.
   spans.filter((x) => !rows.some(([r]) => r === x)).forEach((x) => walk(x, 1));
@@ -231,13 +322,13 @@ $("panel").onclick = (e) => {
   }
 };
 
-player.addEventListener("ui-update-current-time", ({ payload }) => {
-  now = payload;
+function setNow(ms) {
+  now = ms;
   let step;
   for (const s of D.steps) if (rel(s.t) <= now) step = s;
   $("caption").textContent = step ? step.text : "";
   sync(true);
-});
+}
 
 drawTabs();
 draw();
