@@ -1,7 +1,7 @@
 // Player: turns a bundle dir into one self-contained index.html.
 // rrweb-player on the left; Steps / Console / Network / Storage on the right,
 // all keyed to the same clock, so the panels follow playback and clicking a row seeks.
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 
 const PLAYER_JS = readFileSync(new URL("../node_modules/rrweb-player/dist/rrweb-player.umd.min.cjs", import.meta.url), "utf8");
 const PLAYER_CSS = readFileSync(new URL("../node_modules/rrweb-player/dist/style.min.css", import.meta.url), "utf8");
@@ -15,6 +15,9 @@ export function buildPlayer(dir) {
     console: read("console.json"),
     network: read("network.json"),
     storage: read("storage.json"),
+    // Opt-in backend streams.
+    server: existsSync(`${dir}/server.json`) ? read("server.json") : null,
+    spans: existsSync(`${dir}/spans.json`) ? read("spans.json") : null,
   };
   const json = JSON.stringify(data).replaceAll("</", "<\\/");
   const html = `<!doctype html>
@@ -58,6 +61,15 @@ export function buildPlayer(dir) {
   table.kv td { border-bottom: 1px solid var(--line); padding: 4px 10px; vertical-align: top; word-break: break-all; }
   table.kv td:first-child { color: var(--mute); width: 35%; }
   .area { padding: 8px 10px 2px; font-weight: 600; font-size: 11px; text-transform: uppercase; color: var(--mute); }
+  .srv { grid-template-columns: 44px 1fr 64px; } .srv.stderr .main { color: var(--red); }
+  .tid { color: #7c3aed; font-size: 11px; }
+  .wf { margin-top: 4px; font: 11px ui-monospace, monospace; }
+  .wf .span { display: grid; grid-template-columns: 180px 1fr 52px; gap: 6px; align-items: center; padding: 1px 0; }
+  .wf .lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .wf .track { position: relative; height: 12px; background: #eef2f7; border-radius: 2px; }
+  .wf .bar { position: absolute; top: 1px; bottom: 1px; border-radius: 2px; background: #60a5fa; min-width: 2px; }
+  .wf .bar.client { background: #94a3b8; } .wf .bar.db { background: #34d399; } .wf .bar.error { background: var(--red); }
+  .wf .dur { color: var(--mute); text-align: right; }
   .changed td { background: var(--hi); transition: background 1s; }
   .empty { padding: 6px 10px; color: var(--mute); }
   @media (max-width: 1000px) { main { grid-template-columns: 1fr; height: auto; } aside { height: 60vh; } }
@@ -105,6 +117,7 @@ const TABS = [
   ["console", "Console", D.console.length, errors],
   ["network", "Network", D.network.length, failed],
   ["storage", "Storage", null],
+  ...(D.server ? [["server", "Server", D.server.length, D.server.filter((l) => l.stream === "stderr").length]] : []),
 ];
 function drawTabs() {
   $("tabs").innerHTML = TABS.map(([k, label, n, bad]) =>
@@ -121,10 +134,12 @@ function draw() {
     P.innerHTML = D.steps.map((s) => '<div class="row step" data-t="' + s.t + '"><time>' + fmt(rel(s.t)) + '</time><div class="main">' + esc(s.text) + "</div></div>").join("");
   } else if (tab === "console") {
     P.innerHTML = D.console.map((c) => '<div class="row lv-' + c.level + '" data-t="' + c.t + '" title="' + esc(c.stack || c.source) + '"><time>' + fmt(rel(c.t)) + '</time><div class="main">' + (c.level === "log" ? "" : "[" + c.level + "] ") + esc(c.text) + "</div></div>").join("") || '<div class="empty">No console output</div>';
+  } else if (tab === "server") {
+    P.innerHTML = D.server.map((l) => '<div class="row srv ' + l.stream + '" data-t="' + l.t + '"' + (l.traceId ? ' data-trace="' + l.traceId + '"' : "") + '><time>' + fmt(rel(l.t)) + '</time><div class="main">' + esc(l.text) + '</div><span class="tid">' + (l.traceId ? l.traceId.slice(0, 8) : "") + "</span></div>").join("");
   } else if (tab === "network") {
     P.innerHTML = D.network.map((n, i) => {
       const bad = n.error || n.status >= 400;
-      return '<div class="row net" data-t="' + n.t + '" data-i="' + i + '"><time>' + fmt(rel(n.t)) + '</time><span>' + n.method + '</span><span class="st ' + (bad ? "bad" : "") + '">' + (n.status ?? (n.error ? "ERR" : "…")) + '</span><span class="main">' + esc(path(n.url)) + '</span><span style="color:var(--mute)">' + (n.duration != null ? n.duration + "ms" : "") + "</span></div>";
+      return '<div class="row net" data-t="' + n.t + '" data-i="' + i + '"><time>' + fmt(rel(n.t)) + '</time><span>' + n.method + '</span><span class="st ' + (bad ? "bad" : "") + '">' + (n.status ?? (n.error ? "ERR" : "…")) + '</span><span class="main">' + esc(path(n.url)) + (n.traceId && D.spans?.some((x) => x.traceId === n.traceId) ? ' <span class="tid">⧉ trace</span>' : "") + '</span><span style="color:var(--mute)">' + (n.duration != null ? n.duration + "ms" : "") + "</span></div>";
     }).join("");
     if (selected != null) showRequest(selected);
   }
@@ -176,11 +191,33 @@ function showRequest(i) {
   const headers = (h) => Object.entries(h || {}).map(([k, v]) => k + ": " + v).join("\\n");
   const d = $("detail");
   d.hidden = false;
-  d.innerHTML = "<b>" + n.method + " " + esc(n.url) + "</b> → " + (n.status ?? n.error) +
+  d.innerHTML = "<b>" + n.method + " " + esc(n.url) + "</b> → " + (n.status ?? n.error) + backend(n) +
     (n.requestBody ? "<h4>Request body</h4><pre>" + esc(pretty(n.requestBody)) + "</pre>" : "") +
     (n.responseBody != null && n.type !== "document" ? "<h4>Response body</h4><pre>" + esc(pretty(n.responseBody)) + "</pre>" : "") +
     "<h4>Response headers</h4><pre>" + esc(headers(n.responseHeaders)) + "</pre>" +
     "<h4>Request headers</h4><pre>" + esc(headers(n.requestHeaders)) + "</pre>";
+}
+
+// Backend for one request: the browser request is the root span; server spans hang off it by parentSpanId.
+function backend(n) {
+  if (!n.traceId || !D.spans) return "";
+  const spans = D.spans.filter((x) => x.traceId === n.traceId);
+  const logs = (D.server || []).filter((l) => l.traceId === n.traceId);
+  if (!spans.length && !logs.length) return "";
+  const start = n.t, end = Math.max(n.end ?? n.t, ...spans.map((x) => x.end));
+  const span = end - start || 1;
+  const kids = (id) => spans.filter((x) => x.parentSpanId === id).sort((a, b) => a.start - b.start);
+  const rows = [];
+  const walk = (x, depth) => { rows.push([x, depth]); kids(x.spanId).forEach((k) => walk(k, depth + 1)); };
+  const root = { spanId: n.spanId, name: "browser " + n.method + " " + path(n.url), start: n.t, end: n.end ?? n.t, kind: "browser" };
+  walk(root, 0);
+  // Spans whose parent we never saw (shouldn't happen) still get shown.
+  spans.filter((x) => !rows.some(([r]) => r === x)).forEach((x) => walk(x, 1));
+  const cls = (x) => (x.status === "error" ? "error" : x.kind === "browser" || x.kind === 3 ? "client" : x.name.startsWith("db.") ? "db" : "");
+  const label = (x) => x.kind === 2 ? (x.service || "server") + " " + x.name + " " + (x.attributes["url.path"] || x.attributes["http.target"] || "") : x.kind === 3 ? "→ " + x.name + " " + (x.attributes["url.full"] || x.attributes["http.url"] || "") : x.name;
+  return "<h4>Backend trace " + n.traceId.slice(0, 8) + '</h4><div class="wf">' + rows.map(([x, depth]) =>
+    '<div class="span"><span class="lbl" style="padding-left:' + depth * 10 + 'px" title="' + esc(label(x)) + '">' + esc(label(x)) + '</span><span class="track"><span class="bar ' + cls(x) + '" style="left:' + ((x.start - start) / span * 100) + "%;width:" + ((x.end - x.start) / span * 100) + '%"></span></span><span class="dur">' + (x.end - x.start) + "ms</span></div>").join("") + "</div>" +
+    (logs.length ? "<h4>Server logs</h4><pre>" + logs.map((l) => (l.stream === "stderr" ? "! " : "  ") + esc(l.text)).join("\\n") + "</pre>" : "");
 }
 
 $("panel").onclick = (e) => {
@@ -188,6 +225,10 @@ $("panel").onclick = (e) => {
   if (!row) return;
   seek(Number(row.dataset.t));
   if (row.dataset.i) { selected = Number(row.dataset.i); showRequest(selected); }
+  if (row.dataset.trace) {
+    const i = D.network.findIndex((n) => n.traceId === row.dataset.trace);
+    if (i >= 0) { tab = "network"; selected = i; drawTabs(); draw(); showRequest(i); }
+  }
 };
 
 player.addEventListener("ui-update-current-time", ({ payload }) => {

@@ -24,6 +24,18 @@ const INIT = `${RRWEB}
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start);
   else start();
 
+  // Trace context: each same-origin fetch gets a W3C traceparent. The browser request is the root
+  // span; the server continues the trace, so a network row links to its backend spans and logs.
+  const hex = (n) => Array.from(crypto.getRandomValues(new Uint8Array(n)), (b) => b.toString(16).padStart(2, "0")).join("");
+  const origFetch = window.fetch;
+  window.fetch = function (input, init = {}) {
+    const url = new URL(input instanceof Request ? input.url : input, location.href);
+    if (url.origin !== location.origin) return origFetch.call(this, input, init);
+    const headers = new Headers(init.headers || (input instanceof Request ? input.headers : undefined));
+    if (!headers.has("traceparent")) headers.set("traceparent", "00-" + hex(16) + "-" + hex(8) + "-01");
+    return origFetch.call(this, input, { ...init, headers });
+  };
+
   // Storage: patch the prototype so every write is seen, whichever store.
   const area = (s) => (s === localStorage ? "local" : "session");
   const P = Storage.prototype;
@@ -64,7 +76,8 @@ export async function record(browser, { name, url, viewport = { width: 1280, hei
   const reqs = new Map();
   let nextId = 1;
   context.on("request", (r) => {
-    const entry = { id: nextId++, t: now(), method: r.method(), url: r.url(), type: r.resourceType(), requestHeaders: r.headers(), requestBody: r.postData() ?? undefined };
+    const tp = /^00-([0-9a-f]{32})-([0-9a-f]{16})-/.exec(r.headers().traceparent ?? "");
+    const entry = { id: nextId++, t: now(), method: r.method(), url: r.url(), type: r.resourceType(), requestHeaders: r.headers(), requestBody: r.postData() ?? undefined, traceId: tp?.[1], spanId: tp?.[2] };
     reqs.set(r, entry);
     s.network.push(entry);
   });
@@ -122,7 +135,8 @@ export async function record(browser, { name, url, viewport = { width: 1280, hei
     async type(selector, text) { await page.locator(selector).pressSequentially(text, { delay: 55 }); await pause(300); },
     pause,
 
-    async finish(outDir = "out") {
+    /** extra: optional backend streams, e.g. { server: [...], spans: [...] } */
+    async finish(outDir = "out", extra = {}) {
       await pause(800);
       await Promise.allSettled([...reqs.keys()].map((r) => r.response()));
       const dir = `${outDir}/${name}`;
@@ -136,7 +150,7 @@ export async function record(browser, { name, url, viewport = { width: 1280, hei
         durationMs: Date.now() - startedAt,
         viewport, colorScheme,
         userAgent: await browser.version(),
-      }, s);
+      }, { ...s, ...(await (typeof extra === "function" ? extra() : extra)) });
     },
   };
   return api;

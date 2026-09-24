@@ -8,6 +8,8 @@
     "player": "node src/player.js"
   },
   "dependencies": {
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/auto-instrumentations-node": "^0.80.0",
     "@rrweb/rrweb-plugin-console-record": "^2.0.0-alpha.18",
     "fflate": "^0.8.3",
     "playwright": "^1.63.0",
