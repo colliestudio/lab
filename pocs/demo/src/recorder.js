@@ -18,7 +18,7 @@ const INIT = `${RRWEB}
   const send = (kind, data) => window.__replay(kind, data);
   const start = () => rrweb.record({
     emit: (event) => send("rrweb", event),
-    sampling: { mousemove: 50, scroll: 150, input: "last" },
+    sampling: { mousemove: 50, scroll: 150 },  // input: every keystroke ("last" keeps only the final value)
     maskInputOptions: { password: true },
   });
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start);
