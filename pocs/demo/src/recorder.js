@@ -5,8 +5,8 @@
 //   storage  — cookies (Node side) + localStorage/sessionStorage (in-page hook)
 //   steps    — say("caption") markers
 // finish() writes a bundle dir + <name>.replay zip + Playwright trace.zip.
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { zipSync, strToU8 } from "fflate";
+import { mkdirSync, readFileSync } from "node:fs";
+import { writeBundle } from "./bundle.js";
 
 const RRWEB = readFileSync(new URL("../node_modules/rrweb/umd/rrweb.min.js", import.meta.url), "utf8").replace(/\n\/\/# sourceMappingURL=.*$/, "");
 const BODY_LIMIT = 64 * 1024;
@@ -130,36 +130,13 @@ export async function record(browser, { name, url, viewport = { width: 1280, hei
       await context.tracing.stop({ path: `${dir}/trace.zip` });
       await context.close();
 
-      const endedAt = Date.now();
-      const manifest = {
-        format: "replay/0",
-        name,
-        url,
+      return writeBundle(outDir, {
+        name, url, recorder: "playwright",
         startedAt: new Date(startedAt).toISOString(),
-        durationMs: endedAt - startedAt,
-        viewport,
-        colorScheme,
+        durationMs: Date.now() - startedAt,
+        viewport, colorScheme,
         userAgent: await browser.version(),
-        counts: Object.fromEntries(Object.entries(s).map(([k, v]) => [k, v.length])),
-        files: ["manifest.json", "rrweb.json", "steps.json", "console.json", "network.json", "storage.json", "trace.zip"],
-      };
-      const files = {
-        "manifest.json": manifest,
-        "rrweb.json": s.rrweb,
-        "steps.json": s.steps,
-        "console.json": s.console,
-        "network.json": s.network,
-        "storage.json": s.storage,
-      };
-      const zip = {};
-      for (const [f, v] of Object.entries(files)) {
-        const text = JSON.stringify(v, null, f === "rrweb.json" ? 0 : 2);
-        writeFileSync(`${dir}/${f}`, text);
-        zip[f] = strToU8(text);
-      }
-      zip["trace.zip"] = [readFileSync(`${dir}/trace.zip`), { level: 0 }];
-      writeFileSync(`${outDir}/${name}.replay`, zipSync(zip, { level: 9 }));
-      return { dir, bundle: `${outDir}/${name}.replay`, manifest };
+      }, s);
     },
   };
   return api;
