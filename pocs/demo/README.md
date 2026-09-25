@@ -1,31 +1,37 @@
 # replay-lab
 
-Scratch prototype: narrated, seekable DOM replays with console / network / storage, recorded by a Playwright script. Project docs: `cs/docs/projects/collie-demo/` (README.md = product, engineering.md = build notes, market.md).
+Scratch prototype for **Collie Demo**: narrated, seekable demos with console / network / storage and, optionally, the backend (logs, OpenTelemetry spans, webhooks, DB changes).
+Project docs: `cs/docs/projects/collie-demo/` (README.md = product, engineering.md = build notes + format v0, market.md).
+Code still says "replay" until naming is locked.
+
+## Run
 
 ```
-npm run record        # runs demo.js → out/todo-demo/ + out/todo-demo.replay
-open out/todo-demo/index.html
-npx playwright show-trace out/todo-demo/trace.zip   # the same run in Playwright's trace viewer
+npm i
+node serve.js 7101 &                           # static server for out/ (Range support, video seeking)
+
+node demo.js                                   # UI demo, app in-process        → out/todo-demo/
+node run.js                                    # UI demo, app as a child process → out/todo-plain/
+node run.js --otel                             # + server logs + OTel spans      → out/todo-otel/
+node run.js --journey webhooks --otel          # backend-only demo (http stage)  → out/webhooks-otel/
+node native-demo.js                            # Playwright-native video + trace → out/native/
+node app/server.js --record                    # :7103, in-page recorder widget (no Playwright)
+
+open http://localhost:7101/<name>/index.html
+npx playwright show-trace out/<name>/trace.zip
 ```
 
 ## Pieces
 
-- `app/`: a tiny todo app to film: a login cookie, localStorage, fetches, and a broken endpoint that throws.
-- `src/recorder.js`: `record(browser, {name, url})` → `{page, say, go, click, type, pause, finish}`.
-- `src/player.js`: bundle dir → one self-contained `index.html`.
-- `demo.js`: the journey (what an agent would write).
+| Path | What |
+|---|---|
+| `app/` | Todo app to film: login cookie, localStorage, SQLite, a broken `/api/report`, signed webhooks with backoff + dead-letter, optional OTel spans/log trace ids. |
+| `src/recorder.js` | Playwright recorder: `record(browser, {name, url, stage})` → `say / go / click / type / pause / http.* / until / finish`. |
+| `src/inpage.js` | In-page recorder (plain `<script>` + widget), no Playwright. |
+| `src/backend.js` | `catcher()` webhook receiver (programmable failures), `dbWatch()` SQLite row diffs. |
+| `src/bundle.js` | Writes the bundle dir + `<name>.replay` zip. |
+| `src/player.js` | Bundle → one self-contained `index.html` (ui or http stage, synced panels, waterfall). |
+| `run.js` | Runner: starts the app as a child, `--journey`, `--logs`, `--otel` (local OTLP receiver). |
+| `journeys/` | `todo.js` (UI), `webhooks.js` (backend, `stage = "http"`). |
 
-## Bundle (`<name>.replay` = zip)
-
-| file | what | source |
-|---|---|---|
-| manifest.json | name, url, start, duration, viewport, color scheme, counts | recorder |
-| rrweb.json | DOM replay events | rrweb, injected in-page → `exposeBinding` |
-| steps.json | `{t, text}` captions | `say()` (also an rrweb custom event → timeline marker) |
-| console.json | `{t, level, text, source/stack}` | `page.on('console')`, `page.on('pageerror')` |
-| network.json | method, url, type, status, timing, headers, bodies (fetch/xhr/document, ≤64 KB) | `context.on('request' / 'requestfinished' / 'requestfailed')` |
-| storage.json | event log: cookie snapshots on change; local/session `snapshot`, `set`, `remove`, `clear` | cookies: `context.cookies()` after each response; storage: in-page `Storage.prototype` patch |
-| trace.zip | the full Playwright trace | `context.tracing` |
-
-Every stream is stamped with `Date.now()` on one machine, so the player lines them up against rrweb's own timestamps.
-Storage is event-sourced: the player replays writes up to the current time to show the state *at that moment*.
+Format, capture internals and gotchas: see `engineering.md` in cs.
