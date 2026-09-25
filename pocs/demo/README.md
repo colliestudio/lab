@@ -1,6 +1,6 @@
 # replay-lab
 
-Scratch prototype: narrated, seekable DOM replays with console / network / storage, recorded by a Playwright script. Idea doc: `cs/docs/projects/replay.md`.
+Scratch prototype: narrated, seekable DOM replays with console / network / storage, recorded by a Playwright script. Project docs: `cs/docs/projects/collie-demo/` (README.md = product, engineering.md = build notes, market.md).
 
 ```
 npm run record        # runs demo.js → out/todo-demo/ + out/todo-demo.replay
