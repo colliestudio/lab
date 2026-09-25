@@ -7,6 +7,7 @@
 // finish() writes a bundle dir + <name>.replay zip + Playwright trace.zip.
 import { mkdirSync, readFileSync } from "node:fs";
 import { writeBundle } from "./bundle.js";
+import { expect as pwExpect } from "@playwright/test";
 
 const RRWEB = readFileSync(new URL("../node_modules/rrweb/umd/rrweb.min.js", import.meta.url), "utf8").replace(/\n\/\/# sourceMappingURL=.*$/, "");
 const BODY_LIMIT = 64 * 1024;
@@ -50,14 +51,17 @@ const INIT = `${RRWEB}
 })();`;
 
 // stage: "ui" (a page, rrweb) or "http" (no page; API calls, webhooks, DB changes are the show).
-export async function record(browser, { name, url, stage = "ui", viewport = { width: 1280, height: 800 }, colorScheme = "light" }) {
-  const context = await browser.newContext({ viewport, colorScheme, baseURL: url });
+export async function record(browser, { name, url, stage = "ui", viewport = { width: 1280, height: 800 }, colorScheme = "light", contextOptions = {}, cookies = [] }) {
+  const context = await browser.newContext({ viewport, colorScheme, baseURL: url, ...contextOptions });
+  if (cookies.length) await context.addCookies(cookies.map((c) => ({ url, ...c })));
   const startedAt = Date.now();
   const s = { rrweb: [], console: [], network: [], storage: [], steps: [] };
   const now = () => Date.now();
 
   await context.tracing.start({ screenshots: true, snapshots: true, sources: false });
+  let mainPage = null; // only the main page is filmed; offstage pages are not
   await context.exposeBinding("__replay", ({ page }, kind, data) => {
+    if (mainPage && page !== mainPage) return;
     if (kind === "rrweb") s.rrweb.push(data);
     else s.storage.push({ t: now(), origin: new URL(page.url()).origin, ...data });
   });
@@ -71,7 +75,6 @@ export async function record(browser, { name, url, stage = "ui", viewport = { wi
     });
     page.on("pageerror", (e) => s.console.push({ t: now(), level: "error", text: `Uncaught ${e.name}: ${e.message}`, stack: e.stack }));
   };
-  context.on("page", onPage);
 
   // Network
   const reqs = new Map();
@@ -114,6 +117,38 @@ export async function record(browser, { name, url, stage = "ui", viewport = { wi
   };
 
   const page = stage === "ui" ? await context.newPage() : null;
+  mainPage = page;
+  // Console is attached to the filmed page only; offstage pages stay out of the recording.
+  if (page) onPage(page);
+
+  // Targets: a Playwright locator, a CSS selector, or visible text (button/link name, then label, then exact text).
+  const looksLikeCss = (x) => /^([#.\[]|[a-z][\w-]*[#.\[:])/i.test(x.trim()) || /^(css|xpath)=/.test(x);
+  const target = (x) => {
+    if (typeof x !== "string") return x;
+    if (looksLikeCss(x)) return page.locator(x);
+    return page.getByRole("button", { name: x, exact: true })
+      .or(page.getByRole("link", { name: x, exact: true }))
+      .or(page.getByRole("tab", { name: x, exact: true }))
+      .or(page.getByRole("menuitem", { name: x, exact: true }))
+      .first();
+  };
+  const field = (x) => (typeof x !== "string" ? x : looksLikeCss(x) ? page.locator(x) : page.getByLabel(x, { exact: true }).or(page.getByPlaceholder(x, { exact: true })).first());
+  const actions = (s.actions = []); // what each step touched, with its box: the sheet zooms there
+  const highlight = async (loc, kind = "act") => {
+    const box = await loc.boundingBox({ timeout: 3000 }).catch(() => null);
+    actions.push({ t: now(), kind, target: String(loc).slice(0, 200), box });
+    if (!box) return;
+    await page.evaluate((b) => {
+      const d = document.createElement("div");
+      d.className = "__demo_hl";
+      Object.assign(d.style, { position: "fixed", left: b.x - 5 + "px", top: b.y - 5 + "px", width: b.width + 10 + "px", height: b.height + 10 + "px",
+        border: "3px solid #f59e0b", borderRadius: "6px", pointerEvents: "none", zIndex: 2147483647 });
+      document.documentElement.append(d);
+      setTimeout(() => d.remove(), 700);
+    }, box).catch(() => {});
+    await pause(650);
+  };
+  const expects = (s.expects = []);
 
   const pause = (ms) => new Promise((r) => setTimeout(r, ms));
   const hex = (n) => [...crypto.getRandomValues(new Uint8Array(n))].map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -149,15 +184,44 @@ export async function record(browser, { name, url, stage = "ui", viewport = { wi
       await pause(readMs);
     },
     async go(path) { await page.goto(new URL(path, url).href); await pause(600); },
-    async click(selector) {
-      const el = page.locator(selector);
-      await el.evaluate((n) => { n.style.outline = "3px solid #f59e0b"; n.style.outlineOffset = "2px"; });
-      await pause(500);
-      await el.evaluate((n) => { n.style.outline = ""; });
+    async click(what) {
+      const el = target(what);
+      await el.waitFor({ state: "visible", timeout: 10000 });
+      await highlight(el, "click");
       await el.click();
+      await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
       await pause(700);
     },
-    async type(selector, text) { await page.locator(selector).pressSequentially(text, { delay: 55 }); await pause(300); },
+    async type(what, text) {
+      const el = field(what);
+      await highlight(el, "type");
+      await el.click();
+      await el.press("ControlOrMeta+a"); // select-all then type: fill("") left "03" in React number inputs (hotelapp-qa)
+      await el.pressSequentially(text, { delay: 55 });
+      await pause(300);
+    },
+    async pick(what, option) { const el = field(what); await highlight(el, "pick"); await el.selectOption({ label: option }); await pause(500); },
+    /** Playwright expect, recorded as ✓/✗ on the timeline. soft: record ✗ and carry on (compare "before" runs). */
+    expect(locator, { soft = false } = {}) {
+      const loc = typeof locator === "string" ? page.getByText(locator).first() : locator;
+      return new Proxy({}, {
+        get: (_, matcher) => async (...args) => {
+          const e = { t: now(), step: s.steps.at(-1)?.text, matcher: String(matcher), target: String(loc), pass: true };
+          try { await pwExpect(loc)[matcher](...args); e.box = await loc.first().boundingBox({ timeout: 500 }).catch(() => null) ?? undefined; }
+          catch (err) { e.pass = false; e.message = String(err.message).split("\n").slice(0, 4).join(" ").slice(0, 400); }
+          expects.push(e);
+          await page.evaluate((e) => window.rrweb?.record.addCustomEvent("expect", e), e).catch(() => {});
+          if (!e.pass && !soft) throw new Error("expect failed: " + e.message);
+          await pause(400);
+        },
+      });
+    },
+    /** Unfilmed setup mid-journey: a separate page in the same context (shares cookies), not recorded. */
+    async offstage(fn, label) {
+      const p = await context.newPage();
+      try { await fn(p, context); } finally { await p.close(); }
+      if (label) s.steps.push({ t: now(), text: label, kind: "offstage" });
+    },
     pause,
     http: { get: call("GET"), post: call("POST"), put: call("PUT"), patch: call("PATCH"), delete: call("DELETE") },
     /** Poll until fn() is truthy — for effects that happen after the response (jobs, webhooks, retries). */
@@ -173,6 +237,8 @@ export async function record(browser, { name, url, stage = "ui", viewport = { wi
       await pause(800);
       await Promise.allSettled([...reqs.keys()].map((r) => r.response()));
       for (const hook of onStep) await hook(null);
+      if (!expects.length) delete s.expects;
+      if (!actions.length) delete s.actions;
       const dir = `${outDir}/${name}`;
       mkdirSync(dir, { recursive: true });
       await context.tracing.stop({ path: `${dir}/trace.zip` });

@@ -1,5 +1,5 @@
 {
-  "name": "replay-lab",
+  "name": "@collie/demo",
   "private": true,
   "type": "module",
   "scripts": {
@@ -10,10 +10,17 @@
   "dependencies": {
     "@opentelemetry/api": "^1.9.1",
     "@opentelemetry/auto-instrumentations-node": "^0.80.0",
+    "@playwright/test": "^1.63.0",
     "@rrweb/rrweb-plugin-console-record": "^2.0.0-alpha.18",
     "fflate": "^0.8.3",
     "playwright": "^1.63.0",
     "rrweb": "^2.1.6",
     "rrweb-player": "^2.1.6"
+  },
+  "exports": {
+    ".": "./src/demo.js"
+  },
+  "bin": {
+    "demo": "./bin/demo.js"
   }
 }
