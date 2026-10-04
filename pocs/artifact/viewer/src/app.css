@@ -12,7 +12,7 @@
   --content-w: 860px;
   --wide-w: 1040px;
   --hl-kw: #a626a4; --hl-str: #2a7a3b; --hl-num: #b25c00; --hl-com: #8a8a8a; --hl-fn: #2f5fbf; --hl-type: #a15c00; --hl-attr: #9a3c00;
-  --diff-add-bg: color-mix(in srgb, var(--collie-color-success-subtle) 80%, transparent);
+  --diff-add-bg: color-mix(in srgb, var(--collie-color-success-subtle) 70%, transparent);
   --diff-add-ln: var(--collie-color-success-subtle-hover);
   --diff-del-bg: color-mix(in srgb, var(--collie-color-critical-subtle) 80%, transparent);
   --diff-del-ln: var(--collie-color-critical-subtle-hover);
@@ -22,8 +22,10 @@
   --page: var(--collie-color-canvas);
   --card: var(--collie-color-surface);
   --hl-kw: #e38aed; --hl-str: #8fd19e; --hl-num: #f5b971; --hl-com: #7c7c7c; --hl-fn: #82b1ff; --hl-type: #f1c27d; --hl-attr: #f0a07a;
-  --diff-add-bg: color-mix(in srgb, var(--collie-color-success-subtle) 90%, transparent);
-  --diff-del-bg: color-mix(in srgb, var(--collie-color-critical-subtle) 90%, transparent);
+  --diff-add-bg: color-mix(in srgb, var(--collie-color-success-subtle) 45%, transparent);
+  --diff-add-ln: color-mix(in srgb, var(--collie-color-success-subtle-hover) 70%, transparent);
+  --diff-del-bg: color-mix(in srgb, var(--collie-color-critical-subtle) 50%, transparent);
+  --diff-del-ln: color-mix(in srgb, var(--collie-color-critical-subtle-hover) 70%, transparent);
   --purple: #bf7af0; --purple-subtle: #2c1a3a; --purple-border: #6a3e8c;
 }
 
@@ -291,7 +293,6 @@ code, pre, .mono { font-family: var(--mono); font-size: 0.92em; }
 .medge-label.ech-changed text { fill: var(--collie-color-fg-warning); }
 .medge-label.ech-deferred text { font-style: italic; }
 .medge-label.active rect { stroke: var(--collie-color-border-hover); }
-.medge-label.floating rect { filter: drop-shadow(0 1px 3px rgb(0 0 0 / .15)); }
 .medge-label.dim { opacity: .22; }
 
 .mnode { outline: none; transition: opacity .15s; }
@@ -334,7 +335,6 @@ code, pre, .mono { font-family: var(--mono); font-size: 0.92em; }
 
 .map-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 16px; padding: 4px 8px 8px; font-size: 12px; color: var(--muted); }
 .lg { display: inline-flex; align-items: center; gap: 6px; }
-.lg-note { font-style: italic; opacity: .8; }
 .sw { width: 14px; height: 10px; border-radius: 3px; background: var(--c-bg); border: 1.4px solid var(--c-bd); }
 .sw.ch-unchanged, .sw.ch-planned { border-style: dashed; }
 .sw.ch-deferred { border-style: dotted; }
@@ -584,6 +584,9 @@ code, pre, .mono { font-family: var(--mono); font-size: 0.92em; }
 .dl.del .ln { background: var(--diff-del-ln); opacity: 1; }
 .sign { display: inline-block; width: 14px; color: var(--muted); user-select: none; }
 .dl.add .sign { color: var(--collie-color-fg-success); }
+.all-added .dl.add td { background: none; }
+.all-added .dl.add .ln { background: var(--diff-add-bg); }
+.all-added .dl.add .ln + .ln { box-shadow: inset -2px 0 var(--collie-color-border-success); }
 .dl.del .sign { color: var(--collie-color-fg-critical); }
 .hunk-head td { background: var(--collie-color-accent-subtle); color: var(--collie-color-fg-accent); font-size: 11.5px; padding: 3px 10px; }
 .hunk-head .ln { text-align: center; opacity: .8; }

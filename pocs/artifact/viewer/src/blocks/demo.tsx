@@ -7,6 +7,7 @@ import RrwebPlayer from "rrweb-player";
 import "rrweb-player/dist/style.css";
 import type { Block } from "../../../src/model.ts";
 import { Markdown } from "../components/Markdown.tsx";
+import { cx } from "../util.ts";
 
 type DemoBlockData = Extract<Block, { type: "demo" }>;
 export interface DemoBlockProps { block: DemoBlockData; getFile: (path: string) => Promise<Uint8Array> }
@@ -132,25 +133,87 @@ export function DemoBlock({ block, getFile }: DemoBlockProps) {
 }
 export default DemoBlock;
 
-/** A still frame of a replay at a step (1-based), for before/after shots: a paused player without controls. */
-export function DemoFrame({ src, step, getFile, width = 340 }: { src: string; step?: number; getFile: DemoBlockProps["getFile"]; width?: number }) {
+export interface Crop { x: number; y: number; w: number; h: number } // in recording viewport px
+
+/**
+ * Bounding box of what's on screen in a replayed page, so a small app in a big viewport isn't shown as a tiny
+ * island in white. Full-width elements (page backgrounds, layout wrappers) and everything inside short full-width
+ * bars (headers, nav) are ignored; null when the content already fills most of the viewport.
+ */
+export function contentBox(doc: Document, vw: number, vh: number, pad = 24): Crop | null {
+  let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+  const win = doc.defaultView;
+  const isBar = (el: Element) => { const r = el.getBoundingClientRect(); return r.width >= vw * 0.9 && r.height < vh * 0.2; };
+  for (const el of doc.body?.querySelectorAll("*") ?? []) {
+    const r = el.getBoundingClientRect();
+    if (r.width < 1 || r.height < 1 || r.width >= vw * 0.9 || r.bottom <= 0 || r.top >= vh || r.right <= 0 || r.left >= vw) continue;
+    if (win && win.getComputedStyle(el).visibility === "hidden") continue;
+    let bar = false;
+    for (let a = el.parentElement; a && a !== doc.body; a = a.parentElement) if (isBar(a)) { bar = true; break; }
+    if (bar) continue;
+    x1 = Math.min(x1, r.left); y1 = Math.min(y1, r.top); x2 = Math.max(x2, r.right); y2 = Math.max(y2, r.bottom);
+  }
+  if (!Number.isFinite(x1)) return null;
+  const c = { x: Math.max(0, x1 - pad), y: Math.max(0, y1 - pad), w: 0, h: 0 };
+  c.w = Math.min(vw, x2 + pad) - c.x; c.h = Math.min(vh, y2 + pad) - c.y;
+  return c.w * c.h > vw * vh * 0.6 ? null : c;
+}
+
+export const unionCrop = (a: Crop, b: Crop): Crop => {
+  const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
+  return { x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y };
+};
+
+/**
+ * A still frame of a replay at a step (1-based), for before/after shots: a paused player without controls,
+ * zoomed to the content (`crop`, else the frame's own content box; `onContent` reports that box).
+ */
+export function DemoFrame({ src, step, getFile, width = 340, crop, onContent }: {
+  src: string; step?: number; getFile: DemoBlockProps["getFile"]; width?: number;
+  crop?: Crop | null; onContent?: (c: Crop | null) => void;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string>();
+  const [vp, setVp] = useState<{ width: number; height: number }>();
+  const [own, setOwn] = useState<Crop | null>(null);
+  const report = useRef(onContent);
+  report.current = onContent;
   useEffect(() => {
-    let p: Player | undefined, live = true;
+    let p: Player | undefined, live = true, timer = 0;
     getFile(src).then((b) => {
       if (!live || !ref.current) return;
       const r = loadReplay(b);
       if (!r.events.length) return setError("no screen recording");
       const s = r.steps[(step ?? 1) - 1];
+      const v = r.manifest.viewport ?? { width: 1280, height: 800 };
       ref.current.innerHTML = "";
       p = mountPlayer(ref.current, r, width, false);
+      setVp(v);
       // A beat after the step starts, so the frame shows the step's effect.
       p.goto(s ? Math.max(0, s.t - r.t0 + 900) : 0, false);
+      timer = window.setTimeout(() => {
+        const doc = ref.current?.querySelector("iframe")?.contentDocument;
+        let c: Crop | null = null;
+        try { c = doc ? contentBox(doc, v.width, v.height) : null; } catch { /* cross-origin or torn down */ }
+        if (!live) return;
+        setOwn(c);
+        report.current?.(c);
+      }, 250);
     }).catch((e) => live && setError(String(e?.message ?? e)));
-    return () => { live = false; destroy(p); };
+    return () => { live = false; clearTimeout(timer); destroy(p); };
   }, [src, step, getFile, width]);
-  return error ? <div style={S.note}>{error}</div> : <div ref={ref} className="recap-demo-frame" />;
+  if (error) return <div style={S.note}>{error}</div>;
+  const c = crop !== undefined ? crop : own;
+  // Zoom the crop to the frame width (at most 3x, and no taller than 3:4 of the width), centred. Same element tree
+  // with or without a crop: the player lives inside `ref` and must not be remounted.
+  const s = vp ? width / vp.width : 1;
+  const z = c ? Math.min(width / c.w, (width * 0.75) / c.h, 3) : 1;
+  const dx = c ? (width - c.w * z) / 2 : 0;
+  return (
+    <div className={cx("recap-demo-frame", c && "cropped")} style={c ? { width, height: Math.round(c.h * z), overflow: "hidden" } : undefined}>
+      <div ref={ref} style={c ? { transformOrigin: "0 0", transform: `translate(${dx}px, 0) scale(${z / s}) translate(${-c.x * s}px, ${-c.y * s}px)` } : undefined} />
+    </div>
+  );
 }
 
 const S: Record<string, CSSProperties> = {

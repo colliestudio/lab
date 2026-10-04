@@ -1,199 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import ELK, { type ElkNode, type ElkExtendedEdge } from "elkjs/lib/elk.bundled.js";
+import { layoutMap, EDGE_LINE_H, ICON_W, LINE_H, NODE_PAD_X, type Layout, type Measure } from "../map-layout.ts";
 import type { DocMap, MapNode } from "../../../src/model.ts";
 import { useViewer } from "../ctx.tsx";
 import { iconPaths } from "./icons.tsx";
 import { Markdown } from "./Markdown.tsx";
 import { CHANGE_LABEL, cx, fileSections, plural } from "../util.ts";
 
-const elk = new ELK();
-const FONT = "500 13px ui-sans-serif, system-ui, sans-serif";
-const LABEL_FONT = "400 11px ui-sans-serif, system-ui, sans-serif";
-const LINE_H = 16;              // node label line height
-const NODE_PAD_X = 12, ICON_W = 24;
-const NODE_TEXT_MAX = 150;      // node labels wrap to two lines past this width
-const EDGE_LABEL_MAX = 64;      // edge labels wrap past this width (they sit in the gaps between layers)
-const EDGE_LINE_H = 13;
-
 let ctx2d: CanvasRenderingContext2D | null = null;
-function textW(s: string, font: string) {
+const measure: Measure = (s, font) => {
   ctx2d ??= document.createElement("canvas").getContext("2d");
   if (!ctx2d) return s.length * 7;
   ctx2d.font = font;
   return ctx2d.measureText(s).width;
-}
-
-/** Greedy word wrap into at most `maxLines` lines (the last one takes the rest). */
-function wrapText(s: string, font: string, max: number, maxLines = 2): string[] {
-  if (textW(s, font) <= max) return [s];
-  const words = s.split(" ");
-  const lines: string[] = [];
-  let cur = "";
-  for (let i = 0; i < words.length; i++) {
-    const t = cur ? `${cur} ${words[i]}` : words[i];
-    if (cur && textW(t, font) > max && lines.length < maxLines - 1) { lines.push(cur); cur = words[i]; } else cur = t;
-  }
-  lines.push(cur);
-  return lines;
-}
-
-interface Box { x: number; y: number; w: number; h: number }
-type Dir = "RIGHT" | "DOWN";
-interface Layout {
-  dir: Dir;
-  w: number; h: number;
-  nodes: Map<string, Box & { lines: string[] }>;
-  groups: { id: string; label: string; box: Box }[];
-  edges: { key: string; from: string; to: string; d: string; label?: string; lines?: string[]; lbox?: Box; hidden?: boolean; change?: string }[];
-}
-
-function roundedPath(pts: { x: number; y: number }[], r = 8) {
-  if (pts.length < 2) return "";
-  let d = `M${pts[0].x},${pts[0].y}`;
-  for (let i = 1; i < pts.length - 1; i++) {
-    const p = pts[i - 1], c = pts[i], n = pts[i + 1];
-    const d1 = Math.hypot(c.x - p.x, c.y - p.y), d2 = Math.hypot(n.x - c.x, n.y - c.y);
-    const rr = Math.min(r, d1 / 2, d2 / 2);
-    const a = { x: c.x - ((c.x - p.x) / d1) * rr, y: c.y - ((c.y - p.y) / d1) * rr };
-    const b = { x: c.x + ((n.x - c.x) / d2) * rr, y: c.y + ((n.y - c.y) / d2) * rr };
-    d += ` L${a.x},${a.y} Q${c.x},${c.y} ${b.x},${b.y}`;
-  }
-  const last = pts[pts.length - 1];
-  return d + ` L${last.x},${last.y}`;
-}
-
-const overlaps = (a: Box, b: Box, m = 2) =>
-  a.x < b.x + b.w + m && b.x < a.x + a.w + m && a.y < b.y + b.h + m && b.y < a.y + a.h + m;
-
-/**
- * Edge labels are not given to ELK (label dummies double the number of layers and push the map wide/tall).
- * Instead each label sits on its own edge: candidates along the route's segments, longest segments first;
- * the first spot that clears every node, group title and already-placed label wins. Labels with no free spot
- * are `hidden`: drawn only while one of the edge's nodes (or the edge) is hovered.
- */
-function placeLabels(edges: Layout["edges"], pts: { x: number; y: number }[][], obstacles: Box[], W: number, H: number) {
-  const placed: Box[] = [];
-  const order = edges.map((_, i) => i).sort((a, b) => Number(edges[b].change !== undefined && edges[b].change !== "unchanged")
-    - Number(edges[a].change !== undefined && edges[a].change !== "unchanged"));
-  for (const i of order) {
-    const e = edges[i];
-    if (!e.label) continue;
-    const ls = wrapText(e.label, LABEL_FONT, EDGE_LABEL_MAX, 3);
-    e.lines = ls;
-    const w = Math.ceil(Math.max(...ls.map((l) => textW(l, LABEL_FONT)))) + 10, h = ls.length * EDGE_LINE_H + 4;
-    const segs = pts[i].slice(1).map((b, k) => ({ a: pts[i][k], b, len: Math.hypot(b.x - pts[i][k].x, b.y - pts[i][k].y) }))
-      .sort((x, y) => y.len - x.len);
-    const cands: { x: number; y: number }[] = [];
-    const beside: { x: number; y: number }[] = []; // second choice: touching the line instead of centred on it
-    for (const { a, b, len } of segs) {
-      const n = Math.max(0, Math.floor(len / 24));
-      // middle first, then outwards along the segment
-      const ts = [0.5, ...Array.from({ length: n }, (_, k) => (k + 0.5) / n).sort((p, q) => Math.abs(p - 0.5) - Math.abs(q - 0.5))];
-      const horiz = Math.abs(b.y - a.y) < Math.abs(b.x - a.x);
-      for (const t of ts) {
-        const c = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
-        cands.push(c);
-        if (horiz) beside.push({ x: c.x, y: c.y - h / 2 - 1 }, { x: c.x, y: c.y + h / 2 + 1 });
-        else beside.push({ x: c.x - w / 2 - 1, y: c.y }, { x: c.x + w / 2 + 1, y: c.y });
-      }
-    }
-    cands.push(...beside);
-    let best: Box | undefined;
-    for (const c of cands) {
-      const box = { x: c.x - w / 2, y: c.y - h / 2, w, h };
-      if (box.x < 1 || box.y < 1 || box.x + w > W - 1 || box.y + h > H - 1) continue;
-      if (obstacles.some((o) => overlaps(box, o)) || placed.some((o) => overlaps(box, o, 3))) continue;
-      best = box;
-      break;
-    }
-    if (best) { placed.push(best); e.lbox = best; }
-    else {
-      const c = cands[0];
-      e.lbox = c && { x: c.x - w / 2, y: c.y - h / 2, w, h };
-      e.hidden = true;
-    }
-  }
-}
-
-async function layout(map: DocMap, dir: Dir): Promise<Layout> {
-  const ids = new Set(map.nodes.map((n) => n.id));
-  const lines = new Map(map.nodes.map((n) => [n.id, wrapText(n.label, FONT, NODE_TEXT_MAX)]));
-  const mkNode = (n: MapNode): ElkNode => {
-    const ls = lines.get(n.id)!;
-    return {
-      id: n.id, height: ls.length > 1 ? 18 + LINE_H * ls.length : 34,
-      width: Math.max(96, Math.ceil(Math.max(...ls.map((l) => textW(l, FONT)))) + NODE_PAD_X * 2 + ICON_W),
-    };
-  };
-  const groupIds = new Set(map.groups.map((g) => g.id));
-  const children: ElkNode[] = [
-    ...map.groups.map((g) => ({
-      id: `g:${g.id}`,
-      layoutOptions: { "elk.padding": "[top=30,left=12,bottom=12,right=12]" },
-      children: map.nodes.filter((n) => n.group === g.id).map(mkNode),
-    })).filter((g) => g.children.length > 0),
-    ...map.nodes.filter((n) => !n.group || !groupIds.has(n.group)).map(mkNode),
-  ];
-  const valid = map.edges.filter((e) => ids.has(e.from) && ids.has(e.to));
-  const edges: ElkExtendedEdge[] = valid.map((e, i) => ({ id: `e${i}`, sources: [e.from], targets: [e.to] }));
-  const res: ElkNode = await elk.layout({
-    id: "root",
-    layoutOptions: {
-      "elk.algorithm": "layered",
-      "elk.direction": dir,
-      "elk.hierarchyHandling": "INCLUDE_CHILDREN",
-      "elk.edgeRouting": "ORTHOGONAL",
-      "elk.layered.spacing.nodeNodeBetweenLayers": dir === "RIGHT" ? "64" : "40",
-      "elk.layered.spacing.edgeNodeBetweenLayers": "14",
-      "elk.spacing.nodeNode": dir === "RIGHT" ? "18" : "24",
-      "elk.spacing.edgeNode": "14",
-      "elk.spacing.edgeEdge": "10",
-      "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
-      "elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES",
-      "elk.json.edgeCoords": "ROOT",
-      "elk.json.shapeCoords": "ROOT",
-      "elk.padding": "[top=10,left=10,bottom=10,right=10]",
-    },
-    children,
-    edges,
-  });
-
-  const nodes: Layout["nodes"] = new Map();
-  const groups: Layout["groups"] = [];
-  const walk = (n: ElkNode) => {
-    for (const c of n.children ?? []) {
-      const box = { x: c.x ?? 0, y: c.y ?? 0, w: c.width ?? 0, h: c.height ?? 0 };
-      if (c.id.startsWith("g:")) {
-        const g = map.groups.find((g) => `g:${g.id}` === c.id)!;
-        groups.push({ id: g.id, label: g.label, box });
-        walk(c);
-      } else nodes.set(c.id, { ...box, lines: lines.get(c.id)! });
-    }
-  };
-  walk(res);
-
-  const outEdges: Layout["edges"] = [];
-  const routes: { x: number; y: number }[][] = [];
-  const collect = (n: ElkNode) => {
-    for (const e of (n.edges ?? []) as ElkExtendedEdge[]) {
-      const src = valid[Number(e.id.slice(1))];
-      const s = e.sections?.[0];
-      if (!s) continue;
-      const pts = [s.startPoint, ...(s.bendPoints ?? []), s.endPoint];
-      routes.push(pts);
-      outEdges.push({ key: e.id, from: src.from, to: src.to, d: roundedPath(pts), label: src.label, change: src.change });
-    }
-    (n.children ?? []).forEach(collect);
-  };
-  collect(res);
-  const groupTitles = groups.map((g) => ({ x: g.box.x, y: g.box.y, w: Math.min(g.box.w, textW(g.label.toUpperCase(), "600 10.5px sans-serif") * 1.12 + 28), h: 28 }));
-  placeLabels(outEdges, routes, [...nodes.values(), ...groupTitles], res.width ?? 0, res.height ?? 0);
-  return { dir, w: res.width ?? 0, h: res.height ?? 0, nodes, groups, edges: outEdges };
-}
+};
 
 /** Lays the map out both ways; the viewer shows whichever fits its box at the larger scale (ties go left-to-right). */
 async function layoutBoth(map: DocMap) {
-  const [right, down] = await Promise.all([layout(map, "RIGHT"), layout(map, "DOWN")]);
+  const [right, down] = await Promise.all([layoutMap(map, "RIGHT", measure), layoutMap(map, "DOWN", measure)]);
   return { right, down };
 }
 function pick(l: { right: Layout; down: Layout }, availW: number, availH: number): Layout {
@@ -281,7 +104,6 @@ export function MapView({ focusSection, compact, overlay, onOpen }: {
   const missingPlanned = overlay && doc.planLink && !compact ? doc.planLink.notDone.filter((id) => !map.nodes.some((n) => n.id === id)) : [];
 
   const activeEdge = (e: Layout["edges"][number]) => hoverEdge === e.key || (!!hover && (e.from === hover.id || e.to === hover.id));
-  const hiddenLabels = lay.edges.filter((e) => e.hidden).length;
 
   const showTip = (n: MapNode, el: Element) => {
     const w = wrap.current!.getBoundingClientRect();
@@ -316,7 +138,7 @@ export function MapView({ focusSection, compact, overlay, onOpen }: {
               <g key={e.key} className={cx("medge", `ech-${ch}`, isDim && "dim", activeEdge(e) && "active")}
                 onMouseEnter={() => setHoverEdge(e.key)} onMouseLeave={() => setHoverEdge(null)}>
                 <path className="medge-hit" d={e.d} />
-                <path className="medge-line" d={e.d} markerEnd={`url(#arrow-${ch})`} />
+                <path className="medge-line" d={e.d} markerEnd={`url(#arrow-${ch})`} markerStart={e.both ? `url(#arrow-${ch})` : undefined} />
               </g>
             );
           })}
@@ -357,10 +179,9 @@ export function MapView({ focusSection, compact, overlay, onOpen }: {
           {lay.edges.map((e) => {
             if (!e.label || !e.lbox) return null;
             const on = activeEdge(e);
-            if (e.hidden && !on) return null;
             const isDim = focusNode && e.from !== focusNode.id && e.to !== focusNode.id;
             return (
-              <g key={e.key} className={cx("medge-label", `ech-${e.change ?? "unchanged"}`, isDim && "dim", on && "active", e.hidden && "floating")}>
+              <g key={e.key} className={cx("medge-label", `ech-${e.change ?? "unchanged"}`, isDim && "dim", on && "active")}>
                 <rect x={e.lbox.x} y={e.lbox.y} width={e.lbox.w} height={e.lbox.h} rx={Math.min(8.5, e.lbox.h / 2)} />
                 <text x={e.lbox.x + e.lbox.w / 2} y={e.lbox.y + 2 + EDGE_LINE_H / 2 + 3.6} textAnchor="middle">
                   {(e.lines ?? [e.label]).map((l, i) => <tspan key={i} x={e.lbox!.x + e.lbox!.w / 2} dy={i === 0 ? 0 : EDGE_LINE_H}>{l}</tspan>)}
@@ -386,7 +207,7 @@ export function MapView({ focusSection, compact, overlay, onOpen }: {
           </div>
         </div>
       )}
-      {!compact && <Legend map={map} overlay={!!overlay && !!doc.planLink} hiddenLabels={hiddenLabels} deferredCount={doc.planLink?.deferred?.length ?? 0} />}
+      {!compact && <Legend map={map} overlay={!!overlay && !!doc.planLink} deferredCount={doc.planLink?.deferred?.length ?? 0} />}
       {missingPlanned.length > 0 && (
         <div className="map-missing">
           <span className="pm-text pm-notDone">Planned, not in this change:</span> {missingPlanned.map((id) => <code key={id}>{id}</code>)}
@@ -398,7 +219,7 @@ export function MapView({ focusSection, compact, overlay, onOpen }: {
 
 export const PLAN_LABEL: Record<PlanMark, string> = { done: "planned · done", notDone: "planned · not done", deferred: "deferred", unplanned: "unplanned" };
 
-function Legend({ map, overlay, hiddenLabels, deferredCount }: { map: DocMap; overlay: boolean; hiddenLabels: number; deferredCount: number }) {
+function Legend({ map, overlay, deferredCount }: { map: DocMap; overlay: boolean; deferredCount: number }) {
   const present = (["added", "changed", "removed", "planned", "deferred", "unchanged"] as const).filter((c) => map.nodes.some((n) => n.change === c));
   const mech = map.nodes.some((n) => n.mechanical);
   return (
@@ -408,7 +229,6 @@ function Legend({ map, overlay, hiddenLabels, deferredCount }: { map: DocMap; ov
       {overlay && (["done", "notDone", "deferred", "unplanned"] as const).filter((m) => m !== "deferred" || deferredCount > 0).map((m) => (
         <span key={m} className="lg"><i className={cx("pm-sw", `pm-${m}`)} />{PLAN_LABEL[m]}</span>
       ))}
-      {hiddenLabels > 0 && <span className="lg lg-note">{plural(hiddenLabels, "edge label")} on hover</span>}
     </div>
   );
 }

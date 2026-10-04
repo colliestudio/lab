@@ -1,6 +1,7 @@
 import { useEffect, useId, useState } from "react";
 import { useViewer } from "../ctx.tsx";
 import type { B } from "./simple.tsx";
+import { cleanSvg } from "../sanitize.ts";
 
 let mermaidP: Promise<typeof import("mermaid").default> | null = null;
 const loadMermaid = () => (mermaidP ??= import("mermaid").then((m) => m.default));
@@ -77,7 +78,7 @@ export function FlowBlock({ block }: { block: B<"flow"> }) {
             diagramMarginX: 8, diagramMarginY: 4, bottomMarginAdj: 0 },
           state: { useMaxWidth: false, padding: 6, nodeSpacing: 36, rankSpacing: 28 }, er: { useMaxWidth: false } });
         const { svg } = await mermaid.render(rid + theme, block.mermaid);
-        if (live) { setSvg(svg); setErr(null); }
+        if (live) { setSvg(cleanSvg(svg)); setErr(null); }
       } catch (e) {
         if (live) setErr(String((e as Error)?.message ?? e));
         document.getElementById("d" + rid + theme)?.remove();

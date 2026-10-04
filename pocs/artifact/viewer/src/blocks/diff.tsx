@@ -99,6 +99,9 @@ export function DiffView(props: {
   const add = props.additions ?? hunks.reduce((a, h) => a + h.lines.filter((l) => l.t === "+").length, 0);
   const del = props.deletions ?? hunks.reduce((a, h) => a + h.lines.filter((l) => l.t === "-").length, 0);
 
+  // a new file (or any diff with only additions): every line is green, so tint only the gutter, not the code
+  const allAdded = hunks.length > 0 && hunks.every((h) => h.lines.every((l) => l.t === "+"));
+
   const noteMap = useMemo(() => {
     const m = new Map<number, { n: number; note: string }[]>();
     [...notes].sort((a, b) => a.line - b.line).forEach((x, i) => {
@@ -132,7 +135,7 @@ export function DiffView(props: {
           {props.binary ? <div className="diff-empty">Binary file</div> : hunks.length === 0 ? (
             <div className="diff-empty">No hunks</div>
           ) : (
-            <table className="diff-table">
+            <table className={cx("diff-table", allAdded && "all-added")}>
               <tbody>
                 {hunks.map((h, hi) => (
                   <Fragment key={hi}>
