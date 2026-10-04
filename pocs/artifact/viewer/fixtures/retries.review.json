@@ -1,0 +1,2866 @@
+{
+ "doc": {
+  "format": "collie-doc/0",
+  "kind": "review",
+  "title": "Retry failed webhook deliveries",
+  "tldr": "Failed deliveries now retry with capped exponential backoff, and operators can see and replay the ones that give up.",
+  "status": "ready",
+  "risk": {
+   "level": "medium",
+   "why": "Changes the delivery worker's ack path; a bug here drops or duplicates events."
+  },
+  "ask": "Approve the backoff caps; check the migration is reversible.",
+  "meta": {
+   "repo": "acme/relay",
+   "base": "main",
+   "head": "feat/retries",
+   "pr": "https://github.com/acme/relay/pull/1093",
+   "plan": "../retries.plan",
+   "author": "dev agent",
+   "date": "2026-10-05"
+  },
+  "stats": {
+   "files": 14,
+   "additions": 271,
+   "deletions": 30
+  },
+  "map": {
+   "groups": [
+    {
+     "id": "worker",
+     "label": "Delivery worker"
+    },
+    {
+     "id": "ops",
+     "label": "Operator surface"
+    }
+   ],
+   "nodes": [
+    {
+     "id": "publish",
+     "label": "Publish API",
+     "kind": "api",
+     "change": "unchanged"
+    },
+    {
+     "id": "queue",
+     "label": "Delivery queue",
+     "kind": "queue",
+     "change": "unchanged"
+    },
+    {
+     "id": "consumer",
+     "label": "Delivery consumer",
+     "kind": "module",
+     "change": "changed",
+     "group": "worker",
+     "section": "consumer",
+     "files": [
+      "internal/deliverymq/**"
+     ]
+    },
+    {
+     "id": "retry",
+     "label": "Retry scheduler",
+     "kind": "module",
+     "change": "added",
+     "group": "worker",
+     "section": "retry",
+     "files": [
+      "internal/retry/**"
+     ]
+    },
+    {
+     "id": "attempts",
+     "label": "delivery_attempts",
+     "kind": "db",
+     "change": "changed",
+     "section": "schema",
+     "files": [
+      "internal/migrations/**"
+     ]
+    },
+    {
+     "id": "dest",
+     "label": "Destination endpoint",
+     "kind": "external",
+     "change": "unchanged"
+    },
+    {
+     "id": "api",
+     "label": "Failed deliveries API",
+     "kind": "api",
+     "change": "added",
+     "group": "ops",
+     "section": "api",
+     "files": [
+      "internal/api/failed_deliveries.go",
+      "internal/api/router.go"
+     ]
+    },
+    {
+     "id": "ui",
+     "label": "Failed deliveries page",
+     "kind": "ui",
+     "change": "added",
+     "group": "ops",
+     "section": "ui",
+     "files": [
+      "web/**"
+     ]
+    },
+    {
+     "id": "legacy",
+     "label": "Legacy retry cron",
+     "kind": "job",
+     "change": "removed",
+     "section": "cleanup",
+     "files": [
+      "internal/cron/**"
+     ]
+    },
+    {
+     "id": "deps",
+     "label": "Lockfile & generated",
+     "kind": "config",
+     "change": "changed",
+     "mechanical": true,
+     "section": "mechanical",
+     "files": [
+      "go.mod",
+      "go.sum",
+      "**/*.gen.go",
+      "docs/**"
+     ]
+    }
+   ],
+   "edges": [
+    {
+     "from": "publish",
+     "to": "queue",
+     "label": "publish"
+    },
+    {
+     "from": "queue",
+     "to": "consumer",
+     "label": "deliver"
+    },
+    {
+     "from": "consumer",
+     "to": "dest",
+     "label": "POST event"
+    },
+    {
+     "from": "consumer",
+     "to": "attempts",
+     "label": "record attempt",
+     "change": "changed"
+    },
+    {
+     "from": "consumer",
+     "to": "retry",
+     "label": "on failure",
+     "change": "added"
+    },
+    {
+     "from": "retry",
+     "to": "queue",
+     "label": "re-enqueue after backoff",
+     "change": "added"
+    },
+    {
+     "from": "ui",
+     "to": "api",
+     "label": "list / replay",
+     "change": "added"
+    },
+    {
+     "from": "api",
+     "to": "attempts",
+     "label": "query failed",
+     "change": "added"
+    },
+    {
+     "from": "api",
+     "to": "retry",
+     "label": "replay",
+     "change": "added"
+    },
+    {
+     "from": "legacy",
+     "to": "queue",
+     "label": "blind re-enqueue",
+     "change": "removed"
+    }
+   ]
+  },
+  "overview": "Before this change a failed delivery was `nack`ed straight back onto the queue and a cron job re-sent everything from the last hour every 5 minutes. Now the consumer hands failures to a **retry scheduler** that uses the queue's delayed publish, and deliveries that exhaust their retries become visible (and replayable) to operators. Read the scheduler first: everything else hangs off it.",
+  "sections": [
+   {
+    "id": "retry",
+    "title": "Retry scheduler",
+    "mechanical": false,
+    "summary": "A new `retry` package decides *when* a failed delivery is tried again: capped exponential backoff with jitter, 12 retries over roughly 9 hours, then give up.",
+    "blocks": [
+     {
+      "type": "markdown",
+      "md": "The scheduler is stateless. It computes the next delay from the attempt number carried in the message and publishes a **delayed copy** to the same queue. No polling loop, no extra table to scan, and a restart loses nothing because the delayed message lives in the broker.\n\n| attempt | delay (before jitter) |\n|---|---|\n| 1 | 30 s |\n| 2 | 1 m |\n| 4 | 4 m |\n| 8 | 1 h (cap) |\n| 12 | 1 h, then give up |",
+      "id": "retry-1",
+      "level": 2
+     },
+     {
+      "type": "flow",
+      "caption": "One failed delivery, end to end.",
+      "mermaid": "sequenceDiagram\n  participant Q as Delivery queue\n  participant C as Consumer\n  participant D as Destination\n  participant R as Retry scheduler\n  Q->>C: deliver (attempt n)\n  C->>D: POST event\n  D-->>C: 503\n  C->>R: Schedule(delivery)\n  alt retries left\n    R->>Q: PublishAt(attempt n+1, now + backoff)\n    C->>Q: ack original\n  else exhausted\n    C->>C: MarkFailed\n    C->>Q: ack original\n  end",
+      "id": "retry-2",
+      "level": 2
+     },
+     {
+      "type": "callout",
+      "tone": "decision",
+      "md": "**Backoff caps:** 30 s base, 1 h max delay, 12 retries (~9 h). Stripe retries for ~3 days; we stop the same day so a dead endpoint stops costing us. Open for discussion, see the question below.",
+      "id": "retry-3",
+      "level": 2
+     },
+     {
+      "type": "questions",
+      "questions": [
+       {
+        "q": "Are 12 retries over ~9 hours the right default?",
+        "options": [
+         "12 retries / ~9 h",
+         "8 retries / ~3 h",
+         "18 retries / ~3 days"
+        ],
+        "recommend": "12 retries / ~9 h",
+        "why": "Covers a typical deploy or outage window without keeping dead endpoints alive overnight."
+       }
+      ],
+      "id": "retry-4",
+      "level": 0
+     },
+     {
+      "type": "code",
+      "lang": "go",
+      "file": "internal/retry/backoff.go",
+      "code": "func (p Policy) Delay(attempt int) (d time.Duration, ok bool) {\n\tif attempt < 1 || attempt > p.MaxAttempts {\n\t\treturn 0, false\n\t}\n\texp := float64(p.Base) * math.Pow(2, float64(attempt-1))\n\tif exp > float64(p.Max) {\n\t\texp = float64(p.Max)\n\t}\n\thalf := exp / 2\n\treturn time.Duration(half + rand.Float64()*half), true\n}\n",
+      "id": "retry-5",
+      "level": 3
+     },
+     {
+      "type": "diff",
+      "file": "internal/retry/scheduler.go",
+      "change": "added",
+      "hunks": [],
+      "notes": [
+       {
+        "line": 15,
+        "note": "Holds no state of its own: the attempt number travels in the message."
+       },
+       {
+        "line": 42,
+        "note": "PublishAt is the broker's delayed publish (RabbitMQ delayed-message plugin / SQS DelaySeconds)."
+       },
+       {
+        "line": 50,
+        "note": "Replay keeps the attempt counter, so a replayed delivery that fails again gives up immediately."
+       }
+      ],
+      "id": "retry-6",
+      "level": 3
+     }
+    ]
+   },
+   {
+    "id": "consumer",
+    "title": "Delivery consumer: the ack path",
+    "mechanical": false,
+    "summary": "The consumer no longer `nack`s failures back onto the queue; it schedules a retry and acks the original **only after** the retry is safely queued.",
+    "blocks": [
+     {
+      "type": "callout",
+      "tone": "risk",
+      "md": "This is the riskiest part of the change. Order matters: *schedule, then ack*. If the process dies between the two, the original is redelivered and the destination sees a **duplicate** attempt. The reverse order would **drop** the event. Duplicates are acceptable (deliveries carry an idempotency key); drops are not.",
+      "id": "consumer-1",
+      "level": 2
+     },
+     {
+      "type": "flow",
+      "caption": "Delivery states after this change.",
+      "mermaid": "stateDiagram-v2\n  [*] --> pending\n  pending --> delivered: 2xx\n  pending --> retrying: error, retries left\n  retrying --> pending: backoff elapsed\n  pending --> failed: error, exhausted\n  failed --> pending: operator replay\n  delivered --> [*]",
+      "id": "consumer-2",
+      "level": 2
+     },
+     {
+      "type": "diff",
+      "file": "internal/deliverymq/consumer.go",
+      "change": "changed",
+      "hunks": [],
+      "notes": [
+       {
+        "line": 101,
+        "note": "Schedule first, ack after: a crash here means a duplicate, never a drop."
+       },
+       {
+        "line": 104,
+        "note": "If the broker refuses the delayed publish we nack, which falls back to the old immediate-redelivery behaviour."
+       },
+       {
+        "line": 112,
+        "note": "MarkFailed is best-effort like Insert: worst case the delivery is missing from the Failed page, not lost."
+       }
+      ],
+      "id": "consumer-3",
+      "level": 3
+     }
+    ]
+   },
+   {
+    "id": "schema",
+    "title": "delivery_attempts: failure columns",
+    "mechanical": false,
+    "summary": "Two nullable columns and a partial index so the operator page can list failed deliveries per tenant cheaply.",
+    "blocks": [
+     {
+      "type": "data-model",
+      "entities": [
+       {
+        "name": "delivery_attempts",
+        "change": "changed",
+        "note": "~40M rows in prod; both new columns are nullable, so the ALTER is metadata-only.",
+        "fields": [
+         {
+          "name": "id",
+          "type": "uuid",
+          "change": "unchanged"
+         },
+         {
+          "name": "delivery_id",
+          "type": "uuid",
+          "change": "unchanged"
+         },
+         {
+          "name": "tenant_id",
+          "type": "text",
+          "change": "unchanged"
+         },
+         {
+          "name": "status",
+          "type": "int",
+          "change": "unchanged"
+         },
+         {
+          "name": "next_attempt_at",
+          "type": "timestamptz?",
+          "change": "added",
+          "note": "when the scheduled retry fires"
+         },
+         {
+          "name": "failed_at",
+          "type": "timestamptz?",
+          "change": "added",
+          "note": "set when retries are exhausted"
+         },
+         {
+          "name": "retry_count",
+          "type": "int",
+          "change": "removed",
+          "note": "never written; attempt number lives on the delivery"
+         }
+        ]
+       },
+       {
+        "name": "deliveries",
+        "change": "unchanged",
+        "fields": [
+         {
+          "name": "id",
+          "type": "uuid",
+          "change": "unchanged"
+         },
+         {
+          "name": "attempt",
+          "type": "int",
+          "change": "unchanged",
+          "note": "carried in the queue message"
+         }
+        ]
+       }
+      ],
+      "id": "schema-1",
+      "level": 2
+     },
+     {
+      "type": "callout",
+      "tone": "warn",
+      "md": "The index is built `CONCURRENTLY`, so the migration must run **outside a transaction**. Our migrator does this for files with `CONCURRENTLY` in them; the down migration mirrors it.",
+      "id": "schema-2",
+      "level": 2
+     },
+     {
+      "type": "diff",
+      "file": "internal/migrations/0042_delivery_attempts_retry.up.sql",
+      "change": "added",
+      "hunks": [],
+      "notes": [
+       {
+        "line": 6,
+        "note": "Partial index: only failed rows, which should stay a tiny fraction."
+       }
+      ],
+      "id": "schema-3",
+      "level": 3
+     },
+     {
+      "type": "diff",
+      "file": "internal/migrations/0042_delivery_attempts_retry.down.sql",
+      "change": "added",
+      "hunks": [],
+      "notes": [],
+      "id": "schema-4",
+      "level": 3
+     }
+    ]
+   },
+   {
+    "id": "api",
+    "title": "Failed deliveries API",
+    "mechanical": false,
+    "summary": "Two tenant-scoped endpoints: list deliveries that gave up, and replay one.",
+    "blocks": [
+     {
+      "type": "api",
+      "endpoints": [
+       {
+        "method": "GET",
+        "path": "/tenants/{tenant}/deliveries/failed",
+        "change": "added",
+        "summary": "Failed deliveries, newest first, cursor-paginated",
+        "response": "{\n  \"items\": [\n    { \"id\": \"dlv_8f2\", \"destination\": \"https://hooks.acme.dev/in\",\n      \"attempts\": 12, \"last_error\": \"503 Service Unavailable\",\n      \"failed_at\": \"2026-10-05T03:12:44Z\" }\n  ],\n  \"next\": \"c_91\"\n}"
+       },
+       {
+        "method": "POST",
+        "path": "/tenants/{tenant}/deliveries/{id}/replay",
+        "change": "added",
+        "summary": "Queue one immediate attempt; 409 if the delivery has not failed",
+        "request": "// no body",
+        "response": "{ \"status\": \"queued\" }"
+       },
+       {
+        "method": "GET",
+        "path": "/tenants/{tenant}/events",
+        "change": "unchanged",
+        "summary": "Unchanged; listed for context"
+       }
+      ],
+      "id": "api-1",
+      "level": 2
+     },
+     {
+      "type": "diff",
+      "file": "internal/api/router.go",
+      "change": "changed",
+      "hunks": [],
+      "notes": [],
+      "id": "api-2",
+      "level": 3
+     }
+    ]
+   },
+   {
+    "id": "ui",
+    "title": "Failed deliveries page",
+    "mechanical": false,
+    "summary": "A new dashboard page lists deliveries that ran out of retries, with a one-click **Replay**.",
+    "blocks": [
+     {
+      "type": "before-after",
+      "caption": "Deliveries for tenant acme, before and after.",
+      "before": {
+       "src": "assets/before.svg",
+       "caption": "Failed deliveries are invisible: only the event log."
+      },
+      "after": {
+       "src": "assets/after.svg",
+       "caption": "New page: last error, attempts, Replay."
+      },
+      "id": "ui-1",
+      "level": 2
+     },
+     {
+      "type": "demo",
+      "src": "demos/replay-failed.replay",
+      "steps": [
+       2,
+       3,
+       4
+      ],
+      "caption": "Operator replays a failed delivery; it succeeds on the next attempt.",
+      "id": "ui-2",
+      "level": 2
+     },
+     {
+      "type": "checklist",
+      "items": [
+       "Point a destination at `https://httpstat.us/503` and publish an event",
+       "Watch `retry scheduled` log lines with growing delays",
+       "Set `MaxAttempts: 2` locally; the delivery shows up on **Failed deliveries**",
+       "Click **Replay**: one new attempt, page refreshes"
+      ],
+      "id": "ui-3",
+      "level": 2
+     }
+    ]
+   },
+   {
+    "id": "rollout",
+    "title": "Rollout",
+    "mechanical": false,
+    "summary": "Ship behind the existing `retries_v2` flag, tenant by tenant; the legacy cron stays off once the flag is on.",
+    "blocks": [
+     {
+      "type": "steps",
+      "steps": [
+       {
+        "title": "Run migration 0042",
+        "detail": "Outside a transaction (CONCURRENTLY index).",
+        "status": "done",
+        "area": "schema"
+       },
+       {
+        "title": "Deploy worker with flag off",
+        "status": "done",
+        "area": "consumer"
+       },
+       {
+        "title": "Enable `retries_v2` for internal tenants",
+        "status": "doing"
+       },
+       {
+        "title": "Enable for everyone, delete the cron",
+        "detail": "The cron code is already removed in this PR; the flag only gates the new path.",
+        "status": "todo",
+        "area": "cleanup"
+       }
+      ],
+      "id": "rollout-1",
+      "level": 2
+     }
+    ]
+   },
+   {
+    "id": "cleanup",
+    "title": "Remove the legacy retry cron",
+    "mechanical": false,
+    "summary": "The every-5-minutes cron that blindly re-sent the last hour of failures is deleted.",
+    "blocks": [
+     {
+      "type": "markdown",
+      "md": "It had no backoff and no cap, and it raced with the consumer: an event could be in flight and re-sent by the cron at the same time.",
+      "id": "cleanup-1",
+      "level": 2
+     }
+    ]
+   },
+   {
+    "id": "mechanical",
+    "title": "Lockfile, generated code, docs rename",
+    "mechanical": true,
+    "summary": "`amqp091-go` bump for delayed publish, regenerated OpenAPI types, and the retries doc renamed and updated.",
+    "blocks": [
+     {
+      "type": "files",
+      "paths": [
+       "go.mod",
+       "go.sum",
+       "internal/api/openapi.gen.go",
+       "docs/delivery-retries.md"
+      ],
+      "notes": {
+       "go.mod": "amqp091-go 1.10 → 1.11 (PublishWithDeferredConfirm + x-delay)",
+       "internal/api/openapi.gen.go": "regenerated by oapi-codegen"
+      },
+      "id": "mechanical-1",
+      "level": 3
+     }
+    ]
+   }
+  ],
+  "files": [
+   {
+    "path": "internal/retry/backoff.go",
+    "change": "added",
+    "additions": 41,
+    "deletions": 0,
+    "binary": false,
+    "mechanical": false,
+    "hunks": [
+     {
+      "header": "@@ -0,0 +1,41 @@",
+      "oldStart": 0,
+      "newStart": 1,
+      "oldLines": 0,
+      "newLines": 41,
+      "lines": [
+       {
+        "t": "+",
+        "s": "package retry",
+        "new": 1
+       },
+       {
+        "t": "+",
+        "s": "",
+        "new": 2
+       },
+       {
+        "t": "+",
+        "s": "import (",
+        "new": 3
+       },
+       {
+        "t": "+",
+        "s": "\t\"math\"",
+        "new": 4
+       },
+       {
+        "t": "+",
+        "s": "\t\"math/rand/v2\"",
+        "new": 5
+       },
+       {
+        "t": "+",
+        "s": "\t\"time\"",
+        "new": 6
+       },
+       {
+        "t": "+",
+        "s": ")",
+        "new": 7
+       },
+       {
+        "t": "+",
+        "s": "",
+        "new": 8
+       },
+       {
+        "t": "+",
+        "s": "// Policy is a capped exponential backoff with full jitter.",
+        "new": 9
+       },
+       {
+        "t": "+",
+        "s": "// Attempt 1 is the first retry (the original delivery is attempt 0).",
+        "new": 10
+       },
+       {
+        "t": "+",
+        "s": "type Policy struct {",
+        "new": 11
+       },
+       {
+        "t": "+",
+        "s": "\tBase        time.Duration // delay before the first retry",
+        "new": 12
+       },
+       {
+        "t": "+",
+        "s": "\tMax         time.Duration // cap for a single delay",
+        "new": 13
+       },
+       {
+        "t": "+",
+        "s": "\tMaxAttempts int           // give up after this many retries",
+        "new": 14
+       },
+       {
+        "t": "+",
+        "s": "}",
+        "new": 15
+       },
+       {
+        "t": "+",
+        "s": "",
+        "new": 16
+       },
+       {
+        "t": "+",
+        "s": "// DefaultPolicy: 30s, 1m, 2m, 4m ... capped at 1h, 12 retries (~9h total).",
+        "new": 17
+       },
+       {
+        "t": "+",
+        "s": "var DefaultPolicy = Policy{",
+        "new": 18
+       },
+       {
+        "t": "+",
+        "s": "\tBase:        30 * time.Second,",
+        "new": 19
+       },
+       {
+        "t": "+",
+        "s": "\tMax:         time.Hour,",
+        "new": 20
+       },
+       {
+        "t": "+",
+        "s": "\tMaxAttempts: 12,",
+        "new": 21
+       },
+       {
+        "t": "+",
+        "s": "}",
+        "new": 22
+       },
+       {
+        "t": "+",
+        "s": "",
+        "new": 23
+       },
+       {
+        "t": "+",
+        "s": "// Delay returns how long to wait before retry `attempt`, or ok=false when",
+        "new": 24
+       },
+       {
+        "t": "+",
+        "s": "// the policy is exhausted and the delivery should be marked failed.",
+        "new": 25
+       },
+       {
+        "t": "+",
+        "s": "func (p Policy) Delay(attempt int) (d time.Duration, ok bool) {",
+        "new": 26
+       },
+       {
+        "t": "+",
+        "s": "\tif attempt < 1 || attempt > p.MaxAttempts {",
+        "new": 27
+       },
+       {
+        "t": "+",
+        "s": "\t\treturn 0, false",
+        "new": 28
+       },
+       {
+        "t": "+",
+        "s": "\t}",
+        "new": 29
+       },
+       {
+        "t": "+",
+        "s": "\texp := float64(p.Base) * math.Pow(2, float64(attempt-1))",
+        "new": 30
+       },
+       {
+        "t": "+",
+        "s": "\tif exp > float64(p.Max) {",
+        "new": 31
+       },
+       {
+        "t": "+",
+        "s": "\t\texp = float64(p.Max)",
+        "new": 32
+       },
+       {
+        "t": "+",
+        "s": "\t}",
+        "new": 33
+       },
+       {
+        "t": "+",
+        "s": "\t// full jitter: uniform in [exp/2, exp] keeps retries spread without",
+        "new": 34
+       },
+       {
+        "t": "+",
+        "s": "\t// collapsing to near-zero delays.",
+        "new": 35
+       },
+       {
+        "t": "+",
+        "s": "\thalf := exp / 2",
+        "new": 36
+       },
+       {
+        "t": "+",
+        "s": "\treturn time.Duration(half + rand.Float64()*half), true",
+        "new": 37
+       },
+       {
+        "t": "+",
+        "s": "}",
+        "new": 38
+       },
+       {
+        "t": "+",
+        "s": "",
+        "new": 39
+       },
+       {
+        "t": "+",
+        "s": "// Exhausted reports whether no retries are left after `attempt`.",
+        "new": 40
+       },
+       {
+        "t": "+",
+        "s": "func (p Policy) Exhausted(attempt int) bool { return attempt >= p.MaxAttempts }",
+        "new": 41
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "internal/retry/scheduler.go",
+    "change": "added",
+    "additions": 52,
+    "deletions": 0,
+    "binary": false,
+    "mechanical": false,
+    "hunks": [
+     {
+      "header": "@@ -0,0 +1,52 @@",
+      "oldStart": 0,
+      "newStart": 1,
+      "oldLines": 0,
+      "newLines": 52,
+      "lines": [
+       {
+        "t": "+",
+        "s": "package retry",
+        "new": 1
+       },
+       {
+        "t": "+",
+        "s": "",
+        "new": 2
+       },
+       {
+        "t": "+",
+        "s": "import (",
+        "new": 3
+       },
+       {
+        "t": "+",
+        "s": "\t\"context\"",
+        "new": 4
+       },
+       {
+        "t": "+",
+        "s": "\t\"fmt\"",
+        "new": 5
+       },
+       {
+        "t": "+",
+        "s": "\t\"time\"",
+        "new": 6
+       },
+       {
+        "t": "+",
+        "s": "",
+        "new": 7
+       },
+       {
+        "t": "+",
+        "s": "\t\"github.com/acme/relay/internal/deliverymq\"",
+        "new": 8
+       },
+       {
+        "t": "+",
+        "s": "\t\"github.com/acme/relay/internal/models\"",
+        "new": 9
+       },
+       {
+        "t": "+",
+        "s": ")",
+        "new": 10
+       },
+       {
+        "t": "+",
+        "s": "",
+        "new": 11
+       },
+       {
+        "t": "+",
+        "s": "// Scheduler re-enqueues failed deliveries after their backoff delay.",
+        "new": 12
+       },
+       {
+        "t": "+",
+        "s": "// It relies on the queue's native delayed publish, so there is no",
+        "new": 13
+       },
+       {
+        "t": "+",
+        "s": "// polling loop and no extra table to scan.",
+        "new": 14
+       },
+       {
+        "t": "+",
+        "s": "type Scheduler struct {",
+        "new": 15
+       },
+       {
+        "t": "+",
+        "s": "\tqueue  deliverymq.Publisher",
+        "new": 16
+       },
+       {
+        "t": "+",
+        "s": "\tpolicy Policy",
+        "new": 17
+       },
+       {
+        "t": "+",
+        "s": "\tnow    func() time.Time",
+        "new": 18
+       },
+       {
+        "t": "+",
+        "s": "}",
+        "new": 19
+       },
+       {
+        "t": "+",
+        "s": "",
+        "new": 20
+       },
+       {
+        "t": "+",
+        "s": "func NewScheduler(q deliverymq.Publisher, p Policy) *Scheduler {",
+        "new": 21
+       },
+       {
+        "t": "+",
+        "s": "\treturn &Scheduler{queue: q, policy: p, now: time.Now}",
+        "new": 22
+       },
+       {
+        "t": "+",
+        "s": "}",
+        "new": 23
+       },
+       {
+        "t": "+",
+        "s": "",
+        "new": 24
+       },
+       {
+        "t": "+",
+        "s": "// Outcome tells the consumer what happened to a failed delivery.",
+        "new": 25
+       },
+       {
+        "t": "+",
+        "s": "type Outcome int",
+        "new": 26
+       },
+       {
+        "t": "+",
+        "s": "",
+        "new": 27
+       },
+       {
+        "t": "+",
+        "s": "const (",
+        "new": 28
+       },
+       {
+        "t": "+",
+        "s": "\tScheduled Outcome = iota // a retry is queued",
+        "new": 29
+       },
+       {
+        "t": "+",
+        "s": "\tGaveUp                   // policy exhausted; mark the delivery failed",
+        "new": 30
+       },
+       {
+        "t": "+",
+        "s": ")",
+        "new": 31
+       },
+       {
+        "t": "+",
+        "s": "",
+        "new": 32
+       },
+       {
+        "t": "+",
+        "s": "// Schedule queues the next attempt for d, or reports GaveUp.",
+        "new": 33
+       },
+       {
+        "t": "+",
+        "s": "func (s *Scheduler) Schedule(ctx context.Context, d models.Delivery) (Outcome, time.Time, error) {",
+        "new": 34
+       },
+       {
+        "t": "+",
+        "s": "\tnext := d.Attempt + 1",
+        "new": 35
+       },
+       {
+        "t": "+",
+        "s": "\tdelay, ok := s.policy.Delay(next)",
+        "new": 36
+       },
+       {
+        "t": "+",
+        "s": "\tif !ok {",
+        "new": 37
+       },
+       {
+        "t": "+",
+        "s": "\t\treturn GaveUp, time.Time{}, nil",
+        "new": 38
+       },
+       {
+        "t": "+",
+        "s": "\t}",
+        "new": 39
+       },
+       {
+        "t": "+",
+        "s": "\tat := s.now().Add(delay)",
+        "new": 40
+       },
+       {
+        "t": "+",
+        "s": "\tmsg := d.WithAttempt(next)",
+        "new": 41
+       },
+       {
+        "t": "+",
+        "s": "\tif err := s.queue.PublishAt(ctx, msg, at); err != nil {",
+        "new": 42
+       },
+       {
+        "t": "+",
+        "s": "\t\treturn 0, time.Time{}, fmt.Errorf(\"retry: publish attempt %d of %s: %w\", next, d.ID, err)",
+        "new": 43
+       },
+       {
+        "t": "+",
+        "s": "\t}",
+        "new": 44
+       },
+       {
+        "t": "+",
+        "s": "\treturn Scheduled, at, nil",
+        "new": 45
+       },
+       {
+        "t": "+",
+        "s": "}",
+        "new": 46
+       },
+       {
+        "t": "+",
+        "s": "",
+        "new": 47
+       },
+       {
+        "t": "+",
+        "s": "// Replay queues an immediate attempt for a delivery that already gave up.",
+        "new": 48
+       },
+       {
+        "t": "+",
+        "s": "// Used by the operator API; it does not reset the attempt counter.",
+        "new": 49
+       },
+       {
+        "t": "+",
+        "s": "func (s *Scheduler) Replay(ctx context.Context, d models.Delivery) error {",
+        "new": 50
+       },
+       {
+        "t": "+",
+        "s": "\treturn s.queue.PublishAt(ctx, d.WithAttempt(d.Attempt+1), s.now())",
+        "new": 51
+       },
+       {
+        "t": "+",
+        "s": "}",
+        "new": 52
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "internal/retry/scheduler_test.go",
+    "change": "added",
+    "additions": 30,
+    "deletions": 0,
+    "binary": false,
+    "mechanical": false,
+    "hunks": [
+     {
+      "header": "@@ -0,0 +1,30 @@",
+      "oldStart": 0,
+      "newStart": 1,
+      "oldLines": 0,
+      "newLines": 30,
+      "lines": [
+       {
+        "t": "+",
+        "s": "package retry",
+        "new": 1
+       },
+       {
+        "t": "+",
+        "s": "",
+        "new": 2
+       },
+       {
+        "t": "+",
+        "s": "import (",
+        "new": 3
+       },
+       {
+        "t": "+",
+        "s": "\t\"testing\"",
+        "new": 4
+       },
+       {
+        "t": "+",
+        "s": "\t\"time\"",
+        "new": 5
+       },
+       {
+        "t": "+",
+        "s": ")",
+        "new": 6
+       },
+       {
+        "t": "+",
+        "s": "",
+        "new": 7
+       },
+       {
+        "t": "+",
+        "s": "func TestDelayIsCappedAndJittered(t *testing.T) {",
+        "new": 8
+       },
+       {
+        "t": "+",
+        "s": "\tp := Policy{Base: time.Second, Max: 8 * time.Second, MaxAttempts: 10}",
+        "new": 9
+       },
+       {
+        "t": "+",
+        "s": "\tfor attempt := 1; attempt <= 10; attempt++ {",
+        "new": 10
+       },
+       {
+        "t": "+",
+        "s": "\t\td, ok := p.Delay(attempt)",
+        "new": 11
+       },
+       {
+        "t": "+",
+        "s": "\t\tif !ok {",
+        "new": 12
+       },
+       {
+        "t": "+",
+        "s": "\t\t\tt.Fatalf(\"attempt %d: want ok\", attempt)",
+        "new": 13
+       },
+       {
+        "t": "+",
+        "s": "\t\t}",
+        "new": 14
+       },
+       {
+        "t": "+",
+        "s": "\t\tif d > p.Max {",
+        "new": 15
+       },
+       {
+        "t": "+",
+        "s": "\t\t\tt.Fatalf(\"attempt %d: delay %s over cap %s\", attempt, d, p.Max)",
+        "new": 16
+       },
+       {
+        "t": "+",
+        "s": "\t\t}",
+        "new": 17
+       },
+       {
+        "t": "+",
+        "s": "\t\tif d <= 0 {",
+        "new": 18
+       },
+       {
+        "t": "+",
+        "s": "\t\t\tt.Fatalf(\"attempt %d: non-positive delay\", attempt)",
+        "new": 19
+       },
+       {
+        "t": "+",
+        "s": "\t\t}",
+        "new": 20
+       },
+       {
+        "t": "+",
+        "s": "\t}",
+        "new": 21
+       },
+       {
+        "t": "+",
+        "s": "}",
+        "new": 22
+       },
+       {
+        "t": "+",
+        "s": "",
+        "new": 23
+       },
+       {
+        "t": "+",
+        "s": "func TestDelayExhausted(t *testing.T) {",
+        "new": 24
+       },
+       {
+        "t": "+",
+        "s": "\tp := Policy{Base: time.Second, Max: time.Minute, MaxAttempts: 3}",
+        "new": 25
+       },
+       {
+        "t": "+",
+        "s": "\tif _, ok := p.Delay(4); ok {",
+        "new": 26
+       },
+       {
+        "t": "+",
+        "s": "\t\tt.Fatal(\"attempt 4 of 3: want exhausted\")",
+        "new": 27
+       },
+       {
+        "t": "+",
+        "s": "\t}",
+        "new": 28
+       },
+       {
+        "t": "+",
+        "s": "}",
+        "new": 29
+       },
+       {
+        "t": "+",
+        "s": "",
+        "new": 30
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "internal/deliverymq/consumer.go",
+    "change": "changed",
+    "additions": 26,
+    "deletions": 3,
+    "binary": false,
+    "mechanical": false,
+    "hunks": [
+     {
+      "header": "@@ -12,10 +12,13 @@ import (",
+      "oldStart": 12,
+      "newStart": 12,
+      "oldLines": 10,
+      "newLines": 13,
+      "lines": [
+       {
+        "t": " ",
+        "s": "\t\"github.com/acme/relay/internal/destregistry\"",
+        "old": 12,
+        "new": 12
+       },
+       {
+        "t": " ",
+        "s": "\t\"github.com/acme/relay/internal/logging\"",
+        "old": 13,
+        "new": 13
+       },
+       {
+        "t": " ",
+        "s": "\t\"github.com/acme/relay/internal/models\"",
+        "old": 14,
+        "new": 14
+       },
+       {
+        "t": "+",
+        "s": "\t\"github.com/acme/relay/internal/retry\"",
+        "new": 15
+       },
+       {
+        "t": " ",
+        "s": ")",
+        "old": 15,
+        "new": 16
+       },
+       {
+        "t": " ",
+        "s": "",
+        "old": 16,
+        "new": 17
+       },
+       {
+        "t": " ",
+        "s": "type Consumer struct {",
+        "old": 17,
+        "new": 18
+       },
+       {
+        "t": " ",
+        "s": "\tregistry destregistry.Registry",
+        "old": 18,
+        "new": 19
+       },
+       {
+        "t": " ",
+        "s": "\tattempts models.AttemptStore",
+        "old": 19,
+        "new": 20
+       },
+       {
+        "t": "+",
+        "s": "\tretries  *retry.Scheduler",
+        "new": 21
+       },
+       {
+        "t": " ",
+        "s": "\tlog      *logging.Logger",
+        "old": 20,
+        "new": 22
+       },
+       {
+        "t": "+",
+        "s": "\tmetrics  *Metrics",
+        "new": 23
+       },
+       {
+        "t": " ",
+        "s": "}",
+        "old": 21,
+        "new": 24
+       }
+      ]
+     },
+     {
+      "header": "@@ -58,37 +61,57 @@ func (c *Consumer) Handle(ctx context.Context, msg Message) error {",
+      "oldStart": 58,
+      "newStart": 61,
+      "oldLines": 37,
+      "newLines": 57,
+      "lines": [
+       {
+        "t": " ",
+        "s": "\td, err := msg.Delivery()",
+        "old": 58,
+        "new": 61
+       },
+       {
+        "t": " ",
+        "s": "\tif err != nil {",
+        "old": 59,
+        "new": 62
+       },
+       {
+        "t": " ",
+        "s": "\t\tc.log.Error(\"bad delivery message\", \"err\", err)",
+        "old": 60,
+        "new": 63
+       },
+       {
+        "t": " ",
+        "s": "\t\treturn msg.Ack() // poison message: never retry",
+        "old": 61,
+        "new": 64
+       },
+       {
+        "t": " ",
+        "s": "\t}",
+        "old": 62,
+        "new": 65
+       },
+       {
+        "t": " ",
+        "s": "",
+        "old": 63,
+        "new": 66
+       },
+       {
+        "t": " ",
+        "s": "\tdest, err := c.registry.Get(ctx, d.TenantID, d.DestinationID)",
+        "old": 64,
+        "new": 67
+       },
+       {
+        "t": " ",
+        "s": "\tif err != nil {",
+        "old": 65,
+        "new": 68
+       },
+       {
+        "t": " ",
+        "s": "\t\treturn msg.Nack()",
+        "old": 66,
+        "new": 69
+       },
+       {
+        "t": " ",
+        "s": "\t}",
+        "old": 67,
+        "new": 70
+       },
+       {
+        "t": " ",
+        "s": "",
+        "old": 68,
+        "new": 71
+       },
+       {
+        "t": " ",
+        "s": "\tstart := time.Now()",
+        "old": 69,
+        "new": 72
+       },
+       {
+        "t": " ",
+        "s": "\tres, sendErr := dest.Publish(ctx, d.Event)",
+        "old": 70,
+        "new": 73
+       },
+       {
+        "t": " ",
+        "s": "\telapsed := time.Since(start)",
+        "old": 71,
+        "new": 74
+       },
+       {
+        "t": " ",
+        "s": "",
+        "old": 72,
+        "new": 75
+       },
+       {
+        "t": " ",
+        "s": "\tattempt := models.Attempt{",
+        "old": 73,
+        "new": 76
+       },
+       {
+        "t": " ",
+        "s": "\t\tDeliveryID: d.ID,",
+        "old": 74,
+        "new": 77
+       },
+       {
+        "t": " ",
+        "s": "\t\tNumber:     d.Attempt,",
+        "old": 75,
+        "new": 78
+       },
+       {
+        "t": " ",
+        "s": "\t\tStatus:     res.Status,",
+        "old": 76,
+        "new": 79
+       },
+       {
+        "t": " ",
+        "s": "\t\tLatency:    elapsed,",
+        "old": 77,
+        "new": 80
+       },
+       {
+        "t": " ",
+        "s": "\t\tResponse:   res.Body,",
+        "old": 78,
+        "new": 81
+       },
+       {
+        "t": " ",
+        "s": "\t\tCreatedAt:  start,",
+        "old": 79,
+        "new": 82
+       },
+       {
+        "t": " ",
+        "s": "\t}",
+        "old": 80,
+        "new": 83
+       },
+       {
+        "t": " ",
+        "s": "\tif sendErr != nil {",
+        "old": 81,
+        "new": 84
+       },
+       {
+        "t": " ",
+        "s": "\t\tattempt.Error = sendErr.Error()",
+        "old": 82,
+        "new": 85
+       },
+       {
+        "t": " ",
+        "s": "\t}",
+        "old": 83,
+        "new": 86
+       },
+       {
+        "t": " ",
+        "s": "",
+        "old": 84,
+        "new": 87
+       },
+       {
+        "t": " ",
+        "s": "\t// Attempts are best-effort: a failed insert must not block delivery.",
+        "old": 85,
+        "new": 88
+       },
+       {
+        "t": " ",
+        "s": "\tif err := c.attempts.Insert(ctx, attempt); err != nil {",
+        "old": 86,
+        "new": 89
+       },
+       {
+        "t": " ",
+        "s": "\t\tc.log.Warn(\"record attempt\", \"delivery\", d.ID, \"err\", err)",
+        "old": 87,
+        "new": 90
+       },
+       {
+        "t": " ",
+        "s": "\t}",
+        "old": 88,
+        "new": 91
+       },
+       {
+        "t": " ",
+        "s": "",
+        "old": 89,
+        "new": 92
+       },
+       {
+        "t": "-",
+        "s": "\tif sendErr != nil {",
+        "old": 90
+       },
+       {
+        "t": "-",
+        "s": "\t\treturn msg.Nack()",
+        "old": 91
+       },
+       {
+        "t": "+",
+        "s": "\tif sendErr == nil {",
+        "new": 93
+       },
+       {
+        "t": "+",
+        "s": "\t\tc.metrics.Delivered.Inc()",
+        "new": 94
+       },
+       {
+        "t": "+",
+        "s": "\t\treturn msg.Ack()",
+        "new": 95
+       },
+       {
+        "t": " ",
+        "s": "\t}",
+        "old": 92,
+        "new": 96
+       },
+       {
+        "t": "-",
+        "s": "\treturn msg.Ack()",
+        "old": 93
+       },
+       {
+        "t": "+",
+        "s": "",
+        "new": 97
+       },
+       {
+        "t": "+",
+        "s": "\t// Failed: hand the delivery to the retry scheduler, then ack the original.",
+        "new": 98
+       },
+       {
+        "t": "+",
+        "s": "\t// Ack only after the retry is safely queued, so a crash in between re-delivers",
+        "new": 99
+       },
+       {
+        "t": "+",
+        "s": "\t// (a duplicate attempt) instead of dropping the event.",
+        "new": 100
+       },
+       {
+        "t": "+",
+        "s": "\toutcome, at, err := c.retries.Schedule(ctx, d)",
+        "new": 101
+       },
+       {
+        "t": "+",
+        "s": "\tif err != nil {",
+        "new": 102
+       },
+       {
+        "t": "+",
+        "s": "\t\tc.log.Error(\"schedule retry\", \"delivery\", d.ID, \"err\", err)",
+        "new": 103
+       },
+       {
+        "t": "+",
+        "s": "\t\treturn msg.Nack()",
+        "new": 104
+       },
+       {
+        "t": "+",
+        "s": "\t}",
+        "new": 105
+       },
+       {
+        "t": "+",
+        "s": "\tswitch outcome {",
+        "new": 106
+       },
+       {
+        "t": "+",
+        "s": "\tcase retry.Scheduled:",
+        "new": 107
+       },
+       {
+        "t": "+",
+        "s": "\t\tc.metrics.Retried.Inc()",
+        "new": 108
+       },
+       {
+        "t": "+",
+        "s": "\t\tc.log.Info(\"retry scheduled\", \"delivery\", d.ID, \"attempt\", d.Attempt+1, \"at\", at)",
+        "new": 109
+       },
+       {
+        "t": "+",
+        "s": "\tcase retry.GaveUp:",
+        "new": 110
+       },
+       {
+        "t": "+",
+        "s": "\t\tc.metrics.Failed.Inc()",
+        "new": 111
+       },
+       {
+        "t": "+",
+        "s": "\t\tif err := c.attempts.MarkFailed(ctx, d.ID); err != nil {",
+        "new": 112
+       },
+       {
+        "t": "+",
+        "s": "\t\t\tc.log.Warn(\"mark failed\", \"delivery\", d.ID, \"err\", err)",
+        "new": 113
+       },
+       {
+        "t": "+",
+        "s": "\t\t}",
+        "new": 114
+       },
+       {
+        "t": "+",
+        "s": "\t}",
+        "new": 115
+       },
+       {
+        "t": "+",
+        "s": "\treturn msg.Ack()",
+        "new": 116
+       },
+       {
+        "t": " ",
+        "s": "}",
+        "old": 94,
+        "new": 117
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "internal/migrations/0042_delivery_attempts_retry.up.sql",
+    "change": "added",
+    "additions": 9,
+    "deletions": 0,
+    "binary": false,
+    "mechanical": false,
+    "hunks": [
+     {
+      "header": "@@ -0,0 +1,9 @@",
+      "oldStart": 0,
+      "newStart": 1,
+      "oldLines": 0,
+      "newLines": 9,
+      "lines": [
+       {
+        "t": "+",
+        "s": "ALTER TABLE delivery_attempts",
+        "new": 1
+       },
+       {
+        "t": "+",
+        "s": "  ADD COLUMN next_attempt_at TIMESTAMPTZ NULL,",
+        "new": 2
+       },
+       {
+        "t": "+",
+        "s": "  ADD COLUMN failed_at       TIMESTAMPTZ NULL;",
+        "new": 3
+       },
+       {
+        "t": "+",
+        "s": "",
+        "new": 4
+       },
+       {
+        "t": "+",
+        "s": "-- Operators list failed deliveries per tenant, newest first.",
+        "new": 5
+       },
+       {
+        "t": "+",
+        "s": "CREATE INDEX CONCURRENTLY delivery_attempts_failed_idx",
+        "new": 6
+       },
+       {
+        "t": "+",
+        "s": "  ON delivery_attempts (tenant_id, failed_at DESC)",
+        "new": 7
+       },
+       {
+        "t": "+",
+        "s": "  WHERE failed_at IS NOT NULL;",
+        "new": 8
+       },
+       {
+        "t": "+",
+        "s": "",
+        "new": 9
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "internal/migrations/0042_delivery_attempts_retry.down.sql",
+    "change": "added",
+    "additions": 5,
+    "deletions": 0,
+    "binary": false,
+    "mechanical": false,
+    "hunks": [
+     {
+      "header": "@@ -0,0 +1,5 @@",
+      "oldStart": 0,
+      "newStart": 1,
+      "oldLines": 0,
+      "newLines": 5,
+      "lines": [
+       {
+        "t": "+",
+        "s": "DROP INDEX CONCURRENTLY IF EXISTS delivery_attempts_failed_idx;",
+        "new": 1
+       },
+       {
+        "t": "+",
+        "s": "",
+        "new": 2
+       },
+       {
+        "t": "+",
+        "s": "ALTER TABLE delivery_attempts",
+        "new": 3
+       },
+       {
+        "t": "+",
+        "s": "  DROP COLUMN IF EXISTS failed_at,",
+        "new": 4
+       },
+       {
+        "t": "+",
+        "s": "  DROP COLUMN IF EXISTS next_attempt_at;",
+        "new": 5
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "internal/api/failed_deliveries.go",
+    "change": "added",
+    "additions": 44,
+    "deletions": 0,
+    "binary": false,
+    "mechanical": false,
+    "hunks": [
+     {
+      "header": "@@ -0,0 +1,44 @@",
+      "oldStart": 0,
+      "newStart": 1,
+      "oldLines": 0,
+      "newLines": 44,
+      "lines": [
+       {
+        "t": "+",
+        "s": "package api",
+        "new": 1
+       },
+       {
+        "t": "+",
+        "s": "",
+        "new": 2
+       },
+       {
+        "t": "+",
+        "s": "import (",
+        "new": 3
+       },
+       {
+        "t": "+",
+        "s": "\t\"net/http\"",
+        "new": 4
+       },
+       {
+        "t": "+",
+        "s": "",
+        "new": 5
+       },
+       {
+        "t": "+",
+        "s": "\t\"github.com/acme/relay/internal/models\"",
+        "new": 6
+       },
+       {
+        "t": "+",
+        "s": "\t\"github.com/acme/relay/internal/retry\"",
+        "new": 7
+       },
+       {
+        "t": "+",
+        "s": ")",
+        "new": 8
+       },
+       {
+        "t": "+",
+        "s": "",
+        "new": 9
+       },
+       {
+        "t": "+",
+        "s": "type FailedDeliveriesHandler struct {",
+        "new": 10
+       },
+       {
+        "t": "+",
+        "s": "\tattempts models.AttemptStore",
+        "new": 11
+       },
+       {
+        "t": "+",
+        "s": "\tretries  *retry.Scheduler",
+        "new": 12
+       },
+       {
+        "t": "+",
+        "s": "}",
+        "new": 13
+       },
+       {
+        "t": "+",
+        "s": "",
+        "new": 14
+       },
+       {
+        "t": "+",
+        "s": "// GET /tenants/{tenant}/deliveries/failed?cursor=&limit=",
+        "new": 15
+       },
+       {
+        "t": "+",
+        "s": "func (h *FailedDeliveriesHandler) List(w http.ResponseWriter, r *http.Request) {",
+        "new": 16
+       },
+       {
+        "t": "+",
+        "s": "\ttenant := r.PathValue(\"tenant\")",
+        "new": 17
+       },
+       {
+        "t": "+",
+        "s": "\tpage, err := h.attempts.ListFailed(r.Context(), tenant, cursorFrom(r))",
+        "new": 18
+       },
+       {
+        "t": "+",
+        "s": "\tif err != nil {",
+        "new": 19
+       },
+       {
+        "t": "+",
+        "s": "\t\twriteError(w, err)",
+        "new": 20
+       },
+       {
+        "t": "+",
+        "s": "\t\treturn",
+        "new": 21
+       },
+       {
+        "t": "+",
+        "s": "\t}",
+        "new": 22
+       },
+       {
+        "t": "+",
+        "s": "\twriteJSON(w, http.StatusOK, page)",
+        "new": 23
+       },
+       {
+        "t": "+",
+        "s": "}",
+        "new": 24
+       },
+       {
+        "t": "+",
+        "s": "",
+        "new": 25
+       },
+       {
+        "t": "+",
+        "s": "// POST /tenants/{tenant}/deliveries/{id}/replay",
+        "new": 26
+       },
+       {
+        "t": "+",
+        "s": "func (h *FailedDeliveriesHandler) Replay(w http.ResponseWriter, r *http.Request) {",
+        "new": 27
+       },
+       {
+        "t": "+",
+        "s": "\ttenant, id := r.PathValue(\"tenant\"), r.PathValue(\"id\")",
+        "new": 28
+       },
+       {
+        "t": "+",
+        "s": "\td, err := h.attempts.GetDelivery(r.Context(), tenant, id)",
+        "new": 29
+       },
+       {
+        "t": "+",
+        "s": "\tif err != nil {",
+        "new": 30
+       },
+       {
+        "t": "+",
+        "s": "\t\twriteError(w, err)",
+        "new": 31
+       },
+       {
+        "t": "+",
+        "s": "\t\treturn",
+        "new": 32
+       },
+       {
+        "t": "+",
+        "s": "\t}",
+        "new": 33
+       },
+       {
+        "t": "+",
+        "s": "\tif d.FailedAt == nil {",
+        "new": 34
+       },
+       {
+        "t": "+",
+        "s": "\t\twriteError(w, errConflict(\"delivery has not failed\"))",
+        "new": 35
+       },
+       {
+        "t": "+",
+        "s": "\t\treturn",
+        "new": 36
+       },
+       {
+        "t": "+",
+        "s": "\t}",
+        "new": 37
+       },
+       {
+        "t": "+",
+        "s": "\tif err := h.retries.Replay(r.Context(), d); err != nil {",
+        "new": 38
+       },
+       {
+        "t": "+",
+        "s": "\t\twriteError(w, err)",
+        "new": 39
+       },
+       {
+        "t": "+",
+        "s": "\t\treturn",
+        "new": 40
+       },
+       {
+        "t": "+",
+        "s": "\t}",
+        "new": 41
+       },
+       {
+        "t": "+",
+        "s": "\twriteJSON(w, http.StatusAccepted, map[string]string{\"status\": \"queued\"})",
+        "new": 42
+       },
+       {
+        "t": "+",
+        "s": "}",
+        "new": 43
+       },
+       {
+        "t": "+",
+        "s": "",
+        "new": 44
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "internal/api/router.go",
+    "change": "changed",
+    "additions": 4,
+    "deletions": 0,
+    "binary": false,
+    "mechanical": false,
+    "hunks": [
+     {
+      "header": "@@ -41,6 +41,10 @@ func NewRouter(deps Deps) http.Handler {",
+      "oldStart": 41,
+      "newStart": 41,
+      "oldLines": 6,
+      "newLines": 10,
+      "lines": [
+       {
+        "t": " ",
+        "s": "\tmux.HandleFunc(\"GET /tenants/{tenant}/destinations\", deps.Destinations.List)",
+        "old": 41,
+        "new": 41
+       },
+       {
+        "t": " ",
+        "s": "\tmux.HandleFunc(\"POST /tenants/{tenant}/destinations\", deps.Destinations.Create)",
+        "old": 42,
+        "new": 42
+       },
+       {
+        "t": " ",
+        "s": "\tmux.HandleFunc(\"GET /tenants/{tenant}/events\", deps.Events.List)",
+        "old": 43,
+        "new": 43
+       },
+       {
+        "t": "+",
+        "s": "",
+        "new": 44
+       },
+       {
+        "t": "+",
+        "s": "\tfailed := &FailedDeliveriesHandler{attempts: deps.Attempts, retries: deps.Retries}",
+        "new": 45
+       },
+       {
+        "t": "+",
+        "s": "\tmux.HandleFunc(\"GET /tenants/{tenant}/deliveries/failed\", failed.List)",
+        "new": 46
+       },
+       {
+        "t": "+",
+        "s": "\tmux.HandleFunc(\"POST /tenants/{tenant}/deliveries/{id}/replay\", failed.Replay)",
+        "new": 47
+       },
+       {
+        "t": " ",
+        "s": "",
+        "old": 44,
+        "new": 48
+       },
+       {
+        "t": " ",
+        "s": "\treturn withAuth(deps.Auth, mux)",
+        "old": 45,
+        "new": 49
+       },
+       {
+        "t": " ",
+        "s": "}",
+        "old": 46,
+        "new": 50
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "web/src/pages/FailedDeliveries.tsx",
+    "change": "added",
+    "additions": 38,
+    "deletions": 0,
+    "binary": false,
+    "mechanical": false,
+    "hunks": [
+     {
+      "header": "@@ -0,0 +1,38 @@",
+      "oldStart": 0,
+      "newStart": 1,
+      "oldLines": 0,
+      "newLines": 38,
+      "lines": [
+       {
+        "t": "+",
+        "s": "import { useState } from \"react\";",
+        "new": 1
+       },
+       {
+        "t": "+",
+        "s": "import { useFailedDeliveries, replayDelivery } from \"../api/deliveries\";",
+        "new": 2
+       },
+       {
+        "t": "+",
+        "s": "import { Table, Button, EmptyState, RelativeTime } from \"../ui\";",
+        "new": 3
+       },
+       {
+        "t": "+",
+        "s": "",
+        "new": 4
+       },
+       {
+        "t": "+",
+        "s": "export function FailedDeliveries({ tenant }: { tenant: string }) {",
+        "new": 5
+       },
+       {
+        "t": "+",
+        "s": "  const { data, isLoading, refetch } = useFailedDeliveries(tenant);",
+        "new": 6
+       },
+       {
+        "t": "+",
+        "s": "  const [busy, setBusy] = useState<string | null>(null);",
+        "new": 7
+       },
+       {
+        "t": "+",
+        "s": "",
+        "new": 8
+       },
+       {
+        "t": "+",
+        "s": "  if (isLoading) return <Table.Skeleton rows={5} />;",
+        "new": 9
+       },
+       {
+        "t": "+",
+        "s": "  if (!data?.items.length) return <EmptyState title=\"No failed deliveries\" />;",
+        "new": 10
+       },
+       {
+        "t": "+",
+        "s": "",
+        "new": 11
+       },
+       {
+        "t": "+",
+        "s": "  const replay = async (id: string) => {",
+        "new": 12
+       },
+       {
+        "t": "+",
+        "s": "    setBusy(id);",
+        "new": 13
+       },
+       {
+        "t": "+",
+        "s": "    try {",
+        "new": 14
+       },
+       {
+        "t": "+",
+        "s": "      await replayDelivery(tenant, id);",
+        "new": 15
+       },
+       {
+        "t": "+",
+        "s": "      await refetch();",
+        "new": 16
+       },
+       {
+        "t": "+",
+        "s": "    } finally {",
+        "new": 17
+       },
+       {
+        "t": "+",
+        "s": "      setBusy(null);",
+        "new": 18
+       },
+       {
+        "t": "+",
+        "s": "    }",
+        "new": 19
+       },
+       {
+        "t": "+",
+        "s": "  };",
+        "new": 20
+       },
+       {
+        "t": "+",
+        "s": "",
+        "new": 21
+       },
+       {
+        "t": "+",
+        "s": "  return (",
+        "new": 22
+       },
+       {
+        "t": "+",
+        "s": "    <Table>",
+        "new": 23
+       },
+       {
+        "t": "+",
+        "s": "      {data.items.map((d) => (",
+        "new": 24
+       },
+       {
+        "t": "+",
+        "s": "        <Table.Row key={d.id}>",
+        "new": 25
+       },
+       {
+        "t": "+",
+        "s": "          <Table.Cell mono>{d.destination}</Table.Cell>",
+        "new": 26
+       },
+       {
+        "t": "+",
+        "s": "          <Table.Cell>{d.lastError}</Table.Cell>",
+        "new": 27
+       },
+       {
+        "t": "+",
+        "s": "          <Table.Cell>{d.attempts} attempts</Table.Cell>",
+        "new": 28
+       },
+       {
+        "t": "+",
+        "s": "          <Table.Cell><RelativeTime value={d.failedAt} /></Table.Cell>",
+        "new": 29
+       },
+       {
+        "t": "+",
+        "s": "          <Table.Cell align=\"end\">",
+        "new": 30
+       },
+       {
+        "t": "+",
+        "s": "            <Button size=\"sm\" loading={busy === d.id} onClick={() => replay(d.id)}>Replay</Button>",
+        "new": 31
+       },
+       {
+        "t": "+",
+        "s": "          </Table.Cell>",
+        "new": 32
+       },
+       {
+        "t": "+",
+        "s": "        </Table.Row>",
+        "new": 33
+       },
+       {
+        "t": "+",
+        "s": "      ))}",
+        "new": 34
+       },
+       {
+        "t": "+",
+        "s": "    </Table>",
+        "new": 35
+       },
+       {
+        "t": "+",
+        "s": "  );",
+        "new": 36
+       },
+       {
+        "t": "+",
+        "s": "}",
+        "new": 37
+       },
+       {
+        "t": "+",
+        "s": "",
+        "new": 38
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "internal/cron/legacy_retry.go",
+    "change": "removed",
+    "additions": 0,
+    "deletions": 22,
+    "binary": false,
+    "mechanical": false,
+    "hunks": [
+     {
+      "header": "@@ -1,22 +0,0 @@",
+      "oldStart": 1,
+      "newStart": 0,
+      "oldLines": 22,
+      "newLines": 0,
+      "lines": [
+       {
+        "t": "-",
+        "s": "package cron",
+        "old": 1
+       },
+       {
+        "t": "-",
+        "s": "",
+        "old": 2
+       },
+       {
+        "t": "-",
+        "s": "import (",
+        "old": 3
+       },
+       {
+        "t": "-",
+        "s": "\t\"context\"",
+        "old": 4
+       },
+       {
+        "t": "-",
+        "s": "\t\"time\"",
+        "old": 5
+       },
+       {
+        "t": "-",
+        "s": "",
+        "old": 6
+       },
+       {
+        "t": "-",
+        "s": "\t\"github.com/acme/relay/internal/deliverymq\"",
+        "old": 7
+       },
+       {
+        "t": "-",
+        "s": "\t\"github.com/acme/relay/internal/models\"",
+        "old": 8
+       },
+       {
+        "t": "-",
+        "s": ")",
+        "old": 9
+       },
+       {
+        "t": "-",
+        "s": "",
+        "old": 10
+       },
+       {
+        "t": "-",
+        "s": "// LegacyRetry re-enqueues every failed attempt from the last hour, every",
+        "old": 11
+       },
+       {
+        "t": "-",
+        "s": "// 5 minutes. No backoff, no cap: a dead endpoint gets 12 attempts an hour forever.",
+        "old": 12
+       },
+       {
+        "t": "-",
+        "s": "func LegacyRetry(ctx context.Context, store models.AttemptStore, q deliverymq.Publisher) error {",
+        "old": 13
+       },
+       {
+        "t": "-",
+        "s": "\tfailed, err := store.FailedSince(ctx, time.Now().Add(-time.Hour))",
+        "old": 14
+       },
+       {
+        "t": "-",
+        "s": "\tif err != nil {",
+        "old": 15
+       },
+       {
+        "t": "-",
+        "s": "\t\treturn err",
+        "old": 16
+       },
+       {
+        "t": "-",
+        "s": "\t}",
+        "old": 17
+       },
+       {
+        "t": "-",
+        "s": "\tfor _, a := range failed {",
+        "old": 18
+       },
+       {
+        "t": "-",
+        "s": "\t\t_ = q.Publish(ctx, a.Delivery())",
+        "old": 19
+       },
+       {
+        "t": "-",
+        "s": "\t}",
+        "old": 20
+       },
+       {
+        "t": "-",
+        "s": "\treturn nil",
+        "old": 21
+       },
+       {
+        "t": "-",
+        "s": "}",
+        "old": 22
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "docs/delivery-retries.md",
+    "change": "changed",
+    "additions": 4,
+    "deletions": 2,
+    "binary": false,
+    "mechanical": false,
+    "hunks": [
+     {
+      "header": "@@ -1,8 +1,10 @@",
+      "oldStart": 1,
+      "newStart": 1,
+      "oldLines": 8,
+      "newLines": 10,
+      "lines": [
+       {
+        "t": " ",
+        "s": "# Delivery retries",
+        "old": 1,
+        "new": 1
+       },
+       {
+        "t": " ",
+        "s": "",
+        "old": 2,
+        "new": 2
+       },
+       {
+        "t": "-",
+        "s": "Failed deliveries are retried every 5 minutes for one hour.",
+        "old": 3
+       },
+       {
+        "t": "+",
+        "s": "Failed deliveries are retried with capped exponential backoff: 30s, 1m, 2m, 4m …",
+        "new": 3
+       },
+       {
+        "t": "+",
+        "s": "capped at 1h per delay, 12 retries in total (about 9 hours).",
+        "new": 4
+       },
+       {
+        "t": " ",
+        "s": "",
+        "old": 4,
+        "new": 5
+       },
+       {
+        "t": "-",
+        "s": "There is no way to see or replay a delivery that ran out of retries.",
+        "old": 5
+       },
+       {
+        "t": "+",
+        "s": "Deliveries that run out of retries show up under **Failed deliveries** in the",
+        "new": 6
+       },
+       {
+        "t": "+",
+        "s": "dashboard, where an operator can replay them one by one.",
+        "new": 7
+       },
+       {
+        "t": " ",
+        "s": "",
+        "old": 6,
+        "new": 8
+       },
+       {
+        "t": " ",
+        "s": "## Idempotency",
+        "old": 7,
+        "new": 9
+       },
+       {
+        "t": " ",
+        "s": "",
+        "old": 8,
+        "new": 10
+       }
+      ]
+     }
+    ],
+    "oldPath": "docs/retries.md"
+   },
+   {
+    "path": "go.mod",
+    "change": "changed",
+    "additions": 1,
+    "deletions": 1,
+    "binary": false,
+    "mechanical": false,
+    "hunks": [
+     {
+      "header": "@@ -5,7 +5,7 @@ go 1.24",
+      "oldStart": 5,
+      "newStart": 5,
+      "oldLines": 7,
+      "newLines": 7,
+      "lines": [
+       {
+        "t": " ",
+        "s": "require (",
+        "old": 5,
+        "new": 5
+       },
+       {
+        "t": " ",
+        "s": "\tgithub.com/go-chi/chi/v5 v5.2.1",
+        "old": 6,
+        "new": 6
+       },
+       {
+        "t": " ",
+        "s": "\tgithub.com/jackc/pgx/v5 v5.7.2",
+        "old": 7,
+        "new": 7
+       },
+       {
+        "t": "-",
+        "s": "\tgithub.com/rabbitmq/amqp091-go v1.10.0",
+        "old": 8
+       },
+       {
+        "t": "+",
+        "s": "\tgithub.com/rabbitmq/amqp091-go v1.11.0",
+        "new": 8
+       },
+       {
+        "t": " ",
+        "s": "\tgithub.com/redis/go-redis/v9 v9.7.0",
+        "old": 9,
+        "new": 9
+       },
+       {
+        "t": " ",
+        "s": "\tgo.opentelemetry.io/otel v1.34.0",
+        "old": 10,
+        "new": 10
+       },
+       {
+        "t": " ",
+        "s": ")",
+        "old": 11,
+        "new": 11
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "go.sum",
+    "change": "changed",
+    "additions": 2,
+    "deletions": 2,
+    "binary": false,
+    "mechanical": true,
+    "hunks": [
+     {
+      "header": "@@ -88,5 +88,5 @@ github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=",
+      "oldStart": 88,
+      "newStart": 88,
+      "oldLines": 5,
+      "newLines": 5,
+      "lines": [
+       {
+        "t": " ",
+        "s": "github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=",
+        "old": 88,
+        "new": 88
+       },
+       {
+        "t": "-",
+        "s": "github.com/rabbitmq/amqp091-go v1.10.0 h1:STpn5XsHlHGcecLmMFCtg7mqq0RnD+zFr4uzukfVhBw=",
+        "old": 89
+       },
+       {
+        "t": "-",
+        "s": "github.com/rabbitmq/amqp091-go v1.10.0/go.mod h1:Hy4jKW5kQART1u+JkDTF9YYOQUHXqMuhrgxOEeS7G4o=",
+        "old": 90
+       },
+       {
+        "t": "+",
+        "s": "github.com/rabbitmq/amqp091-go v1.11.0 h1:Kq3uhyQ3PR0kG7IFzXBfFQIwpZ4hUJbdsbt6mNfV7e8=",
+        "new": 89
+       },
+       {
+        "t": "+",
+        "s": "github.com/rabbitmq/amqp091-go v1.11.0/go.mod h1:7tYmEqp3ZyACQkWqZWkMPsOTeB2V2fQwHN8kNA5JAFw=",
+        "new": 90
+       },
+       {
+        "t": " ",
+        "s": "github.com/redis/go-redis/v9 v9.7.0 h1:HhLSs+B6O021gwzl+locl0zEDnyNkxMtf/Z3NNBMa9E=",
+        "old": 91,
+        "new": 91
+       },
+       {
+        "t": " ",
+        "s": "github.com/redis/go-redis/v9 v9.7.0/go.mod h1:f6zhXITC7JUJIlPEiBOTXxJgPLdZcA93GewI7inzyWw=",
+        "old": 92,
+        "new": 92
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "internal/api/openapi.gen.go",
+    "change": "changed",
+    "additions": 15,
+    "deletions": 0,
+    "binary": false,
+    "mechanical": true,
+    "hunks": [
+     {
+      "header": "@@ -210,6 +210,21 @@ type DestinationList struct {",
+      "oldStart": 210,
+      "newStart": 210,
+      "oldLines": 6,
+      "newLines": 21,
+      "lines": [
+       {
+        "t": " ",
+        "s": "\tNext  *string       `json:\"next,omitempty\"`",
+        "old": 210,
+        "new": 210
+       },
+       {
+        "t": " ",
+        "s": "}",
+        "old": 211,
+        "new": 211
+       },
+       {
+        "t": " ",
+        "s": "",
+        "old": 212,
+        "new": 212
+       },
+       {
+        "t": "+",
+        "s": "// FailedDelivery defines model for FailedDelivery.",
+        "new": 213
+       },
+       {
+        "t": "+",
+        "s": "type FailedDelivery struct {",
+        "new": 214
+       },
+       {
+        "t": "+",
+        "s": "\tAttempts    int       `json:\"attempts\"`",
+        "new": 215
+       },
+       {
+        "t": "+",
+        "s": "\tDestination string    `json:\"destination\"`",
+        "new": 216
+       },
+       {
+        "t": "+",
+        "s": "\tFailedAt    time.Time `json:\"failed_at\"`",
+        "new": 217
+       },
+       {
+        "t": "+",
+        "s": "\tId          string    `json:\"id\"`",
+        "new": 218
+       },
+       {
+        "t": "+",
+        "s": "\tLastError   string    `json:\"last_error\"`",
+        "new": 219
+       },
+       {
+        "t": "+",
+        "s": "}",
+        "new": 220
+       },
+       {
+        "t": "+",
+        "s": "",
+        "new": 221
+       },
+       {
+        "t": "+",
+        "s": "// FailedDeliveryList defines model for FailedDeliveryList.",
+        "new": 222
+       },
+       {
+        "t": "+",
+        "s": "type FailedDeliveryList struct {",
+        "new": 223
+       },
+       {
+        "t": "+",
+        "s": "\tItems []FailedDelivery `json:\"items\"`",
+        "new": 224
+       },
+       {
+        "t": "+",
+        "s": "\tNext  *string          `json:\"next,omitempty\"`",
+        "new": 225
+       },
+       {
+        "t": "+",
+        "s": "}",
+        "new": 226
+       },
+       {
+        "t": "+",
+        "s": "",
+        "new": 227
+       },
+       {
+        "t": " ",
+        "s": "// Event defines model for Event.",
+        "old": 213,
+        "new": 228
+       },
+       {
+        "t": " ",
+        "s": "type Event struct {",
+        "old": 214,
+        "new": 229
+       },
+       {
+        "t": " ",
+        "s": "\tData      map[string]interface{} `json:\"data\"`",
+        "old": 215,
+        "new": 230
+       }
+      ]
+     }
+    ]
+   }
+  ],
+  "questions": [
+   {
+    "q": "Are 12 retries over ~9 hours the right default?",
+    "options": [
+     "12 retries / ~9 h",
+     "8 retries / ~3 h",
+     "18 retries / ~3 days"
+    ],
+    "recommend": "12 retries / ~9 h",
+    "why": "Covers a typical deploy or outage window without keeping dead endpoints alive overnight."
+   },
+   {
+    "q": "Should replay reset the attempt counter?",
+    "options": [
+     "Keep counter",
+     "Reset to 0"
+    ],
+    "recommend": "Keep counter",
+    "why": "A replay is one manual attempt; resetting would silently restart 9 hours of retries."
+   }
+  ],
+  "planLink": {
+   "src": "../retries.plan",
+   "title": "Retry failed webhook deliveries",
+   "done": [
+    "consumer",
+    "retry",
+    "attempts",
+    "api",
+    "ui"
+   ],
+   "notDone": [
+    "alerts"
+   ],
+   "unplanned": [
+    "legacy"
+   ]
+  },
+  "warnings": []
+ },
+ "files": {
+  "assets/before.svg": "PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2NDAiIGhlaWdodD0iNDAwIiB2aWV3Qm94PSIwIDAgNjQwIDQwMCIgZm9udC1mYW1pbHk9Ii1hcHBsZS1zeXN0ZW0sc3lzdGVtLXVpLHNhbnMtc2VyaWYiPgo8cmVjdCB3aWR0aD0iNjQwIiBoZWlnaHQ9IjQwMCIgZmlsbD0iI2Y3ZjdmOCIvPgo8cmVjdCB3aWR0aD0iNjQwIiBoZWlnaHQ9IjM2IiBmaWxsPSIjZmZmZmZmIi8+PGxpbmUgeDE9IjAiIHkxPSIzNiIgeDI9IjY0MCIgeTI9IjM2IiBzdHJva2U9IiNlNGU0ZTciLz4KPGNpcmNsZSBjeD0iMTgiIGN5PSIxOCIgcj0iNiIgZmlsbD0iIzYzNjZmMSIvPjx0ZXh0IHg9IjMyIiB5PSIyMiIgZm9udC1zaXplPSIxMiIgZm9udC13ZWlnaHQ9IjYwMCIgZmlsbD0iIzE4MTgxYiI+b3V0cG9zdDwvdGV4dD4KPHRleHQgeD0iOTYiIHk9IjIyIiBmb250LXNpemU9IjExIiBmaWxsPSIjNzE3MTdhIj5hY21lIC8gcHJvZHVjdGlvbjwvdGV4dD4KPHJlY3QgeD0iMCIgeT0iMzciIHdpZHRoPSIxNTAiIGhlaWdodD0iMzYzIiBmaWxsPSIjZmZmZmZmIi8+PGxpbmUgeDE9IjE1MCIgeTE9IjM3IiB4Mj0iMTUwIiB5Mj0iNDAwIiBzdHJva2U9IiNlNGU0ZTciLz4KPHJlY3QgeD0iOCIgeT0iNTIiIHdpZHRoPSIxMzQiIGhlaWdodD0iMjIiIHJ4PSI1IiBmaWxsPSJub25lIi8+PHRleHQgeD0iMTgiIHk9IjY3IiBmb250LXNpemU9IjExLjUiIGZpbGw9IiMzZjNmNDYiIGZvbnQtd2VpZ2h0PSI0MDAiPkRlc3RpbmF0aW9uczwvdGV4dD48cmVjdCB4PSI4IiB5PSI3OCIgd2lkdGg9IjEzNCIgaGVpZ2h0PSIyMiIgcng9IjUiIGZpbGw9IiNlZWYyZmYiLz48dGV4dCB4PSIxOCIgeT0iOTMiIGZvbnQtc2l6ZT0iMTEuNSIgZmlsbD0iIzQzMzhjYSIgZm9udC13ZWlnaHQ9IjYwMCI+RXZlbnRzPC90ZXh0PjxyZWN0IHg9IjgiIHk9IjEwNCIgd2lkdGg9IjEzNCIgaGVpZ2h0PSIyMiIgcng9IjUiIGZpbGw9Im5vbmUiLz48dGV4dCB4PSIxOCIgeT0iMTE5IiBmb250LXNpemU9IjExLjUiIGZpbGw9IiMzZjNmNDYiIGZvbnQtd2VpZ2h0PSI0MDAiPlNldHRpbmdzPC90ZXh0Pgo8dGV4dCB4PSIxNzAiIHk9IjY4IiBmb250LXNpemU9IjE2IiBmb250LXdlaWdodD0iNjAwIiBmaWxsPSIjMTgxODFiIj5FdmVudHM8L3RleHQ+CjxyZWN0IHg9IjE3MCIgeT0iODQiIHdpZHRoPSI0NTAiIGhlaWdodD0iMjkwIiByeD0iOCIgZmlsbD0iI2ZmZiIgc3Ryb2tlPSIjZTRlNGU3Ii8+PGxpbmUgeDE9IjE3MCIgeTE9IjExNCIgeDI9IjYyMCIgeTI9IjExNCIgc3Ryb2tlPSIjZWNlY2VmIi8+PHRleHQgeD0iMTg0IiB5PSIxMDMiIGZvbnQtc2l6ZT0iMTEiIGZpbGw9IiNhMWExYWEiPkVWRU5UPC90ZXh0Pjx0ZXh0IHg9IjMzMCIgeT0iMTAzIiBmb250LXNpemU9IjExIiBmaWxsPSIjYTFhMWFhIj5UT1BJQzwvdGV4dD48dGV4dCB4PSI0NTAiIHk9IjEwMyIgZm9udC1zaXplPSIxMSIgZmlsbD0iI2ExYTFhYSI+U1RBVFVTPC90ZXh0Pjx0ZXh0IHg9IjU0MCIgeT0iMTAzIiBmb250LXNpemU9IjExIiBmaWxsPSIjYTFhMWFhIj5USU1FPC90ZXh0PjxsaW5lIHgxPSIxNzAiIHkxPSIxNDQiIHgyPSI2MjAiIHkyPSIxNDQiIHN0cm9rZT0iI2VjZWNlZiIvPjx0ZXh0IHg9IjE4NCIgeT0iMTMzIiBmb250LXNpemU9IjExIiBmaWxsPSIjM2YzZjQ2Ij5ldnRfOTNhPC90ZXh0Pjx0ZXh0IHg9IjMzMCIgeT0iMTMzIiBmb250LXNpemU9IjExIiBmaWxsPSIjM2YzZjQ2Ij5vcmRlci5jcmVhdGVkPC90ZXh0Pjx0ZXh0IHg9IjQ1MCIgeT0iMTMzIiBmb250LXNpemU9IjExIiBmaWxsPSIjMTU4MDNkIj5kZWxpdmVyZWQ8L3RleHQ+PHRleHQgeD0iNTQwIiB5PSIxMzMiIGZvbnQtc2l6ZT0iMTEiIGZpbGw9IiM3MTcxN2EiPjFtIGFnbzwvdGV4dD48bGluZSB4MT0iMTcwIiB5MT0iMTc0IiB4Mj0iNjIwIiB5Mj0iMTc0IiBzdHJva2U9IiNlY2VjZWYiLz48dGV4dCB4PSIxODQiIHk9IjE2MyIgZm9udC1zaXplPSIxMSIgZmlsbD0iIzNmM2Y0NiI+ZXZ0XzkzYjwvdGV4dD48dGV4dCB4PSIzMzAiIHk9IjE2MyIgZm9udC1zaXplPSIxMSIgZmlsbD0iIzNmM2Y0NiI+b3JkZXIucGFpZDwvdGV4dD48dGV4dCB4PSI0NTAiIHk9IjE2MyIgZm9udC1zaXplPSIxMSIgZmlsbD0iIzE1ODAzZCI+ZGVsaXZlcmVkPC90ZXh0Pjx0ZXh0IHg9IjU0MCIgeT0iMTYzIiBmb250LXNpemU9IjExIiBmaWxsPSIjNzE3MTdhIj40bSBhZ288L3RleHQ+PGxpbmUgeDE9IjE3MCIgeTE9IjIwNCIgeDI9IjYyMCIgeTI9IjIwNCIgc3Ryb2tlPSIjZWNlY2VmIi8+PHRleHQgeD0iMTg0IiB5PSIxOTMiIGZvbnQtc2l6ZT0iMTEiIGZpbGw9IiMzZjNmNDYiPmV2dF85M2M8L3RleHQ+PHRleHQgeD0iMzMwIiB5PSIxOTMiIGZvbnQtc2l6ZT0iMTEiIGZpbGw9IiMzZjNmNDYiPm9yZGVyLnBhaWQ8L3RleHQ+PHRleHQgeD0iNDUwIiB5PSIxOTMiIGZvbnQtc2l6ZT0iMTEiIGZpbGw9IiNiNDUzMDkiPnJldHJ5aW5n4oCmPC90ZXh0Pjx0ZXh0IHg9IjU0MCIgeT0iMTkzIiBmb250LXNpemU9IjExIiBmaWxsPSIjNzE3MTdhIj43bSBhZ288L3RleHQ+PGxpbmUgeDE9IjE3MCIgeTE9IjIzNCIgeDI9IjYyMCIgeTI9IjIzNCIgc3Ryb2tlPSIjZWNlY2VmIi8+PHRleHQgeD0iMTg0IiB5PSIyMjMiIGZvbnQtc2l6ZT0iMTEiIGZpbGw9IiMzZjNmNDYiPmV2dF85M2Q8L3RleHQ+PHRleHQgeD0iMzMwIiB5PSIyMjMiIGZvbnQtc2l6ZT0iMTEiIGZpbGw9IiMzZjNmNDYiPnVzZXIudXBkYXRlZDwvdGV4dD48dGV4dCB4PSI0NTAiIHk9IjIyMyIgZm9udC1zaXplPSIxMSIgZmlsbD0iIzE1ODAzZCI+ZGVsaXZlcmVkPC90ZXh0Pjx0ZXh0IHg9IjU0MCIgeT0iMjIzIiBmb250LXNpemU9IjExIiBmaWxsPSIjNzE3MTdhIj4xMG0gYWdvPC90ZXh0PjxsaW5lIHgxPSIxNzAiIHkxPSIyNjQiIHgyPSI2MjAiIHkyPSIyNjQiIHN0cm9rZT0iI2VjZWNlZiIvPjx0ZXh0IHg9IjE4NCIgeT0iMjUzIiBmb250LXNpemU9IjExIiBmaWxsPSIjM2YzZjQ2Ij5ldnRfOTNlPC90ZXh0Pjx0ZXh0IHg9IjMzMCIgeT0iMjUzIiBmb250LXNpemU9IjExIiBmaWxsPSIjM2YzZjQ2Ij5vcmRlci5zaGlwcGVkPC90ZXh0Pjx0ZXh0IHg9IjQ1MCIgeT0iMjUzIiBmb250LXNpemU9IjExIiBmaWxsPSIjYjQ1MzA5Ij5yZXRyeWluZ+KApjwvdGV4dD48dGV4dCB4PSI1NDAiIHk9IjI1MyIgZm9udC1zaXplPSIxMSIgZmlsbD0iIzcxNzE3YSI+MTNtIGFnbzwvdGV4dD48bGluZSB4MT0iMTcwIiB5MT0iMjk0IiB4Mj0iNjIwIiB5Mj0iMjk0IiBzdHJva2U9IiNlY2VjZWYiLz48dGV4dCB4PSIxODQiIHk9IjI4MyIgZm9udC1zaXplPSIxMSIgZmlsbD0iIzNmM2Y0NiI+ZXZ0XzkzZjwvdGV4dD48dGV4dCB4PSIzMzAiIHk9IjI4MyIgZm9udC1zaXplPSIxMSIgZmlsbD0iIzNmM2Y0NiI+b3JkZXIuY3JlYXRlZDwvdGV4dD48dGV4dCB4PSI0NTAiIHk9IjI4MyIgZm9udC1zaXplPSIxMSIgZmlsbD0iIzE1ODAzZCI+ZGVsaXZlcmVkPC90ZXh0Pjx0ZXh0IHg9IjU0MCIgeT0iMjgzIiBmb250LXNpemU9IjExIiBmaWxsPSIjNzE3MTdhIj4xNm0gYWdvPC90ZXh0PjxsaW5lIHgxPSIxNzAiIHkxPSIzMjQiIHgyPSI2MjAiIHkyPSIzMjQiIHN0cm9rZT0iI2VjZWNlZiIvPjx0ZXh0IHg9IjE4NCIgeT0iMzEzIiBmb250LXNpemU9IjExIiBmaWxsPSIjM2YzZjQ2Ij5ldnRfOTQwPC90ZXh0Pjx0ZXh0IHg9IjMzMCIgeT0iMzEzIiBmb250LXNpemU9IjExIiBmaWxsPSIjM2YzZjQ2Ij51c2VyLmNyZWF0ZWQ8L3RleHQ+PHRleHQgeD0iNDUwIiB5PSIzMTMiIGZvbnQtc2l6ZT0iMTEiIGZpbGw9IiMxNTgwM2QiPmRlbGl2ZXJlZDwvdGV4dD48dGV4dCB4PSI1NDAiIHk9IjMxMyIgZm9udC1zaXplPSIxMSIgZmlsbD0iIzcxNzE3YSI+MTltIGFnbzwvdGV4dD48bGluZSB4MT0iMTcwIiB5MT0iMzU0IiB4Mj0iNjIwIiB5Mj0iMzU0IiBzdHJva2U9IiNlY2VjZWYiLz48dGV4dCB4PSIxODQiIHk9IjM0MyIgZm9udC1zaXplPSIxMSIgZmlsbD0iIzNmM2Y0NiI+ZXZ0Xzk0MTwvdGV4dD48dGV4dCB4PSIzMzAiIHk9IjM0MyIgZm9udC1zaXplPSIxMSIgZmlsbD0iIzNmM2Y0NiI+b3JkZXIucGFpZDwvdGV4dD48dGV4dCB4PSI0NTAiIHk9IjM0MyIgZm9udC1zaXplPSIxMSIgZmlsbD0iIzE1ODAzZCI+ZGVsaXZlcmVkPC90ZXh0Pjx0ZXh0IHg9IjU0MCIgeT0iMzQzIiBmb250LXNpemU9IjExIiBmaWxsPSIjNzE3MTdhIj4yMm0gYWdvPC90ZXh0Pgo8L3N2Zz4=",
+  "assets/after.svg": "PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2NDAiIGhlaWdodD0iNDAwIiB2aWV3Qm94PSIwIDAgNjQwIDQwMCIgZm9udC1mYW1pbHk9Ii1hcHBsZS1zeXN0ZW0sc3lzdGVtLXVpLHNhbnMtc2VyaWYiPgo8cmVjdCB3aWR0aD0iNjQwIiBoZWlnaHQ9IjQwMCIgZmlsbD0iI2Y3ZjdmOCIvPgo8cmVjdCB3aWR0aD0iNjQwIiBoZWlnaHQ9IjM2IiBmaWxsPSIjZmZmZmZmIi8+PGxpbmUgeDE9IjAiIHkxPSIzNiIgeDI9IjY0MCIgeTI9IjM2IiBzdHJva2U9IiNlNGU0ZTciLz4KPGNpcmNsZSBjeD0iMTgiIGN5PSIxOCIgcj0iNiIgZmlsbD0iIzYzNjZmMSIvPjx0ZXh0IHg9IjMyIiB5PSIyMiIgZm9udC1zaXplPSIxMiIgZm9udC13ZWlnaHQ9IjYwMCIgZmlsbD0iIzE4MTgxYiI+b3V0cG9zdDwvdGV4dD4KPHRleHQgeD0iOTYiIHk9IjIyIiBmb250LXNpemU9IjExIiBmaWxsPSIjNzE3MTdhIj5hY21lIC8gcHJvZHVjdGlvbjwvdGV4dD4KPHJlY3QgeD0iMCIgeT0iMzciIHdpZHRoPSIxNTAiIGhlaWdodD0iMzYzIiBmaWxsPSIjZmZmZmZmIi8+PGxpbmUgeDE9IjE1MCIgeTE9IjM3IiB4Mj0iMTUwIiB5Mj0iNDAwIiBzdHJva2U9IiNlNGU0ZTciLz4KPHJlY3QgeD0iOCIgeT0iNTIiIHdpZHRoPSIxMzQiIGhlaWdodD0iMjIiIHJ4PSI1IiBmaWxsPSJub25lIi8+PHRleHQgeD0iMTgiIHk9IjY3IiBmb250LXNpemU9IjExLjUiIGZpbGw9IiMzZjNmNDYiIGZvbnQtd2VpZ2h0PSI0MDAiPkRlc3RpbmF0aW9uczwvdGV4dD48cmVjdCB4PSI4IiB5PSI3OCIgd2lkdGg9IjEzNCIgaGVpZ2h0PSIyMiIgcng9IjUiIGZpbGw9Im5vbmUiLz48dGV4dCB4PSIxOCIgeT0iOTMiIGZvbnQtc2l6ZT0iMTEuNSIgZmlsbD0iIzNmM2Y0NiIgZm9udC13ZWlnaHQ9IjQwMCI+RXZlbnRzPC90ZXh0PjxyZWN0IHg9IjgiIHk9IjEwNCIgd2lkdGg9IjEzNCIgaGVpZ2h0PSIyMiIgcng9IjUiIGZpbGw9IiNlZWYyZmYiLz48dGV4dCB4PSIxOCIgeT0iMTE5IiBmb250LXNpemU9IjExLjUiIGZpbGw9IiM0MzM4Y2EiIGZvbnQtd2VpZ2h0PSI2MDAiPkZhaWxlZCBkZWxpdmVyaWVzPC90ZXh0PjxyZWN0IHg9IjExMiIgeT0iMTA4IiB3aWR0aD0iMjIiIGhlaWdodD0iMTUiIHJ4PSI3LjUiIGZpbGw9IiNmZWUyZTIiLz48dGV4dCB4PSIxMjMiIHk9IjExOSIgZm9udC1zaXplPSI5LjUiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiNiOTFjMWMiIGZvbnQtd2VpZ2h0PSI2MDAiPjM8L3RleHQ+PHJlY3QgeD0iOCIgeT0iMTMwIiB3aWR0aD0iMTM0IiBoZWlnaHQ9IjIyIiByeD0iNSIgZmlsbD0ibm9uZSIvPjx0ZXh0IHg9IjE4IiB5PSIxNDUiIGZvbnQtc2l6ZT0iMTEuNSIgZmlsbD0iIzNmM2Y0NiIgZm9udC13ZWlnaHQ9IjQwMCI+U2V0dGluZ3M8L3RleHQ+Cjx0ZXh0IHg9IjE3MCIgeT0iNjgiIGZvbnQtc2l6ZT0iMTYiIGZvbnQtd2VpZ2h0PSI2MDAiIGZpbGw9IiMxODE4MWIiPkZhaWxlZCBkZWxpdmVyaWVzPC90ZXh0Pgo8dGV4dCB4PSIxNzAiIHk9Ijg4IiBmb250LXNpemU9IjExIiBmaWxsPSIjNzE3MTdhIj5EZWxpdmVyaWVzIHRoYXQgcmFuIG91dCBvZiByZXRyaWVzICgxMiBhdHRlbXB0cyBvdmVyIH45IGgpLjwvdGV4dD48cmVjdCB4PSIxNzAiIHk9IjEwMiIgd2lkdGg9IjQ1MCIgaGVpZ2h0PSIxMjgiIHJ4PSI4IiBmaWxsPSIjZmZmIiBzdHJva2U9IiNlNGU0ZTciLz48bGluZSB4MT0iMTcwIiB5MT0iMTMyIiB4Mj0iNjIwIiB5Mj0iMTMyIiBzdHJva2U9IiNlY2VjZWYiLz48dGV4dCB4PSIxODQiIHk9IjEyMSIgZm9udC1zaXplPSIxMSIgZmlsbD0iI2ExYTFhYSI+REVTVElOQVRJT048L3RleHQ+PHRleHQgeD0iMzE4IiB5PSIxMjEiIGZvbnQtc2l6ZT0iMTEiIGZpbGw9IiNhMWExYWEiPkxBU1QgRVJST1I8L3RleHQ+PHRleHQgeD0iNDcwIiB5PSIxMjEiIGZvbnQtc2l6ZT0iMTEiIGZpbGw9IiNhMWExYWEiPlRSSUVTPC90ZXh0Pjx0ZXh0IHg9IjUxNSIgeT0iMTIxIiBmb250LXNpemU9IjExIiBmaWxsPSIjYTFhMWFhIj5GQUlMRUQ8L3RleHQ+PGxpbmUgeDE9IjE3MCIgeTE9IjE2NCIgeDI9IjYyMCIgeTI9IjE2NCIgc3Ryb2tlPSIjZWNlY2VmIi8+PHRleHQgeD0iMTg0IiB5PSIxNTEiIGZvbnQtc2l6ZT0iMTEiIGZpbGw9IiMzZjNmNDYiPmhvb2tzLmFjbWUuZGV2L2luPC90ZXh0Pjx0ZXh0IHg9IjMxOCIgeT0iMTUxIiBmb250LXNpemU9IjExIiBmaWxsPSIjYjkxYzFjIj41MDMgU2VydmljZSBVbmF2YWlsYWJsZTwvdGV4dD48dGV4dCB4PSI0NzYiIHk9IjE1MSIgZm9udC1zaXplPSIxMSIgZmlsbD0iIzNmM2Y0NiI+MTI8L3RleHQ+PHRleHQgeD0iNTE1IiB5PSIxNTEiIGZvbnQtc2l6ZT0iMTEiIGZpbGw9IiM3MTcxN2EiPjJoIGFnbzwvdGV4dD48cmVjdCB4PSI1NTgiIHk9IjEzOSIgd2lkdGg9IjU0IiBoZWlnaHQ9IjIwIiByeD0iNSIgZmlsbD0iI2ZmZiIgc3Ryb2tlPSIjZDRkNGQ4Ii8+PHRleHQgeD0iNTg1IiB5PSIxNTMiIGZvbnQtc2l6ZT0iMTAuNSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iIzE4MTgxYiIgZm9udC13ZWlnaHQ9IjUwMCI+UmVwbGF5PC90ZXh0PjxsaW5lIHgxPSIxNzAiIHkxPSIxOTYiIHgyPSI2MjAiIHkyPSIxOTYiIHN0cm9rZT0iI2VjZWNlZiIvPjx0ZXh0IHg9IjE4NCIgeT0iMTgzIiBmb250LXNpemU9IjExIiBmaWxsPSIjM2YzZjQ2Ij5jcm0uYWNtZS5kZXYvd2g8L3RleHQ+PHRleHQgeD0iMzE4IiB5PSIxODMiIGZvbnQtc2l6ZT0iMTEiIGZpbGw9IiNiOTFjMWMiPmNvbm5lY3QgdGltZW91dDwvdGV4dD48dGV4dCB4PSI0NzYiIHk9IjE4MyIgZm9udC1zaXplPSIxMSIgZmlsbD0iIzNmM2Y0NiI+MTI8L3RleHQ+PHRleHQgeD0iNTE1IiB5PSIxODMiIGZvbnQtc2l6ZT0iMTEiIGZpbGw9IiM3MTcxN2EiPjVoIGFnbzwvdGV4dD48cmVjdCB4PSI1NTgiIHk9IjE3MSIgd2lkdGg9IjU0IiBoZWlnaHQ9IjIwIiByeD0iNSIgZmlsbD0iI2ZmZiIgc3Ryb2tlPSIjZDRkNGQ4Ii8+PHRleHQgeD0iNTg1IiB5PSIxODUiIGZvbnQtc2l6ZT0iMTAuNSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iIzE4MTgxYiIgZm9udC13ZWlnaHQ9IjUwMCI+UmVwbGF5PC90ZXh0PjxsaW5lIHgxPSIxNzAiIHkxPSIyMjgiIHgyPSI2MjAiIHkyPSIyMjgiIHN0cm9rZT0iI2VjZWNlZiIvPjx0ZXh0IHg9IjE4NCIgeT0iMjE1IiBmb250LXNpemU9IjExIiBmaWxsPSIjM2YzZjQ2Ij5ob29rcy5hY21lLmRldi9pbjwvdGV4dD48dGV4dCB4PSIzMTgiIHk9IjIxNSIgZm9udC1zaXplPSIxMSIgZmlsbD0iI2I5MWMxYyI+NTAzIFNlcnZpY2UgVW5hdmFpbGFibGU8L3RleHQ+PHRleHQgeD0iNDc2IiB5PSIyMTUiIGZvbnQtc2l6ZT0iMTEiIGZpbGw9IiMzZjNmNDYiPjEyPC90ZXh0Pjx0ZXh0IHg9IjUxNSIgeT0iMjE1IiBmb250LXNpemU9IjExIiBmaWxsPSIjNzE3MTdhIj44aCBhZ288L3RleHQ+PHJlY3QgeD0iNTU4IiB5PSIyMDMiIHdpZHRoPSI1NCIgaGVpZ2h0PSIyMCIgcng9IjUiIGZpbGw9IiNmZmYiIHN0cm9rZT0iI2Q0ZDRkOCIvPjx0ZXh0IHg9IjU4NSIgeT0iMjE3IiBmb250LXNpemU9IjEwLjUiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiMxODE4MWIiIGZvbnQtd2VpZ2h0PSI1MDAiPlJlcGxheTwvdGV4dD4KPC9zdmc+",
+  "demos/replay-failed.replay": "UEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcgUEsDBCByZXBsYXkvMCBwbGFjZWhvbGRlciByZWNvcmRpbmcg",
+  "changes.patch": "ZGlmZiAtLWdpdCBhL2ludGVybmFsL3JldHJ5L2JhY2tvZmYuZ28gYi9pbnRlcm5hbC9yZXRyeS9iYWNrb2ZmLmdvCm5ldyBmaWxlIG1vZGUgMTAwNjQ0CmluZGV4IDAwMDAwMDAuLjNmMWMyYWEKLS0tIC9kZXYvbnVsbAorKysgYi9pbnRlcm5hbC9yZXRyeS9iYWNrb2ZmLmdvCkBAIC0wLDAgKzEsNDEgQEAKK3BhY2thZ2UgcmV0cnkKKworaW1wb3J0ICgKKwkibWF0aCIKKwkibWF0aC9yYW5kL3YyIgorCSJ0aW1lIgorKQorCisvLyBQb2xpY3kgaXMgYSBjYXBwZWQgZXhwb25lbnRpYWwgYmFja29mZiB3aXRoIGZ1bGwgaml0dGVyLgorLy8gQXR0ZW1wdCAxIGlzIHRoZSBmaXJzdCByZXRyeSAodGhlIG9yaWdpbmFsIGRlbGl2ZXJ5IGlzIGF0dGVtcHQgMCkuCit0eXBlIFBvbGljeSBzdHJ1Y3QgeworCUJhc2UgICAgICAgIHRpbWUuRHVyYXRpb24gLy8gZGVsYXkgYmVmb3JlIHRoZSBmaXJzdCByZXRyeQorCU1heCAgICAgICAgIHRpbWUuRHVyYXRpb24gLy8gY2FwIGZvciBhIHNpbmdsZSBkZWxheQorCU1heEF0dGVtcHRzIGludCAgICAgICAgICAgLy8gZ2l2ZSB1cCBhZnRlciB0aGlzIG1hbnkgcmV0cmllcworfQorCisvLyBEZWZhdWx0UG9saWN5OiAzMHMsIDFtLCAybSwgNG0gLi4uIGNhcHBlZCBhdCAxaCwgMTIgcmV0cmllcyAofjloIHRvdGFsKS4KK3ZhciBEZWZhdWx0UG9saWN5ID0gUG9saWN5eworCUJhc2U6ICAgICAgICAzMCAqIHRpbWUuU2Vjb25kLAorCU1heDogICAgICAgICB0aW1lLkhvdXIsCisJTWF4QXR0ZW1wdHM6IDEyLAorfQorCisvLyBEZWxheSByZXR1cm5zIGhvdyBsb25nIHRvIHdhaXQgYmVmb3JlIHJldHJ5IGBhdHRlbXB0YCwgb3Igb2s9ZmFsc2Ugd2hlbgorLy8gdGhlIHBvbGljeSBpcyBleGhhdXN0ZWQgYW5kIHRoZSBkZWxpdmVyeSBzaG91bGQgYmUgbWFya2VkIGZhaWxlZC4KK2Z1bmMgKHAgUG9saWN5KSBEZWxheShhdHRlbXB0IGludCkgKGQgdGltZS5EdXJhdGlvbiwgb2sgYm9vbCkgeworCWlmIGF0dGVtcHQgPCAxIHx8IGF0dGVtcHQgPiBwLk1heEF0dGVtcHRzIHsKKwkJcmV0dXJuIDAsIGZhbHNlCisJfQorCWV4cCA6PSBmbG9hdDY0KHAuQmFzZSkgKiBtYXRoLlBvdygyLCBmbG9hdDY0KGF0dGVtcHQtMSkpCisJaWYgZXhwID4gZmxvYXQ2NChwLk1heCkgeworCQlleHAgPSBmbG9hdDY0KHAuTWF4KQorCX0KKwkvLyBmdWxsIGppdHRlcjogdW5pZm9ybSBpbiBbZXhwLzIsIGV4cF0ga2VlcHMgcmV0cmllcyBzcHJlYWQgd2l0aG91dAorCS8vIGNvbGxhcHNpbmcgdG8gbmVhci16ZXJvIGRlbGF5cy4KKwloYWxmIDo9IGV4cCAvIDIKKwlyZXR1cm4gdGltZS5EdXJhdGlvbihoYWxmICsgcmFuZC5GbG9hdDY0KCkqaGFsZiksIHRydWUKK30KKworLy8gRXhoYXVzdGVkIHJlcG9ydHMgd2hldGhlciBubyByZXRyaWVzIGFyZSBsZWZ0IGFmdGVyIGBhdHRlbXB0YC4KK2Z1bmMgKHAgUG9saWN5KSBFeGhhdXN0ZWQoYXR0ZW1wdCBpbnQpIGJvb2wgeyByZXR1cm4gYXR0ZW1wdCA+PSBwLk1heEF0dGVtcHRzIH0KZGlmZiAtLWdpdCBhL2ludGVybmFsL3JldHJ5L3NjaGVkdWxlci5nbyBiL2ludGVybmFsL3JldHJ5L3NjaGVkdWxlci5nbwpuZXcgZmlsZSBtb2RlIDEwMDY0NAppbmRleCAwMDAwMDAwLi45YTBiN2QxCi0tLSAvZGV2L251bGwKKysrIGIvaW50ZXJuYWwvcmV0cnkvc2NoZWR1bGVyLmdvCkBAIC0wLDAgKzEsNTIgQEAKK3BhY2thZ2UgcmV0cnkKKworaW1wb3J0ICgKKwkiY29udGV4dCIKKwkiZm10IgorCSJ0aW1lIgorCisJImdpdGh1Yi5jb20vaG9va2RlY2svb3V0cG9zdC9pbnRlcm5hbC9kZWxpdmVyeW1xIgorCSJnaXRodWIuY29tL2hvb2tkZWNrL291dHBvc3QvaW50ZXJuYWwvbW9kZWxzIgorKQorCisvLyBTY2hlZHVsZXIgcmUtZW5xdWV1ZXMgZmFpbGVkIGRlbGl2ZXJpZXMgYWZ0ZXIgdGhlaXIgYmFja29mZiBkZWxheS4KKy8vIEl0IHJlbGllcyBvbiB0aGUgcXVldWUncyBuYXRpdmUgZGVsYXllZCBwdWJsaXNoLCBzbyB0aGVyZSBpcyBubworLy8gcG9sbGluZyBsb29wIGFuZCBubyBleHRyYSB0YWJsZSB0byBzY2FuLgordHlwZSBTY2hlZHVsZXIgc3RydWN0IHsKKwlxdWV1ZSAgZGVsaXZlcnltcS5QdWJsaXNoZXIKKwlwb2xpY3kgUG9saWN5CisJbm93ICAgIGZ1bmMoKSB0aW1lLlRpbWUKK30KKworZnVuYyBOZXdTY2hlZHVsZXIocSBkZWxpdmVyeW1xLlB1Ymxpc2hlciwgcCBQb2xpY3kpICpTY2hlZHVsZXIgeworCXJldHVybiAmU2NoZWR1bGVye3F1ZXVlOiBxLCBwb2xpY3k6IHAsIG5vdzogdGltZS5Ob3d9Cit9CisKKy8vIE91dGNvbWUgdGVsbHMgdGhlIGNvbnN1bWVyIHdoYXQgaGFwcGVuZWQgdG8gYSBmYWlsZWQgZGVsaXZlcnkuCit0eXBlIE91dGNvbWUgaW50CisKK2NvbnN0ICgKKwlTY2hlZHVsZWQgT3V0Y29tZSA9IGlvdGEgLy8gYSByZXRyeSBpcyBxdWV1ZWQKKwlHYXZlVXAgICAgICAgICAgICAgICAgICAgLy8gcG9saWN5IGV4aGF1c3RlZDsgbWFyayB0aGUgZGVsaXZlcnkgZmFpbGVkCispCisKKy8vIFNjaGVkdWxlIHF1ZXVlcyB0aGUgbmV4dCBhdHRlbXB0IGZvciBkLCBvciByZXBvcnRzIEdhdmVVcC4KK2Z1bmMgKHMgKlNjaGVkdWxlcikgU2NoZWR1bGUoY3R4IGNvbnRleHQuQ29udGV4dCwgZCBtb2RlbHMuRGVsaXZlcnkpIChPdXRjb21lLCB0aW1lLlRpbWUsIGVycm9yKSB7CisJbmV4dCA6PSBkLkF0dGVtcHQgKyAxCisJZGVsYXksIG9rIDo9IHMucG9saWN5LkRlbGF5KG5leHQpCisJaWYgIW9rIHsKKwkJcmV0dXJuIEdhdmVVcCwgdGltZS5UaW1le30sIG5pbAorCX0KKwlhdCA6PSBzLm5vdygpLkFkZChkZWxheSkKKwltc2cgOj0gZC5XaXRoQXR0ZW1wdChuZXh0KQorCWlmIGVyciA6PSBzLnF1ZXVlLlB1Ymxpc2hBdChjdHgsIG1zZywgYXQpOyBlcnIgIT0gbmlsIHsKKwkJcmV0dXJuIDAsIHRpbWUuVGltZXt9LCBmbXQuRXJyb3JmKCJyZXRyeTogcHVibGlzaCBhdHRlbXB0ICVkIG9mICVzOiAldyIsIG5leHQsIGQuSUQsIGVycikKKwl9CisJcmV0dXJuIFNjaGVkdWxlZCwgYXQsIG5pbAorfQorCisvLyBSZXBsYXkgcXVldWVzIGFuIGltbWVkaWF0ZSBhdHRlbXB0IGZvciBhIGRlbGl2ZXJ5IHRoYXQgYWxyZWFkeSBnYXZlIHVwLgorLy8gVXNlZCBieSB0aGUgb3BlcmF0b3IgQVBJOyBpdCBkb2VzIG5vdCByZXNldCB0aGUgYXR0ZW1wdCBjb3VudGVyLgorZnVuYyAocyAqU2NoZWR1bGVyKSBSZXBsYXkoY3R4IGNvbnRleHQuQ29udGV4dCwgZCBtb2RlbHMuRGVsaXZlcnkpIGVycm9yIHsKKwlyZXR1cm4gcy5xdWV1ZS5QdWJsaXNoQXQoY3R4LCBkLldpdGhBdHRlbXB0KGQuQXR0ZW1wdCsxKSwgcy5ub3coKSkKK30KZGlmZiAtLWdpdCBhL2ludGVybmFsL3JldHJ5L3NjaGVkdWxlcl90ZXN0LmdvIGIvaW50ZXJuYWwvcmV0cnkvc2NoZWR1bGVyX3Rlc3QuZ28KbmV3IGZpbGUgbW9kZSAxMDA2NDQKaW5kZXggMDAwMDAwMC4uNzdjMWUwMgotLS0gL2Rldi9udWxsCisrKyBiL2ludGVybmFsL3JldHJ5L3NjaGVkdWxlcl90ZXN0LmdvCkBAIC0wLDAgKzEsMzAgQEAKK3BhY2thZ2UgcmV0cnkKKworaW1wb3J0ICgKKwkidGVzdGluZyIKKwkidGltZSIKKykKKworZnVuYyBUZXN0RGVsYXlJc0NhcHBlZEFuZEppdHRlcmVkKHQgKnRlc3RpbmcuVCkgeworCXAgOj0gUG9saWN5e0Jhc2U6IHRpbWUuU2Vjb25kLCBNYXg6IDggKiB0aW1lLlNlY29uZCwgTWF4QXR0ZW1wdHM6IDEwfQorCWZvciBhdHRlbXB0IDo9IDE7IGF0dGVtcHQgPD0gMTA7IGF0dGVtcHQrKyB7CisJCWQsIG9rIDo9IHAuRGVsYXkoYXR0ZW1wdCkKKwkJaWYgIW9rIHsKKwkJCXQuRmF0YWxmKCJhdHRlbXB0ICVkOiB3YW50IG9rIiwgYXR0ZW1wdCkKKwkJfQorCQlpZiBkID4gcC5NYXggeworCQkJdC5GYXRhbGYoImF0dGVtcHQgJWQ6IGRlbGF5ICVzIG92ZXIgY2FwICVzIiwgYXR0ZW1wdCwgZCwgcC5NYXgpCisJCX0KKwkJaWYgZCA8PSAwIHsKKwkJCXQuRmF0YWxmKCJhdHRlbXB0ICVkOiBub24tcG9zaXRpdmUgZGVsYXkiLCBhdHRlbXB0KQorCQl9CisJfQorfQorCitmdW5jIFRlc3REZWxheUV4aGF1c3RlZCh0ICp0ZXN0aW5nLlQpIHsKKwlwIDo9IFBvbGljeXtCYXNlOiB0aW1lLlNlY29uZCwgTWF4OiB0aW1lLk1pbnV0ZSwgTWF4QXR0ZW1wdHM6IDN9CisJaWYgXywgb2sgOj0gcC5EZWxheSg0KTsgb2sgeworCQl0LkZhdGFsKCJhdHRlbXB0IDQgb2YgMzogd2FudCBleGhhdXN0ZWQiKQorCX0KK30KKwpkaWZmIC0tZ2l0IGEvaW50ZXJuYWwvZGVsaXZlcnltcS9jb25zdW1lci5nbyBiL2ludGVybmFsL2RlbGl2ZXJ5bXEvY29uc3VtZXIuZ28KaW5kZXggNWJlODFjMi4uYzA5ZTdmNCAxMDA2NDQKLS0tIGEvaW50ZXJuYWwvZGVsaXZlcnltcS9jb25zdW1lci5nbworKysgYi9pbnRlcm5hbC9kZWxpdmVyeW1xL2NvbnN1bWVyLmdvCkBAIC0xMiwxMCArMTIsMTMgQEAgaW1wb3J0ICgKIAkiZ2l0aHViLmNvbS9ob29rZGVjay9vdXRwb3N0L2ludGVybmFsL2Rlc3RyZWdpc3RyeSIKIAkiZ2l0aHViLmNvbS9ob29rZGVjay9vdXRwb3N0L2ludGVybmFsL2xvZ2dpbmciCiAJImdpdGh1Yi5jb20vaG9va2RlY2svb3V0cG9zdC9pbnRlcm5hbC9tb2RlbHMiCisJImdpdGh1Yi5jb20vaG9va2RlY2svb3V0cG9zdC9pbnRlcm5hbC9yZXRyeSIKICkKCiB0eXBlIENvbnN1bWVyIHN0cnVjdCB7CiAJcmVnaXN0cnkgZGVzdHJlZ2lzdHJ5LlJlZ2lzdHJ5CiAJYXR0ZW1wdHMgbW9kZWxzLkF0dGVtcHRTdG9yZQorCXJldHJpZXMgICpyZXRyeS5TY2hlZHVsZXIKIAlsb2cgICAgICAqbG9nZ2luZy5Mb2dnZXIKKwltZXRyaWNzICAqTWV0cmljcwogfQpAQCAtNTgsMzcgKzYxLDUyIEBAIGZ1bmMgKGMgKkNvbnN1bWVyKSBIYW5kbGUoY3R4IGNvbnRleHQuQ29udGV4dCwgbXNnIE1lc3NhZ2UpIGVycm9yIHsKIAlkLCBlcnIgOj0gbXNnLkRlbGl2ZXJ5KCkKIAlpZiBlcnIgIT0gbmlsIHsKIAkJYy5sb2cuRXJyb3IoImJhZCBkZWxpdmVyeSBtZXNzYWdlIiwgImVyciIsIGVycikKIAkJcmV0dXJuIG1zZy5BY2soKSAvLyBwb2lzb24gbWVzc2FnZTogbmV2ZXIgcmV0cnkKIAl9CgogCWRlc3QsIGVyciA6PSBjLnJlZ2lzdHJ5LkdldChjdHgsIGQuVGVuYW50SUQsIGQuRGVzdGluYXRpb25JRCkKIAlpZiBlcnIgIT0gbmlsIHsKIAkJcmV0dXJuIG1zZy5OYWNrKCkKIAl9CgogCXN0YXJ0IDo9IHRpbWUuTm93KCkKIAlyZXMsIHNlbmRFcnIgOj0gZGVzdC5QdWJsaXNoKGN0eCwgZC5FdmVudCkKIAllbGFwc2VkIDo9IHRpbWUuU2luY2Uoc3RhcnQpCgogCWF0dGVtcHQgOj0gbW9kZWxzLkF0dGVtcHR7CiAJCURlbGl2ZXJ5SUQ6IGQuSUQsCiAJCU51bWJlcjogICAgIGQuQXR0ZW1wdCwKIAkJU3RhdHVzOiAgICAgcmVzLlN0YXR1cywKIAkJTGF0ZW5jeTogICAgZWxhcHNlZCwKIAkJUmVzcG9uc2U6ICAgcmVzLkJvZHksCiAJCUNyZWF0ZWRBdDogIHN0YXJ0LAogCX0KIAlpZiBzZW5kRXJyICE9IG5pbCB7CiAJCWF0dGVtcHQuRXJyb3IgPSBzZW5kRXJyLkVycm9yKCkKIAl9CgogCS8vIEF0dGVtcHRzIGFyZSBiZXN0LWVmZm9ydDogYSBmYWlsZWQgaW5zZXJ0IG11c3Qgbm90IGJsb2NrIGRlbGl2ZXJ5LgogCWlmIGVyciA6PSBjLmF0dGVtcHRzLkluc2VydChjdHgsIGF0dGVtcHQpOyBlcnIgIT0gbmlsIHsKIAkJYy5sb2cuV2FybigicmVjb3JkIGF0dGVtcHQiLCAiZGVsaXZlcnkiLCBkLklELCAiZXJyIiwgZXJyKQogCX0KCi0JaWYgc2VuZEVyciAhPSBuaWwgewotCQlyZXR1cm4gbXNnLk5hY2soKQorCWlmIHNlbmRFcnIgPT0gbmlsIHsKKwkJYy5tZXRyaWNzLkRlbGl2ZXJlZC5JbmMoKQorCQlyZXR1cm4gbXNnLkFjaygpCiAJfQotCXJldHVybiBtc2cuQWNrKCkKKworCS8vIEZhaWxlZDogaGFuZCB0aGUgZGVsaXZlcnkgdG8gdGhlIHJldHJ5IHNjaGVkdWxlciwgdGhlbiBhY2sgdGhlIG9yaWdpbmFsLgorCS8vIEFjayBvbmx5IGFmdGVyIHRoZSByZXRyeSBpcyBzYWZlbHkgcXVldWVkLCBzbyBhIGNyYXNoIGluIGJldHdlZW4gcmUtZGVsaXZlcnMKKwkvLyAoYSBkdXBsaWNhdGUgYXR0ZW1wdCkgaW5zdGVhZCBvZiBkcm9wcGluZyB0aGUgZXZlbnQuCisJb3V0Y29tZSwgYXQsIGVyciA6PSBjLnJldHJpZXMuU2NoZWR1bGUoY3R4LCBkKQorCWlmIGVyciAhPSBuaWwgeworCQljLmxvZy5FcnJvcigic2NoZWR1bGUgcmV0cnkiLCAiZGVsaXZlcnkiLCBkLklELCAiZXJyIiwgZXJyKQorCQlyZXR1cm4gbXNnLk5hY2soKQorCX0KKwlzd2l0Y2ggb3V0Y29tZSB7CisJY2FzZSByZXRyeS5TY2hlZHVsZWQ6CisJCWMubWV0cmljcy5SZXRyaWVkLkluYygpCisJCWMubG9nLkluZm8oInJldHJ5IHNjaGVkdWxlZCIsICJkZWxpdmVyeSIsIGQuSUQsICJhdHRlbXB0IiwgZC5BdHRlbXB0KzEsICJhdCIsIGF0KQorCWNhc2UgcmV0cnkuR2F2ZVVwOgorCQljLm1ldHJpY3MuRmFpbGVkLkluYygpCisJCWlmIGVyciA6PSBjLmF0dGVtcHRzLk1hcmtGYWlsZWQoY3R4LCBkLklEKTsgZXJyICE9IG5pbCB7CisJCQljLmxvZy5XYXJuKCJtYXJrIGZhaWxlZCIsICJkZWxpdmVyeSIsIGQuSUQsICJlcnIiLCBlcnIpCisJCX0KKwl9CisJcmV0dXJuIG1zZy5BY2soKQogfQpkaWZmIC0tZ2l0IGEvaW50ZXJuYWwvbWlncmF0aW9ucy8wMDQyX2RlbGl2ZXJ5X2F0dGVtcHRzX3JldHJ5LnVwLnNxbCBiL2ludGVybmFsL21pZ3JhdGlvbnMvMDA0Ml9kZWxpdmVyeV9hdHRlbXB0c19yZXRyeS51cC5zcWwKbmV3IGZpbGUgbW9kZSAxMDA2NDQKaW5kZXggMDAwMDAwMC4uMWQyZTNmNAotLS0gL2Rldi9udWxsCisrKyBiL2ludGVybmFsL21pZ3JhdGlvbnMvMDA0Ml9kZWxpdmVyeV9hdHRlbXB0c19yZXRyeS51cC5zcWwKQEAgLTAsMCArMSw5IEBACitBTFRFUiBUQUJMRSBkZWxpdmVyeV9hdHRlbXB0cworICBBREQgQ09MVU1OIG5leHRfYXR0ZW1wdF9hdCBUSU1FU1RBTVBUWiBOVUxMLAorICBBREQgQ09MVU1OIGZhaWxlZF9hdCAgICAgICBUSU1FU1RBTVBUWiBOVUxMOworCistLSBPcGVyYXRvcnMgbGlzdCBmYWlsZWQgZGVsaXZlcmllcyBwZXIgdGVuYW50LCBuZXdlc3QgZmlyc3QuCitDUkVBVEUgSU5ERVggQ09OQ1VSUkVOVExZIGRlbGl2ZXJ5X2F0dGVtcHRzX2ZhaWxlZF9pZHgKKyAgT04gZGVsaXZlcnlfYXR0ZW1wdHMgKHRlbmFudF9pZCwgZmFpbGVkX2F0IERFU0MpCisgIFdIRVJFIGZhaWxlZF9hdCBJUyBOT1QgTlVMTDsKKwpkaWZmIC0tZ2l0IGEvaW50ZXJuYWwvbWlncmF0aW9ucy8wMDQyX2RlbGl2ZXJ5X2F0dGVtcHRzX3JldHJ5LmRvd24uc3FsIGIvaW50ZXJuYWwvbWlncmF0aW9ucy8wMDQyX2RlbGl2ZXJ5X2F0dGVtcHRzX3JldHJ5LmRvd24uc3FsCm5ldyBmaWxlIG1vZGUgMTAwNjQ0CmluZGV4IDAwMDAwMDAuLjJlM2Y0YTUKLS0tIC9kZXYvbnVsbAorKysgYi9pbnRlcm5hbC9taWdyYXRpb25zLzAwNDJfZGVsaXZlcnlfYXR0ZW1wdHNfcmV0cnkuZG93bi5zcWwKQEAgLTAsMCArMSw1IEBACitEUk9QIElOREVYIENPTkNVUlJFTlRMWSBJRiBFWElTVFMgZGVsaXZlcnlfYXR0ZW1wdHNfZmFpbGVkX2lkeDsKKworQUxURVIgVEFCTEUgZGVsaXZlcnlfYXR0ZW1wdHMKKyAgRFJPUCBDT0xVTU4gSUYgRVhJU1RTIGZhaWxlZF9hdCwKKyAgRFJPUCBDT0xVTU4gSUYgRVhJU1RTIG5leHRfYXR0ZW1wdF9hdDsKZGlmZiAtLWdpdCBhL2ludGVybmFsL2FwaS9mYWlsZWRfZGVsaXZlcmllcy5nbyBiL2ludGVybmFsL2FwaS9mYWlsZWRfZGVsaXZlcmllcy5nbwpuZXcgZmlsZSBtb2RlIDEwMDY0NAppbmRleCAwMDAwMDAwLi40YjVjNmQ3Ci0tLSAvZGV2L251bGwKKysrIGIvaW50ZXJuYWwvYXBpL2ZhaWxlZF9kZWxpdmVyaWVzLmdvCkBAIC0wLDAgKzEsNDQgQEAKK3BhY2thZ2UgYXBpCisKK2ltcG9ydCAoCisJIm5ldC9odHRwIgorCisJImdpdGh1Yi5jb20vaG9va2RlY2svb3V0cG9zdC9pbnRlcm5hbC9tb2RlbHMiCisJImdpdGh1Yi5jb20vaG9va2RlY2svb3V0cG9zdC9pbnRlcm5hbC9yZXRyeSIKKykKKwordHlwZSBGYWlsZWREZWxpdmVyaWVzSGFuZGxlciBzdHJ1Y3QgeworCWF0dGVtcHRzIG1vZGVscy5BdHRlbXB0U3RvcmUKKwlyZXRyaWVzICAqcmV0cnkuU2NoZWR1bGVyCit9CisKKy8vIEdFVCAvdGVuYW50cy97dGVuYW50fS9kZWxpdmVyaWVzL2ZhaWxlZD9jdXJzb3I9JmxpbWl0PQorZnVuYyAoaCAqRmFpbGVkRGVsaXZlcmllc0hhbmRsZXIpIExpc3QodyBodHRwLlJlc3BvbnNlV3JpdGVyLCByICpodHRwLlJlcXVlc3QpIHsKKwl0ZW5hbnQgOj0gci5QYXRoVmFsdWUoInRlbmFudCIpCisJcGFnZSwgZXJyIDo9IGguYXR0ZW1wdHMuTGlzdEZhaWxlZChyLkNvbnRleHQoKSwgdGVuYW50LCBjdXJzb3JGcm9tKHIpKQorCWlmIGVyciAhPSBuaWwgeworCQl3cml0ZUVycm9yKHcsIGVycikKKwkJcmV0dXJuCisJfQorCXdyaXRlSlNPTih3LCBodHRwLlN0YXR1c09LLCBwYWdlKQorfQorCisvLyBQT1NUIC90ZW5hbnRzL3t0ZW5hbnR9L2RlbGl2ZXJpZXMve2lkfS9yZXBsYXkKK2Z1bmMgKGggKkZhaWxlZERlbGl2ZXJpZXNIYW5kbGVyKSBSZXBsYXkodyBodHRwLlJlc3BvbnNlV3JpdGVyLCByICpodHRwLlJlcXVlc3QpIHsKKwl0ZW5hbnQsIGlkIDo9IHIuUGF0aFZhbHVlKCJ0ZW5hbnQiKSwgci5QYXRoVmFsdWUoImlkIikKKwlkLCBlcnIgOj0gaC5hdHRlbXB0cy5HZXREZWxpdmVyeShyLkNvbnRleHQoKSwgdGVuYW50LCBpZCkKKwlpZiBlcnIgIT0gbmlsIHsKKwkJd3JpdGVFcnJvcih3LCBlcnIpCisJCXJldHVybgorCX0KKwlpZiBkLkZhaWxlZEF0ID09IG5pbCB7CisJCXdyaXRlRXJyb3IodywgZXJyQ29uZmxpY3QoImRlbGl2ZXJ5IGhhcyBub3QgZmFpbGVkIikpCisJCXJldHVybgorCX0KKwlpZiBlcnIgOj0gaC5yZXRyaWVzLlJlcGxheShyLkNvbnRleHQoKSwgZCk7IGVyciAhPSBuaWwgeworCQl3cml0ZUVycm9yKHcsIGVycikKKwkJcmV0dXJuCisJfQorCXdyaXRlSlNPTih3LCBodHRwLlN0YXR1c0FjY2VwdGVkLCBtYXBbc3RyaW5nXXN0cmluZ3sic3RhdHVzIjogInF1ZXVlZCJ9KQorfQorCmRpZmYgLS1naXQgYS9pbnRlcm5hbC9hcGkvcm91dGVyLmdvIGIvaW50ZXJuYWwvYXBpL3JvdXRlci5nbwppbmRleCA4YzlkMGUxLi5hN2I2YzVkIDEwMDY0NAotLS0gYS9pbnRlcm5hbC9hcGkvcm91dGVyLmdvCisrKyBiL2ludGVybmFsL2FwaS9yb3V0ZXIuZ28KQEAgLTQxLDYgKzQxLDEwIEBAIGZ1bmMgTmV3Um91dGVyKGRlcHMgRGVwcykgaHR0cC5IYW5kbGVyIHsKIAltdXguSGFuZGxlRnVuYygiR0VUIC90ZW5hbnRzL3t0ZW5hbnR9L2Rlc3RpbmF0aW9ucyIsIGRlcHMuRGVzdGluYXRpb25zLkxpc3QpCiAJbXV4LkhhbmRsZUZ1bmMoIlBPU1QgL3RlbmFudHMve3RlbmFudH0vZGVzdGluYXRpb25zIiwgZGVwcy5EZXN0aW5hdGlvbnMuQ3JlYXRlKQogCW11eC5IYW5kbGVGdW5jKCJHRVQgL3RlbmFudHMve3RlbmFudH0vZXZlbnRzIiwgZGVwcy5FdmVudHMuTGlzdCkKKworCWZhaWxlZCA6PSAmRmFpbGVkRGVsaXZlcmllc0hhbmRsZXJ7YXR0ZW1wdHM6IGRlcHMuQXR0ZW1wdHMsIHJldHJpZXM6IGRlcHMuUmV0cmllc30KKwltdXguSGFuZGxlRnVuYygiR0VUIC90ZW5hbnRzL3t0ZW5hbnR9L2RlbGl2ZXJpZXMvZmFpbGVkIiwgZmFpbGVkLkxpc3QpCisJbXV4LkhhbmRsZUZ1bmMoIlBPU1QgL3RlbmFudHMve3RlbmFudH0vZGVsaXZlcmllcy97aWR9L3JlcGxheSIsIGZhaWxlZC5SZXBsYXkpCgogCXJldHVybiB3aXRoQXV0aChkZXBzLkF1dGgsIG11eCkKIH0KZGlmZiAtLWdpdCBhL3dlYi9zcmMvcGFnZXMvRmFpbGVkRGVsaXZlcmllcy50c3ggYi93ZWIvc3JjL3BhZ2VzL0ZhaWxlZERlbGl2ZXJpZXMudHN4Cm5ldyBmaWxlIG1vZGUgMTAwNjQ0CmluZGV4IDAwMDAwMDAuLjZlN2Y4YTkKLS0tIC9kZXYvbnVsbAorKysgYi93ZWIvc3JjL3BhZ2VzL0ZhaWxlZERlbGl2ZXJpZXMudHN4CkBAIC0wLDAgKzEsMzggQEAKK2ltcG9ydCB7IHVzZVN0YXRlIH0gZnJvbSAicmVhY3QiOworaW1wb3J0IHsgdXNlRmFpbGVkRGVsaXZlcmllcywgcmVwbGF5RGVsaXZlcnkgfSBmcm9tICIuLi9hcGkvZGVsaXZlcmllcyI7CitpbXBvcnQgeyBUYWJsZSwgQnV0dG9uLCBFbXB0eVN0YXRlLCBSZWxhdGl2ZVRpbWUgfSBmcm9tICIuLi91aSI7CisKK2V4cG9ydCBmdW5jdGlvbiBGYWlsZWREZWxpdmVyaWVzKHsgdGVuYW50IH06IHsgdGVuYW50OiBzdHJpbmcgfSkgeworICBjb25zdCB7IGRhdGEsIGlzTG9hZGluZywgcmVmZXRjaCB9ID0gdXNlRmFpbGVkRGVsaXZlcmllcyh0ZW5hbnQpOworICBjb25zdCBbYnVzeSwgc2V0QnVzeV0gPSB1c2VTdGF0ZTxzdHJpbmcgfCBudWxsPihudWxsKTsKKworICBpZiAoaXNMb2FkaW5nKSByZXR1cm4gPFRhYmxlLlNrZWxldG9uIHJvd3M9ezV9IC8+OworICBpZiAoIWRhdGE/Lml0ZW1zLmxlbmd0aCkgcmV0dXJuIDxFbXB0eVN0YXRlIHRpdGxlPSJObyBmYWlsZWQgZGVsaXZlcmllcyIgLz47CisKKyAgY29uc3QgcmVwbGF5ID0gYXN5bmMgKGlkOiBzdHJpbmcpID0+IHsKKyAgICBzZXRCdXN5KGlkKTsKKyAgICB0cnkgeworICAgICAgYXdhaXQgcmVwbGF5RGVsaXZlcnkodGVuYW50LCBpZCk7CisgICAgICBhd2FpdCByZWZldGNoKCk7CisgICAgfSBmaW5hbGx5IHsKKyAgICAgIHNldEJ1c3kobnVsbCk7CisgICAgfQorICB9OworCisgIHJldHVybiAoCisgICAgPFRhYmxlPgorICAgICAge2RhdGEuaXRlbXMubWFwKChkKSA9PiAoCisgICAgICAgIDxUYWJsZS5Sb3cga2V5PXtkLmlkfT4KKyAgICAgICAgICA8VGFibGUuQ2VsbCBtb25vPntkLmRlc3RpbmF0aW9ufTwvVGFibGUuQ2VsbD4KKyAgICAgICAgICA8VGFibGUuQ2VsbD57ZC5sYXN0RXJyb3J9PC9UYWJsZS5DZWxsPgorICAgICAgICAgIDxUYWJsZS5DZWxsPntkLmF0dGVtcHRzfSBhdHRlbXB0czwvVGFibGUuQ2VsbD4KKyAgICAgICAgICA8VGFibGUuQ2VsbD48UmVsYXRpdmVUaW1lIHZhbHVlPXtkLmZhaWxlZEF0fSAvPjwvVGFibGUuQ2VsbD4KKyAgICAgICAgICA8VGFibGUuQ2VsbCBhbGlnbj0iZW5kIj4KKyAgICAgICAgICAgIDxCdXR0b24gc2l6ZT0ic20iIGxvYWRpbmc9e2J1c3kgPT09IGQuaWR9IG9uQ2xpY2s9eygpID0+IHJlcGxheShkLmlkKX0+UmVwbGF5PC9CdXR0b24+CisgICAgICAgICAgPC9UYWJsZS5DZWxsPgorICAgICAgICA8L1RhYmxlLlJvdz4KKyAgICAgICkpfQorICAgIDwvVGFibGU+CisgICk7Cit9CisKZGlmZiAtLWdpdCBhL2ludGVybmFsL2Nyb24vbGVnYWN5X3JldHJ5LmdvIGIvaW50ZXJuYWwvY3Jvbi9sZWdhY3lfcmV0cnkuZ28KZGVsZXRlZCBmaWxlIG1vZGUgMTAwNjQ0CmluZGV4IDNjNGQ1ZTYuLjAwMDAwMDAKLS0tIGEvaW50ZXJuYWwvY3Jvbi9sZWdhY3lfcmV0cnkuZ28KKysrIC9kZXYvbnVsbApAQCAtMSwyMiArMCwwIEBACi1wYWNrYWdlIGNyb24KLQotaW1wb3J0ICgKLQkiY29udGV4dCIKLQkidGltZSIKLQotCSJnaXRodWIuY29tL2hvb2tkZWNrL291dHBvc3QvaW50ZXJuYWwvZGVsaXZlcnltcSIKLQkiZ2l0aHViLmNvbS9ob29rZGVjay9vdXRwb3N0L2ludGVybmFsL21vZGVscyIKLSkKLQotLy8gTGVnYWN5UmV0cnkgcmUtZW5xdWV1ZXMgZXZlcnkgZmFpbGVkIGF0dGVtcHQgZnJvbSB0aGUgbGFzdCBob3VyLCBldmVyeQotLy8gNSBtaW51dGVzLiBObyBiYWNrb2ZmLCBubyBjYXA6IGEgZGVhZCBlbmRwb2ludCBnZXRzIDEyIGF0dGVtcHRzIGFuIGhvdXIgZm9yZXZlci4KLWZ1bmMgTGVnYWN5UmV0cnkoY3R4IGNvbnRleHQuQ29udGV4dCwgc3RvcmUgbW9kZWxzLkF0dGVtcHRTdG9yZSwgcSBkZWxpdmVyeW1xLlB1Ymxpc2hlcikgZXJyb3IgewotCWZhaWxlZCwgZXJyIDo9IHN0b3JlLkZhaWxlZFNpbmNlKGN0eCwgdGltZS5Ob3coKS5BZGQoLXRpbWUuSG91cikpCi0JaWYgZXJyICE9IG5pbCB7Ci0JCXJldHVybiBlcnIKLQl9Ci0JZm9yIF8sIGEgOj0gcmFuZ2UgZmFpbGVkIHsKLQkJXyA9IHEuUHVibGlzaChjdHgsIGEuRGVsaXZlcnkoKSkKLQl9Ci0JcmV0dXJuIG5pbAotfQpkaWZmIC0tZ2l0IGEvZG9jcy9yZXRyaWVzLm1kIGIvZG9jcy9kZWxpdmVyeS1yZXRyaWVzLm1kCnNpbWlsYXJpdHkgaW5kZXggODElCnJlbmFtZSBmcm9tIGRvY3MvcmV0cmllcy5tZApyZW5hbWUgdG8gZG9jcy9kZWxpdmVyeS1yZXRyaWVzLm1kCmluZGV4IDFhMmIzYzQuLjVkNmU3ZjggMTAwNjQ0Ci0tLSBhL2RvY3MvcmV0cmllcy5tZAorKysgYi9kb2NzL2RlbGl2ZXJ5LXJldHJpZXMubWQKQEAgLTEsOCArMSwxMCBAQAogIyBEZWxpdmVyeSByZXRyaWVzCgotRmFpbGVkIGRlbGl2ZXJpZXMgYXJlIHJldHJpZWQgZXZlcnkgNSBtaW51dGVzIGZvciBvbmUgaG91ci4KK0ZhaWxlZCBkZWxpdmVyaWVzIGFyZSByZXRyaWVkIHdpdGggY2FwcGVkIGV4cG9uZW50aWFsIGJhY2tvZmY6IDMwcywgMW0sIDJtLCA0bSDigKYKK2NhcHBlZCBhdCAxaCBwZXIgZGVsYXksIDEyIHJldHJpZXMgaW4gdG90YWwgKGFib3V0IDkgaG91cnMpLgoKLVRoZXJlIGlzIG5vIHdheSB0byBzZWUgb3IgcmVwbGF5IGEgZGVsaXZlcnkgdGhhdCByYW4gb3V0IG9mIHJldHJpZXMuCitEZWxpdmVyaWVzIHRoYXQgcnVuIG91dCBvZiByZXRyaWVzIHNob3cgdXAgdW5kZXIgKipGYWlsZWQgZGVsaXZlcmllcyoqIGluIHRoZQorZGFzaGJvYXJkLCB3aGVyZSBhbiBvcGVyYXRvciBjYW4gcmVwbGF5IHRoZW0gb25lIGJ5IG9uZS4KCiAjIyBJZGVtcG90ZW5jeQoKZGlmZiAtLWdpdCBhL2dvLm1vZCBiL2dvLm1vZAppbmRleCAwYTFiMmMzLi40ZDVlNmY3IDEwMDY0NAotLS0gYS9nby5tb2QKKysrIGIvZ28ubW9kCkBAIC01LDcgKzUsNyBAQCBnbyAxLjI0CiByZXF1aXJlICgKIAlnaXRodWIuY29tL2dvLWNoaS9jaGkvdjUgdjUuMi4xCiAJZ2l0aHViLmNvbS9qYWNrYy9wZ3gvdjUgdjUuNy4yCi0JZ2l0aHViLmNvbS9yYWJiaXRtcS9hbXFwMDkxLWdvIHYxLjEwLjAKKwlnaXRodWIuY29tL3JhYmJpdG1xL2FtcXAwOTEtZ28gdjEuMTEuMAogCWdpdGh1Yi5jb20vcmVkaXMvZ28tcmVkaXMvdjkgdjkuNy4wCiAJZ28ub3BlbnRlbGVtZXRyeS5pby9vdGVsIHYxLjM0LjAKICkKZGlmZiAtLWdpdCBhL2dvLnN1bSBiL2dvLnN1bQppbmRleCAxYjJjM2Q0Li41ZTZmN2E4IDEwMDY0NAotLS0gYS9nby5zdW0KKysrIGIvZ28uc3VtCkBAIC04OCw4ICs4OCw4IEBAIGdpdGh1Yi5jb20vcG1lemFyZC9nby1kaWZmbGliIHYxLjAuMCBoMTo0REJ3REUwTkd5UW9CSGJMUVlQd1NVUG9DTVdSNUJFeklrL2YxbFpiQVFNPQogZ2l0aHViLmNvbS9wbWV6YXJkL2dvLWRpZmZsaWIgdjEuMC4wL2dvLm1vZCBoMTppS0g3N2tvRmhZeFRLMXBjUm5rS2txZlRvZ3NiZzdnWk5WWTRzUkRZWi80PQotZ2l0aHViLmNvbS9yYWJiaXRtcS9hbXFwMDkxLWdvIHYxLjEwLjAgaDE6U1RwbjVYc0hsSEdjZWNMbU1GQ3RnN21xcTBSbkQrekZyNHV6dWtmVmhCdz0KLWdpdGh1Yi5jb20vcmFiYml0bXEvYW1xcDA5MS1nbyB2MS4xMC4wL2dvLm1vZCBoMTpIeTRqS1c1a1FBUlQxdStKa0RURjlZWU9RVUhYcU11aHJneE9FZVM3RzRvPQorZ2l0aHViLmNvbS9yYWJiaXRtcS9hbXFwMDkxLWdvIHYxLjExLjAgaDE6S3EzdWh5UTNQUjBrRzdJRnpYQmZGUUl3cFo0aFVKYmRzYnQ2bU5mVjdlOD0KK2dpdGh1Yi5jb20vcmFiYml0bXEvYW1xcDA5MS1nbyB2MS4xMS4wL2dvLm1vZCBoMTo3dFltRXFwM1p5QUNRa1dxWldrTVBzT1RlQjJWMmZRd0hOOGtOQTVKQUZ3PQogZ2l0aHViLmNvbS9yZWRpcy9nby1yZWRpcy92OSB2OS43LjAgaDE6SGhMU3MrQjZPMDIxZ3d6bCtsb2NsMHpFRG55Tmt4TXRmL1ozTk5CTWE5RT0KIGdpdGh1Yi5jb20vcmVkaXMvZ28tcmVkaXMvdjkgdjkuNy4wL2dvLm1vZCBoMTpmNnpoWElUQzdKVUpJbFBFaUJPVFh4SmdQTGRaY0E5M0dld0k3aW56eVd3PQpkaWZmIC0tZ2l0IGEvaW50ZXJuYWwvYXBpL29wZW5hcGkuZ2VuLmdvIGIvaW50ZXJuYWwvYXBpL29wZW5hcGkuZ2VuLmdvCmluZGV4IDlmOGU3ZDYuLjFhMmIzYzQgMTAwNjQ0Ci0tLSBhL2ludGVybmFsL2FwaS9vcGVuYXBpLmdlbi5nbworKysgYi9pbnRlcm5hbC9hcGkvb3BlbmFwaS5nZW4uZ28KQEAgLTIxMCw2ICsyMTAsMjIgQEAgdHlwZSBEZXN0aW5hdGlvbkxpc3Qgc3RydWN0IHsKIAlOZXh0ICAqc3RyaW5nICAgICAgIGBqc29uOiJuZXh0LG9taXRlbXB0eSJgCiB9CgorLy8gRmFpbGVkRGVsaXZlcnkgZGVmaW5lcyBtb2RlbCBmb3IgRmFpbGVkRGVsaXZlcnkuCit0eXBlIEZhaWxlZERlbGl2ZXJ5IHN0cnVjdCB7CisJQXR0ZW1wdHMgICAgaW50ICAgICAgIGBqc29uOiJhdHRlbXB0cyJgCisJRGVzdGluYXRpb24gc3RyaW5nICAgIGBqc29uOiJkZXN0aW5hdGlvbiJgCisJRmFpbGVkQXQgICAgdGltZS5UaW1lIGBqc29uOiJmYWlsZWRfYXQiYAorCUlkICAgICAgICAgIHN0cmluZyAgICBganNvbjoiaWQiYAorCUxhc3RFcnJvciAgIHN0cmluZyAgICBganNvbjoibGFzdF9lcnJvciJgCit9CisKKy8vIEZhaWxlZERlbGl2ZXJ5TGlzdCBkZWZpbmVzIG1vZGVsIGZvciBGYWlsZWREZWxpdmVyeUxpc3QuCit0eXBlIEZhaWxlZERlbGl2ZXJ5TGlzdCBzdHJ1Y3QgeworCUl0ZW1zIFtdRmFpbGVkRGVsaXZlcnkgYGpzb246Iml0ZW1zImAKKwlOZXh0ICAqc3RyaW5nICAgICAgICAgIGBqc29uOiJuZXh0LG9taXRlbXB0eSJgCit9CisKIC8vIEV2ZW50IGRlZmluZXMgbW9kZWwgZm9yIEV2ZW50LgogdHlwZSBFdmVudCBzdHJ1Y3QgewogCURhdGEgICAgICBtYXBbc3RyaW5nXWludGVyZmFjZXt9IGBqc29uOiJkYXRhImAK"
+ },
+ "comments": [
+  {
+   "id": "c1",
+   "anchor": {
+    "section": "consumer"
+   },
+   "author": "alex",
+   "body": "Can we get a test that kills the worker between Schedule and Ack?",
+   "created": "2026-10-05T09:12:00Z"
+  },
+  {
+   "id": "c2",
+   "anchor": {
+    "section": "retry",
+    "block": "retry-3"
+   },
+   "author": "dev agent",
+   "body": "Fixed the wording: we compared with Stripe but chose a shorter window.",
+   "created": "2026-10-05T09:40:00Z",
+   "resolved": true
+  }
+ ]
+}
