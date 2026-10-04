@@ -1,0 +1,5 @@
+# Samples (hand-authored against SPEC.md, collie-doc/0)
+
+- `replay-lab-backend.review/`: review of replay-lab `caf9d31..4f680ea` (backend capture spike + http-stage demos, 11 files); shows data-model for a file format, sequence + state flows, api, two embedded `.replay` recordings of the change itself (http stage and ui stage, trace stripped), 8 key hunks with notes, a mechanical section.
+- `collie-server.plan/`: plan for the shared Collie server (unlisted links, CLI + GitHub Action publish, sticky PR comment, self-host); shows `planned` / `changed` / context nodes, steps, api and data-model sketches, a deferred "Later" section, and a `questions` block with recommendations. Node ids are meant to be reused by the future review.
+- `collie-ui-slice.review/`: review of the whole Collie UI first commit `c001c14` against the empty tree (100 files, 16.9k lines); shows a big-bang repo review with mechanical lockfile/generated output, `code` excerpts where a new file exceeds the diff budget, and real findings as risk/warn callouts (compact density overrides the active theme).
