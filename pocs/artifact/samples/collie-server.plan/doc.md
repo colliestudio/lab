@@ -1,11 +1,11 @@
 ---
 kind: plan
 title: One Collie server for demos, reviews and plans
-tldr: One self-hostable server holds `.replay`, `.review` and `.plan` bundles behind stable unlisted links, fed by the CLI and a GitHub Action that keeps one sticky PR comment current.
+goal: One self-hostable server holds `.replay`, `.review` and `.plan` bundles behind stable unlisted links, fed by the CLI and a GitHub Action that keeps one sticky PR comment current.
 status: proposed
 risk: medium
 risk_why: Link format, artifact ids and the upload contract are public the moment the first link lands in a PR; changing them later breaks every posted link.
-ask: Decide the five questions below (runtime, repo, upload auth, stable PR slots, expiry); approve the artifact model and the URL scheme.
+ask: Decide the five questions (runtime, repo, upload auth, stable PR slots, expiry); approve the artifact model and the URL scheme.
 author: recap-lab samples agent
 date: 2026-10-05
 ---
@@ -24,6 +24,7 @@ nodes:
   - { id: read-api, label: "Read API + /d/<id> pages", kind: api, change: planned, group: server, section: read }
   - { id: comments, label: Comments, kind: module, change: planned, group: server, section: comments }
   - { id: server-bin, label: Server process + config, kind: config, change: planned, group: server, section: selfhost }
+  - { id: accounts, label: Accounts + teams, kind: module, change: deferred, group: server, section: later, note: "columns exist now (owner_id, team_id, visibility); sign-in and teams come later" }
   - { id: recap-viewer, label: Recap viewer, kind: ui, change: unchanged, group: viewers, note: "recap-lab viewer; already boots from window.__RECAP__ with an api base" }
   - { id: demo-player, label: Demo player, kind: ui, change: changed, group: viewers, section: read, note: needs to load a .replay zip from a URL }
   - { id: pr, label: GitHub PR, kind: external, change: unchanged }
@@ -37,9 +38,33 @@ edges:
   - { from: read-api, to: recap-viewer, label: ".review / .plan" }
   - { from: read-api, to: demo-player, label: ".replay" }
   - { from: recap-viewer, to: comments, label: GET/POST }
+  - { from: accounts, to: publish-api, label: "binds tokens to a team", change: deferred }
 ```
 
 Today a `.replay` opens from disk and a `.review` from `recap serve` or a single HTML file; neither has a link you can paste in a PR. The server is the shared piece both tools publish to: one upload contract, one `/d/<id>` URL scheme, one store. It starts with unlisted links and a server-wide publish token, so it can run before accounts exist; everything that accounts and teams will need later (owner, visibility, team) is a column now, defaulted.
+
+```questions
+- q: Server runtime for the first version?
+  options: [Node/TypeScript, Go single binary]
+  recommend: Node/TypeScript
+  why: Both viewers, the recap parser and the Doc model are TS today; the server is mostly glue over them. Go stays the leaning for the productized Collie Demo binary and can embed the same static viewers later.
+- q: Where does the server code live?
+  options: ["recap-lab (lab, now)", "colliestudio/collie-demo server/", "own repo colliestudio/collie-server"]
+  recommend: recap-lab now, own repo when the collie-demo repo is created
+  why: It serves two tools, so it should not sit inside Demo; a lab first matches how replay-lab and recap-lab started.
+- q: Who may upload while there are no accounts?
+  options: [anyone, server-wide publish tokens, GitHub OIDC from Actions only]
+  recommend: server-wide publish tokens
+  why: One env var for self-host, works from agents and CI alike; OIDC can be added without changing the upload API.
+- q: Re-push behaviour for PR artifacts?
+  options: [new link per publish, stable slot per PR + kind with versions]
+  recommend: stable slot per PR + kind with versions
+  why: The sticky comment and any link already pasted keep working; versions keep old comments anchored.
+- q: Default expiry?
+  options: [never, 30 days, 90 days]
+  recommend: 90 days for slot (PR) artifacts, never for one-offs
+  why: PR artifacts pile up with every push; manual publishes are deliberate.
+```
 
 ## Artifact model {#artifacts}
 
@@ -239,25 +264,3 @@ collie server --data ./data --port 7300 --base-url https://collie.example
 
 Not in this plan: sign-in (device-code `collie login`), teams with invites, `team` visibility, per-team tokens, billing. The plan only fixes what they will need: `owner_id`, `team_id` and `visibility` columns exist now, tokens are looked up server-side (so a token can later be bound to a team, as Agent-Native binds the org to the connection), and nothing ever falls back to `public`.
 
-```questions
-- q: Server runtime for the first version?
-  options: [Node/TypeScript, Go single binary]
-  recommend: Node/TypeScript
-  why: Both viewers, the recap parser and the Doc model are TS today; the server is mostly glue over them. Go stays the leaning for the productized Collie Demo binary and can embed the same static viewers later.
-- q: Where does the server code live?
-  options: ["recap-lab (lab, now)", "colliestudio/collie-demo server/", "own repo colliestudio/collie-server"]
-  recommend: recap-lab now, own repo when the collie-demo repo is created
-  why: It serves two tools, so it should not sit inside Demo; a lab first matches how replay-lab and recap-lab started.
-- q: Who may upload while there are no accounts?
-  options: [anyone, server-wide publish tokens, GitHub OIDC from Actions only]
-  recommend: server-wide publish tokens
-  why: One env var for self-host, works from agents and CI alike; OIDC can be added without changing the upload API.
-- q: Re-push behaviour for PR artifacts?
-  options: [new link per publish, stable slot per PR + kind with versions]
-  recommend: stable slot per PR + kind with versions
-  why: The sticky comment and any link already pasted keep working; versions keep old comments anchored.
-- q: Default expiry?
-  options: [never, 30 days, 90 days]
-  recommend: 90 days for slot (PR) artifacts, never for one-offs
-  why: PR artifacts pile up with every push; manual publishes are deliberate.
-```

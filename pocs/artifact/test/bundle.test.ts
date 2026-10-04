@@ -18,6 +18,7 @@ test("planLink: review ↔ plan by node id", async () => {
     title: "Retry failed webhook deliveries",
     done: ["worker", "retry", "attempts", "api", "ui"],
     notDone: ["alerts"],
+    deferred: [],
     unplanned: ["metrics"],
   });
 });

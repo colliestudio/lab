@@ -25,8 +25,61 @@ const DEFAULT_LEVEL: Record<string, Level> = {
   questions: 0, checklist: 2, files: 3, diff: 3, code: 3,
 };
 
-const CHANGES: Change[] = ["added", "changed", "removed", "unchanged", "planned"];
+const CHANGES: Change[] = ["added", "changed", "removed", "unchanged", "planned", "deferred"];
 const NODE_KINDS: NodeKind[] = ["service", "module", "ui", "db", "api", "queue", "job", "external", "config", "doc"];
+
+/**
+ * Appended to warnings about YAML that parsed into the wrong shape (unknown keys, mappings where a string was
+ * expected): almost always an unquoted `, ` or `: ` inside a flow `{ }` / `[ ]`. `recap check` treats these as errors.
+ */
+export const QUOTE_HINT = "(an unquoted \", \" or \": \" inside { } or [ ] splits a value; quote it)";
+
+/** Allowed YAML keys per structured object (SPEC §3). */
+const KEYS: Record<string, string[]> = {
+  frontmatter: ["kind", "title", "tldr", "goal", "status", "risk", "risk_why", "ask", "repo", "base", "head", "pr", "plan", "author", "date"],
+  map: ["groups", "nodes", "edges"],
+  group: ["id", "label"],
+  node: ["id", "label", "kind", "change", "group", "section", "mechanical", "note", "files"],
+  edge: ["from", "to", "label", "change"],
+  demo: ["src", "steps", "caption"],
+  "before-after": ["before", "after", "caption"],
+  shot: ["src", "demo", "step", "caption"],
+  "data-model": ["entities"],
+  entity: ["name", "change", "note", "fields"],
+  field: ["name", "type", "change", "note"],
+  api: ["endpoints"],
+  endpoint: ["method", "path", "change", "summary", "request", "response"],
+  steps: ["steps"],
+  step: ["title", "detail", "status", "area"],
+  questions: ["questions"],
+  question: ["q", "question", "options", "recommend", "why"],
+  files: ["notes", "paths"],
+};
+
+/** Allowed info-string attributes per block type (besides id and level). */
+const ATTRS: Record<string, string[]> = {
+  map: [], callout: ["tone"], flow: ["caption"], demo: ["src", "steps", "caption"], "before-after": [], "data-model": [],
+  api: [], steps: [], questions: [], checklist: [], files: ["paths"], diff: ["file", "hunks", "lines"],
+  code: ["lang", "file", "start", "lines"],
+};
+
+function checkKeys(v: unknown, kind: string, where: string, warn: (m: string) => void) {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return;
+  for (const k of Object.keys(v)) {
+    if (!KEYS[kind].includes(k)) warn(`${where}: unknown key "${k}" ${QUOTE_HINT}`);
+  }
+}
+
+/** A list of scalars; a mapping item means an unquoted `: ` or `, ` got parsed as YAML structure. */
+function strList(v: unknown, where: string, warn: (m: string) => void): string[] {
+  return asArray(v).map((x, i) => {
+    if (x && typeof x === "object") {
+      warn(`${where}: item ${i + 1} is not a string ${QUOTE_HINT}`);
+      return Object.entries(x).map(([k, val]) => (val == null ? k : `${k}: ${String(val)}`)).join(", ");
+    }
+    return String(x);
+  });
+}
 
 // ---------- scanner ----------
 
@@ -145,6 +198,8 @@ export function parseDoc(md: string, patch?: string, opts: ParseOptions = {}): D
     warn("no frontmatter");
   }
 
+  for (const k of Object.keys(fm)) if (!KEYS.frontmatter.includes(k)) warn(`frontmatter: unrecognized key "${k}"`);
+
   const files: FileChange[] = patch ? parsePatch(patch) : [];
   const str = (k: string) => (fm[k] === undefined || fm[k] === null ? undefined : String(fm[k]));
 
@@ -168,6 +223,7 @@ export function parseDoc(md: string, patch?: string, opts: ParseOptions = {}): D
     kind,
     title: str("title") ?? "",
     tldr: str("tldr") ?? str("goal") ?? "",
+    ...(str("goal") !== undefined ? { goal: str("goal") } : {}),
     status: str("status"),
     risk,
     ask: str("ask"),
@@ -178,6 +234,7 @@ export function parseDoc(md: string, patch?: string, opts: ParseOptions = {}): D
     stats: patch !== undefined ? patchStats(files) : undefined,
     map: { groups: [], nodes: [], edges: [] },
     overview: "",
+    overviewBlocks: [],
     sections: [],
     files,
     questions: [],
@@ -237,7 +294,10 @@ export function parseDoc(md: string, patch?: string, opts: ParseOptions = {}): D
           if (!doc.title) doc.title = h1[1].trim();
           text = text.replace(h1[0], "");
         }
-        if (text.trim()) overview.push(text.trim());
+        if (text.trim()) {
+          overview.push(text.trim());
+          doc.overviewBlocks.push({ type: "markdown", id: nextBlockId("markdown", {}, tok.line), level: 1, md: text.trim() });
+        }
         continue;
       }
       let text = tok.text.trim();
@@ -262,11 +322,12 @@ export function parseDoc(md: string, patch?: string, opts: ParseOptions = {}): D
     const block = parseBlock(tok, doc.files, warn);
     if (!block) continue;
     if (block.type === "questions") doc.questions.push(...block.questions);
+    block.id = nextBlockId(tok.type, tok.attrs, tok.line);
     if (!section) {
-      if (block.type !== "questions") warn(`line ${tok.line}: ${tok.type} block before the first section is ignored`);
+      if (block.level === 3) warn(`line ${tok.line}: ${tok.type} block in the overview is level 3; it belongs in a section`);
+      doc.overviewBlocks.push(block);
       continue;
     }
-    block.id = nextBlockId(tok.type, tok.attrs, tok.line);
     section.blocks.push(block);
   }
 
@@ -304,10 +365,12 @@ function parseMap(body: string, kind: Kind, line: number, warn: (m: string) => v
   const y = yamlBody(body, `line ${line}: map`, warn);
   if (!y || typeof y !== "object") { warn(`line ${line}: map block is empty or not a mapping`); return map; }
   const v = y as { groups?: unknown; nodes?: unknown; edges?: unknown };
+  checkKeys(v, "map", `line ${line}: map`, warn);
 
   for (const g of asArray(v.groups)) {
     if (g && typeof g === "object" && "id" in g) {
       const gg = g as { id: unknown; label?: unknown };
+      checkKeys(g, "group", `map group "${String(gg.id)}"`, warn);
       map.groups.push({ id: String(gg.id), label: String(gg.label ?? gg.id) });
     }
   }
@@ -316,6 +379,7 @@ function parseMap(body: string, kind: Kind, line: number, warn: (m: string) => v
     if (!raw || typeof raw !== "object" || !("id" in raw)) { warn(`line ${line}: map node without id`); continue; }
     const r = raw as Record<string, unknown>;
     const id = String(r.id);
+    checkKeys(r, "node", `map node "${id}"`, warn);
     if (ids.has(id)) { warn(`map: duplicate node id "${id}"`); continue; }
     ids.add(id);
     const node: MapNode = {
@@ -331,7 +395,7 @@ function parseMap(body: string, kind: Kind, line: number, warn: (m: string) => v
     if (r.section !== undefined) node.section = String(r.section);
     if (r.mechanical) node.mechanical = true;
     if (r.note !== undefined) node.note = String(r.note);
-    if (r.files !== undefined) node.files = asArray(r.files).map(String);
+    if (r.files !== undefined) node.files = strList(r.files, `map node "${id}" files`, warn);
     if (node.group && !map.groups.some((g) => g.id === node.group)) {
       warn(`map node "${id}": unknown group "${node.group}"`);
       map.groups.push({ id: node.group, label: node.group });
@@ -343,6 +407,7 @@ function parseMap(body: string, kind: Kind, line: number, warn: (m: string) => v
     const r = raw as Record<string, unknown>;
     if (r.from === undefined || r.to === undefined) { warn(`map: edge without from/to`); continue; }
     const e: MapEdge = { from: String(r.from), to: String(r.to) };
+    checkKeys(r, "edge", `map edge ${e.from}→${e.to}`, warn);
     if (r.label !== undefined) e.label = String(r.label);
     if (r.change !== undefined) e.change = toChange(r.change, "changed", `edge ${e.from}→${e.to}`, warn);
     for (const end of [e.from, e.to]) if (!ids.has(end)) warn(`map: edge ${e.from}→${e.to} references unknown node "${end}"`);
@@ -370,6 +435,9 @@ function parseBlock(tok: Extract<Token, { t: "fence" }>, files: FileChange[], wa
   }
   const base = { id: "", level };
   const a = tok.attrs;
+  for (const k of Object.keys(a)) {
+    if (k !== "id" && k !== "level" && !(ATTRS[tok.type] ?? []).includes(k)) warn(`${where}: unknown attribute "${k}"`);
+  }
 
   switch (tok.type) {
     case "callout": {
@@ -380,9 +448,10 @@ function parseBlock(tok: Extract<Token, { t: "fence" }>, files: FileChange[], wa
     case "flow":
       return { ...base, type: "flow", mermaid: tok.body.trim(), ...(a.caption ? { caption: a.caption } : {}) };
     case "code":
-      return { ...base, type: "code", code: tok.body, ...(a.lang ? { lang: a.lang } : {}), ...(a.file ? { file: a.file } : {}) };
+      return parseCodeBlock(tok, base, files, warn);
     case "demo": {
       const y = obj(yamlBody(tok.body, where, warn));
+      checkKeys(y, "demo", where, warn);
       const src = y.src ?? a.src;
       if (!src) { warn(`${where}: no src`); return null; }
       const steps = y.steps ?? (a.steps ? a.steps.split(",") : undefined);
@@ -394,8 +463,10 @@ function parseBlock(tok: Extract<Token, { t: "fence" }>, files: FileChange[], wa
     }
     case "before-after": {
       const y = obj(yamlBody(tok.body, where, warn));
-      const shot = (v: unknown) => {
+      checkKeys(y, "before-after", where, warn);
+      const shot = (v: unknown, side: string) => {
         const s = obj(v);
+        checkKeys(s, "shot", `${where} ${side}`, warn);
         return {
           ...(s.src !== undefined ? { src: String(s.src) } : {}),
           ...(s.demo !== undefined ? { demo: String(s.demo) } : {}),
@@ -404,19 +475,22 @@ function parseBlock(tok: Extract<Token, { t: "fence" }>, files: FileChange[], wa
         };
       };
       if (!y.before || !y.after) warn(`${where}: needs before and after`);
-      return { ...base, type: "before-after", before: shot(y.before), after: shot(y.after), ...(y.caption ? { caption: String(y.caption) } : {}) };
+      return { ...base, type: "before-after", before: shot(y.before, "before"), after: shot(y.after, "after"), ...(y.caption ? { caption: String(y.caption) } : {}) };
     }
     case "data-model": {
       const y = yamlBody(tok.body, where, warn);
+      if (!Array.isArray(y)) checkKeys(y, "data-model", where, warn);
       const list = Array.isArray(y) ? y : asArray(obj(y).entities);
       const entities = list.map((e) => {
         const o = obj(e);
+        checkKeys(o, "entity", `${where} entity "${String(o.name ?? "?")}"`, warn);
         return {
           name: String(o.name ?? "?"),
           change: toChange(o.change, "changed", `${where} entity`, warn),
           ...(o.note !== undefined ? { note: String(o.note) } : {}),
           fields: asArray(o.fields).map((f) => {
             const fo = obj(f);
+            checkKeys(fo, "field", `${where} field "${String(o.name ?? "?")}.${String(fo.name ?? "?")}"`, warn);
             return {
               name: String(fo.name ?? "?"),
               ...(fo.type !== undefined ? { type: String(fo.type) } : {}),
@@ -430,9 +504,11 @@ function parseBlock(tok: Extract<Token, { t: "fence" }>, files: FileChange[], wa
     }
     case "api": {
       const y = yamlBody(tok.body, where, warn);
+      if (!Array.isArray(y)) checkKeys(y, "api", where, warn);
       const list = Array.isArray(y) ? y : asArray(obj(y).endpoints);
       const endpoints = list.map((e) => {
         const o = obj(e);
+        checkKeys(o, "endpoint", `${where} endpoint "${String(o.method ?? "GET")} ${String(o.path ?? "/")}"`, warn);
         return {
           method: String(o.method ?? "GET").toUpperCase(),
           path: String(o.path ?? "/"),
@@ -446,10 +522,12 @@ function parseBlock(tok: Extract<Token, { t: "fence" }>, files: FileChange[], wa
     }
     case "steps": {
       const y = yamlBody(tok.body, where, warn);
+      if (!Array.isArray(y)) checkKeys(y, "steps", where, warn);
       const list = Array.isArray(y) ? y : asArray(obj(y).steps);
       const steps = list.map((s) => {
         if (typeof s === "string") return { title: s };
         const o = obj(s);
+        checkKeys(o, "step", `${where} step "${String(o.title ?? "?")}"`, warn);
         const status = o.status === undefined ? undefined : String(o.status);
         if (status && !["todo", "doing", "done"].includes(status)) warn(`${where}: unknown status "${status}"`);
         return {
@@ -463,13 +541,16 @@ function parseBlock(tok: Extract<Token, { t: "fence" }>, files: FileChange[], wa
     }
     case "questions": {
       const y = yamlBody(tok.body, where, warn);
+      if (!Array.isArray(y)) checkKeys(y, "questions", where, warn);
       const list = Array.isArray(y) ? y : asArray(obj(y).questions);
       const questions: Question[] = list.map((q) => {
         if (typeof q === "string") return { q };
         const o = obj(q);
+        const qw = `${where} question "${String(o.q ?? o.question ?? "?")}"`;
+        checkKeys(o, "question", qw, warn);
         return {
           q: String(o.q ?? o.question ?? "?"),
-          ...(o.options !== undefined ? { options: asArray(o.options).map(String) } : {}),
+          ...(o.options !== undefined ? { options: strList(o.options, `${qw} options`, warn) } : {}),
           ...(o.recommend !== undefined ? { recommend: String(o.recommend) } : {}),
           ...(o.why !== undefined ? { why: String(o.why) } : {}),
         };
@@ -478,16 +559,17 @@ function parseBlock(tok: Extract<Token, { t: "fence" }>, files: FileChange[], wa
     }
     case "checklist": {
       const y = yamlBody(tok.body, where, warn);
-      return { ...base, type: "checklist", items: asArray(y).map(String) };
+      return { ...base, type: "checklist", items: strList(y, where, warn) };
     }
     case "files": {
       const y = yamlBody(tok.body, where, warn);
       const o = obj(y);
       // either {path: note, ...} or {notes: {...}, paths: [...]}
       const flat = !("notes" in o) && !("paths" in o);
+      if (!flat) checkKeys(o, "files", where, warn);
       const notes: Record<string, string> = {};
       for (const [k, v] of Object.entries(flat ? o : obj(o.notes))) notes[k] = v == null ? "" : String(v);
-      let paths = flat ? undefined : o.paths !== undefined ? asArray(o.paths).map(String) : undefined;
+      let paths = flat ? undefined : o.paths !== undefined ? strList(o.paths, `${where} paths`, warn) : undefined;
       if (a.paths) paths = a.paths.split(",").map((s) => s.trim()).filter(Boolean);
       for (const p of [...Object.keys(notes), ...(paths ?? [])]) {
         if (files.length && !files.some((f) => f.path === p || f.oldPath === p)) warn(`${where}: "${p}" is not in changes.patch`);
@@ -546,11 +628,127 @@ function parseDiffBlock(
     if (bad.length && hunks.length) warn(`${where}: hunks ${bad.join(",")} out of range (file has ${hunks.length})`);
     hunks = wanted.filter((n) => n <= hunks.length).map((n) => hunks[n - 1]);
   }
+  if (tok.attrs.lines !== undefined && hunks.length) {
+    const ranges = parseRanges(tok.attrs.lines, where, warn);
+    const out: Hunk[] = [];
+    for (const [a, b] of ranges) {
+      const got = hunks.map((h) => sliceHunk(h, a, b)).filter((h): h is Hunk => !!h);
+      if (!got.length) warn(`${where}: lines ${a}-${b} match no line of the shown hunks`);
+      out.push(...got);
+    }
+    hunks = out.sort((x, y) => x.newStart - y.newStart || x.oldStart - y.oldStart);
+  }
   for (const n of notes) {
     const hit = hunks.some((h) => h.lines.some((l) => l.new === n.line));
     if (!hit && hunks.length) warn(`${where}: note @${n.line} is outside the shown hunks`);
   }
   return { ...base, type: "diff", file, hunks, notes, change };
+}
+
+/** `163-199,250-260` or `42` → [[163,199],[250,260]] / [[42,42]]; bad parts warn and are skipped. */
+function parseRanges(s: string, where: string, warn: (m: string) => void): [number, number][] {
+  const out: [number, number][] = [];
+  for (const part of s.split(",").map((p) => p.trim()).filter(Boolean)) {
+    const m = /^(\d+)(?:-(\d+))?$/.exec(part);
+    const a = m ? +m[1] : NaN, b = m ? +(m[2] ?? m[1]) : NaN;
+    if (!m || a < 1 || b < a) { warn(`${where}: bad lines= range "${part}" (want a-b, 1-based, a ≤ b)`); continue; }
+    out.push([a, b]);
+  }
+  return out;
+}
+
+/**
+ * The part of a hunk whose new-side lines fall in [a, b], with real line numbers and a rebuilt header.
+ * A removed line belongs to the position of the next new-side line, so a replaced block stays together.
+ */
+export function sliceHunk(h: Hunk, a: number, b: number): Hunk | null {
+  const pos: number[] = new Array(h.lines.length);
+  let next = h.newStart + h.newLines;
+  for (let i = h.lines.length - 1; i >= 0; i--) {
+    if (h.lines[i].new !== undefined) next = h.lines[i].new!;
+    pos[i] = h.lines[i].new ?? next;
+  }
+  const idx = h.lines.map((_, i) => i).filter((i) => pos[i] >= a && pos[i] <= b);
+  if (!idx.length) return null;
+  const first = idx[0];
+  const lines = idx.map((i) => h.lines[i]);
+  if (idx.length === h.lines.length) return h;
+  const before = h.lines.slice(0, first);
+  const oldLines = lines.filter((l) => l.old !== undefined).length;
+  const newLines = lines.filter((l) => l.new !== undefined).length;
+  const oldBefore = Math.max(0, h.oldStart - 1 + before.filter((l) => l.old !== undefined).length);
+  const newBefore = Math.max(0, h.newStart - 1 + before.filter((l) => l.new !== undefined).length);
+  const oldStart = oldLines ? oldBefore + 1 : oldBefore;
+  const newStart = newLines ? newBefore + 1 : newBefore;
+  const suffix = /^@@ [^@]* @@(.*)$/.exec(h.header)?.[1] ?? "";
+  return { header: `@@ -${oldStart},${oldLines} +${newStart},${newLines} @@${suffix}`, oldStart, oldLines, newStart, newLines, lines };
+}
+
+const LANG_BY_EXT: Record<string, string> = {
+  ts: "ts", tsx: "tsx", mts: "ts", cts: "ts", js: "js", jsx: "jsx", mjs: "js", cjs: "js", json: "json", go: "go", py: "python",
+  rs: "rust", rb: "ruby", java: "java", kt: "kotlin", swift: "swift", css: "css", scss: "scss", html: "html", vue: "vue",
+  svelte: "svelte", sql: "sql", sh: "sh", bash: "sh", zsh: "sh", yml: "yaml", yaml: "yaml", toml: "toml", md: "md", mdx: "md",
+};
+
+function parseCodeBlock(
+  tok: Extract<Token, { t: "fence" }>, base: { id: string; level: Level }, files: FileChange[], warn: (m: string) => void,
+): Block {
+  const where = `line ${tok.line}: code`;
+  const a = tok.attrs;
+  const notes: DiffNote[] = [];
+  const body: string[] = [];
+  for (const l of tok.body.split("\n")) {
+    const m = NOTE_RE.exec(l);
+    if (m) notes.push({ line: +m[1], note: m[2].trim() });
+    else body.push(l);
+  }
+  let code = body.join("\n");
+  let start: number | undefined;
+  if (a.start !== undefined) {
+    const n = Number(a.start);
+    if (Number.isInteger(n) && n >= 1) start = n;
+    else warn(`${where}: start must be a line number ≥ 1`);
+  }
+  const ranges = a.lines !== undefined ? parseRanges(a.lines, where, warn) : [];
+  if (ranges.length > 1) warn(`${where}: code takes one lines= range; using ${ranges[0].join("-")}`);
+  const range = ranges[0];
+
+  if (!code.trim() && a.file) {
+    // fill from the new side of changes.patch
+    const f = files.find((p) => p.path === a.file || p.oldPath === a.file);
+    if (!f) warn(`${where}: empty body and "${a.file}" is not in changes.patch`);
+    else {
+      const byLine = new Map<number, string>();
+      for (const h of f.hunks) for (const l of h.lines) if (l.new !== undefined) byLine.set(l.new, l.s);
+      const nums = [...byLine.keys()];
+      const [lo, hi] = range ?? [Math.min(...nums), Math.max(...nums)];
+      const out: string[] = [];
+      for (let n = lo; n <= hi; n++) {
+        if (!byLine.has(n)) {
+          warn(`${where}: line ${n} of "${f.path}" is not in changes.patch (only new files and changed regions are); ${out.length ? `showing ${lo}-${n - 1}` : "nothing to show"}`);
+          break;
+        }
+        out.push(byLine.get(n)!);
+      }
+      if (start !== undefined && start !== lo) warn(`${where}: start= is ignored when the code comes from changes.patch`);
+      code = out.join("\n");
+      start = out.length ? lo : undefined;
+    }
+  } else if (range && start === undefined) {
+    start = range[0];
+  }
+
+  const first = start ?? 1;
+  const count = code.replace(/\n$/, "").split("\n").length;
+  for (const n of notes) {
+    if (code && (n.line < first || n.line >= first + count)) warn(`${where}: note @${n.line} is outside lines ${first}-${first + count - 1}`);
+  }
+  const lang = a.lang ?? (a.file ? LANG_BY_EXT[a.file.split(".").pop()!.toLowerCase()] : undefined);
+  return {
+    ...base, type: "code", code,
+    ...(lang ? { lang } : {}), ...(a.file ? { file: a.file } : {}),
+    ...(start !== undefined ? { start } : {}), ...(notes.length ? { notes } : {}),
+  };
 }
 
 // ---------- helpers ----------

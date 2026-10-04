@@ -136,19 +136,25 @@ function resolvePlanPath(bundleAbs: string, plan: string): string | undefined {
   return undefined;
 }
 
-/** Match plan and review map nodes by id. Context (unchanged) and mechanical nodes don't count as work. */
+/**
+ * Match plan and review map nodes by id. Context (unchanged) and mechanical nodes don't count as work; deferred
+ * nodes (in the plan, or marked deferred in the review) are reported apart and never count as "not done".
+ */
 export function linkPlan(review: Doc, plan: Doc, src: string): PlanLink {
   const isWork = (n: { change: string; mechanical?: boolean }) => n.change !== "unchanged" && !n.mechanical;
+  const isDone = (n?: { change: string }) => !!n && n.change !== "unchanged" && n.change !== "deferred";
   const reviewById = new Map(review.map.nodes.map((n) => [n.id, n]));
   const planWork = plan.map.nodes.filter(isWork);
   const planIds = new Set(planWork.map((n) => n.id));
-  const done: string[] = [], notDone: string[] = [];
+  const done: string[] = [], notDone: string[] = [], deferred: string[] = [];
   for (const n of planWork) {
     const r = reviewById.get(n.id);
-    (r && r.change !== "unchanged" ? done : notDone).push(n.id);
+    if (isDone(r)) done.push(n.id);
+    else if (n.change === "deferred" || r?.change === "deferred") deferred.push(n.id);
+    else notDone.push(n.id);
   }
-  const unplanned = review.map.nodes.filter((n) => isWork(n) && !planIds.has(n.id)).map((n) => n.id);
-  return { src, title: plan.title, done, notDone, unplanned };
+  const unplanned = review.map.nodes.filter((n) => isWork(n) && n.change !== "deferred" && !planIds.has(n.id)).map((n) => n.id);
+  return { src, title: plan.title, done, notDone, deferred, unplanned };
 }
 
 function text(b: Uint8Array): string {

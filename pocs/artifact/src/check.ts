@@ -1,7 +1,9 @@
-// `recap check` (SPEC §5): structural errors fail; style/budget issues and parse warnings are warnings.
+// `recap check` (SPEC §5): structural errors fail; style/budget issues and parse warnings are warnings,
+// except YAML that parsed into the wrong shape (unknown keys, mappings for strings): those fail, since they lose content silently.
 
 import type { Block } from "./model.ts";
 import type { Bundle } from "./parse/bundle.ts";
+import { QUOTE_HINT } from "./parse/doc.ts";
 
 export interface CheckResult { errors: string[]; warnings: string[] }
 
@@ -9,8 +11,8 @@ export const BUDGET = { mapNodes: 12, sections: 8, diffLines: 150 };
 
 export function checkBundle(b: Bundle): CheckResult {
   const { doc, files } = b;
-  const errors: string[] = [];
-  const warnings: string[] = [...doc.warnings];
+  const errors: string[] = doc.warnings.filter((w) => w.endsWith(QUOTE_HINT));
+  const warnings: string[] = doc.warnings.filter((w) => !w.endsWith(QUOTE_HINT));
 
   // headline
   if (!doc.title) errors.push("frontmatter: title missing");
@@ -40,6 +42,10 @@ export function checkBundle(b: Bundle): CheckResult {
   if (main > BUDGET.sections) warnings.push(`${main} sections (budget ${BUDGET.sections}, mechanical ones not counted)`);
 
   // blocks
+  for (const blk of doc.overviewBlocks) checkBlock(blk, `overview block "${blk.id}"`, files.has.bind(files), errors, warnings);
+  for (const img of images(doc.overviewBlocks.map((b) => ("md" in b ? b.md : "")).join("\n"))) {
+    if (!/^[a-z]+:\/\//i.test(img) && !files.has(img)) warnings.push(`overview: image "${img}" not in bundle`);
+  }
   for (const s of doc.sections) {
     for (const blk of s.blocks) {
       const where = `section "${s.id}" block "${blk.id}"`;
@@ -65,7 +71,13 @@ function checkBlock(blk: Block, where: string, has: (p: string) => boolean, erro
     case "diff": {
       if (!blk.file || blk.hunks.length === 0) errors.push(`${where}: diff does not resolve (file "${blk.file}")`);
       const n = blk.hunks.reduce((k, h) => k + h.lines.length + 1, 0);
-      if (n > BUDGET.diffLines) warnings.push(`${where}: diff is ${n} lines (budget ${BUDGET.diffLines}); pick hunks=`);
+      if (n > BUDGET.diffLines) warnings.push(`${where}: diff is ${n} lines (budget ${BUDGET.diffLines}); pick hunks= or lines=`);
+      break;
+    }
+    case "code": {
+      const n = blk.code.replace(/\n$/, "").split("\n").length;
+      if (!blk.code.trim()) errors.push(`${where}: empty code block`);
+      else if (n > BUDGET.diffLines) warnings.push(`${where}: code is ${n} lines (budget ${BUDGET.diffLines}); pick lines=`);
       break;
     }
     case "demo":
@@ -91,6 +103,7 @@ function findTodos(b: Bundle): string[] {
   const t = (v: string | undefined, where: string) => { if (v && /\bTODO\b/.test(v)) out.push(where); };
   t(d.title, "title"); t(d.tldr, "tldr"); t(d.ask, "ask"); t(d.risk?.why, "risk_why"); t(d.meta.author, "author");
   t(d.overview, "overview");
+  for (const blk of d.overviewBlocks) if ("md" in blk && blk.type !== "markdown") t(blk.md, `overview block "${blk.id}"`);
   for (const n of d.map.nodes) { t(n.label, `map node "${n.id}" label`); t(n.note, `map node "${n.id}" note`); }
   for (const s of d.sections) {
     t(s.title, `section "${s.id}" title`);

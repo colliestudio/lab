@@ -45,6 +45,13 @@ edges:
 
 Before this range the recorder only saw the browser. Now `run.js` owns the app as a child process and collects four kinds of backend evidence next to the browser streams, all on one clock and joined by W3C trace ids: the browser request is the root span, the server's spans and log lines hang off it, and the webhook catcher's hits join through their `traceparent`. The todo app grew a real backend feature (signed webhooks with retries) to have something worth demoing, and journeys that need no page at all play on a new `http` stage.
 
+```questions
+- q: Keep the OTel packages as hard dependencies of the recorder?
+  options: [dependencies (now), optionalDependencies, the app brings its own SDK]
+  recommend: the app brings its own SDK
+  why: The runner only needs an OTLP receiver; the SDK belongs to the app under demo. Shipping auto-instrumentations with Collie Demo adds ~2.6k lockfile lines for an opt-in feature.
+```
+
 ## Format: four optional backend streams {#format}
 
 The `replay/0` bundle gains `server`, `spans`, `inbound` and `db` streams, written only when a recording has them, so a browser-only `.replay` is byte-for-byte the same shape as before.
@@ -256,13 +263,6 @@ src/player.js: Server tab, trace links, waterfall, http-stage cards + clock
 ## Dependencies {#mechanical .mechanical}
 
 `@opentelemetry/api` and `@opentelemetry/auto-instrumentations-node` added as regular dependencies; the lockfile grows by ~2,600 lines, all from the auto-instrumentations bundle.
-
-```questions
-- q: Keep the OTel packages as hard dependencies of the recorder?
-  options: [dependencies (now), optionalDependencies, the app brings its own SDK]
-  recommend: the app brings its own SDK
-  why: The runner only needs an OTLP receiver; the SDK belongs to the app under demo. Shipping auto-instrumentations with Collie Demo adds ~2.6k lockfile lines for an opt-in feature.
-```
 
 ```checklist
 - node run.js --journey webhooks --otel → counts show server, spans, inbound, db; player shows cards

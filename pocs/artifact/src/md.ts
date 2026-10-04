@@ -19,7 +19,7 @@ export function renderMarkdown(doc: Doc, opts: MdOptions = {}): string {
   if (doc.stats) facts.push(`**Diff:** ${doc.stats.files} files, +${doc.stats.additions} −${doc.stats.deletions}`);
   if (doc.planLink) {
     const p = doc.planLink;
-    facts.push(`**Plan:** ${p.title || p.src}: ${p.done.length} done, ${p.notDone.length} not done, ${p.unplanned.length} unplanned`);
+    facts.push(`**Plan:** ${p.title || p.src}: ${p.done.length} done, ${p.notDone.length} not done, ${p.deferred.length} deferred, ${p.unplanned.length} unplanned`);
   }
   if (facts.length) out.push(facts.map((f) => `- ${f}`).join("\n"), "");
 
@@ -51,6 +51,7 @@ const STYLE: Record<Change, string> = {
   removed: "fill:#fee2e2,stroke:#dc2626,color:#7f1d1d,stroke-dasharray:4 2",
   unchanged: "fill:#f4f4f5,stroke:#a1a1aa,color:#52525b",
   planned: "fill:#e0f2fe,stroke:#0284c7,color:#0c4a6e,stroke-dasharray:4 2",
+  deferred: "fill:#fafafa,stroke:#a1a1aa,color:#71717a,stroke-dasharray:2 2",
 };
 
 export function mapToMermaid(doc: Doc): string {
@@ -71,7 +72,7 @@ export function mapToMermaid(doc: Doc): string {
   }
   for (const n of doc.map.nodes) if (!n.group || !doc.map.groups.some((g) => g.id === n.group)) lines.push(`  ${node(n)}`);
   for (const e of doc.map.edges) {
-    const arrow = e.change === "removed" ? "-.-x" : e.change === "added" || e.change === "planned" ? "==>" : "-->";
+    const arrow = e.change === "removed" ? "-.-x" : e.change === "deferred" ? "-.->" : e.change === "added" || e.change === "planned" ? "==>" : "-->";
     lines.push(`  ${id(e.from)} ${arrow}${e.label ? `|${q(e.label)}|` : ""} ${id(e.to)}`);
   }
   for (const [c, style] of Object.entries(STYLE)) lines.push(`  classDef ${c} ${style}`);

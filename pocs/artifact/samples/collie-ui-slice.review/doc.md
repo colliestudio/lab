@@ -7,7 +7,7 @@ risk: medium
 risk_why: Every theme and the density block emit the full semantic layer, so `data-density="compact"` resets the colours, radius and borders of whichever theme is active.
 ask: Approve the layering and the three rules; decide the density fix before more themes are added; check the stale README lines.
 repo: alexluong/collie-ui
-base: (empty tree)
+base: (empty)
 head: c001c14
 author: recap-lab samples agent
 date: 2026-10-05
@@ -42,6 +42,13 @@ edges:
 
 Dependencies point one way: `tokens ← recipes-tw ← ui`. Components hold no class strings, recipes name only semantic tokens, and state travels as `data-*` attributes; a theme is token values only. Wireframe is a theme that doubles as a conformance test: anything still looking polished in it broke a rule. Nothing is published yet: packages are `private`, `ui` and `recipes-tw` export `.ts` source, and `tokens/dist` is built locally.
 
+```questions
+- q: How should compact density stop resetting the active theme?
+  options: ["emit only the tokens a density file changes", "keep full blocks, scope density after themes (:where() / theme-scoped selectors)"]
+  recommend: emit only the tokens a density file changes
+  why: It is the rule build.mjs line 18 already states, keeps the density block small, and makes the contract.d.ts check meaningful again.
+```
+
 ## Tokens: DTCG source → CSS variables {#tokens}
 
 `build.mjs` runs Style Dictionary over three layers (Radix primitive ramps → ~84 semantic tokens → per-theme/density overrides) and writes `theme.css` (`--collie-*` vars per selector), `tailwind.css` (an `@theme` that drops Tailwind's own scales, so `bg-blue-500` and `p-4` don't compile), a `contract.d.ts` of token names and `tokens.json` for the docs.
@@ -58,22 +65,11 @@ flowchart LR
   B --> J[tokens.json → docs]
 ```
 
-```code lang=js file=packages/tokens/build.mjs
-// lines 163-199
-// A theme or density file may redefine a primitive ramp, a semantic token, or
-// both. Either way the emitted block is the whole semantic layer resolved
-// against it, so a theme never restates what it does not change — and a theme
-// that repoints one ramp gets every token derived from it for free.
-const isSemantic = (token) => SEMANTIC_PATHS.has(token.path.join("."));
-...
-  for (const density of densities) {
-    await layer({
-      sources: [PRIMITIVES, SEMANTIC, density.file],
-      filter: isSemantic,
-      selector: `[data-density="${density.name}"]`,
-      destination: `_density-${density.name}.css`,
-    });
-  }
+```diff file=packages/tokens/build.mjs lines=18,163-199
+@18: The intended rule. The code below does the opposite: every block gets the whole semantic layer.
+@167: The filter keeps every semantic token, not only the ones the file changes.
+@185: Themes: full layer per [data-theme] block.
+@194: Density: the same full layer, emitted after the themes; this is the bug in the callout below.
 ```
 
 ```callout tone=risk

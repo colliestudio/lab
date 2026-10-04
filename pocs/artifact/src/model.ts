@@ -5,7 +5,7 @@ export const FORMAT = "collie-doc/0";
 
 export type Kind = "review" | "plan";
 export type Level = 0 | 1 | 2 | 3;
-export type Change = "added" | "changed" | "removed" | "unchanged" | "planned";
+export type Change = "added" | "changed" | "removed" | "unchanged" | "planned" | "deferred"; // deferred: plan work explicitly left for later
 export type NodeKind =
   | "service" | "module" | "ui" | "db" | "api" | "queue" | "job" | "external" | "config" | "doc";
 
@@ -13,7 +13,8 @@ export interface Doc {
   format: typeof FORMAT;
   kind: Kind;
   title: string;
-  tldr: string;
+  tldr: string;              // frontmatter tldr; falls back to goal when absent
+  goal?: string;             // frontmatter goal (plans), kept as written
   status?: string;
   risk?: { level: "low" | "medium" | "high"; why?: string };
   ask?: string;
@@ -23,7 +24,8 @@ export interface Doc {
   };
   stats?: { files: number; additions: number; deletions: number };
   map: DocMap;
-  overview: string;          // markdown under the map (level 1)
+  overview: string;          // markdown under the map (level 1), all overview text joined
+  overviewBlocks: Block[];   // everything between the map and the first section, in source order (markdown blocks included)
   sections: Section[];       // level 2+
   files: FileChange[];       // from changes.patch; [] when absent
   questions: Question[];     // collected from all `questions` blocks (shown at level 0)
@@ -74,7 +76,7 @@ export type Block =
   | (BlockBase & { type: "checklist"; items: string[] })
   | (BlockBase & { type: "files"; notes: Record<string, string>; paths?: string[] }) // paths: subset; default all doc.files
   | (BlockBase & { type: "diff"; file: string; hunks: Hunk[]; notes: DiffNote[]; change: Change })
-  | (BlockBase & { type: "code"; lang?: string; file?: string; code: string });
+  | (BlockBase & { type: "code"; lang?: string; file?: string; code: string; start?: number; notes?: DiffNote[] }); // start: number of the first line
 
 export interface Shot {
   src?: string;              // bundle path of an image
@@ -114,7 +116,7 @@ export interface Hunk {
   lines: { t: " " | "+" | "-"; s: string; old?: number; new?: number }[];
 }
 
-export interface DiffNote { line: number; note: string }   // line = new-side line number
+export interface DiffNote { line: number; note: string }   // line = new-side line number (code blocks: file line number)
 
 export interface PlanLink {
   src: string;
@@ -122,6 +124,7 @@ export interface PlanLink {
   // map node ids of the plan, matched to review nodes by id
   done: string[];            // in plan and changed in review
   notDone: string[];         // in plan (planned/changed) but unchanged/missing in review
+  deferred: string[];        // deferred in the plan (or in the review) and not changed in the review
   unplanned: string[];       // changed in review, absent from plan
 }
 

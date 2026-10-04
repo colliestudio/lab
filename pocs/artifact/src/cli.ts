@@ -3,7 +3,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { checkBundle } from "./check.ts";
-import { collect } from "./collect.ts";
+import { collect, EMPTY_BASE } from "./collect.ts";
 import { renderMarkdown } from "./md.ts";
 import { loadBundle, openFiles, packFiles, zipFiles } from "./parse/index.ts";
 
@@ -13,8 +13,9 @@ const USAGE = `recap <command>
 
   model <bundle>                         print the parsed JSON model
   check <bundle>                         lint (exit 1 on errors)
-  collect --base <ref> [--head <ref>] [--repo <dir>] -o <bundle> [--force]
+  collect (--base <ref> | --root) [--head <ref>] [--repo <dir>] -o <bundle> [--force]
                                          write changes.patch + a doc.md scaffold
+                                         (--root = against the empty tree: the whole repo at head)
   pack <dir> [-o <zip>]                  dir bundle → zip (in place unless -o)
   unpack <zip> [-o <dir>]                zip bundle → dir (in place unless -o)
   comments <bundle> [--open]             print comments.json
@@ -43,7 +44,7 @@ const commands: Record<string, Cmd> = {
   async collect(args) {
     const { flags } = parseArgs(args);
     const r = collect({
-      base: need(flags.base, "--base"),
+      base: flags.root === "true" ? EMPTY_BASE : need(flags.base, "--base (or --root)"),
       head: flags.head,
       repo: flags.repo,
       out: need(flags.o ?? flags.out, "-o"),

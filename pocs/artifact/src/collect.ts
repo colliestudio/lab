@@ -9,8 +9,11 @@ import type { Change, FileChange, NodeKind } from "./model.ts";
 import { parsePatch, mechanicalReason } from "./parse/patch.ts";
 import { slugify } from "./parse/doc.ts";
 
+/** `base` value meaning "the empty tree": review a whole repo (or everything up to head). */
+export const EMPTY_BASE = "(empty)";
+
 export interface CollectOptions {
-  base: string;
+  base: string;             // a ref, or EMPTY_BASE (= --root)
   head?: string;            // default HEAD
   repo?: string;            // default cwd
   out: string;              // bundle dir
@@ -24,7 +27,10 @@ export function collect(o: CollectOptions): CollectResult {
   const head = o.head ?? "HEAD";
   const git = (...args: string[]) => execFileSync("git", ["-C", repo, ...args], { encoding: "utf8", maxBuffer: 256 << 20, stdio: ["ignore", "pipe", "pipe"] });
 
-  const patch = git("diff", "--find-renames", "--binary", "--no-color", "--no-ext-diff", `${o.base}...${head}`);
+  const root = o.base === EMPTY_BASE;
+  // the empty tree's id depends on the repo's hash algorithm, so ask git rather than hard-coding 4b825dc…
+  const range = root ? [git("hash-object", "-t", "tree", "/dev/null").trim(), head] : [`${o.base}...${head}`];
+  const patch = git("diff", "--find-renames", "--binary", "--no-color", "--no-ext-diff", ...range);
   const out = resolve(o.out);
   if (existsSync(out) && !statSync(out).isDirectory()) throw new Error(`${o.out} exists and is not a directory (unpack it first)`);
   mkdirSync(out, { recursive: true });

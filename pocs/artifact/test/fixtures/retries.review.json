@@ -179,6 +179,14 @@
     ]
   },
   "overview": "Before this change a failed delivery was acked and dropped. Now the worker records every attempt, hands failures to a retry scheduler that re-enqueues them with capped exponential backoff, and gives up after 8 attempts. Operators get a page listing failed deliveries with a replay button. Read the worker first: everything else hangs off its new ack path.",
+  "overviewBlocks": [
+    {
+      "type": "markdown",
+      "id": "overview-markdown-1",
+      "level": 1,
+      "md": "Before this change a failed delivery was acked and dropped. Now the worker records every attempt, hands failures to a retry scheduler that re-enqueues them with capped exponential backoff, and gives up after 8 attempts. Operators get a page listing failed deliveries with a replay button. Read the worker first: everything else hangs off its new ack path."
+    }
+  ],
   "sections": [
     {
       "id": "worker",
@@ -3815,6 +3823,7 @@
     "notDone": [
       "alerts"
     ],
+    "deferred": [],
     "unplanned": [
       "metrics"
     ]
