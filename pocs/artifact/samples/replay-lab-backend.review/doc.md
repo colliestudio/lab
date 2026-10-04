@@ -206,6 +206,12 @@ endpoints:
     request: '{"id": 3, "event": "todo.created", "data": {"id": 2, "text": "Ship webhooks", "done": false}}'
 ```
 
+```before-after
+before: { demo: demos/todo-otel.replay, step: 2, caption: "Existing todos load from GET /api/todos" }
+after: { demo: demos/todo-otel.replay, step: 4, caption: "The added todo went through POST /api/todos: a SQLite row plus a todo.created delivery" }
+caption: The UI is unchanged; what changed is behind it (frames from the recording in the Journeys section).
+```
+
 ```diff file=app/server.js hunks=2,3
 @15: DB_PATH points the app at a file the runner's dbWatch can read; in-memory otherwise.
 @27: @opentelemetry/api is imported optionally, so the app runs unchanged without the SDK.

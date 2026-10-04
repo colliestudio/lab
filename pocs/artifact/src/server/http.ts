@@ -2,11 +2,13 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import type { Comment, Doc, ViewerBoot } from "../model.ts";
 import { newComment, safePath } from "./bundle.ts";
-import { STUB_VIEWER_HTML } from "./_stub-viewer.ts";
+import { execFileSync } from "node:child_process";
 
-const VIEWER_DIST = fileURLToPath(new URL("../../viewer/dist/index.html", import.meta.url));
+const ROOT = fileURLToPath(new URL("../../", import.meta.url));
+const VIEWER_DIST = join(ROOT, "viewer/dist/index.html");
 export const BOOT_MARKER = "<!--RECAP_BOOT-->";
 
 const MIME: Record<string, string> = {
@@ -35,9 +37,18 @@ export async function readBody(req: IncomingMessage, limit = 100 * 1024 * 1024):
   return Buffer.concat(chunks);
 }
 
-/** The viewer's HTML: the real build (viewer/dist) when present, else the stub page. */
+/** The viewer's HTML (viewer/dist/index.html, one self-contained file). Builds it once if missing. */
 export function viewerTemplate(): string {
-  return existsSync(VIEWER_DIST) ? readFileSync(VIEWER_DIST, "utf8") : STUB_VIEWER_HTML;
+  if (!existsSync(VIEWER_DIST)) {
+    const vite = join(ROOT, "node_modules/vite/bin/vite.js");
+    process.stderr.write("recap: viewer/dist missing, building the viewer (pnpm viewer:build)…\n");
+    try {
+      execFileSync(process.execPath, [vite, "build", "--config", join(ROOT, "viewer/vite.config.ts"), "--logLevel", "warn"],
+        { cwd: ROOT, stdio: ["ignore", 2, 2] });
+    } catch { /* reported below */ }
+    if (!existsSync(VIEWER_DIST)) throw new Error("viewer not built and the automatic build failed; run `pnpm viewer:build` in the recap-lab repo");
+  }
+  return readFileSync(VIEWER_DIST, "utf8");
 }
 
 /** JSON safe inside <script> (no `</script>` / `<!--`); U+2028/9 are legal in JS strings since ES2019. */

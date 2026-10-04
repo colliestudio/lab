@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Shot } from "../../../src/model.ts";
 import { useViewer } from "../ctx.tsx";
 import { mimeOf } from "../boot.ts";
-import { Icon } from "../components/icons.tsx";
+import { cx } from "../util.ts";
 import type { B } from "./simple.tsx";
+import { DemoFrame } from "./demo.tsx";
 
 function useBlobUrl(path?: string) {
   const { getFile } = useViewer();
@@ -22,15 +23,19 @@ function useBlobUrl(path?: string) {
 }
 
 function ShotView({ shot, label }: { shot: Shot; label: string }) {
+  const { getFile } = useViewer();
   const { url, err } = useBlobUrl(shot.src);
+  const frame = useRef<HTMLDivElement>(null);
+  const [w, setW] = useState(0);
+  useLayoutEffect(() => { if (frame.current) setW(Math.floor(frame.current.clientWidth)); }, []);
   return (
     <figure className="shot">
-      <div className="shot-label">{label}</div>
-      <div className="shot-frame">
+      <div className="shot-label">{label}{shot.demo && shot.step != null && <span className="shot-step">step {shot.step}</span>}</div>
+      <div className={cx("shot-frame", shot.demo && !shot.src && "replay")} ref={frame}>
         {shot.src ? (
           url ? <img src={url} alt={shot.caption ?? label} /> : <div className="shot-empty">{err ?? "loading…"}</div>
         ) : shot.demo ? (
-          <div className="shot-empty"><Icon name="play" size={16} /> {shot.demo}{shot.step != null && ` · step ${shot.step}`}</div>
+          w > 0 ? <DemoFrame src={shot.demo} step={shot.step} getFile={getFile} width={w} /> : null
         ) : (
           <div className="shot-empty">no image</div>
         )}

@@ -3,7 +3,7 @@ import type { Change } from "../../../src/model.ts";
 import { CHANGE_LABEL, cx } from "../util.ts";
 
 export function ChangeBadge({ change, short }: { change: Change; short?: boolean }) {
-  const letter = { added: "+", changed: "~", removed: "−", unchanged: "·", planned: "◇" }[change];
+  const letter = { added: "+", changed: "~", removed: "−", unchanged: "·", planned: "◇", deferred: "…" }[change];
   return (
     <span className={cx("badge", `ch-${change}`)} title={CHANGE_LABEL[change]}>
       {short ? letter : CHANGE_LABEL[change]}

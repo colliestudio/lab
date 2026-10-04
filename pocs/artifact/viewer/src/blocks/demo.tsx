@@ -6,6 +6,7 @@ import { strFromU8, unzipSync } from "fflate";
 import RrwebPlayer from "rrweb-player";
 import "rrweb-player/dist/style.css";
 import type { Block } from "../../../src/model.ts";
+import { Markdown } from "../components/Markdown.tsx";
 
 type DemoBlockData = Extract<Block, { type: "demo" }>;
 export interface DemoBlockProps { block: DemoBlockData; getFile: (path: string) => Promise<Uint8Array> }
@@ -101,7 +102,7 @@ export function DemoBlock({ block, getFile }: DemoBlockProps) {
   const sideBySide = hasScreen && (box.current?.clientWidth ?? 720) >= MIN_SIDE_BY_SIDE;
   return (
     <figure className="recap-demo" style={S.figure} data-src={block.src}>
-      {block.caption && <figcaption style={S.caption}>{block.caption}</figcaption>}
+      {block.caption && <figcaption style={S.caption}><Markdown md={block.caption} inline /></figcaption>}
       <div ref={box} style={{ ...S.row, flexDirection: sideBySide ? "row" : "column" }}>
         {error ? <div style={S.note}>Couldn't load {block.src}: {error}</div>
           : !replay ? <div style={S.note}>Loading demo…</div>
@@ -151,20 +152,20 @@ export function DemoFrame({ src, step, getFile, width = 340 }: { src: string; st
 }
 
 const S: Record<string, CSSProperties> = {
-  figure: { margin: "12px 0", maxWidth: 720 },
-  caption: { fontWeight: 600, margin: "0 0 6px" },
+  figure: { margin: 0 },
+  caption: { margin: "0 0 10px", fontSize: 13, lineHeight: 1.5, color: "var(--muted, #666)" },
   row: { display: "flex", gap: GAP, alignItems: "flex-start" },
   stage: { flex: "1 1 auto", minWidth: 0 },
-  note: { flex: "1 1 auto", padding: 12, border: "1px dashed #bbb", borderRadius: 6, color: "#666", fontSize: 13 },
+  note: { flex: "1 1 auto", padding: 12, border: "1px dashed var(--collie-color-border, #bbb)", borderRadius: 8, color: "var(--muted, #666)", fontSize: 13 },
   list: { listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 4, flex: "0 0 auto", overflowY: "auto" },
   li: { margin: 0 },
   step: {
     display: "grid", gridTemplateColumns: "20px 1fr auto", gap: 6, width: "100%", textAlign: "left", alignItems: "start",
-    padding: "6px 8px", borderWidth: 1, borderStyle: "solid", borderColor: "#e2e2e2", borderRadius: 6, background: "#fff", cursor: "pointer", font: "inherit", fontSize: 12.5, lineHeight: 1.35, color: "inherit",
+    padding: "6px 8px", borderWidth: 1, borderStyle: "solid", borderColor: "var(--line, #e2e2e2)", borderRadius: 8, background: "var(--card, #fff)", cursor: "pointer", font: "inherit", fontSize: 12.5, lineHeight: 1.35, color: "inherit",
   },
-  stepOn: { borderColor: "#f59e0b", background: "#fff7e6" },
+  stepOn: { borderColor: "var(--collie-color-border-warning, #f59e0b)", background: "var(--collie-color-warning-subtle, #fff7e6)" },
   offstage: { opacity: 0.6, fontStyle: "italic" },
-  num: { fontWeight: 700, color: "#b45309" },
+  num: { fontWeight: 700, color: "var(--collie-color-fg-warning, #b45309)" },
   text: { minWidth: 0 },
-  time: { color: "#888", fontVariantNumeric: "tabular-nums", fontSize: 11 },
+  time: { color: "var(--muted, #888)", fontVariantNumeric: "tabular-nums", fontSize: 11 },
 };

@@ -27,7 +27,7 @@ export const LEVELS = [
 ] as const;
 
 export const CHANGE_LABEL: Record<Change, string> = {
-  added: "added", changed: "changed", removed: "removed", unchanged: "context", planned: "planned",
+  added: "added", changed: "changed", removed: "removed", unchanged: "context", planned: "planned", deferred: "deferred",
 };
 
 export const changeLetter = (f: FileChange) =>

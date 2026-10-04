@@ -71,10 +71,11 @@ export function FlowBlock({ block }: { block: B<"flow"> }) {
       try {
         const mermaid = await loadMermaid();
         mermaid.initialize({ startOnLoad: false, theme: "base", themeVariables: themeVars(), securityLevel: "strict",
-          flowchart: { curve: "basis", padding: 12, useMaxWidth: false },
-          sequence: { mirrorActors: false, useMaxWidth: false, actorFontSize: 13, messageFontSize: 13, noteFontSize: 12,
-            boxMargin: 8, actorMargin: 40, height: 40, width: 130 },
-          state: { useMaxWidth: false }, er: { useMaxWidth: false } });
+          flowchart: { curve: "basis", padding: 10, useMaxWidth: false, nodeSpacing: 30, rankSpacing: 36 },
+          sequence: { mirrorActors: false, useMaxWidth: false, actorFontSize: 12.5, messageFontSize: 12, noteFontSize: 12,
+            boxMargin: 6, boxTextMargin: 4, noteMargin: 6, messageMargin: 26, actorMargin: 36, height: 30, width: 110,
+            diagramMarginX: 8, diagramMarginY: 4, bottomMarginAdj: 0 },
+          state: { useMaxWidth: false, padding: 6, nodeSpacing: 36, rankSpacing: 28 }, er: { useMaxWidth: false } });
         const { svg } = await mermaid.render(rid + theme, block.mermaid);
         if (live) { setSvg(svg); setErr(null); }
       } catch (e) {

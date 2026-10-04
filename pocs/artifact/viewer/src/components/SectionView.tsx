@@ -10,9 +10,9 @@ import { ChangeBadge } from "./bits.tsx";
 import { Icon } from "./icons.tsx";
 import { cx, fileSections, nodeForSection, plural, sectionDomId } from "../util.ts";
 
-/** Files whose diff is already shown by an explicit `diff` block somewhere. */
+/** Files already shown by an explicit `diff` block (or a `code` block naming the file) somewhere. */
 export function explicitDiffFiles(doc: Doc) {
-  return new Set(doc.sections.flatMap((s) => s.blocks).flatMap((b) => (b.type === "diff" ? [b.file] : [])));
+  return new Set(doc.sections.flatMap((s) => s.blocks).flatMap((b) => (b.type === "diff" || (b.type === "code" && b.file) ? [b.file!] : [])));
 }
 
 /** Files attached to this section through its map node's globs, minus ones with explicit diff blocks. */

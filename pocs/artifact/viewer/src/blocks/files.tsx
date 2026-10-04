@@ -95,7 +95,9 @@ export function FileTree({ entries, title }: { entries: Entry[]; title?: string 
 export function FilesBlock({ block }: { block: B<"files"> }) {
   const { doc } = useViewer();
   const entries = useMemo(() => {
-    const paths = block.paths ?? [...new Set([...doc.files.map((f) => f.path), ...Object.keys(block.notes ?? {})])];
+    // {path: note} form lists exactly those files; an empty block lists every changed file.
+    const noted = Object.keys(block.notes ?? {});
+    const paths = block.paths ?? (noted.length ? noted : doc.files.map((f) => f.path));
     return paths.map((p) => ({ path: p, file: doc.files.find((f) => f.path === p), note: block.notes?.[p] }));
   }, [block, doc.files]);
   return <FileTree entries={entries} />;

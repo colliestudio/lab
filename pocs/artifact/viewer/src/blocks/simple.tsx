@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import type { Block, Question } from "../../../src/model.ts";
 import { Markdown } from "../components/Markdown.tsx";
 import { ChangeBadge } from "../components/bits.tsx";
@@ -60,27 +60,61 @@ export function StepsBlock({ block }: { block: B<"steps"> }) {
 }
 
 export function QuestionList({ questions, compact }: { questions: Question[]; compact?: boolean }) {
+  if (compact) return <QuestionRows questions={questions} />;
   return (
-    <div className={cx("questions", compact && "compact")}>
+    <div className="questions">
       {questions.map((q, i) => (
         <div key={i} className="question">
           <div className="q-text"><span className="q-num">{i + 1}</span><Markdown md={q.q} inline /></div>
-          {q.options && q.options.length > 0 && (
-            <div className="q-options">
-              {q.options.map((o) => (
-                <span key={o} className={cx("q-opt", o === q.recommend && "rec")}>
-                  {o === q.recommend && <Icon name="check" size={12} />}
-                  {o}
-                </span>
-              ))}
-            </div>
-          )}
-          {(q.recommend && !q.options?.includes(q.recommend)) && (
-            <div className="q-rec"><b>Recommend:</b> {q.recommend}</div>
-          )}
-          {q.why && <div className="q-why"><Markdown md={q.why} inline /></div>}
+          <QuestionDetail q={q} />
         </div>
       ))}
+    </div>
+  );
+}
+
+function QuestionDetail({ q }: { q: Question }) {
+  return (
+    <>
+      {q.options && q.options.length > 0 && (
+        <div className="q-options">
+          {q.options.map((o) => (
+            <span key={o} className={cx("q-opt", o === q.recommend && "rec")}>
+              {o === q.recommend && <Icon name="check" size={12} />}
+              {o}
+            </span>
+          ))}
+        </div>
+      )}
+      {(q.recommend && !q.options?.includes(q.recommend)) && (
+        <div className="q-rec"><b>Recommend:</b> {q.recommend}</div>
+      )}
+      {q.why && <div className="q-why"><Markdown md={q.why} inline /></div>}
+    </>
+  );
+}
+
+/** The headline's ask: one row per decision (question → recommendation); click a row for the options and why. */
+function QuestionRows({ questions }: { questions: Question[] }) {
+  const [open, setOpen] = useState<Set<number>>(new Set());
+  return (
+    <div className="qrows">
+      {questions.map((q, i) => {
+        const on = open.has(i);
+        const has = !!(q.options?.length || q.why);
+        return (
+          <div key={i} className={cx("qrow", on && "open")}>
+            <button className="qrow-head" disabled={!has} aria-expanded={on}
+              onClick={() => setOpen((s) => { const n = new Set(s); n.has(i) ? n.delete(i) : n.add(i); return n; })}>
+              <span className="q-num">{i + 1}</span>
+              <span className="qrow-q"><Markdown md={q.q} inline /></span>
+              {q.recommend && <span className="qrow-rec" title="Recommended"><Icon name="check" size={12} /><span>{q.recommend}</span></span>}
+              {has && <Icon name={on ? "chevronDown" : "chevron"} size={14} className="qrow-chev" />}
+            </button>
+            {on && <div className="qrow-body"><QuestionDetail q={q} /></div>}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -122,7 +156,7 @@ export function DataModelBlock({ block }: { block: B<"data-model"> }) {
             <tbody>
               {e.fields.map((f) => (
                 <tr key={f.name} className={`fch-${f.change}`}>
-                  <td className="f-mark">{{ added: "+", removed: "−", changed: "~", unchanged: "", planned: "◇" }[f.change]}</td>
+                  <td className="f-mark">{{ added: "+", removed: "−", changed: "~", unchanged: "", planned: "◇", deferred: "…" }[f.change]}</td>
                   <td className="f-name">{f.name}</td>
                   <td className="f-type">{f.type}</td>
                   <td className="f-note">{f.note}</td>
@@ -180,25 +214,49 @@ function Snippet({ title, code }: { title: string; code: string }) {
 
 export function CodeBlock({ block }: { block: B<"code"> }) {
   const lang = block.lang ?? langOf(block.file);
+  const start = block.start ?? 1;
   const lines = useMemo(() => highlightLines(block.code.replace(/\n$/, "").split("\n"), lang), [block.code, lang]);
+  // Notes numbered in line order, rendered under their line like diff notes.
+  const notes = useMemo(() => {
+    const m = new Map<number, { n: number; note: string }[]>();
+    [...(block.notes ?? [])].sort((a, b) => a.line - b.line).forEach((x, i) => m.set(x.line, [...(m.get(x.line) ?? []), { n: i + 1, note: x.note }]));
+    return m;
+  }, [block.notes]);
   return (
     <figure className="codeblock">
       {(block.file || lang) && (
         <figcaption className="code-head">
           <Icon name="file" size={13} />
           <span className="code-file">{block.file ?? ""}</span>
+          {start > 1 && <span className="code-lang">from line {start}</span>}
+          {notes.size > 0 && <span className="tag note-count"><Icon name="comment" size={11} /> {block.notes!.length}</span>}
           {lang && <span className="code-lang">{lang}</span>}
         </figcaption>
       )}
       <div className="code-body">
         <table className="code-table">
           <tbody>
-            {lines.map((l, i) => (
-              <tr key={i}>
-                <td className="ln">{i + 1}</td>
-                <td className="code-line hljs" dangerouslySetInnerHTML={{ __html: l || " " }} />
-              </tr>
-            ))}
+            {lines.map((l, i) => {
+              const no = start + i;
+              const ns = notes.get(no);
+              return (
+                <Fragment key={i}>
+                  <tr className={cx(ns && "has-note")}>
+                    <td className="ln">{no}</td>
+                    <td className="code-line hljs">
+                      <span dangerouslySetInnerHTML={{ __html: l || " " }} />
+                      {ns && <span className="note-marker">{ns[0].n}</span>}
+                    </td>
+                  </tr>
+                  {ns?.map((x) => (
+                    <tr key={`n${x.n}`} className="dnote">
+                      <td className="ln" />
+                      <td><div className="dnote-box"><span className="note-marker">{x.n}</span><Markdown md={x.note} inline /></div></td>
+                    </tr>
+                  ))}
+                </Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>

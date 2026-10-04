@@ -1,8 +1,10 @@
+import { useState } from "react";
 import type { Block, Doc } from "../../../src/model.ts";
 import { useViewer } from "../ctx.tsx";
 import { QuestionList } from "../blocks/simple.tsx";
 import { AddDel, ChurnBar } from "./bits.tsx";
 import { Icon } from "./icons.tsx";
+import { Markdown } from "./Markdown.tsx";
 import { cx, fmtDate, plural } from "../util.ts";
 
 function planStats(doc: Doc) {
@@ -19,6 +21,9 @@ export function Headline({ overlay, setOverlay }: { overlay: boolean; setOverlay
   const areas = doc.sections.filter((s) => !s.mechanical).length;
   const ps = planStats(doc);
   const pl = doc.planLink;
+  // Above the map (level 1+) a long list of decisions folds to one line so the map starts on the first screen.
+  const collapsible = level >= 1 && doc.questions.length > 2;
+  const [showQ, setShowQ] = useState(false);
 
   return (
     <header className={cx("headline", level === 0 && "solo")} id="headline">
@@ -35,23 +40,25 @@ export function Headline({ overlay, setOverlay }: { overlay: boolean; setOverlay
         {m.pr && <a className="hl-ref link" href={m.pr} target="_blank" rel="noreferrer"><Icon name="link" size={12} /> {m.pr.replace(/^https?:\/\/(www\.)?github\.com\//, "")}</a>}
       </div>
       <h1 className="hl-title">{doc.title}</h1>
-      <p className="hl-tldr">
-        {isPlan && <span className="hl-label">Goal</span>}
-        {doc.tldr}
-      </p>
+      {doc.tldr && doc.tldr !== doc.goal && <p className="hl-tldr"><Markdown md={doc.tldr} inline /></p>}
+      {doc.goal ? (
+        <p className={cx("hl-tldr", "hl-goal", doc.tldr !== doc.goal && "sub")}>
+          <span className="hl-label">Goal</span><Markdown md={doc.goal} inline />
+        </p>
+      ) : null}
 
       <div className="hl-grid">
         {doc.risk && (
           <div className={cx("hl-tile risk", `risk-${doc.risk.level}`)}>
             <div className="tile-label">Risk</div>
             <div className="risk-level"><span className="risk-dot" />{doc.risk.level}</div>
-            {doc.risk.why && <div className="tile-text">{doc.risk.why}</div>}
+            {doc.risk.why && <div className="tile-text"><Markdown md={doc.risk.why} inline /></div>}
           </div>
         )}
         {doc.ask && (
           <div className="hl-tile ask">
             <div className="tile-label">The ask</div>
-            <div className="tile-text strong">{doc.ask}</div>
+            <div className="tile-text strong"><Markdown md={doc.ask} inline /></div>
           </div>
         )}
         <div className="hl-tile stats">
@@ -79,6 +86,7 @@ export function Headline({ overlay, setOverlay }: { overlay: boolean; setOverlay
           <span>Implements plan <b>{pl.title}</b></span>
           <span className="pm-text pm-done">{pl.done.length} done</span>
           <span className="pm-text pm-notDone">{pl.notDone.length} not done</span>
+          {pl.deferred?.length > 0 && <span className="pm-text pm-deferred">{pl.deferred.length} deferred</span>}
           <span className="pm-text pm-unplanned">{pl.unplanned.length} unplanned</span>
           <button className={cx("btn small", overlay && "on")} onClick={() => { setOverlay(!overlay); if (level < 1) setLevel(1); }}>
             {overlay ? "Hide on map" : "Show on map"}
@@ -88,8 +96,13 @@ export function Headline({ overlay, setOverlay }: { overlay: boolean; setOverlay
 
       {doc.questions.length > 0 && (
         <div className="hl-decisions">
-          <div className="tile-label">{plural(doc.questions.length, "decision")} needed</div>
-          <QuestionList questions={doc.questions} compact />
+          {collapsible ? (
+            <button className="tile-label hl-dec-toggle" onClick={() => setShowQ(!showQ)} aria-expanded={showQ}>
+              <Icon name={showQ ? "chevronDown" : "chevron"} size={12} /> {plural(doc.questions.length, "decision")} needed
+              {!showQ && <span className="hl-dec-peek">{doc.questions.map((q) => q.q.replace(/\?$/, "")).join(" · ")}</span>}
+            </button>
+          ) : <div className="tile-label">{plural(doc.questions.length, "decision")} needed</div>}
+          {(!collapsible || showQ) && <QuestionList questions={doc.questions} compact />}
         </div>
       )}
 

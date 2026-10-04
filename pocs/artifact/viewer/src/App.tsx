@@ -9,6 +9,8 @@ import { SectionView, autoFiles, explicitDiffFiles } from "./components/SectionV
 import { FileTree } from "./blocks/files.tsx";
 import { FileDiff } from "./blocks/diff.tsx";
 import { Icon } from "./components/icons.tsx";
+import { Commentable } from "./components/Comments.tsx";
+import { BlockView } from "./blocks/index.tsx";
 import { LEVELS, cx, diffId, nodeForSection, orderedSections, plural, sectionDomId } from "./util.ts";
 
 type Theme = "light" | "dark";
@@ -227,14 +229,24 @@ function LevelRule({ n, note }: { n: number; note?: string }) {
 }
 
 function MapPanel({ overlay }: { overlay: boolean }) {
-  const { doc, setFocus } = useViewer();
+  const { doc, level, setFocus } = useViewer();
+  // Overview = everything between the map and the first section. `questions` blocks are already the headline's ask.
+  const blocks = (doc.overviewBlocks ?? []).filter((b) => b.level <= level && b.type !== "questions");
   return (
     <section className="map-panel" id="map-panel">
       <LevelRule n={1} note="hover a node for its summary · click to focus" />
       <div className="card map-card">
         <MapView overlay={overlay} onOpen={setFocus} />
       </div>
-      {doc.overview && <Markdown md={doc.overview} className="overview prose" />}
+      {blocks.length > 0 ? (
+        <div className="overview">
+          {blocks.map((b) => (
+            <Commentable key={b.id} anchor={{ block: b.id }} className={cx("blk", `blk-${b.type}`)}>
+              <BlockView block={b} />
+            </Commentable>
+          ))}
+        </div>
+      ) : !doc.overviewBlocks && doc.overview ? <Markdown md={doc.overview} className="overview prose" /> : null}
     </section>
   );
 }

@@ -4,6 +4,7 @@ import { useViewer } from "../ctx.tsx";
 import { highlightLines } from "../highlight.ts";
 import { AddDel, ChurnBar } from "../components/bits.tsx";
 import { Icon } from "../components/icons.tsx";
+import { Markdown } from "../components/Markdown.tsx";
 import { cx, diffId, langOf } from "../util.ts";
 import type { B } from "./simple.tsx";
 
@@ -157,7 +158,7 @@ export function DiffView(props: {
                           <tr key={ri} className="dnote">
                             <td className="ln" colSpan={2} />
                             <td>
-                              <div className="dnote-box"><span className="note-marker">{r.n}</span><span>{r.note}</span></div>
+                              <div className="dnote-box"><span className="note-marker">{r.n}</span><Markdown md={r.note} inline /></div>
                             </td>
                           </tr>
                         );

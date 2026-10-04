@@ -98,6 +98,10 @@ Four themes, all token values: **polished** (`:root`, no file), **midnight** (re
 @68: No shadows: a polished-looking surface in wireframe means a recipe hard-coded a style.
 ```
 
+```code file=packages/tokens/src/density/compact.tokens.json lines=26-39
+@27: Only space and text change here, yet build.mjs emits all 84 semantic tokens for this block (see the risk in Tokens).
+```
+
 ```files
 packages/tokens/src/theme/midnight.tokens.json: "$ramps → dark ramps; on-warning set by hand"
 packages/tokens/src/theme/sandstone.tokens.json: warm ramps, rounder

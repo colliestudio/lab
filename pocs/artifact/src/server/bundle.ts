@@ -47,7 +47,8 @@ export function zipReader(zip: Uint8Array): BundleReader {
 export function referencedFiles(doc: Doc, bundle: BundleReader): string[] {
   const refs = new Set<string>();
   const md: string[] = [doc.overview];
-  for (const s of doc.sections) {
+  const blocks = [{ summary: "", blocks: doc.overviewBlocks ?? [] }, ...doc.sections];
+  for (const s of blocks) {
     md.push(s.summary);
     for (const b of s.blocks) {
       if (b.type === "demo") refs.add(b.src);
