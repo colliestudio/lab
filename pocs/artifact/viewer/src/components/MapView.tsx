@@ -34,9 +34,14 @@ export function MapView({ focusSection, compact, overlay, onOpen }: {
   focusSection?: string | null; compact?: boolean; overlay?: boolean; onOpen: (sectionId: string) => void;
 }) {
   const { doc } = useViewer();
+  // vs plan: plan work the review's map doesn't draw (deferred, not done) comes in as ghost nodes.
+  const ghosts = overlay && !focusSection ? doc.planLink?.ghosts : undefined;
+  const ghostIds = useMemo(() => new Set(ghosts?.nodes.map((n) => n.id)), [ghosts]);
   // Focus: lay out only the focused node and its direct neighbours (Ilograph-style context), not the whole map.
   const map = useMemo<DocMap>(() => {
-    const full = doc.map;
+    const full = ghosts
+      ? { groups: [...doc.map.groups, ...ghosts.groups], nodes: [...doc.map.nodes, ...ghosts.nodes], edges: [...doc.map.edges, ...ghosts.edges] }
+      : doc.map;
     const f = focusSection ? full.nodes.find((n) => n.section === focusSection) : undefined;
     if (!f) return full;
     const keep = new Set([f.id]);
@@ -50,7 +55,7 @@ export function MapView({ focusSection, compact, overlay, onOpen }: {
       nodes,
       edges: full.edges.filter((e) => keep.has(e.from) && keep.has(e.to)),
     };
-  }, [doc.map, focusSection]);
+  }, [doc.map, focusSection, ghosts]);
   const [both, setBoth] = useState<{ right: Layout; down: Layout } | null>(null);
   const [availW, setAvailW] = useState(0);
   const [hoverEdge, setHoverEdge] = useState<string | null>(null);
@@ -101,7 +106,6 @@ export function MapView({ focusSection, compact, overlay, onOpen }: {
 
   const hovered = hover && map.nodes.find((n) => n.id === hover.id);
   const hoveredSection = hovered?.section ? doc.sections.find((s) => s.id === hovered.section) : undefined;
-  const missingPlanned = overlay && doc.planLink && !compact ? doc.planLink.notDone.filter((id) => !map.nodes.some((n) => n.id === id)) : [];
 
   const activeEdge = (e: Layout["edges"][number]) => hoverEdge === e.key || (!!hover && (e.from === hover.id || e.to === hover.id));
 
@@ -146,15 +150,16 @@ export function MapView({ focusSection, compact, overlay, onOpen }: {
             const b = lay.nodes.get(n.id);
             if (!b) return null;
             const mark = planMark(n.id);
-            const clickable = !!n.section && doc.sections.some((s) => s.id === n.section);
+            const ghost = ghostIds.has(n.id);
+            const clickable = !ghost && !!n.section && doc.sections.some((s) => s.id === n.section);
             const isFocus = focusNode?.id === n.id;
             const textX = NODE_PAD_X + ICON_W;
             const top = b.h / 2 - ((b.lines.length - 1) * LINE_H) / 2 + 4.5;
             return (
               <g key={n.id} className={cx("mnode", `ch-${n.change}`, n.mechanical && "mech", clickable && "clickable",
-                isFocus && "focus", dim(n.id) && "dim")}
+                isFocus && "focus", dim(n.id) && "dim", ghost && "ghost")}
                 transform={`translate(${b.x},${b.y})`} tabIndex={clickable ? 0 : -1} role={clickable ? "button" : undefined}
-                aria-label={`${n.label} (${CHANGE_LABEL[n.change]})`}
+                aria-label={`${n.label} (${ghost ? "in the plan, not in this change" : CHANGE_LABEL[n.change]})`}
                 onMouseEnter={(ev) => showTip(n, ev.currentTarget)} onMouseLeave={() => setHover(null)}
                 onFocus={(ev) => showTip(n, ev.currentTarget)} onBlur={() => setHover(null)}
                 onClick={() => clickable && onOpen(n.section!)}
@@ -196,7 +201,7 @@ export function MapView({ focusSection, compact, overlay, onOpen }: {
           <div className="tip-head">
             <span className={cx("dot", `ch-${hovered.change}`)} />
             <b>{hoveredSection?.title ?? hovered.label}</b>
-            <span className="muted">{CHANGE_LABEL[hovered.change]}{hovered.mechanical ? " · mechanical" : ""}</span>
+            <span className="muted">{ghostIds.has(hovered.id) ? "in the plan, not in this change" : CHANGE_LABEL[hovered.change]}{hovered.mechanical ? " · mechanical" : ""}</span>
           </div>
           {hoveredSection?.summary && <Markdown md={hoveredSection.summary} className="tip-body" />}
           {hovered.note && <div className="tip-body muted">{hovered.note}</div>}
@@ -207,19 +212,14 @@ export function MapView({ focusSection, compact, overlay, onOpen }: {
           </div>
         </div>
       )}
-      {!compact && <Legend map={map} overlay={!!overlay && !!doc.planLink} deferredCount={doc.planLink?.deferred?.length ?? 0} />}
-      {missingPlanned.length > 0 && (
-        <div className="map-missing">
-          <span className="pm-text pm-notDone">Planned, not in this change:</span> {missingPlanned.map((id) => <code key={id}>{id}</code>)}
-        </div>
-      )}
+      {!compact && <Legend map={map} overlay={!!overlay && !!doc.planLink} deferredCount={doc.planLink?.deferred?.length ?? 0} ghosts={ghostIds.size > 0} />}
     </div>
   );
 }
 
 export const PLAN_LABEL: Record<PlanMark, string> = { done: "planned · done", notDone: "planned · not done", deferred: "deferred", unplanned: "unplanned" };
 
-function Legend({ map, overlay, deferredCount }: { map: DocMap; overlay: boolean; deferredCount: number }) {
+function Legend({ map, overlay, deferredCount, ghosts }: { map: DocMap; overlay: boolean; deferredCount: number; ghosts: boolean }) {
   const present = (["added", "changed", "removed", "planned", "deferred", "unchanged"] as const).filter((c) => map.nodes.some((n) => n.change === c));
   const mech = map.nodes.some((n) => n.mechanical);
   return (
@@ -229,6 +229,7 @@ function Legend({ map, overlay, deferredCount }: { map: DocMap; overlay: boolean
       {overlay && (["done", "notDone", "deferred", "unplanned"] as const).filter((m) => m !== "deferred" || deferredCount > 0).map((m) => (
         <span key={m} className="lg"><i className={cx("pm-sw", `pm-${m}`)} />{PLAN_LABEL[m]}</span>
       ))}
+      {ghosts && <span className="lg"><i className="sw ghost" />from the plan, not in this change</span>}
     </div>
   );
 }

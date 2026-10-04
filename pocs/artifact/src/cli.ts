@@ -16,9 +16,10 @@ const USAGE = `recap <command>
 
   model <bundle>                         print the parsed JSON model
   check <bundle>                         lint (exit 1 on errors)
-  collect (--base <ref> | --root) [--head <ref>] [--repo <dir>] -o <bundle> [--force]
+  collect (--base <ref> | --root) [--head <ref>] [--repo <dir>] [--exclude <pathspec>]... -o <bundle> [--force]
                                          write changes.patch + a doc.md scaffold
-                                         (--root = against the empty tree: the whole repo at head)
+                                         (--root = against the empty tree: the whole repo at head;
+                                          --exclude, repeatable = git pathspec left out, e.g. 'samples/**')
   pack <dir> [-o <zip>]                  dir bundle → zip (in place unless -o)
   unpack <zip> [-o <dir>]                zip bundle → dir (in place unless -o)
   comments <bundle> [--open]             print comments (dir: comments.json; zip: <bundle>.comments.json)
@@ -45,13 +46,14 @@ const commands: Record<string, Cmd> = {
   },
 
   async collect(args) {
-    const { flags } = parseArgs(args);
+    const { flags, all } = parseArgs(args);
     const r = collect({
       base: flags.root === "true" ? EMPTY_BASE : need(flags.base, "--base (or --root)"),
       head: flags.head,
       repo: flags.repo,
       out: need(flags.o ?? flags.out, "-o"),
       force: flags.force === "true",
+      exclude: all.exclude?.filter((x) => x !== "true"),
     });
     console.log(`wrote ${r.patchPath} (${r.files} files)`);
     if (r.docKept) console.log("kept existing doc.md (--force to overwrite)");

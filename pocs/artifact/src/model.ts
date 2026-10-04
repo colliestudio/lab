@@ -126,6 +126,9 @@ export interface PlanLink {
   notDone: string[];         // in plan (planned/changed) but unchanged/missing in review
   deferred: string[];        // deferred in the plan (or in the review) and not changed in the review
   unplanned: string[];       // changed in review, absent from plan
+  // plan work nodes missing from the review's map (deferred or not done), with the plan's edges that touch them and
+  // the plan groups they need; the viewer draws them as ghost nodes in vs-plan mode
+  ghosts?: DocMap;
 }
 
 export interface Comment {

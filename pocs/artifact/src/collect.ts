@@ -18,6 +18,15 @@ export interface CollectOptions {
   repo?: string;            // default cwd
   out: string;              // bundle dir
   force?: boolean;          // overwrite an existing doc.md
+  exclude?: string[];       // git pathspecs left out of the patch (see excludeSpec)
+}
+
+/**
+ * `samples/*.review/**` → `:(exclude,glob)samples/*.review/**` (glob magic: `*` stays inside a segment, `**` any depth;
+ * a bare directory excludes everything under it). Pathspecs that already carry magic (`:!x`, `:^x`, `:(…)x`) pass through.
+ */
+export function excludeSpec(p: string): string {
+  return /^:(!|\^|\()/.test(p) ? p : `:(exclude,glob)${p}`;
 }
 
 export interface CollectResult { patchPath: string; docPath?: string; files: number; docKept: boolean }
@@ -30,7 +39,8 @@ export function collect(o: CollectOptions): CollectResult {
   const root = o.base === EMPTY_BASE;
   // the empty tree's id depends on the repo's hash algorithm, so ask git rather than hard-coding 4b825dc…
   const range = root ? [git("hash-object", "-t", "tree", "/dev/null").trim(), head] : [`${o.base}...${head}`];
-  const patch = git("diff", "--find-renames", "--binary", "--no-color", "--no-ext-diff", ...range);
+  const pathspec = o.exclude?.length ? ["--", ":/", ...o.exclude.map(excludeSpec)] : [];
+  const patch = git("diff", "--find-renames", "--binary", "--no-color", "--no-ext-diff", ...range, ...pathspec);
   const out = resolve(o.out);
   if (existsSync(out) && !statSync(out).isDirectory()) throw new Error(`${o.out} exists and is not a directory (unpack it first)`);
   mkdirSync(out, { recursive: true });
@@ -49,7 +59,7 @@ export function collect(o: CollectOptions): CollectResult {
   let headName = head;
   try { if (head === "HEAD") headName = git("rev-parse", "--abbrev-ref", "HEAD").trim(); } catch { /* detached */ }
 
-  writeFileSync(docPath, scaffold(files, { repo: repoName, base: o.base, head: headName }));
+  writeFileSync(docPath, scaffold(files, { repo: repoName, base: o.base, head: headName, exclude: o.exclude }));
   return { patchPath, docPath, files: files.length, docKept: false };
 }
 
@@ -97,7 +107,7 @@ function guessKind(prefix: string, fs: FileChange[]): NodeKind {
   return "module";
 }
 
-export function scaffold(files: FileChange[], meta: { repo?: string; base: string; head: string }): string {
+export function scaffold(files: FileChange[], meta: { repo?: string; base: string; head: string; exclude?: string[] }): string {
   const { areas, mechanical } = groupAreas(files);
   const nodes: Record<string, unknown>[] = areas.map((a) => ({
     id: a.id, label: a.label, kind: guessKind(a.prefix, a.files), change: areaChange(a.files), section: a.id,
@@ -128,6 +138,7 @@ export function scaffold(files: FileChange[], meta: { repo?: string; base: strin
     "     blocks where they help. `recap check` fails while TODOs remain. Format: SPEC.md §3. -->",
     "",
   );
+  if (meta.exclude?.length) out.push(`<!-- collected with --exclude ${meta.exclude.join(" --exclude ")} (re-collect with the same flags) -->`, "");
   const flow = (v: unknown) => YAML.stringify(v, { collectionStyle: "flow", lineWidth: 0 }).trim();
   out.push("```map", "groups: []", "nodes:", ...nodes.map((n) => `  - ${flow(n)}`), "edges: []", "```", "");
   out.push("TODO: two or three sentences of overview: the shape of the change before the details.", "");

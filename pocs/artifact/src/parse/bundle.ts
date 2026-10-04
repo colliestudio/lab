@@ -163,7 +163,15 @@ export function linkPlan(review: Doc, plan: Doc, src: string): PlanLink {
     else notDone.push(n.id);
   }
   const unplanned = review.map.nodes.filter((n) => isWork(n) && n.change !== "deferred" && !planIds.has(n.id)).map((n) => n.id);
-  return { src, title: plan.title, done, notDone, deferred, unplanned };
+  // ghosts: plan work the review's map doesn't draw, kept with the plan's edges to anything that is drawn
+  const ghostNodes = planWork.filter((n) => !reviewById.has(n.id)).map(({ files: _f, section: _s, ...n }) => n);
+  const ghostIds = new Set(ghostNodes.map((n) => n.id));
+  const drawn = (id: string) => reviewById.has(id) || ghostIds.has(id);
+  const ghostEdges = plan.map.edges.filter((e) => (ghostIds.has(e.from) || ghostIds.has(e.to)) && drawn(e.from) && drawn(e.to));
+  const reviewGroups = new Set(review.map.groups.map((g) => g.id));
+  const ghostGroups = plan.map.groups.filter((g) => !reviewGroups.has(g.id) && ghostNodes.some((n) => n.group === g.id));
+  const ghosts = ghostNodes.length ? { groups: ghostGroups, nodes: ghostNodes, edges: ghostEdges } : undefined;
+  return { src, title: plan.title, done, notDone, deferred, unplanned, ...(ghosts ? { ghosts } : {}) };
 }
 
 function text(b: Uint8Array): string {

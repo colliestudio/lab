@@ -8,7 +8,7 @@ risk_why: Lab code with no users; what lasts is the doc.md format and node ids a
 ask: Look at the viewer tour and the map vs plan; decide the two questions (server token default, patch scope); approve the format as the base for the real tool.
 repo: recap-lab (local lab)
 base: main
-head: task-1-poc
+head: 06b211e
 plan: ../recap-lab.plan
 author: dev agent (dogfood)
 date: 2026-10-05
@@ -52,7 +52,7 @@ Everything is new on top of an empty init commit. Read it in map order: the form
 - q: "What should `recap collect` put in changes.patch for a whole-repo review like this one?"
   options: ["everything (today)", "--exclude pathspecs", "everything, but drop nested bundles' patches and binaries from the model"]
   recommend: "--exclude pathspecs, plus marking fixtures and nested bundles mechanical"
-  why: "This patch is 5.4 MB (98k lines), mostly the sample bundles' own patches and fixture JSON; the single-file build inlines all of it, and collect flagged only the lockfile as mechanical."
+  why: "Collected whole, this patch was 5.4 MB (98k lines), mostly the sample bundles' own patches and the viewer screenshots; the single-file build inlines all of it, and collect flagged only the lockfile as mechanical. (Answered since: this bundle is re-collected with --exclude, 0.8 MB.)"
 ```
 
 ## Format and model {#format}
@@ -112,7 +112,7 @@ notes:
 `collect` writes the patch and a scaffold doc (one node per top-level directory), `check` lints until clean (structural and YAML-key problems are errors, budgets are warnings), `md` renders the PR-comment fallback.
 
 ```checklist
-- "pnpm recap collect --base main --head task-1-poc -o /tmp/x.review"
+- "pnpm recap collect --base main --head 06b211e --exclude 'samples/*.review/**' --exclude 'samples/*.plan/**' --exclude 'viewer/screenshots/**' -o /tmp/x.review"
 - pnpm recap check samples/recap-lab.review
 - pnpm recap md samples/recap-lab.review
 - pnpm recap model samples/recap-lab.plan
@@ -262,61 +262,16 @@ paths: [skill/SKILL.md]
 
 ## Lockfile, fixtures, screenshots, samples {#mechanical .mechanical}
 
-Generated or hand-authored data with no logic: the lockfile, root config, JSON and patch fixtures, viewer screenshots, and the three earlier sample bundles (whose own patches are most of this patch).
+Generated or hand-authored data with no logic: the lockfile, root config, JSON and patch fixtures. The viewer screenshots (3.9 MB of PNGs) and the three earlier sample bundles (their own patches and recordings) are in the branch but left out of this patch with `--exclude`.
 
 ```files
-paths:
-  - pnpm-lock.yaml
-  - package.json
-  - pnpm-workspace.yaml
-  - tsconfig.json
-  - mise.toml
-  - test/fixtures/retries.plan/doc.md
-  - test/fixtures/retries.review.json
-  - test/fixtures/retries.review/changes.patch
-  - test/fixtures/retries.review/comments.json
-  - test/fixtures/retries.review/doc.md
-  - test/fixtures/sample.review/assets/shot.png
-  - test/fixtures/sample.review/demos/todo.replay
-  - test/fixtures/sample.review/demos/webhooks.replay
-  - test/fixtures/sample.review/doc.md
-  - viewer/fixtures/config-rename.review.json
-  - viewer/fixtures/retries.patch
-  - viewer/fixtures/retries.plan.json
-  - viewer/fixtures/retries.review.json
-  - viewer/screenshots/01-l0-headline-light.png
-  - viewer/screenshots/02-l0-headline-dark.png
-  - viewer/screenshots/03-l1-map-light.png
-  - viewer/screenshots/04-l1-map-dark.png
-  - viewer/screenshots/05-l1-map-vs-plan-hover-light.png
-  - viewer/screenshots/06-l2-areas-light.png
-  - viewer/screenshots/07-l2-areas-dark.png
-  - viewer/screenshots/08-l2-blocks-light.png
-  - viewer/screenshots/09-l2-before-after-demo-light.png
-  - viewer/screenshots/10-l3-diff-notes-light.png
-  - viewer/screenshots/11-l3-diff-notes-dark.png
-  - viewer/screenshots/12-l3-all-files-light.png
-  - viewer/screenshots/13-focus-light.png
-  - viewer/screenshots/14-focus-dark.png
-  - viewer/screenshots/15-plan-l1-light.png
-  - viewer/screenshots/16-plan-l2-dark.png
-  - viewer/screenshots/17-comment-light.png
-  - viewer/screenshots/18-single-file-build-light.png
-  - viewer/screenshots/19-l2-full-light.png
-  - viewer/screenshots/demo-http-stage.png
-  - viewer/screenshots/demo-overview.png
-  - viewer/screenshots/demo-seek-step4.png
-  - viewer/screenshots/demo-subset.png
-  - samples/README.md
-  - samples/collie-server.plan/doc.md
-  - samples/collie-ui-slice.review/changes.patch
-  - samples/collie-ui-slice.review/doc.md
-  - samples/replay-lab-backend.review/changes.patch
-  - samples/replay-lab-backend.review/demos/todo-otel.replay
-  - samples/replay-lab-backend.review/demos/webhooks-otel.replay
-  - samples/replay-lab-backend.review/doc.md
-notes:
-  pnpm-lock.yaml: lockfile
-  package.json: "deps: react, elkjs, mermaid, marked, rrweb-player, fflate, yaml"
-  samples/collie-ui-slice.review/changes.patch: "17k lines: the nested sample patches are most of this review's patch"
+pnpm-lock.yaml: lockfile
+package.json: "deps: react, elkjs, mermaid, marked, rrweb-player, fflate, yaml"
+pnpm-workspace.yaml:
+tsconfig.json:
+mise.toml:
+test/fixtures/**: "parser and server fixtures: a retries review + plan, a bundle with two .replay recordings"
+viewer/fixtures/*.json: hand-built Doc JSON for the viewer's dev server
+viewer/fixtures/retries.patch:
+samples/README.md:
 ```

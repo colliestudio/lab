@@ -17,7 +17,7 @@ Every doc renders at four named levels. The viewer has a zoom control (keys `1`�
 
 - Clicking a map node **focuses** that area: only its section, breadcrumb back to the map, neighbours listed as context (Ilograph-style).
 - Sections are ordered by dependency ("what must I understand first"), not alphabetically. Mechanical sections (renames, formatting, generated, lockfiles) go last, collapsed.
-- A review may link the plan it implements (`plan:` in frontmatter). The viewer then marks the map: **planned and done**, **planned, not done**, **deferred** (deferred in the plan or the review; never counted as not done), **unplanned**.
+- A review may link the plan it implements (`plan:` in frontmatter). The viewer then marks the map: **planned and done**, **planned, not done**, **deferred** (deferred in the plan or the review; never counted as not done), **unplanned**. Plan work the review's map doesn't draw (deferred or not done) appears as dashed **ghost** nodes, with the plan's edges to drawn nodes (`planLink.ghosts`).
 
 ## 2. Bundle
 
@@ -115,7 +115,7 @@ Fence info string: ` ```<type> key=value key="quoted value" `. Body: YAML for st
 | `steps` | 2 | YAML: `[{title, detail, status: todo\|doing\|done, area}]` | plan steps |
 | `questions` | 0 | YAML: `[{q, options: [...], recommend, why}]` | decisions needed (shown at level 0 = "the ask") |
 | `checklist` | 2 | YAML list of strings | how to verify |
-| `files` | 3 | optional YAML `{path: note}` (or `{notes, paths}`); files come from `changes.patch` | file tree with change flags, notes, +/− counts |
+| `files` | 3 | optional YAML `{path: note}` (or `{notes, paths}`); paths may be globs (`src/server/**`, `*.ts`) or directories, expanded against `changes.patch` (a file's own note wins over a glob's) | file tree with change flags, notes, +/− counts |
 | `diff` | 3 | a raw unified diff, or empty with `file=path` (from `changes.patch`); attrs `hunks=`, `lines=`; `@<line>: note` lines | split/unified diff with inline notes |
 | `code` | 3 | raw; attrs `lang`, `file`, `start`, `lines`; `@<line>: note` lines | highlighted code with line numbers and notes |
 
@@ -126,7 +126,7 @@ Fence info string: ` ```<type> key=value key="quoted value" `. Body: YAML for st
 - `lines=163-199` (also `lines=18,163-199`): keeps only the part of the (picked) hunks whose **new-side** line numbers fall in the ranges; works alone or after `hunks=`. A removed line goes with the new-side line that follows it, so a replacement stays whole. Sliced hunks keep their real line numbers (header rebuilt). This is how a long new file fits the 150-line budget.
 - Notes: body lines `@<n>: note` (`n` = new-side line number) anywhere in the body, with or without an inline diff (convention: after it). Each must fall on a shown line.
 
-**`code`**: `start=N` numbers the first line `N` (default 1). Body lines `@<n>: note` annotate line `n` (in the same numbering) and are not part of the code. With `file=` naming a file in `changes.patch` and an otherwise empty body, the code is filled from the patch's new side (`lines=a-b` to pick, else all of it; `start` then comes from the patch); this works for whole new files and for changed regions, and stops with a warning at the first line the patch doesn't contain. With a body, `lines=a-b` just sets `start` to `a`. `lang` defaults from the file extension.
+**`code`**: `start=N` numbers the first line `N` (default 1). Body lines `@<n>: note` annotate line `n` (in the same numbering) and are not part of the code; write `\@<n>:` for a code line that really starts with `@<n>:`. With `file=` naming a file in `changes.patch` and an otherwise empty body, the code is filled from the patch's new side (`lines=a-b` to pick, else all of it; `start` then comes from the patch); this works for whole new files and for changed regions, and stops with a warning at the first line the patch doesn't contain. With a body, `lines=a-b` just sets `start` to `a`. `lang` defaults from the file extension.
 
 ## 4. Viewing modes (same viewer everywhere)
 
@@ -146,7 +146,7 @@ Viewer contract (`window.__RECAP__`): `{ doc: Doc, files?: Record<path, base64>,
 
 | command | does |
 |---|---|
-| `recap collect --base main [--head HEAD] [--repo .] -o x.review` (or `--root` instead of `--base`: everything at head vs the empty tree, frontmatter `base: (empty)`) | creates/updates the bundle: `changes.patch`, a `doc.md` scaffold (frontmatter, a map with one node per top-level area, a `files` block, mechanical files flagged) for the agent to rewrite |
+| `recap collect --base main [--head HEAD] [--repo .] [--exclude <pathspec>]... -o x.review` (or `--root` instead of `--base`: everything at head vs the empty tree, frontmatter `base: (empty)`) | creates/updates the bundle: `changes.patch`, a `doc.md` scaffold (frontmatter, a map with one node per top-level area, a `files` block, mechanical files flagged) for the agent to rewrite. `--exclude` (repeatable) is a git pathspec with glob magic (`samples/*.review/**`, a bare dir excludes its tree; `:(…)`/`:!` specs pass through). Mechanical: lockfiles, generated/vendored/minified, nested bundles (`*.review/**`, `*.plan/**`), `.replay`, images and `screenshots/`, JSON under `fixtures/`/`testdata/`/`__snapshots__/`, pure renames, whitespace-only |
 | `recap check x.review` | parse + lint: map present, nodes ↔ sections linked, diff refs resolve, demo files exist, unknown YAML keys (errors), size budgets (map ≤ 12 nodes, ≤ 8 sections, diff and code blocks ≤ 150 lines), tl;dr one sentence |
 | `recap pack x.review/` / `recap unpack x.review` | dir ↔ zip |
 | `recap model x.review` | print the parsed JSON model |

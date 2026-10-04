@@ -7,18 +7,11 @@ declare global {
 export async function loadBoot(): Promise<ViewerBoot | null> {
   if (window.__RECAP__) return window.__RECAP__;
   if (import.meta.env.DEV) {
-    // Dev: ?fixture=<name> (viewer/fixtures/<name>.json, or test:<name> for test/fixtures), default retries.review.
-    // Default goes through the mock API (/dev-api); ?inline uses boot.files like the single-file build.
-    const q = new URLSearchParams(location.search);
-    const name = q.get("fixture") ?? "retries.review";
+    // Dev (`pnpm viewer:dev`): ?bundle=<repo-relative bundle path>, parsed by the real parser behind /dev-api.
+    const name = new URLSearchParams(location.search).get("bundle") ?? "samples/recap-lab.review";
     const api = `/dev-api/${encodeURIComponent(name)}`;
     const doc = await fetch(`${api}/doc`).then((r) => (r.ok ? r.json() : null));
-    if (!doc) return null;
-    if (q.has("inline")) {
-      const raw = await fetch(`/fixtures/${name}.json`).then((r) => r.json());
-      return { doc, files: raw.files ?? {} };
-    }
-    return { doc, api };
+    return doc ? { doc, api } : null;
   }
   return null;
 }

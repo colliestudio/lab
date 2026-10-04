@@ -7,6 +7,7 @@ import {
   type MapEdge, type MapNode, type NodeKind, type Question, type Section, type DiffNote,
 } from "../model.ts";
 import { parsePatch, patchStats } from "./patch.ts";
+import { globToRe, isGlob } from "../glob.ts";
 
 export interface ParseOptions {
   /** Default kind when frontmatter has none (e.g. from the bundle extension). */
@@ -570,13 +571,27 @@ function parseBlock(tok: Extract<Token, { t: "fence" }>, files: FileChange[], wa
       // either {path: note, ...} or {notes: {...}, paths: [...]}
       const flat = !("notes" in o) && !("paths" in o);
       if (!flat) checkKeys(o, "files", where, warn);
+      const rawNotes: Record<string, string> = {};
+      for (const [k, v] of Object.entries(flat ? o : obj(o.notes))) rawNotes[k] = v == null ? "" : String(v);
+      let rawPaths = flat ? undefined : o.paths !== undefined ? strList(o.paths, `${where} paths`, warn) : undefined;
+      if (a.paths) rawPaths = a.paths.split(",").map((s) => s.trim()).filter(Boolean);
+      // globs (`src/server/**`, `*.ts`) and directories expand against changes.patch; a file's own note wins
+      const isFile = (p: string) => files.some((f) => f.path === p || f.oldPath === p);
+      const pattern = (p: string) => isGlob(p) || (!isFile(p) && files.some((f) => f.path.startsWith(p.replace(/\/$/, "") + "/")));
+      const expand = (p: string): string[] => {
+        if (!pattern(p)) {
+          if (files.length && !isFile(p)) warn(`${where}: "${p}" is not in changes.patch`);
+          return [p];
+        }
+        const re = globToRe(p);
+        const hit = files.filter((f) => re.test(f.path)).map((f) => f.path);
+        if (!hit.length) warn(`${where}: glob "${p}" matches no file in changes.patch`);
+        return hit;
+      };
       const notes: Record<string, string> = {};
-      for (const [k, v] of Object.entries(flat ? o : obj(o.notes))) notes[k] = v == null ? "" : String(v);
-      let paths = flat ? undefined : o.paths !== undefined ? strList(o.paths, `${where} paths`, warn) : undefined;
-      if (a.paths) paths = a.paths.split(",").map((s) => s.trim()).filter(Boolean);
-      for (const p of [...Object.keys(notes), ...(paths ?? [])]) {
-        if (files.length && !files.some((f) => f.path === p || f.oldPath === p)) warn(`${where}: "${p}" is not in changes.patch`);
-      }
+      for (const [k, v] of Object.entries(rawNotes)) if (pattern(k)) for (const p of expand(k)) notes[p] ??= v;
+      for (const [k, v] of Object.entries(rawNotes)) if (!pattern(k)) { expand(k); notes[k] = v; }
+      const paths = rawPaths && [...new Set(rawPaths.flatMap(expand))];
       return { ...base, type: "files", notes, ...(paths ? { paths } : {}) };
     }
     case "diff":
@@ -586,6 +601,8 @@ function parseBlock(tok: Extract<Token, { t: "fence" }>, files: FileChange[], wa
 }
 
 const NOTE_RE = /^@(\d+):\s?(.*)$/;
+/** `\@12: x` in a code body is the literal line `@12: x`, not a note. */
+const ESCAPED_NOTE_RE = /^\\(@\d+:)/;
 
 function parseDiffBlock(
   tok: Extract<Token, { t: "fence" }>, base: { id: string; level: Level }, files: FileChange[], warn: (m: string) => void,
@@ -703,7 +720,7 @@ function parseCodeBlock(
   for (const l of tok.body.split("\n")) {
     const m = NOTE_RE.exec(l);
     if (m) notes.push({ line: +m[1], note: m[2].trim() });
-    else body.push(l);
+    else body.push(l.replace(ESCAPED_NOTE_RE, "$1"));
   }
   let code = body.join("\n");
   let start: number | undefined;

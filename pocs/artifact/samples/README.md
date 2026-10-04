@@ -3,7 +3,7 @@
 Start here (the showcase pair):
 
 - `recap-lab.plan/`: the plan for recap-lab itself, reconstructed after the build from the lead's design (D3-D13) so the review has a plan to link; three open questions with recommendations, deferred accounts/teams and GitHub Action in "Later".
-- `recap-lab.review/`: review of recap-lab's whole build (`main..task-1-poc`, 105 files); `plan: ../recap-lab.plan` (press `p` for planned vs done: 7 done, 2 deferred, tests unplanned); a real Collie Demo recording of the viewer (`demos/viewer-tour.replay`, recorded with replay-lab, trace stripped) plus a before-after from its frames; 7 key hunks; real findings (open uploads without a token, raw-HTML markdown on the hosted server).
+- `recap-lab.review/`: review of recap-lab's build as first reviewed (`main...06b211e`, 75 files; the nested sample bundles and viewer screenshots left out with `collect --exclude`); `plan: ../recap-lab.plan` (press `p` for planned vs done: 7 done, tests unplanned, the 2 deferred plan nodes drawn as ghosts); a real Collie Demo recording of the viewer (`demos/viewer-tour.replay`, recorded with replay-lab, trace stripped) plus a before-after from its frames; 7 key hunks; real findings (open uploads without a token, raw-HTML markdown on the hosted server).
 
 Other samples:
 

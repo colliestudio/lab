@@ -1,6 +1,5 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { loadBundle } from "../src/parse/index.ts";
 import type { DocMap } from "../src/model.ts";
@@ -10,7 +9,7 @@ const root = fileURLToPath(new URL("../", import.meta.url));
 const maps: [string, () => Promise<DocMap>][] = [
   ...["replay-lab-backend.review", "collie-ui-slice.review", "collie-server.plan"].map((s) =>
     [s, async () => (await loadBundle(root + "samples/" + s)).doc.map] as [string, () => Promise<DocMap>]),
-  ["retries fixture", async () => JSON.parse(readFileSync(root + "test/fixtures/retries.review.json", "utf8")).map],
+  ["retries fixture", async () => (await loadBundle(root + "test/fixtures/retries.review")).doc.map],
 ];
 
 for (const [name, load] of maps) for (const dir of ["RIGHT", "DOWN"] as const) {

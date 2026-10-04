@@ -105,7 +105,10 @@ export function parsePatch(text: string): FileChange[] {
   return files;
 }
 
-/** Heuristics: lockfiles, generated / vendored / minified files, pure renames, whitespace-only changes. */
+/**
+ * Heuristics: lockfiles, generated / vendored / minified files, nested doc bundles, recordings, images, test fixture
+ * JSON, pure renames, whitespace-only changes.
+ */
 export function isMechanical(f: FileChange): boolean {
   return mechanicalReason(f) !== undefined;
 }
@@ -116,6 +119,10 @@ export function mechanicalReason(f: FileChange): string | undefined {
   if (LOCKFILES.has(base)) return "lockfile";
   if (/(^|\/)(dist|build|out|vendor|node_modules|generated|__generated__|gen)\//.test(p)) return "generated";
   if (/\.(min\.(js|css)|map|snap|pb\.go|lock)$/.test(base) || /[._-]generated\.|\.gen\./.test(base)) return "generated";
+  if (/(^|\/)[^/]+\.(review|plan)\//.test(p)) return "nested bundle";
+  if (/\.replay$/i.test(base)) return "recording";
+  if (/\.(png|jpe?g|gif|webp|avif|ico|bmp|tiff?)$/i.test(base) || /(^|\/)screenshots?\//i.test(p)) return "image";
+  if (/\.json$/i.test(base) && /(^|\/)(fixtures?|__fixtures__|testdata|test-data|__snapshots__|snapshots)\//i.test(p)) return "test fixture";
   if (f.oldPath && f.oldPath !== f.path && f.hunks.length === 0 && !f.binary) return "rename";
   if (f.hunks.length > 0 && f.change === "changed" && f.hunks.every(whitespaceOnly)) return "whitespace";
   return undefined;

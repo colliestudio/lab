@@ -153,9 +153,11 @@ test("plans: goal frontmatter, deferred nodes; planLink keeps deferred apart fro
     "  - { id: a, change: added }", "  - { id: also-later, change: added }", "  - { id: b, change: deferred }", "  - { id: x, change: deferred }",
     "```",
   ].join("\n"));
-  assert.deepEqual(linkPlan(review, plan, "p.plan"), {
+  const { ghosts, ...link } = linkPlan(review, plan, "p.plan");
+  assert.deepEqual(link, {
     src: "p.plan", title: "P", done: ["a", "also-later"], notDone: [], deferred: ["b", "later"], unplanned: [],
   });
+  assert.deepEqual(ghosts?.nodes.map((n) => n.id), ["later"]);
   const both = parseDoc(["---", "title: P", "tldr: T.", "goal: G.", "---"].join("\n"));
   assert.deepEqual([both.tldr, both.goal], ["T.", "G."]);
 });

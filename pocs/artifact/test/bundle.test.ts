@@ -13,7 +13,9 @@ const root = fileURLToPath(new URL("../", import.meta.url));
 
 test("planLink: review ↔ plan by node id", async () => {
   const b = await loadBundle(join(fixtures, "retries.review"));
-  assert.deepEqual(b.doc.planLink, {
+  const { ghosts, ...link } = b.doc.planLink!;
+  assert.deepEqual(ghosts?.nodes.map((n) => n.id), ["alerts"]); // not done and not on the review's map
+  assert.deepEqual(link, {
     src: "../retries.plan",
     title: "Retry failed webhook deliveries",
     done: ["worker", "retry", "attempts", "api", "ui"],

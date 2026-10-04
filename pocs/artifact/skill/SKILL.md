@@ -56,9 +56,9 @@ One diagram per area at most. A section with only prose + diff is fine for small
 
 - `` ```diff file=src/x.ts hunks=2,4 `` with body lines `@<newLine>: note`. Hunks are numbered per file from 1; note lines are new-side numbers and must fall on a shown line.
 - `lines=163-199` (or `lines=18,163-199`) cuts the shown hunks to new-side line ranges, alone or after `hunks=`. A new file is one hunk: over 150 lines, show the part that matters with `lines=` instead of excerpting by hand.
-- Notes say **why / what to check**, not what the line does. 1-4 per hunk. They work on inline (pasted) diffs too.
+- Notes say **why / what to check**, not what the line does. 1-4 per hunk. They work on inline (pasted) diffs too. In a `code` body, a real line starting with `@12:` is written `\@12:`.
 - Plain code without diff markers: `` ```code file=src/x.ts lines=40-80 `` with an empty body pulls those lines from the patch's new side (real line numbers); `@<line>: note` lines annotate it. For sketches (plans), write the body and set `start=N` if the line numbers matter.
-- One `files` block per section (`{path: note}`) for the area's footprint; notes only where the path doesn't say it.
+- One `files` block per section (`{path: note}`) for the area's footprint; notes only where the path doesn't say it. Keys may be globs or dirs (`src/server/**: "…"`); a file's own note wins.
 
 ## Demos (Collie Demo `.replay`)
 
@@ -76,11 +76,11 @@ One diagram per area at most. A section with only prose + diff is fine for small
 - **Decide the hard-to-reverse bets in the plan** (ids, wire format, auth boundary, storage layout); defer the rest explicitly in a "Later" section with `deferred` nodes.
 - One `questions` block in the overview with every open decision: `options`, `recommend`, `why`. Don't ask what you can find out from the code.
 - Standalone: no "revised", "unlike before"; a reader who missed the chat must follow it.
-- **Linkage:** the review sets `plan: ../x.plan` (or URL) and reuses the plan's node ids for the same components; the viewer then marks planned & done / planned, not done / unplanned. New component → new id; same component redesigned → keep the id.
+- **Linkage:** the review sets `plan: ../x.plan` (or URL) and reuses the plan's node ids for the same components; the viewer then marks planned & done / planned, not done / unplanned, and draws plan work missing from the review's map (deferred, not done) as ghost nodes, so don't copy deferred nodes into the review. New component → new id; same component redesigned → keep the id.
 
 ## Workflow
 
-1. `recap collect --base <base> [--head HEAD] -o x.review` → `changes.patch` + a scaffold `doc.md`. A whole repo or a first commit: `--root` (diff against the empty tree, `base: (empty)`).
+1. `recap collect --base <base> [--head HEAD] -o x.review` → `changes.patch` + a scaffold `doc.md`. A whole repo or a first commit: `--root` (diff against the empty tree, `base: (empty)`). Leave out bulk that no reader opens (nested bundles, screenshots, recorded fixtures) with `--exclude '<glob>'` (repeatable) and say so in the mechanical section; re-collect with the same flags.
 2. **Rewrite** `doc.md` (the scaffold is a file dump, not a review): areas, map, sections, picks.
 3. `recap check x.review` until clean (map ↔ sections, diff refs, demo files, budgets, one-sentence tl;dr).
 4. `recap serve x.review` and **look** at each zoom level: does L0 alone tell the story, does the map explain the system, does each node open the right section, do notes sit on the right lines? One fix pass.

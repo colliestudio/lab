@@ -116,6 +116,12 @@ export function App({ boot }: { boot: ViewerBoot }) {
     reloadComments();
   }, [boot.api, reloadComments]);
 
+  const toggleTheme = useCallback(() => {
+    const next = theme === "dark" ? "light" : "dark";
+    setThemePref(next);
+    localStorage.setItem("recap.theme", next);
+  }, [theme]);
+
   // keys
   useEffect(() => {
     const on = (e: KeyboardEvent) => {
@@ -125,20 +131,14 @@ export function App({ boot }: { boot: ViewerBoot }) {
       else if (e.key === "+" || e.key === "=") setLevel(clampLevel(level + 1));
       else if (e.key === "-" || e.key === "_") setLevel(clampLevel(level - 1));
       else if (e.key === "Escape" && focus) setFocus(null);
-      else if (e.key === "t") setThemePref(theme === "dark" ? "light" : "dark");
+      else if (e.key === "t") toggleTheme();
       else if (e.key === "p" && doc.planLink) setOverlay((o) => !o);
       else return;
       e.preventDefault();
     };
     window.addEventListener("keydown", on);
     return () => window.removeEventListener("keydown", on);
-  }, [level, focus, theme, setLevel, setFocus, doc.planLink]);
-
-  const toggleTheme = () => {
-    const next = theme === "dark" ? "light" : "dark";
-    setThemePref(next);
-    localStorage.setItem("recap.theme", next);
-  };
+  }, [level, focus, toggleTheme, setLevel, setFocus, doc.planLink]);
 
   const ctx: ViewerCtx = { doc, getFile, level, setLevel, theme, focus, setFocus, revealFile, api: boot.api, comments, addComment };
   const focused = focus ? doc.sections.find((s) => s.id === focus) : undefined;
@@ -210,10 +210,11 @@ function TopBar({ doc, theme, toggleTheme, overlay, setOverlay }: {
 
 function NextLevel({ doc }: { doc: Doc }) {
   const { setLevel } = useViewer();
-  const nodes = doc.map.nodes.filter((n) => n.change !== "unchanged").length;
+  // same count as the headline card: areas = non-mechanical sections
+  const areas = doc.sections.filter((s) => !s.mechanical).length;
   return (
     <button className="next-level" onClick={() => setLevel(1)}>
-      <span>Zoom in to the <b>map</b>: {plural(nodes, "changed area")}, {plural(doc.map.edges.length, "connection")}</span>
+      <span>Zoom in to the <b>map</b>: {plural(areas, "area")}, {plural(doc.map.edges.length, "connection")}</span>
       <span className="kbd">2</span>
     </button>
   );

@@ -340,8 +340,9 @@ code, pre, .mono { font-family: var(--mono); font-size: 0.92em; }
 .sw.ch-deferred { border-style: dotted; }
 .sw.mech { background: var(--collie-color-neutral-subtle); border: 1.4px solid var(--collie-color-border); opacity: .6; }
 .pm-sw { width: 10px; height: 10px; border-radius: 50%; }
-.map-missing code { margin-left: 4px; padding: 1px 5px; border-radius: 4px; background: var(--collie-color-neutral-subtle); }
-.map-missing { text-align: center; font-size: 12.5px; padding: 0 0 10px; color: var(--muted); }
+.mnode.ghost { opacity: .55; }
+.mnode.ghost .mnode-box { fill: none; stroke-dasharray: 2 4; }
+.sw.ghost { background: none; border: 1.5px dashed var(--collie-color-border-hover); opacity: .7; }
 
 .overview { margin: 16px 4px 0; font-size: 15px; color: var(--fg); }
 

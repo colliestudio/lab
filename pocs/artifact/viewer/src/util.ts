@@ -2,22 +2,8 @@ import type { Change, Doc, FileChange, MapNode, Section } from "../../src/model.
 
 export const cx = (...a: (string | false | null | undefined)[]) => a.filter(Boolean).join(" ");
 
-export function globToRe(glob: string): RegExp {
-  let re = "";
-  for (let i = 0; i < glob.length; i++) {
-    const c = glob[i];
-    if (c === "*") {
-      if (glob[i + 1] === "*") { re += ".*"; i++; if (glob[i + 1] === "/") i++; }
-      else re += "[^/]*";
-    } else if (c === "?") re += "[^/]";
-    else re += c.replace(/[.+^${}()|[\]\\]/g, "\\$&");
-  }
-  // a bare directory glob ("internal/retry") matches everything under it
-  return new RegExp(`^${re}(/.*)?$`);
-}
-
-export const matchAny = (path: string, globs: string[] | undefined) =>
-  !!globs?.some((g) => globToRe(g).test(path));
+export { globToRe, matchAny } from "../../src/glob.ts";
+import { matchAny } from "../../src/glob.ts";
 
 export const LEVELS = [
   { n: 0, name: "Headline" },

@@ -1,45 +1,40 @@
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import { viteSingleFile } from "vite-plugin-singlefile";
-import { readFileSync, existsSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 const here = dirname(fileURLToPath(import.meta.url));
+const repoRoot = resolve(here, "..");
 
-// Dev only: a mock of the serve API so the viewer's fetch + comments paths work without the real server.
-// /dev-api/<fixture>/{doc,files/<path>,comments}. Fixture = viewer/fixtures/<name>.json (a ViewerBoot or a bare Doc),
-// or test/fixtures/<name>.json when <name> starts with "test:".
+// Dev only: a mock of the serve API backed by the real parser, so the viewer's fetch + comments paths work without
+// `recap serve`. /dev-api/<bundle>/{doc,files/<path>,comments}; <bundle> = a repo-relative bundle path
+// (default samples/recap-lab.review, see viewer/src/boot.ts). Comments stay in memory.
 function devApi(): Plugin {
   const comments = new Map<string, unknown[]>();
-  const load = (name: string) => {
-    const p = name.startsWith("test:")
-      ? join(here, "../test/fixtures", name.slice(5) + ".json")
-      : join(here, "fixtures", name + ".json");
-    if (!existsSync(p)) return null;
-    const j = JSON.parse(readFileSync(p, "utf8"));
-    return j.format ? { doc: j } : j;
-  };
   return {
     name: "recap-dev-api",
     apply: "serve",
     configureServer(server) {
-      server.middlewares.use((req, res, next) => {
+      server.middlewares.use(async (req, res, next) => {
         const m = req.url?.match(/^\/dev-api\/([^/]+)\/(.*?)(\?.*)?$/);
         if (!m) return next();
         const name = decodeURIComponent(m[1]);
         const rest = decodeURIComponent(m[2]);
-        const boot = load(name);
-        if (!boot) { res.statusCode = 404; return res.end("no fixture " + name); }
+        const path = resolve(repoRoot, name);
+        if (!path.startsWith(repoRoot + "/") || !existsSync(path)) { res.statusCode = 404; return res.end("no bundle " + name); }
+        const { loadBundle } = await import("../src/parse/index.ts");
+        const b = await loadBundle(path);
         const json = (v: unknown) => { res.setHeader("content-type", "application/json"); res.end(JSON.stringify(v)); };
-        if (rest === "doc") return json(boot.doc);
+        if (rest === "doc") return json(b.doc);
         if (rest.startsWith("files/")) {
-          const b64 = boot.files?.[rest.slice(6)];
-          if (!b64) { res.statusCode = 404; return res.end("no file"); }
-          return res.end(Buffer.from(b64, "base64"));
+          const data = b.files.read(rest.slice(6));
+          if (!data) { res.statusCode = 404; return res.end("no file"); }
+          return res.end(data);
         }
         if (rest === "comments") {
-          if (!comments.has(name)) comments.set(name, boot.comments ?? []);
+          if (!comments.has(name)) comments.set(name, []);
           const list = comments.get(name)!;
           if (req.method === "POST") {
             let body = "";
