@@ -71,7 +71,7 @@ const overlaps = (a: Box, b: Box, m = 2) =>
  * the first spot that clears every node, group title and already-placed label wins. Labels with no free spot
  * are `hidden`: drawn only while one of the edge's nodes (or the edge) is hovered.
  */
-function placeLabels(edges: Layout["edges"], pts: { x: number; y: number }[][], obstacles: Box[]) {
+function placeLabels(edges: Layout["edges"], pts: { x: number; y: number }[][], obstacles: Box[], W: number, H: number) {
   const placed: Box[] = [];
   const order = edges.map((_, i) => i).sort((a, b) => Number(edges[b].change !== undefined && edges[b].change !== "unchanged")
     - Number(edges[a].change !== undefined && edges[a].change !== "unchanged"));
@@ -101,6 +101,7 @@ function placeLabels(edges: Layout["edges"], pts: { x: number; y: number }[][], 
     let best: Box | undefined;
     for (const c of cands) {
       const box = { x: c.x - w / 2, y: c.y - h / 2, w, h };
+      if (box.x < 1 || box.y < 1 || box.x + w > W - 1 || box.y + h > H - 1) continue;
       if (obstacles.some((o) => overlaps(box, o)) || placed.some((o) => overlaps(box, o, 3))) continue;
       best = box;
       break;
@@ -186,7 +187,7 @@ async function layout(map: DocMap, dir: Dir): Promise<Layout> {
   };
   collect(res);
   const groupTitles = groups.map((g) => ({ x: g.box.x, y: g.box.y, w: Math.min(g.box.w, textW(g.label.toUpperCase(), "600 10.5px sans-serif") * 1.12 + 28), h: 28 }));
-  placeLabels(outEdges, routes, [...nodes.values(), ...groupTitles]);
+  placeLabels(outEdges, routes, [...nodes.values(), ...groupTitles], res.width ?? 0, res.height ?? 0);
   return { dir, w: res.width ?? 0, h: res.height ?? 0, nodes, groups, edges: outEdges };
 }
 
@@ -385,7 +386,7 @@ export function MapView({ focusSection, compact, overlay, onOpen }: {
           </div>
         </div>
       )}
-      {!compact && <Legend map={map} overlay={!!overlay && !!doc.planLink} hiddenLabels={hiddenLabels} />}
+      {!compact && <Legend map={map} overlay={!!overlay && !!doc.planLink} hiddenLabels={hiddenLabels} deferredCount={doc.planLink?.deferred?.length ?? 0} />}
       {missingPlanned.length > 0 && (
         <div className="map-missing">
           <span className="pm-text pm-notDone">Planned, not in this change:</span> {missingPlanned.map((id) => <code key={id}>{id}</code>)}
@@ -397,14 +398,14 @@ export function MapView({ focusSection, compact, overlay, onOpen }: {
 
 export const PLAN_LABEL: Record<PlanMark, string> = { done: "planned · done", notDone: "planned · not done", deferred: "deferred", unplanned: "unplanned" };
 
-function Legend({ map, overlay, hiddenLabels }: { map: DocMap; overlay: boolean; hiddenLabels: number }) {
+function Legend({ map, overlay, hiddenLabels, deferredCount }: { map: DocMap; overlay: boolean; hiddenLabels: number; deferredCount: number }) {
   const present = (["added", "changed", "removed", "planned", "deferred", "unchanged"] as const).filter((c) => map.nodes.some((n) => n.change === c));
   const mech = map.nodes.some((n) => n.mechanical);
   return (
     <div className="map-legend">
       {present.map((c) => <span key={c} className="lg"><i className={cx("sw", `ch-${c}`)} />{CHANGE_LABEL[c]}</span>)}
       {mech && <span className="lg"><i className="sw mech" />mechanical</span>}
-      {overlay && (["done", "notDone", "deferred", "unplanned"] as const).map((m) => (
+      {overlay && (["done", "notDone", "deferred", "unplanned"] as const).filter((m) => m !== "deferred" || deferredCount > 0).map((m) => (
         <span key={m} className="lg"><i className={cx("pm-sw", `pm-${m}`)} />{PLAN_LABEL[m]}</span>
       ))}
       {hiddenLabels > 0 && <span className="lg lg-note">{plural(hiddenLabels, "edge label")} on hover</span>}

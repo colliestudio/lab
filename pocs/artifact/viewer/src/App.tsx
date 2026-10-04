@@ -120,7 +120,7 @@ export function App({ boot }: { boot: ViewerBoot }) {
   useEffect(() => {
     const on = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
-      if (t.closest("input, textarea, [contenteditable]") || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (t.closest?.("input, textarea, [contenteditable]") || e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key >= "1" && e.key <= "4") setLevel((Number(e.key) - 1) as Level);
       else if (e.key === "+" || e.key === "=") setLevel(clampLevel(level + 1));
       else if (e.key === "-" || e.key === "_") setLevel(clampLevel(level - 1));
