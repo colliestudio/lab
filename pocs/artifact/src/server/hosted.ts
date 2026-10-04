@@ -6,7 +6,7 @@ import { join, resolve } from "node:path";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import type { AddressInfo } from "node:net";
 import type { Doc } from "../model.ts";
-import { loadBundle } from "./_stub-load.ts"; // MERGE: swap for "../parse/index.ts"
+import { loadBundle } from "../parse/index.ts";
 import { appendComment, readComments, writeJsonAtomic, zipReader, type BundleReader } from "./bundle.ts";
 import { guard, handleApi, injectBoot, readBody, send, sendJson, viewerTemplate } from "./http.ts";
 import type { Running } from "./serve.ts";

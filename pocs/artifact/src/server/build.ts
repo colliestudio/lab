@@ -1,6 +1,6 @@
 // `recap build`: one self-contained HTML (viewer + doc + referenced files as base64), no API.
 import { resolve } from "node:path";
-import { loadBundle } from "./_stub-load.ts"; // MERGE: swap for "../parse/index.ts"
+import { loadBundle } from "../parse/index.ts";
 import { openBundle, referencedFiles, slimReplay } from "./bundle.ts";
 import { injectBoot, viewerTemplate } from "./http.ts";
 

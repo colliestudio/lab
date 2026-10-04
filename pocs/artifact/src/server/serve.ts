@@ -4,7 +4,7 @@ import { watch, type FSWatcher } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
 import type { AddressInfo } from "node:net";
 import type { Doc } from "../model.ts";
-import { loadBundle } from "./_stub-load.ts"; // MERGE: swap for "../parse/index.ts"
+import { loadBundle } from "../parse/index.ts";
 import { appendComment, commentsFile, openBundle, readComments, type BundleReader } from "./bundle.ts";
 import { guard, handleApi, injectBoot, send, viewerTemplate, type DocSource } from "./http.ts";
 
