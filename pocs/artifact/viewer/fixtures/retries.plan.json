@@ -1,0 +1,366 @@
+{
+ "doc": {
+  "format": "collie-doc/0",
+  "kind": "plan",
+  "title": "Retry failed webhook deliveries",
+  "tldr": "Retry failed deliveries with capped backoff instead of the blind cron, and let operators see and replay deliveries that give up.",
+  "status": "accepted",
+  "risk": {
+   "level": "medium",
+   "why": "Touches the consumer's ack path, the one place that can drop events."
+  },
+  "ask": "Pick the backoff caps and decide whether failures should alert.",
+  "meta": {
+   "repo": "acme/relay",
+   "base": "main",
+   "author": "planning agent",
+   "date": "2026-10-02"
+  },
+  "map": {
+   "groups": [
+    {
+     "id": "worker",
+     "label": "Delivery worker"
+    },
+    {
+     "id": "ops",
+     "label": "Operator surface"
+    }
+   ],
+   "nodes": [
+    {
+     "id": "queue",
+     "label": "Delivery queue",
+     "kind": "queue",
+     "change": "unchanged"
+    },
+    {
+     "id": "consumer",
+     "label": "Delivery consumer",
+     "kind": "module",
+     "change": "changed",
+     "group": "worker",
+     "section": "consumer"
+    },
+    {
+     "id": "retry",
+     "label": "Retry scheduler",
+     "kind": "module",
+     "change": "planned",
+     "group": "worker",
+     "section": "retry"
+    },
+    {
+     "id": "attempts",
+     "label": "delivery_attempts",
+     "kind": "db",
+     "change": "changed",
+     "section": "schema"
+    },
+    {
+     "id": "dest",
+     "label": "Destination endpoint",
+     "kind": "external",
+     "change": "unchanged"
+    },
+    {
+     "id": "api",
+     "label": "Failed deliveries API",
+     "kind": "api",
+     "change": "planned",
+     "group": "ops",
+     "section": "api"
+    },
+    {
+     "id": "ui",
+     "label": "Failed deliveries page",
+     "kind": "ui",
+     "change": "planned",
+     "group": "ops",
+     "section": "ui"
+    },
+    {
+     "id": "alerts",
+     "label": "Failure alerts",
+     "kind": "service",
+     "change": "planned",
+     "group": "ops",
+     "section": "alerts"
+    }
+   ],
+   "edges": [
+    {
+     "from": "queue",
+     "to": "consumer",
+     "label": "deliver"
+    },
+    {
+     "from": "consumer",
+     "to": "dest",
+     "label": "POST event"
+    },
+    {
+     "from": "consumer",
+     "to": "retry",
+     "label": "on failure",
+     "change": "planned"
+    },
+    {
+     "from": "retry",
+     "to": "queue",
+     "label": "delayed publish",
+     "change": "planned"
+    },
+    {
+     "from": "consumer",
+     "to": "attempts",
+     "label": "record",
+     "change": "changed"
+    },
+    {
+     "from": "ui",
+     "to": "api",
+     "label": "list / replay",
+     "change": "planned"
+    },
+    {
+     "from": "api",
+     "to": "attempts",
+     "label": "query",
+     "change": "planned"
+    },
+    {
+     "from": "attempts",
+     "to": "alerts",
+     "label": "failed_at set",
+     "change": "planned"
+    }
+   ]
+  },
+  "overview": "Replace the cron with retries that live in the broker (delayed publish), record when a delivery gives up, and build the smallest operator surface that makes those deliveries visible. Alerts are optional and depend on decision 2.",
+  "sections": [
+   {
+    "id": "retry",
+    "title": "Retry scheduler",
+    "mechanical": false,
+    "summary": "New `internal/retry` package: a backoff policy plus a scheduler that publishes delayed copies to the delivery queue.",
+    "blocks": [
+     {
+      "type": "markdown",
+      "md": "Options considered:\n\n1. **Broker delayed publish** (chosen): no new storage, survives restarts.\n2. A `retries` table polled every few seconds: more moving parts, a hot table.\n3. Keep the cron, add backoff: still races with the consumer.",
+      "id": "retry-1",
+      "level": 2
+     },
+     {
+      "type": "steps",
+      "steps": [
+       {
+        "title": "Policy with Delay(attempt)",
+        "detail": "Capped exponential, full jitter. Unit-test the cap and exhaustion.",
+        "status": "todo"
+       },
+       {
+        "title": "Scheduler.Schedule / Replay",
+        "detail": "Thin wrapper over `PublishAt`.",
+        "status": "todo"
+       },
+       {
+        "title": "Bump amqp091-go for x-delay support",
+        "status": "todo"
+       }
+      ],
+      "id": "retry-2",
+      "level": 2
+     },
+     {
+      "type": "code",
+      "lang": "go",
+      "file": "internal/retry/scheduler.go (sketch)",
+      "code": "type Scheduler struct {\n\tqueue  deliverymq.Publisher\n\tpolicy Policy\n}\n\nfunc (s *Scheduler) Schedule(ctx context.Context, d models.Delivery) (Outcome, error)\nfunc (s *Scheduler) Replay(ctx context.Context, d models.Delivery) error\n",
+      "id": "retry-3",
+      "level": 3
+     }
+    ]
+   },
+   {
+    "id": "consumer",
+    "title": "Consumer: schedule, then ack",
+    "mechanical": false,
+    "summary": "On failure the consumer calls the scheduler and acks the original only once the retry is queued.",
+    "blocks": [
+     {
+      "type": "flow",
+      "mermaid": "flowchart LR\n  A[deliver] --> B{2xx?}\n  B -- yes --> C[ack]\n  B -- no --> D[Schedule retry]\n  D -- queued --> C\n  D -- exhausted --> E[MarkFailed] --> C\n  D -- error --> F[nack]",
+      "id": "consumer-1",
+      "level": 2
+     },
+     {
+      "type": "callout",
+      "tone": "risk",
+      "md": "Never ack before the retry is queued: that order drops events on a crash.",
+      "id": "consumer-2",
+      "level": 2
+     }
+    ]
+   },
+   {
+    "id": "schema",
+    "title": "Schema: record failures",
+    "mechanical": false,
+    "summary": "Add `next_attempt_at` and `failed_at` to `delivery_attempts`, plus a partial index for the operator list.",
+    "blocks": [
+     {
+      "type": "data-model",
+      "entities": [
+       {
+        "name": "delivery_attempts",
+        "change": "changed",
+        "fields": [
+         {
+          "name": "delivery_id",
+          "type": "uuid",
+          "change": "unchanged"
+         },
+         {
+          "name": "next_attempt_at",
+          "type": "timestamptz?",
+          "change": "planned"
+         },
+         {
+          "name": "failed_at",
+          "type": "timestamptz?",
+          "change": "planned"
+         }
+        ]
+       }
+      ],
+      "id": "schema-1",
+      "level": 2
+     }
+    ]
+   },
+   {
+    "id": "api",
+    "title": "Failed deliveries API",
+    "mechanical": false,
+    "summary": "List failed deliveries per tenant and replay one.",
+    "blocks": [
+     {
+      "type": "api",
+      "endpoints": [
+       {
+        "method": "GET",
+        "path": "/tenants/{tenant}/deliveries/failed",
+        "change": "planned",
+        "summary": "Cursor-paginated, newest first"
+       },
+       {
+        "method": "POST",
+        "path": "/tenants/{tenant}/deliveries/{id}/replay",
+        "change": "planned",
+        "summary": "One immediate attempt"
+       }
+      ],
+      "id": "api-1",
+      "level": 2
+     }
+    ]
+   },
+   {
+    "id": "ui",
+    "title": "Failed deliveries page",
+    "mechanical": false,
+    "summary": "A table of failed deliveries with last error, attempt count and a Replay button.",
+    "blocks": [
+     {
+      "type": "before-after",
+      "before": {
+       "src": "assets/before.svg",
+       "caption": "Today: event log only"
+      },
+      "after": {
+       "src": "assets/sketch.svg",
+       "caption": "Sketch: failed deliveries table"
+      },
+      "id": "ui-1",
+      "level": 2
+     }
+    ]
+   },
+   {
+    "id": "alerts",
+    "title": "Failure alerts (optional)",
+    "mechanical": false,
+    "summary": "Notify the tenant when a destination keeps failing. Only if decision 2 says yes.",
+    "blocks": [
+     {
+      "type": "callout",
+      "tone": "info",
+      "md": "Could reuse the existing tenant webhook for `delivery.failed`; no email infrastructure needed.",
+      "id": "alerts-1",
+      "level": 2
+     }
+    ]
+   },
+   {
+    "id": "verify",
+    "title": "How we'll know it works",
+    "mechanical": false,
+    "summary": "Kill-the-worker test plus a staged rollout behind `retries_v2`.",
+    "blocks": [
+     {
+      "type": "checklist",
+      "items": [
+       "Unit tests for the policy cap and exhaustion",
+       "Integration test: kill worker between Schedule and Ack, expect a duplicate not a drop",
+       "Internal tenants on `retries_v2` for a week"
+      ],
+      "id": "verify-1",
+      "level": 2
+     },
+     {
+      "type": "files",
+      "notes": {
+       "internal/retry/backoff.go": "Policy, Delay",
+       "internal/retry/scheduler.go": "Schedule, Replay",
+       "internal/deliverymq/consumer.go": "failure branch",
+       "internal/migrations/0042_delivery_attempts_retry.up.sql": "columns + index",
+       "internal/api/failed_deliveries.go": "List, Replay",
+       "web/src/pages/FailedDeliveries.tsx": "new page"
+      },
+      "id": "verify-2",
+      "level": 3
+     }
+    ]
+   }
+  ],
+  "files": [],
+  "questions": [
+   {
+    "q": "Backoff caps?",
+    "options": [
+     "12 retries / ~9 h",
+     "8 retries / ~3 h",
+     "18 retries / ~3 days"
+    ],
+    "recommend": "12 retries / ~9 h",
+    "why": "Covers an outage window without keeping dead endpoints alive overnight."
+   },
+   {
+    "q": "Alert tenants when a delivery gives up?",
+    "options": [
+     "Not now",
+     "Webhook event",
+     "Email"
+    ],
+    "recommend": "Not now",
+    "why": "The Failed page covers operators; tenant alerts can follow once we see volumes."
+   }
+  ],
+  "warnings": []
+ },
+ "files": {
+  "assets/before.svg": "PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2NDAiIGhlaWdodD0iNDAwIiB2aWV3Qm94PSIwIDAgNjQwIDQwMCIgZm9udC1mYW1pbHk9Ii1hcHBsZS1zeXN0ZW0sc3lzdGVtLXVpLHNhbnMtc2VyaWYiPgo8cmVjdCB3aWR0aD0iNjQwIiBoZWlnaHQ9IjQwMCIgZmlsbD0iI2Y3ZjdmOCIvPgo8cmVjdCB3aWR0aD0iNjQwIiBoZWlnaHQ9IjM2IiBmaWxsPSIjZmZmZmZmIi8+PGxpbmUgeDE9IjAiIHkxPSIzNiIgeDI9IjY0MCIgeTI9IjM2IiBzdHJva2U9IiNlNGU0ZTciLz4KPGNpcmNsZSBjeD0iMTgiIGN5PSIxOCIgcj0iNiIgZmlsbD0iIzYzNjZmMSIvPjx0ZXh0IHg9IjMyIiB5PSIyMiIgZm9udC1zaXplPSIxMiIgZm9udC13ZWlnaHQ9IjYwMCIgZmlsbD0iIzE4MTgxYiI+b3V0cG9zdDwvdGV4dD4KPHRleHQgeD0iOTYiIHk9IjIyIiBmb250LXNpemU9IjExIiBmaWxsPSIjNzE3MTdhIj5hY21lIC8gcHJvZHVjdGlvbjwvdGV4dD4KPHJlY3QgeD0iMCIgeT0iMzciIHdpZHRoPSIxNTAiIGhlaWdodD0iMzYzIiBmaWxsPSIjZmZmZmZmIi8+PGxpbmUgeDE9IjE1MCIgeTE9IjM3IiB4Mj0iMTUwIiB5Mj0iNDAwIiBzdHJva2U9IiNlNGU0ZTciLz4KPHJlY3QgeD0iOCIgeT0iNTIiIHdpZHRoPSIxMzQiIGhlaWdodD0iMjIiIHJ4PSI1IiBmaWxsPSJub25lIi8+PHRleHQgeD0iMTgiIHk9IjY3IiBmb250LXNpemU9IjExLjUiIGZpbGw9IiMzZjNmNDYiIGZvbnQtd2VpZ2h0PSI0MDAiPkRlc3RpbmF0aW9uczwvdGV4dD48cmVjdCB4PSI4IiB5PSI3OCIgd2lkdGg9IjEzNCIgaGVpZ2h0PSIyMiIgcng9IjUiIGZpbGw9IiNlZWYyZmYiLz48dGV4dCB4PSIxOCIgeT0iOTMiIGZvbnQtc2l6ZT0iMTEuNSIgZmlsbD0iIzQzMzhjYSIgZm9udC13ZWlnaHQ9IjYwMCI+RXZlbnRzPC90ZXh0PjxyZWN0IHg9IjgiIHk9IjEwNCIgd2lkdGg9IjEzNCIgaGVpZ2h0PSIyMiIgcng9IjUiIGZpbGw9Im5vbmUiLz48dGV4dCB4PSIxOCIgeT0iMTE5IiBmb250LXNpemU9IjExLjUiIGZpbGw9IiMzZjNmNDYiIGZvbnQtd2VpZ2h0PSI0MDAiPlNldHRpbmdzPC90ZXh0Pgo8dGV4dCB4PSIxNzAiIHk9IjY4IiBmb250LXNpemU9IjE2IiBmb250LXdlaWdodD0iNjAwIiBmaWxsPSIjMTgxODFiIj5FdmVudHM8L3RleHQ+CjxyZWN0IHg9IjE3MCIgeT0iODQiIHdpZHRoPSI0NTAiIGhlaWdodD0iMjkwIiByeD0iOCIgZmlsbD0iI2ZmZiIgc3Ryb2tlPSIjZTRlNGU3Ii8+PGxpbmUgeDE9IjE3MCIgeTE9IjExNCIgeDI9IjYyMCIgeTI9IjExNCIgc3Ryb2tlPSIjZWNlY2VmIi8+PHRleHQgeD0iMTg0IiB5PSIxMDMiIGZvbnQtc2l6ZT0iMTEiIGZpbGw9IiNhMWExYWEiPkVWRU5UPC90ZXh0Pjx0ZXh0IHg9IjMzMCIgeT0iMTAzIiBmb250LXNpemU9IjExIiBmaWxsPSIjYTFhMWFhIj5UT1BJQzwvdGV4dD48dGV4dCB4PSI0NTAiIHk9IjEwMyIgZm9udC1zaXplPSIxMSIgZmlsbD0iI2ExYTFhYSI+U1RBVFVTPC90ZXh0Pjx0ZXh0IHg9IjU0MCIgeT0iMTAzIiBmb250LXNpemU9IjExIiBmaWxsPSIjYTFhMWFhIj5USU1FPC90ZXh0PjxsaW5lIHgxPSIxNzAiIHkxPSIxNDQiIHgyPSI2MjAiIHkyPSIxNDQiIHN0cm9rZT0iI2VjZWNlZiIvPjx0ZXh0IHg9IjE4NCIgeT0iMTMzIiBmb250LXNpemU9IjExIiBmaWxsPSIjM2YzZjQ2Ij5ldnRfOTNhPC90ZXh0Pjx0ZXh0IHg9IjMzMCIgeT0iMTMzIiBmb250LXNpemU9IjExIiBmaWxsPSIjM2YzZjQ2Ij5vcmRlci5jcmVhdGVkPC90ZXh0Pjx0ZXh0IHg9IjQ1MCIgeT0iMTMzIiBmb250LXNpemU9IjExIiBmaWxsPSIjMTU4MDNkIj5kZWxpdmVyZWQ8L3RleHQ+PHRleHQgeD0iNTQwIiB5PSIxMzMiIGZvbnQtc2l6ZT0iMTEiIGZpbGw9IiM3MTcxN2EiPjFtIGFnbzwvdGV4dD48bGluZSB4MT0iMTcwIiB5MT0iMTc0IiB4Mj0iNjIwIiB5Mj0iMTc0IiBzdHJva2U9IiNlY2VjZWYiLz48dGV4dCB4PSIxODQiIHk9IjE2MyIgZm9udC1zaXplPSIxMSIgZmlsbD0iIzNmM2Y0NiI+ZXZ0XzkzYjwvdGV4dD48dGV4dCB4PSIzMzAiIHk9IjE2MyIgZm9udC1zaXplPSIxMSIgZmlsbD0iIzNmM2Y0NiI+b3JkZXIucGFpZDwvdGV4dD48dGV4dCB4PSI0NTAiIHk9IjE2MyIgZm9udC1zaXplPSIxMSIgZmlsbD0iIzE1ODAzZCI+ZGVsaXZlcmVkPC90ZXh0Pjx0ZXh0IHg9IjU0MCIgeT0iMTYzIiBmb250LXNpemU9IjExIiBmaWxsPSIjNzE3MTdhIj40bSBhZ288L3RleHQ+PGxpbmUgeDE9IjE3MCIgeTE9IjIwNCIgeDI9IjYyMCIgeTI9IjIwNCIgc3Ryb2tlPSIjZWNlY2VmIi8+PHRleHQgeD0iMTg0IiB5PSIxOTMiIGZvbnQtc2l6ZT0iMTEiIGZpbGw9IiMzZjNmNDYiPmV2dF85M2M8L3RleHQ+PHRleHQgeD0iMzMwIiB5PSIxOTMiIGZvbnQtc2l6ZT0iMTEiIGZpbGw9IiMzZjNmNDYiPm9yZGVyLnBhaWQ8L3RleHQ+PHRleHQgeD0iNDUwIiB5PSIxOTMiIGZvbnQtc2l6ZT0iMTEiIGZpbGw9IiNiNDUzMDkiPnJldHJ5aW5n4oCmPC90ZXh0Pjx0ZXh0IHg9IjU0MCIgeT0iMTkzIiBmb250LXNpemU9IjExIiBmaWxsPSIjNzE3MTdhIj43bSBhZ288L3RleHQ+PGxpbmUgeDE9IjE3MCIgeTE9IjIzNCIgeDI9IjYyMCIgeTI9IjIzNCIgc3Ryb2tlPSIjZWNlY2VmIi8+PHRleHQgeD0iMTg0IiB5PSIyMjMiIGZvbnQtc2l6ZT0iMTEiIGZpbGw9IiMzZjNmNDYiPmV2dF85M2Q8L3RleHQ+PHRleHQgeD0iMzMwIiB5PSIyMjMiIGZvbnQtc2l6ZT0iMTEiIGZpbGw9IiMzZjNmNDYiPnVzZXIudXBkYXRlZDwvdGV4dD48dGV4dCB4PSI0NTAiIHk9IjIyMyIgZm9udC1zaXplPSIxMSIgZmlsbD0iIzE1ODAzZCI+ZGVsaXZlcmVkPC90ZXh0Pjx0ZXh0IHg9IjU0MCIgeT0iMjIzIiBmb250LXNpemU9IjExIiBmaWxsPSIjNzE3MTdhIj4xMG0gYWdvPC90ZXh0PjxsaW5lIHgxPSIxNzAiIHkxPSIyNjQiIHgyPSI2MjAiIHkyPSIyNjQiIHN0cm9rZT0iI2VjZWNlZiIvPjx0ZXh0IHg9IjE4NCIgeT0iMjUzIiBmb250LXNpemU9IjExIiBmaWxsPSIjM2YzZjQ2Ij5ldnRfOTNlPC90ZXh0Pjx0ZXh0IHg9IjMzMCIgeT0iMjUzIiBmb250LXNpemU9IjExIiBmaWxsPSIjM2YzZjQ2Ij5vcmRlci5zaGlwcGVkPC90ZXh0Pjx0ZXh0IHg9IjQ1MCIgeT0iMjUzIiBmb250LXNpemU9IjExIiBmaWxsPSIjYjQ1MzA5Ij5yZXRyeWluZ+KApjwvdGV4dD48dGV4dCB4PSI1NDAiIHk9IjI1MyIgZm9udC1zaXplPSIxMSIgZmlsbD0iIzcxNzE3YSI+MTNtIGFnbzwvdGV4dD48bGluZSB4MT0iMTcwIiB5MT0iMjk0IiB4Mj0iNjIwIiB5Mj0iMjk0IiBzdHJva2U9IiNlY2VjZWYiLz48dGV4dCB4PSIxODQiIHk9IjI4MyIgZm9udC1zaXplPSIxMSIgZmlsbD0iIzNmM2Y0NiI+ZXZ0XzkzZjwvdGV4dD48dGV4dCB4PSIzMzAiIHk9IjI4MyIgZm9udC1zaXplPSIxMSIgZmlsbD0iIzNmM2Y0NiI+b3JkZXIuY3JlYXRlZDwvdGV4dD48dGV4dCB4PSI0NTAiIHk9IjI4MyIgZm9udC1zaXplPSIxMSIgZmlsbD0iIzE1ODAzZCI+ZGVsaXZlcmVkPC90ZXh0Pjx0ZXh0IHg9IjU0MCIgeT0iMjgzIiBmb250LXNpemU9IjExIiBmaWxsPSIjNzE3MTdhIj4xNm0gYWdvPC90ZXh0PjxsaW5lIHgxPSIxNzAiIHkxPSIzMjQiIHgyPSI2MjAiIHkyPSIzMjQiIHN0cm9rZT0iI2VjZWNlZiIvPjx0ZXh0IHg9IjE4NCIgeT0iMzEzIiBmb250LXNpemU9IjExIiBmaWxsPSIjM2YzZjQ2Ij5ldnRfOTQwPC90ZXh0Pjx0ZXh0IHg9IjMzMCIgeT0iMzEzIiBmb250LXNpemU9IjExIiBmaWxsPSIjM2YzZjQ2Ij51c2VyLmNyZWF0ZWQ8L3RleHQ+PHRleHQgeD0iNDUwIiB5PSIzMTMiIGZvbnQtc2l6ZT0iMTEiIGZpbGw9IiMxNTgwM2QiPmRlbGl2ZXJlZDwvdGV4dD48dGV4dCB4PSI1NDAiIHk9IjMxMyIgZm9udC1zaXplPSIxMSIgZmlsbD0iIzcxNzE3YSI+MTltIGFnbzwvdGV4dD48bGluZSB4MT0iMTcwIiB5MT0iMzU0IiB4Mj0iNjIwIiB5Mj0iMzU0IiBzdHJva2U9IiNlY2VjZWYiLz48dGV4dCB4PSIxODQiIHk9IjM0MyIgZm9udC1zaXplPSIxMSIgZmlsbD0iIzNmM2Y0NiI+ZXZ0Xzk0MTwvdGV4dD48dGV4dCB4PSIzMzAiIHk9IjM0MyIgZm9udC1zaXplPSIxMSIgZmlsbD0iIzNmM2Y0NiI+b3JkZXIucGFpZDwvdGV4dD48dGV4dCB4PSI0NTAiIHk9IjM0MyIgZm9udC1zaXplPSIxMSIgZmlsbD0iIzE1ODAzZCI+ZGVsaXZlcmVkPC90ZXh0Pjx0ZXh0IHg9IjU0MCIgeT0iMzQzIiBmb250LXNpemU9IjExIiBmaWxsPSIjNzE3MTdhIj4yMm0gYWdvPC90ZXh0Pgo8L3N2Zz4=",
+  "assets/sketch.svg": "PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2NDAiIGhlaWdodD0iNDAwIiB2aWV3Qm94PSIwIDAgNjQwIDQwMCIgZm9udC1mYW1pbHk9InVpLW1vbm9zcGFjZSxtb25vc3BhY2UiPgo8cmVjdCB3aWR0aD0iNjQwIiBoZWlnaHQ9IjQwMCIgZmlsbD0iI2ZhZmFmYSIvPgo8cmVjdCB4PSIyMCIgeT0iMjAiIHdpZHRoPSI2MDAiIGhlaWdodD0iMzYwIiByeD0iNiIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjYTFhMWFhIiBzdHJva2UtZGFzaGFycmF5PSI2IDQiLz4KPHRleHQgeD0iNDAiIHk9IjU4IiBmb250LXNpemU9IjE1IiBmaWxsPSIjM2YzZjQ2Ij5GYWlsZWQgZGVsaXZlcmllczwvdGV4dD4KPHJlY3QgeD0iNDAiIHk9IjgwIiB3aWR0aD0iNTYwIiBoZWlnaHQ9IjQwIiByeD0iNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjYTFhMWFhIi8+CjxyZWN0IHg9IjU0IiB5PSI5NCIgd2lkdGg9IjE0MCIgaGVpZ2h0PSIxMiIgcng9IjIiIGZpbGw9IiNkNGQ0ZDgiLz4KPHJlY3QgeD0iMjgwIiB5PSI5NCIgd2lkdGg9IjE1MCIgaGVpZ2h0PSIxMiIgcng9IjIiIGZpbGw9IiNmZWNhY2EiLz4KPHJlY3QgeD0iNTEwIiB5PSI4OCIgd2lkdGg9IjcwIiBoZWlnaHQ9IjI0IiByeD0iNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjNjM2NmYxIi8+PHRleHQgeD0iNTQ1IiB5PSIxMDQiIGZvbnQtc2l6ZT0iMTEiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiM2MzY2ZjEiPlJlcGxheTwvdGV4dD48cmVjdCB4PSI0MCIgeT0iMTMyIiB3aWR0aD0iNTYwIiBoZWlnaHQ9IjQwIiByeD0iNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjYTFhMWFhIi8+CjxyZWN0IHg9IjU0IiB5PSIxNDYiIHdpZHRoPSIxODAiIGhlaWdodD0iMTIiIHJ4PSIyIiBmaWxsPSIjZDRkNGQ4Ii8+CjxyZWN0IHg9IjI4MCIgeT0iMTQ2IiB3aWR0aD0iMTUwIiBoZWlnaHQ9IjEyIiByeD0iMiIgZmlsbD0iI2ZlY2FjYSIvPgo8cmVjdCB4PSI1MTAiIHk9IjE0MCIgd2lkdGg9IjcwIiBoZWlnaHQ9IjI0IiByeD0iNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjNjM2NmYxIi8+PHRleHQgeD0iNTQ1IiB5PSIxNTYiIGZvbnQtc2l6ZT0iMTEiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiM2MzY2ZjEiPlJlcGxheTwvdGV4dD48cmVjdCB4PSI0MCIgeT0iMTg0IiB3aWR0aD0iNTYwIiBoZWlnaHQ9IjQwIiByeD0iNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjYTFhMWFhIi8+CjxyZWN0IHg9IjU0IiB5PSIxOTgiIHdpZHRoPSIxNDAiIGhlaWdodD0iMTIiIHJ4PSIyIiBmaWxsPSIjZDRkNGQ4Ii8+CjxyZWN0IHg9IjI4MCIgeT0iMTk4IiB3aWR0aD0iMTUwIiBoZWlnaHQ9IjEyIiByeD0iMiIgZmlsbD0iI2ZlY2FjYSIvPgo8cmVjdCB4PSI1MTAiIHk9IjE5MiIgd2lkdGg9IjcwIiBoZWlnaHQ9IjI0IiByeD0iNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjNjM2NmYxIi8+PHRleHQgeD0iNTQ1IiB5PSIyMDgiIGZvbnQtc2l6ZT0iMTEiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiM2MzY2ZjEiPlJlcGxheTwvdGV4dD48cmVjdCB4PSI0MCIgeT0iMjM2IiB3aWR0aD0iNTYwIiBoZWlnaHQ9IjQwIiByeD0iNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjYTFhMWFhIi8+CjxyZWN0IHg9IjU0IiB5PSIyNTAiIHdpZHRoPSIxODAiIGhlaWdodD0iMTIiIHJ4PSIyIiBmaWxsPSIjZDRkNGQ4Ii8+CjxyZWN0IHg9IjI4MCIgeT0iMjUwIiB3aWR0aD0iMTUwIiBoZWlnaHQ9IjEyIiByeD0iMiIgZmlsbD0iI2ZlY2FjYSIvPgo8cmVjdCB4PSI1MTAiIHk9IjI0NCIgd2lkdGg9IjcwIiBoZWlnaHQ9IjI0IiByeD0iNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjNjM2NmYxIi8+PHRleHQgeD0iNTQ1IiB5PSIyNjAiIGZvbnQtc2l6ZT0iMTEiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiM2MzY2ZjEiPlJlcGxheTwvdGV4dD4KPHRleHQgeD0iNDAiIHk9IjM1NiIgZm9udC1zaXplPSIxMSIgZmlsbD0iIzcxNzE3YSI+c2tldGNoIMK3IGNvbHVtbnM6IGRlc3RpbmF0aW9uLCBsYXN0IGVycm9yLCBhdHRlbXB0cywgZmFpbGVkIGF0PC90ZXh0Pgo8L3N2Zz4="
+ }
+}
