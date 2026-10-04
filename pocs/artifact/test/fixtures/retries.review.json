@@ -1,0 +1,3822 @@
+{
+  "format": "collie-doc/0",
+  "kind": "review",
+  "title": "Retry failed webhook deliveries",
+  "tldr": "Failed deliveries now retry with capped exponential backoff, every attempt is recorded, and operators can list and replay failed deliveries.",
+  "status": "ready",
+  "risk": {
+    "level": "medium",
+    "why": "Changes the delivery worker's ack path; a bug here drops or duplicates events."
+  },
+  "ask": "Approve the backoff caps (30s base, 1h cap, 8 attempts); check the migration is reversible.",
+  "meta": {
+    "repo": "acme/relay",
+    "base": "main",
+    "head": "feat/retries",
+    "pr": "https://github.com/acme/relay/pull/1093",
+    "plan": "../retries.plan",
+    "author": "dev agent",
+    "date": "2026-10-05"
+  },
+  "stats": {
+    "files": 16,
+    "additions": 251,
+    "deletions": 21
+  },
+  "map": {
+    "groups": [
+      {
+        "id": "delivery",
+        "label": "Delivery worker"
+      }
+    ],
+    "nodes": [
+      {
+        "id": "queue",
+        "label": "Delivery queue",
+        "change": "unchanged",
+        "kind": "queue"
+      },
+      {
+        "id": "destination",
+        "label": "Customer endpoint",
+        "change": "unchanged",
+        "kind": "external"
+      },
+      {
+        "id": "worker",
+        "label": "Worker ack path",
+        "change": "changed",
+        "kind": "job",
+        "group": "delivery",
+        "section": "worker",
+        "files": [
+          "internal/delivery/worker.go"
+        ]
+      },
+      {
+        "id": "retry",
+        "label": "Retry scheduler",
+        "change": "added",
+        "kind": "module",
+        "group": "delivery",
+        "section": "retry",
+        "files": [
+          "internal/delivery/retry*.go"
+        ]
+      },
+      {
+        "id": "metrics",
+        "label": "Delivery metrics",
+        "change": "added",
+        "kind": "module",
+        "group": "delivery",
+        "section": "metrics",
+        "files": [
+          "internal/delivery/metrics.go"
+        ]
+      },
+      {
+        "id": "attempts",
+        "label": "Attempts table",
+        "change": "added",
+        "kind": "db",
+        "section": "attempts",
+        "files": [
+          "internal/store/**"
+        ]
+      },
+      {
+        "id": "api",
+        "label": "Deliveries API",
+        "change": "changed",
+        "kind": "api",
+        "section": "api",
+        "files": [
+          "internal/api/**",
+          "docs/**"
+        ]
+      },
+      {
+        "id": "ui",
+        "label": "Failed deliveries page",
+        "change": "added",
+        "kind": "ui",
+        "section": "ui",
+        "files": [
+          "web/src/**",
+          "web/public/**"
+        ]
+      },
+      {
+        "id": "mechanical",
+        "label": "Lockfile, renames, formatting",
+        "change": "changed",
+        "kind": "config",
+        "section": "mechanical",
+        "mechanical": true,
+        "files": [
+          "web/pnpm-lock.yaml",
+          "scripts/**",
+          "internal/clock/**",
+          "web/src/styles.css"
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "from": "queue",
+        "to": "worker",
+        "label": "receive"
+      },
+      {
+        "from": "worker",
+        "to": "destination",
+        "label": "POST event"
+      },
+      {
+        "from": "worker",
+        "to": "retry",
+        "label": "on 5xx / 429 / error",
+        "change": "added"
+      },
+      {
+        "from": "retry",
+        "to": "queue",
+        "label": "nack with backoff delay",
+        "change": "added"
+      },
+      {
+        "from": "worker",
+        "to": "attempts",
+        "label": "record attempt",
+        "change": "added"
+      },
+      {
+        "from": "worker",
+        "to": "metrics",
+        "label": "count",
+        "change": "added"
+      },
+      {
+        "from": "ui",
+        "to": "api",
+        "label": "list failed / replay",
+        "change": "added"
+      },
+      {
+        "from": "api",
+        "to": "attempts",
+        "label": "read history",
+        "change": "added"
+      },
+      {
+        "from": "api",
+        "to": "queue",
+        "label": "replay = enqueue attempt 0",
+        "change": "added"
+      }
+    ]
+  },
+  "overview": "Before this change a failed delivery was acked and dropped. Now the worker records every attempt, hands failures to a retry scheduler that re-enqueues them with capped exponential backoff, and gives up after 8 attempts. Operators get a page listing failed deliveries with a replay button. Read the worker first: everything else hangs off its new ack path.",
+  "sections": [
+    {
+      "id": "worker",
+      "title": "Worker ack path",
+      "summary": "The worker no longer acks failed deliveries: it records the attempt, then either nacks the job with a backoff delay or, once attempts run out, acks it as permanently failed.",
+      "mechanical": false,
+      "blocks": [
+        {
+          "id": "worker-flow-1",
+          "level": 2,
+          "type": "flow",
+          "mermaid": "sequenceDiagram\n  participant Q as Delivery queue\n  participant W as Worker\n  participant D as Customer endpoint\n  participant A as Attempts table\n  participant R as Retry scheduler\n  Q->>W: receive job (attempt n)\n  W->>D: POST event\n  D-->>W: 503\n  W->>A: record attempt n (status 503)\n  W->>R: Next(n, now)\n  alt attempts left\n    R-->>W: at = now + jitter(min(30s·2ⁿ, 1h))\n    W->>Q: nack(job, at)\n  else exhausted\n    W->>Q: ack (failed permanently)\n  end",
+          "caption": "One delivery attempt, after this change"
+        },
+        {
+          "id": "worker-callout-1",
+          "level": 2,
+          "type": "callout",
+          "tone": "risk",
+          "md": "**Ack ordering.** If recording the attempt fails, the worker returns without ack or nack, so the queue redelivers after its visibility timeout. That keeps at-least-once delivery but can send the same event twice. Destinations already dedupe on `event_id`."
+        },
+        {
+          "id": "worker-diff-1",
+          "level": 3,
+          "type": "diff",
+          "file": "internal/delivery/worker.go",
+          "hunks": [
+            {
+              "header": "@@ -34,12 +38,28 @@ func (w *Worker) Run(ctx context.Context) error {",
+              "oldStart": 34,
+              "oldLines": 12,
+              "newStart": 38,
+              "newLines": 28,
+              "lines": [
+                {
+                  "t": " ",
+                  "s": "func (w *Worker) handle(ctx context.Context, job *Job) {",
+                  "old": 34,
+                  "new": 38
+                },
+                {
+                  "t": " ",
+                  "s": "\tstart := w.clock.Now()",
+                  "old": 35,
+                  "new": 39
+                },
+                {
+                  "t": " ",
+                  "s": "\tstatus, err := w.deliver(ctx, job)",
+                  "old": 36,
+                  "new": 40
+                },
+                {
+                  "t": "-",
+                  "s": "\tif err != nil || status >= 500 {",
+                  "old": 37
+                },
+                {
+                  "t": "-",
+                  "s": "\t\tw.log.Warn(\"delivery failed\", \"event\", job.EventID, \"status\", status, \"err\", err)",
+                  "old": 38
+                },
+                {
+                  "t": "-",
+                  "s": "\t\t// Failed deliveries are dropped; the destination has to catch up on its own.",
+                  "old": 39
+                },
+                {
+                  "t": "+",
+                  "s": "\tattempt := store.Attempt{EventID: job.EventID, Number: job.Attempt, Status: status, At: start}",
+                  "new": 41
+                },
+                {
+                  "t": "+",
+                  "s": "\tif err != nil || status >= 500 || status == http.StatusTooManyRequests {",
+                  "new": 42
+                },
+                {
+                  "t": "+",
+                  "s": "\t\tattempt.Error = errString(err)",
+                  "new": 43
+                },
+                {
+                  "t": "+",
+                  "s": "\t\tif recErr := w.attempts.Record(ctx, attempt); recErr != nil {",
+                  "new": 44
+                },
+                {
+                  "t": "+",
+                  "s": "\t\t\t// Don't ack: if we can't record the attempt, let the queue redeliver.",
+                  "new": 45
+                },
+                {
+                  "t": "+",
+                  "s": "\t\t\tw.log.Error(\"record attempt\", \"event\", job.EventID, \"err\", recErr)",
+                  "new": 46
+                },
+                {
+                  "t": "+",
+                  "s": "\t\t\treturn",
+                  "new": 47
+                },
+                {
+                  "t": "+",
+                  "s": "\t\t}",
+                  "new": 48
+                },
+                {
+                  "t": "+",
+                  "s": "\t\tif next, ok := w.retry.Next(job.Attempt, w.clock.Now()); ok {",
+                  "new": 49
+                },
+                {
+                  "t": "+",
+                  "s": "\t\t\tw.metrics.Retried.Inc()",
+                  "new": 50
+                },
+                {
+                  "t": "+",
+                  "s": "\t\t\tif err := w.queue.Nack(ctx, job, next); err != nil {",
+                  "new": 51
+                },
+                {
+                  "t": "+",
+                  "s": "\t\t\t\tw.log.Error(\"nack\", \"event\", job.EventID, \"err\", err)",
+                  "new": 52
+                },
+                {
+                  "t": "+",
+                  "s": "\t\t\t}",
+                  "new": 53
+                },
+                {
+                  "t": "+",
+                  "s": "\t\t\treturn",
+                  "new": 54
+                },
+                {
+                  "t": "+",
+                  "s": "\t\t}",
+                  "new": 55
+                },
+                {
+                  "t": "+",
+                  "s": "\t\tw.metrics.Exhausted.Inc()",
+                  "new": 56
+                },
+                {
+                  "t": "+",
+                  "s": "\t\tw.log.Warn(\"delivery failed permanently\", \"event\", job.EventID, \"attempts\", job.Attempt)",
+                  "new": 57
+                },
+                {
+                  "t": " ",
+                  "s": "\t\t_ = w.queue.Ack(ctx, job)",
+                  "old": 40,
+                  "new": 58
+                },
+                {
+                  "t": " ",
+                  "s": "\t\treturn",
+                  "old": 41,
+                  "new": 59
+                },
+                {
+                  "t": " ",
+                  "s": "\t}",
+                  "old": 42,
+                  "new": 60
+                },
+                {
+                  "t": "+",
+                  "s": "\t_ = w.attempts.Record(ctx, attempt)",
+                  "new": 61
+                },
+                {
+                  "t": "+",
+                  "s": "\tw.metrics.Delivered.Inc()",
+                  "new": 62
+                },
+                {
+                  "t": " ",
+                  "s": "\tw.log.Info(\"delivered\", \"event\", job.EventID, \"ms\", time.Since(start).Milliseconds())",
+                  "old": 43,
+                  "new": 63
+                },
+                {
+                  "t": " ",
+                  "s": "\t_ = w.queue.Ack(ctx, job)",
+                  "old": 44,
+                  "new": 64
+                },
+                {
+                  "t": " ",
+                  "s": "}",
+                  "old": 45,
+                  "new": 65
+                }
+              ]
+            }
+          ],
+          "notes": [
+            {
+              "line": 42,
+              "note": "429 now counts as a retryable failure, same as 5xx and network errors."
+            },
+            {
+              "line": 45,
+              "note": "No ack when the attempt can't be recorded: the queue redelivers (at-least-once)."
+            },
+            {
+              "line": 49,
+              "note": "Nack with a delay is how the backoff is applied; the queue holds the job until `next`."
+            },
+            {
+              "line": 61,
+              "note": "The success-path record error is ignored on purpose: the event was delivered, history is best-effort."
+            }
+          ],
+          "change": "changed"
+        },
+        {
+          "type": "markdown",
+          "id": "worker-markdown-1",
+          "level": 2,
+          "md": "The constructor grew three dependencies; wiring in `cmd/relay` is unchanged because it builds the worker through `delivery.New`, which already had them."
+        },
+        {
+          "id": "worker-diff-2",
+          "level": 3,
+          "type": "diff",
+          "file": "internal/delivery/worker.go",
+          "hunks": [
+            {
+              "header": "@@ -6,19 +6,23 @@ import (",
+              "oldStart": 6,
+              "oldLines": 19,
+              "newStart": 6,
+              "newLines": 23,
+              "lines": [
+                {
+                  "t": " ",
+                  "s": "\t\"net/http\"",
+                  "old": 6,
+                  "new": 6
+                },
+                {
+                  "t": " ",
+                  "s": "\t\"time\"",
+                  "old": 7,
+                  "new": 7
+                },
+                {
+                  "t": " ",
+                  "s": "",
+                  "old": 8,
+                  "new": 8
+                },
+                {
+                  "t": "-",
+                  "s": "\t\"github.com/acme/relay/internal/util\"",
+                  "old": 9
+                },
+                {
+                  "t": "+",
+                  "s": "\t\"github.com/acme/relay/internal/clock\"",
+                  "new": 9
+                },
+                {
+                  "t": "+",
+                  "s": "\t\"github.com/acme/relay/internal/store\"",
+                  "new": 10
+                },
+                {
+                  "t": " ",
+                  "s": ")",
+                  "old": 10,
+                  "new": 11
+                },
+                {
+                  "t": " ",
+                  "s": "",
+                  "old": 11,
+                  "new": 12
+                },
+                {
+                  "t": " ",
+                  "s": "// Worker pulls delivery jobs off the queue and POSTs them to the destination.",
+                  "old": 12,
+                  "new": 13
+                },
+                {
+                  "t": " ",
+                  "s": "type Worker struct {",
+                  "old": 13,
+                  "new": 14
+                },
+                {
+                  "t": "-",
+                  "s": "\tqueue  Queue",
+                  "old": 14
+                },
+                {
+                  "t": "-",
+                  "s": "\tclient *http.Client",
+                  "old": 15
+                },
+                {
+                  "t": "-",
+                  "s": "\tclock  util.Clock",
+                  "old": 16
+                },
+                {
+                  "t": "-",
+                  "s": "\tlog    *slog.Logger",
+                  "old": 17
+                },
+                {
+                  "t": "+",
+                  "s": "\tqueue    Queue",
+                  "new": 15
+                },
+                {
+                  "t": "+",
+                  "s": "\tclient   *http.Client",
+                  "new": 16
+                },
+                {
+                  "t": "+",
+                  "s": "\tclock    clock.Clock",
+                  "new": 17
+                },
+                {
+                  "t": "+",
+                  "s": "\tlog      *slog.Logger",
+                  "new": 18
+                },
+                {
+                  "t": "+",
+                  "s": "\tretry    *RetryScheduler",
+                  "new": 19
+                },
+                {
+                  "t": "+",
+                  "s": "\tattempts *store.Attempts",
+                  "new": 20
+                },
+                {
+                  "t": "+",
+                  "s": "\tmetrics  *Metrics",
+                  "new": 21
+                },
+                {
+                  "t": " ",
+                  "s": "}",
+                  "old": 18,
+                  "new": 22
+                },
+                {
+                  "t": " ",
+                  "s": "",
+                  "old": 19,
+                  "new": 23
+                },
+                {
+                  "t": "-",
+                  "s": "func NewWorker(q Queue, c *http.Client, clock util.Clock, log *slog.Logger) *Worker {",
+                  "old": 20
+                },
+                {
+                  "t": "-",
+                  "s": "\treturn &Worker{queue: q, client: c, clock: clock, log: log}",
+                  "old": 21
+                },
+                {
+                  "t": "+",
+                  "s": "func NewWorker(q Queue, c *http.Client, clk clock.Clock, log *slog.Logger, r *RetryScheduler, a *store.Attempts, m *Metrics) *Worker {",
+                  "new": 24
+                },
+                {
+                  "t": "+",
+                  "s": "\treturn &Worker{queue: q, client: c, clock: clk, log: log, retry: r, attempts: a, metrics: m}",
+                  "new": 25
+                },
+                {
+                  "t": " ",
+                  "s": "}",
+                  "old": 22,
+                  "new": 26
+                },
+                {
+                  "t": " ",
+                  "s": "",
+                  "old": 23,
+                  "new": 27
+                },
+                {
+                  "t": " ",
+                  "s": "func (w *Worker) Run(ctx context.Context) error {",
+                  "old": 24,
+                  "new": 28
+                }
+              ]
+            }
+          ],
+          "notes": [],
+          "change": "changed"
+        }
+      ]
+    },
+    {
+      "id": "retry",
+      "title": "Retry scheduler",
+      "summary": "New `RetryScheduler`: capped exponential backoff with full jitter. Defaults are 30s base, 1h cap, 8 attempts, so a destination that is down for about 2 hours still gets every event.",
+      "mechanical": false,
+      "blocks": [
+        {
+          "id": "retry-code-1",
+          "level": 3,
+          "type": "code",
+          "code": "// Next returns when attempt+1 should run, or ok=false when attempts are exhausted.\nfunc (r *RetryScheduler) Next(attempt int, now time.Time) (at time.Time, ok bool) {\n\tif attempt >= r.MaxAttempts {\n\t\treturn time.Time{}, false\n\t}\n\td := r.Base << attempt\n\tif d <= 0 || d > r.Cap {\n\t\td = r.Cap\n\t}\n\tjitter := time.Duration(rand.Int64N(int64(d)))\n\treturn now.Add(jitter), true\n}",
+          "lang": "go",
+          "file": "internal/delivery/retry.go"
+        },
+        {
+          "id": "retry-callout-1",
+          "level": 2,
+          "type": "callout",
+          "tone": "decision",
+          "md": "Full jitter (uniform in `[0, d)`) over equal jitter: it spreads a burst of failures from one outage better, at the cost of an occasional very short first retry."
+        },
+        {
+          "id": "retry-questions-1",
+          "level": 0,
+          "type": "questions",
+          "questions": [
+            {
+              "q": "Max attempts before giving up?",
+              "options": [
+                "8 (~2h of retries)",
+                "12 (~10h)",
+                "configurable per destination"
+              ],
+              "recommend": "8 (~2h of retries)",
+              "why": "Matches the plan and keeps the queue small; per-destination config can come later without a migration."
+            }
+          ]
+        },
+        {
+          "id": "retry-diff-1",
+          "level": 3,
+          "type": "diff",
+          "file": "internal/delivery/retry_test.go",
+          "hunks": [
+            {
+              "header": "@@ -0,0 +1,23 @@",
+              "oldStart": 0,
+              "oldLines": 0,
+              "newStart": 1,
+              "newLines": 23,
+              "lines": [
+                {
+                  "t": "+",
+                  "s": "package delivery",
+                  "new": 1
+                },
+                {
+                  "t": "+",
+                  "s": "",
+                  "new": 2
+                },
+                {
+                  "t": "+",
+                  "s": "import (",
+                  "new": 3
+                },
+                {
+                  "t": "+",
+                  "s": "\t\"testing\"",
+                  "new": 4
+                },
+                {
+                  "t": "+",
+                  "s": "\t\"time\"",
+                  "new": 5
+                },
+                {
+                  "t": "+",
+                  "s": ")",
+                  "new": 6
+                },
+                {
+                  "t": "+",
+                  "s": "",
+                  "new": 7
+                },
+                {
+                  "t": "+",
+                  "s": "func TestNextIsCapped(t *testing.T) {",
+                  "new": 8
+                },
+                {
+                  "t": "+",
+                  "s": "\tr := DefaultRetry()",
+                  "new": 9
+                },
+                {
+                  "t": "+",
+                  "s": "\tnow := time.Unix(0, 0)",
+                  "new": 10
+                },
+                {
+                  "t": "+",
+                  "s": "\tfor attempt := 0; attempt < r.MaxAttempts; attempt++ {",
+                  "new": 11
+                },
+                {
+                  "t": "+",
+                  "s": "\t\tat, ok := r.Next(attempt, now)",
+                  "new": 12
+                },
+                {
+                  "t": "+",
+                  "s": "\t\tif !ok {",
+                  "new": 13
+                },
+                {
+                  "t": "+",
+                  "s": "\t\t\tt.Fatalf(\"attempt %d: want ok\", attempt)",
+                  "new": 14
+                },
+                {
+                  "t": "+",
+                  "s": "\t\t}",
+                  "new": 15
+                },
+                {
+                  "t": "+",
+                  "s": "\t\tif at.Sub(now) > r.Cap {",
+                  "new": 16
+                },
+                {
+                  "t": "+",
+                  "s": "\t\t\tt.Fatalf(\"attempt %d: delay %s over cap\", attempt, at.Sub(now))",
+                  "new": 17
+                },
+                {
+                  "t": "+",
+                  "s": "\t\t}",
+                  "new": 18
+                },
+                {
+                  "t": "+",
+                  "s": "\t}",
+                  "new": 19
+                },
+                {
+                  "t": "+",
+                  "s": "\tif _, ok := r.Next(r.MaxAttempts, now); ok {",
+                  "new": 20
+                },
+                {
+                  "t": "+",
+                  "s": "\t\tt.Fatal(\"want exhausted\")",
+                  "new": 21
+                },
+                {
+                  "t": "+",
+                  "s": "\t}",
+                  "new": 22
+                },
+                {
+                  "t": "+",
+                  "s": "}",
+                  "new": 23
+                }
+              ]
+            }
+          ],
+          "notes": [],
+          "change": "added"
+        }
+      ]
+    },
+    {
+      "id": "attempts",
+      "title": "Attempts table",
+      "summary": "One row per delivery attempt, plus a `last_status` column on `deliveries` so the failed list doesn't need a join. The down migration drops both.",
+      "mechanical": false,
+      "blocks": [
+        {
+          "id": "attempts-data-model-1",
+          "level": 2,
+          "type": "data-model",
+          "entities": [
+            {
+              "name": "delivery_attempts",
+              "change": "added",
+              "note": "One row per attempt; indexed by (event_id, attempt).",
+              "fields": [
+                {
+                  "name": "id",
+                  "type": "bigserial",
+                  "change": "added"
+                },
+                {
+                  "name": "event_id",
+                  "type": "text",
+                  "change": "added"
+                },
+                {
+                  "name": "attempt",
+                  "type": "int",
+                  "change": "added",
+                  "note": "0 = first try; replay starts again at 0"
+                },
+                {
+                  "name": "status",
+                  "type": "int",
+                  "change": "added",
+                  "note": "HTTP status, 0 on network error"
+                },
+                {
+                  "name": "error",
+                  "type": "text",
+                  "change": "added"
+                },
+                {
+                  "name": "created_at",
+                  "type": "timestamptz",
+                  "change": "added"
+                }
+              ]
+            },
+            {
+              "name": "deliveries",
+              "change": "changed",
+              "fields": [
+                {
+                  "name": "id",
+                  "type": "text",
+                  "change": "unchanged"
+                },
+                {
+                  "name": "event_id",
+                  "type": "text",
+                  "change": "unchanged"
+                },
+                {
+                  "name": "last_status",
+                  "type": "text",
+                  "change": "added",
+                  "note": "pending | delivered | failed"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "attempts-diff-1",
+          "level": 3,
+          "type": "diff",
+          "file": "internal/store/migrations/0012_delivery_attempts.down.sql",
+          "hunks": [
+            {
+              "header": "@@ -0,0 +1,2 @@",
+              "oldStart": 0,
+              "oldLines": 0,
+              "newStart": 1,
+              "newLines": 2,
+              "lines": [
+                {
+                  "t": "+",
+                  "s": "ALTER TABLE deliveries DROP COLUMN last_status;",
+                  "new": 1
+                },
+                {
+                  "t": "+",
+                  "s": "DROP TABLE delivery_attempts;",
+                  "new": 2
+                }
+              ]
+            }
+          ],
+          "notes": [
+            {
+              "line": 1,
+              "note": "Drops the column first; safe to run with the worker stopped."
+            }
+          ],
+          "change": "added"
+        },
+        {
+          "id": "attempts-files-1",
+          "level": 3,
+          "type": "files",
+          "notes": {
+            "internal/store/attempts.go": "Record / ForEvent; plain SQL, no ORM.",
+            "internal/store/migrations/0012_delivery_attempts.up.sql": "",
+            "internal/store/migrations/0012_delivery_attempts.down.sql": ""
+          }
+        }
+      ]
+    },
+    {
+      "id": "metrics",
+      "title": "Delivery metrics",
+      "summary": "Three Prometheus counters (delivered, retried, exhausted) so the retry rate is visible. Not in the plan; added because the alert in the plan needs a signal.",
+      "mechanical": false,
+      "blocks": [
+        {
+          "id": "metrics-diff-1",
+          "level": 3,
+          "type": "diff",
+          "file": "internal/delivery/metrics.go",
+          "hunks": [
+            {
+              "header": "@@ -0,0 +1,20 @@",
+              "oldStart": 0,
+              "oldLines": 0,
+              "newStart": 1,
+              "newLines": 20,
+              "lines": [
+                {
+                  "t": "+",
+                  "s": "package delivery",
+                  "new": 1
+                },
+                {
+                  "t": "+",
+                  "s": "",
+                  "new": 2
+                },
+                {
+                  "t": "+",
+                  "s": "import \"github.com/prometheus/client_golang/prometheus\"",
+                  "new": 3
+                },
+                {
+                  "t": "+",
+                  "s": "",
+                  "new": 4
+                },
+                {
+                  "t": "+",
+                  "s": "// Metrics for the delivery worker; registered once at startup.",
+                  "new": 5
+                },
+                {
+                  "t": "+",
+                  "s": "type Metrics struct {",
+                  "new": 6
+                },
+                {
+                  "t": "+",
+                  "s": "\tDelivered prometheus.Counter",
+                  "new": 7
+                },
+                {
+                  "t": "+",
+                  "s": "\tRetried   prometheus.Counter",
+                  "new": 8
+                },
+                {
+                  "t": "+",
+                  "s": "\tExhausted prometheus.Counter",
+                  "new": 9
+                },
+                {
+                  "t": "+",
+                  "s": "}",
+                  "new": 10
+                },
+                {
+                  "t": "+",
+                  "s": "",
+                  "new": 11
+                },
+                {
+                  "t": "+",
+                  "s": "func NewMetrics(reg prometheus.Registerer) *Metrics {",
+                  "new": 12
+                },
+                {
+                  "t": "+",
+                  "s": "\tm := &Metrics{",
+                  "new": 13
+                },
+                {
+                  "t": "+",
+                  "s": "\t\tDelivered: prometheus.NewCounter(prometheus.CounterOpts{Name: \"relay_deliveries_total\"}),",
+                  "new": 14
+                },
+                {
+                  "t": "+",
+                  "s": "\t\tRetried:   prometheus.NewCounter(prometheus.CounterOpts{Name: \"relay_delivery_retries_total\"}),",
+                  "new": 15
+                },
+                {
+                  "t": "+",
+                  "s": "\t\tExhausted: prometheus.NewCounter(prometheus.CounterOpts{Name: \"relay_delivery_exhausted_total\"}),",
+                  "new": 16
+                },
+                {
+                  "t": "+",
+                  "s": "\t}",
+                  "new": 17
+                },
+                {
+                  "t": "+",
+                  "s": "\treg.MustRegister(m.Delivered, m.Retried, m.Exhausted)",
+                  "new": 18
+                },
+                {
+                  "t": "+",
+                  "s": "\treturn m",
+                  "new": 19
+                },
+                {
+                  "t": "+",
+                  "s": "}",
+                  "new": 20
+                }
+              ]
+            }
+          ],
+          "notes": [
+            {
+              "line": 14,
+              "note": "Metric names follow the existing `relay_` prefix."
+            }
+          ],
+          "change": "added"
+        }
+      ]
+    },
+    {
+      "id": "api",
+      "title": "Deliveries API",
+      "summary": "`GET /deliveries` takes a `status` filter, and two endpoints are new: attempt history and replay. The old retries doc, which told destinations to poll, is deleted.",
+      "mechanical": false,
+      "blocks": [
+        {
+          "id": "api-api-1",
+          "level": 2,
+          "type": "api",
+          "endpoints": [
+            {
+              "method": "GET",
+              "path": "/deliveries",
+              "change": "changed",
+              "summary": "New `status` query param (failed | delivered).",
+              "request": "GET /deliveries?status=failed"
+            },
+            {
+              "method": "GET",
+              "path": "/deliveries/{id}/attempts",
+              "change": "added",
+              "summary": "Attempt history for one delivery.",
+              "response": "[{\"EventID\": \"evt_1\", \"Number\": 0, \"Status\": 503, \"Error\": \"\", \"At\": \"2026-10-05T09:00:00Z\"}]"
+            },
+            {
+              "method": "POST",
+              "path": "/deliveries/{id}/replay",
+              "change": "added",
+              "summary": "Re-enqueue as attempt 0; history is kept.",
+              "response": "{\"status\": \"queued\"}"
+            }
+          ]
+        },
+        {
+          "id": "api-diff-1",
+          "level": 3,
+          "type": "diff",
+          "file": "internal/api/deliveries.go",
+          "hunks": [
+            {
+              "header": "@@ -3,23 +3,52 @@ package api",
+              "oldStart": 3,
+              "oldLines": 23,
+              "newStart": 3,
+              "newLines": 52,
+              "lines": [
+                {
+                  "t": " ",
+                  "s": "import (",
+                  "old": 3,
+                  "new": 3
+                },
+                {
+                  "t": " ",
+                  "s": "\t\"net/http\"",
+                  "old": 4,
+                  "new": 4
+                },
+                {
+                  "t": " ",
+                  "s": "",
+                  "old": 5,
+                  "new": 5
+                },
+                {
+                  "t": "+",
+                  "s": "\t\"github.com/acme/relay/internal/delivery\"",
+                  "new": 6
+                },
+                {
+                  "t": " ",
+                  "s": "\t\"github.com/acme/relay/internal/store\"",
+                  "old": 6,
+                  "new": 7
+                },
+                {
+                  "t": " ",
+                  "s": ")",
+                  "old": 7,
+                  "new": 8
+                },
+                {
+                  "t": " ",
+                  "s": "",
+                  "old": 8,
+                  "new": 9
+                },
+                {
+                  "t": " ",
+                  "s": "type DeliveriesHandler struct {",
+                  "old": 9,
+                  "new": 10
+                },
+                {
+                  "t": "-",
+                  "s": "\tstore *store.Store",
+                  "old": 10
+                },
+                {
+                  "t": "+",
+                  "s": "\tstore    *store.Store",
+                  "new": 11
+                },
+                {
+                  "t": "+",
+                  "s": "\tattempts *store.Attempts",
+                  "new": 12
+                },
+                {
+                  "t": "+",
+                  "s": "\tqueue    delivery.Queue",
+                  "new": 13
+                },
+                {
+                  "t": " ",
+                  "s": "}",
+                  "old": 11,
+                  "new": 14
+                },
+                {
+                  "t": " ",
+                  "s": "",
+                  "old": 12,
+                  "new": 15
+                },
+                {
+                  "t": " ",
+                  "s": "func (h *DeliveriesHandler) Register(mux *http.ServeMux) {",
+                  "old": 13,
+                  "new": 16
+                },
+                {
+                  "t": " ",
+                  "s": "\tmux.HandleFunc(\"GET /deliveries\", h.list)",
+                  "old": 14,
+                  "new": 17
+                },
+                {
+                  "t": "+",
+                  "s": "\tmux.HandleFunc(\"GET /deliveries/{id}/attempts\", h.attemptsFor)",
+                  "new": 18
+                },
+                {
+                  "t": "+",
+                  "s": "\tmux.HandleFunc(\"POST /deliveries/{id}/replay\", h.replay)",
+                  "new": 19
+                },
+                {
+                  "t": " ",
+                  "s": "}",
+                  "old": 15,
+                  "new": 20
+                },
+                {
+                  "t": " ",
+                  "s": "",
+                  "old": 16,
+                  "new": 21
+                },
+                {
+                  "t": " ",
+                  "s": "func (h *DeliveriesHandler) list(w http.ResponseWriter, r *http.Request) {",
+                  "old": 17,
+                  "new": 22
+                },
+                {
+                  "t": " ",
+                  "s": "\ttenant := tenantFrom(r)",
+                  "old": 18,
+                  "new": 23
+                },
+                {
+                  "t": "-",
+                  "s": "\titems, err := h.store.ListDeliveries(r.Context(), tenant, 50)",
+                  "old": 19
+                },
+                {
+                  "t": "+",
+                  "s": "\tstatus := r.URL.Query().Get(\"status\") // \"\", \"failed\", \"delivered\"",
+                  "new": 24
+                },
+                {
+                  "t": "+",
+                  "s": "\titems, err := h.store.ListDeliveries(r.Context(), tenant, status, 50)",
+                  "new": 25
+                },
+                {
+                  "t": " ",
+                  "s": "\tif err != nil {",
+                  "old": 20,
+                  "new": 26
+                },
+                {
+                  "t": " ",
+                  "s": "\t\twriteError(w, err)",
+                  "old": 21,
+                  "new": 27
+                },
+                {
+                  "t": " ",
+                  "s": "\t\treturn",
+                  "old": 22,
+                  "new": 28
+                },
+                {
+                  "t": " ",
+                  "s": "\t}",
+                  "old": 23,
+                  "new": 29
+                },
+                {
+                  "t": " ",
+                  "s": "\twriteJSON(w, http.StatusOK, items)",
+                  "old": 24,
+                  "new": 30
+                },
+                {
+                  "t": " ",
+                  "s": "}",
+                  "old": 25,
+                  "new": 31
+                },
+                {
+                  "t": "+",
+                  "s": "",
+                  "new": 32
+                },
+                {
+                  "t": "+",
+                  "s": "func (h *DeliveriesHandler) attemptsFor(w http.ResponseWriter, r *http.Request) {",
+                  "new": 33
+                },
+                {
+                  "t": "+",
+                  "s": "\tlist, err := h.attempts.ForEvent(r.Context(), r.PathValue(\"id\"))",
+                  "new": 34
+                },
+                {
+                  "t": "+",
+                  "s": "\tif err != nil {",
+                  "new": 35
+                },
+                {
+                  "t": "+",
+                  "s": "\t\twriteError(w, err)",
+                  "new": 36
+                },
+                {
+                  "t": "+",
+                  "s": "\t\treturn",
+                  "new": 37
+                },
+                {
+                  "t": "+",
+                  "s": "\t}",
+                  "new": 38
+                },
+                {
+                  "t": "+",
+                  "s": "\twriteJSON(w, http.StatusOK, list)",
+                  "new": 39
+                },
+                {
+                  "t": "+",
+                  "s": "}",
+                  "new": 40
+                },
+                {
+                  "t": "+",
+                  "s": "",
+                  "new": 41
+                },
+                {
+                  "t": "+",
+                  "s": "// replay re-enqueues a failed delivery as attempt 0; the original attempts stay in history.",
+                  "new": 42
+                },
+                {
+                  "t": "+",
+                  "s": "func (h *DeliveriesHandler) replay(w http.ResponseWriter, r *http.Request) {",
+                  "new": 43
+                },
+                {
+                  "t": "+",
+                  "s": "\td, err := h.store.GetDelivery(r.Context(), tenantFrom(r), r.PathValue(\"id\"))",
+                  "new": 44
+                },
+                {
+                  "t": "+",
+                  "s": "\tif err != nil {",
+                  "new": 45
+                },
+                {
+                  "t": "+",
+                  "s": "\t\twriteError(w, err)",
+                  "new": 46
+                },
+                {
+                  "t": "+",
+                  "s": "\t\treturn",
+                  "new": 47
+                },
+                {
+                  "t": "+",
+                  "s": "\t}",
+                  "new": 48
+                },
+                {
+                  "t": "+",
+                  "s": "\tif err := h.queue.Enqueue(r.Context(), d.Job(0)); err != nil {",
+                  "new": 49
+                },
+                {
+                  "t": "+",
+                  "s": "\t\twriteError(w, err)",
+                  "new": 50
+                },
+                {
+                  "t": "+",
+                  "s": "\t\treturn",
+                  "new": 51
+                },
+                {
+                  "t": "+",
+                  "s": "\t}",
+                  "new": 52
+                },
+                {
+                  "t": "+",
+                  "s": "\twriteJSON(w, http.StatusAccepted, map[string]string{\"status\": \"queued\"})",
+                  "new": 53
+                },
+                {
+                  "t": "+",
+                  "s": "}",
+                  "new": 54
+                }
+              ]
+            }
+          ],
+          "notes": [
+            {
+              "line": 18,
+              "note": "Both new routes are tenant-scoped through `tenantFrom(r)` inside the store calls."
+            }
+          ],
+          "change": "changed"
+        },
+        {
+          "id": "api-callout-1",
+          "level": 2,
+          "type": "callout",
+          "tone": "warn",
+          "md": "Replay doesn't check whether the delivery is actually failed; replaying a delivered event sends it again. Fine for operators, but worth a guard before this is exposed to tenants."
+        }
+      ]
+    },
+    {
+      "id": "ui",
+      "title": "Failed deliveries page",
+      "summary": "A new page at `/deliveries/failed` lists failed deliveries with a Replay button; replayed rows disappear from the list.",
+      "mechanical": false,
+      "blocks": [
+        {
+          "id": "ui-diff-1",
+          "level": 3,
+          "type": "diff",
+          "file": "web/src/routes.ts",
+          "hunks": [
+            {
+              "header": "@@ -1,7 +1,9 @@",
+              "oldStart": 1,
+              "oldLines": 7,
+              "newStart": 1,
+              "newLines": 9,
+              "lines": [
+                {
+                  "t": " ",
+                  "s": "import { Dashboard } from \"./pages/Dashboard\";",
+                  "old": 1,
+                  "new": 1
+                },
+                {
+                  "t": " ",
+                  "s": "import { Destinations } from \"./pages/Destinations\";",
+                  "old": 2,
+                  "new": 2
+                },
+                {
+                  "t": "+",
+                  "s": "import { FailedDeliveries } from \"./pages/FailedDeliveries\";",
+                  "new": 3
+                },
+                {
+                  "t": " ",
+                  "s": "",
+                  "old": 3,
+                  "new": 4
+                },
+                {
+                  "t": " ",
+                  "s": "export const routes = [",
+                  "old": 4,
+                  "new": 5
+                },
+                {
+                  "t": " ",
+                  "s": "  { path: \"/\", component: Dashboard, title: \"Dashboard\" },",
+                  "old": 5,
+                  "new": 6
+                },
+                {
+                  "t": " ",
+                  "s": "  { path: \"/destinations\", component: Destinations, title: \"Destinations\" },",
+                  "old": 6,
+                  "new": 7
+                },
+                {
+                  "t": "+",
+                  "s": "  { path: \"/deliveries/failed\", component: FailedDeliveries, title: \"Failed deliveries\" },",
+                  "new": 8
+                },
+                {
+                  "t": " ",
+                  "s": "];",
+                  "old": 7,
+                  "new": 9
+                }
+              ]
+            }
+          ],
+          "notes": [],
+          "change": "changed"
+        },
+        {
+          "id": "ui-diff-2",
+          "level": 3,
+          "type": "diff",
+          "file": "web/src/pages/FailedDeliveries.tsx",
+          "hunks": [
+            {
+              "header": "@@ -0,0 +1,40 @@",
+              "oldStart": 0,
+              "oldLines": 0,
+              "newStart": 1,
+              "newLines": 40,
+              "lines": [
+                {
+                  "t": "+",
+                  "s": "import { useEffect, useState } from \"react\";",
+                  "new": 1
+                },
+                {
+                  "t": "+",
+                  "s": "import { api, type Delivery } from \"../api\";",
+                  "new": 2
+                },
+                {
+                  "t": "+",
+                  "s": "",
+                  "new": 3
+                },
+                {
+                  "t": "+",
+                  "s": "export function FailedDeliveries() {",
+                  "new": 4
+                },
+                {
+                  "t": "+",
+                  "s": "  const [items, setItems] = useState<Delivery[]>([]);",
+                  "new": 5
+                },
+                {
+                  "t": "+",
+                  "s": "  const [busy, setBusy] = useState<string | null>(null);",
+                  "new": 6
+                },
+                {
+                  "t": "+",
+                  "s": "",
+                  "new": 7
+                },
+                {
+                  "t": "+",
+                  "s": "  useEffect(() => {",
+                  "new": 8
+                },
+                {
+                  "t": "+",
+                  "s": "    api.get<Delivery[]>(\"/deliveries?status=failed\").then(setItems);",
+                  "new": 9
+                },
+                {
+                  "t": "+",
+                  "s": "  }, []);",
+                  "new": 10
+                },
+                {
+                  "t": "+",
+                  "s": "",
+                  "new": 11
+                },
+                {
+                  "t": "+",
+                  "s": "  async function replay(id: string) {",
+                  "new": 12
+                },
+                {
+                  "t": "+",
+                  "s": "    setBusy(id);",
+                  "new": 13
+                },
+                {
+                  "t": "+",
+                  "s": "    try {",
+                  "new": 14
+                },
+                {
+                  "t": "+",
+                  "s": "      await api.post(`/deliveries/${id}/replay`);",
+                  "new": 15
+                },
+                {
+                  "t": "+",
+                  "s": "      setItems((xs) => xs.filter((x) => x.id !== id));",
+                  "new": 16
+                },
+                {
+                  "t": "+",
+                  "s": "    } finally {",
+                  "new": 17
+                },
+                {
+                  "t": "+",
+                  "s": "      setBusy(null);",
+                  "new": 18
+                },
+                {
+                  "t": "+",
+                  "s": "    }",
+                  "new": 19
+                },
+                {
+                  "t": "+",
+                  "s": "  }",
+                  "new": 20
+                },
+                {
+                  "t": "+",
+                  "s": "",
+                  "new": 21
+                },
+                {
+                  "t": "+",
+                  "s": "  return (",
+                  "new": 22
+                },
+                {
+                  "t": "+",
+                  "s": "    <table className=\"table\">",
+                  "new": 23
+                },
+                {
+                  "t": "+",
+                  "s": "      <thead>",
+                  "new": 24
+                },
+                {
+                  "t": "+",
+                  "s": "        <tr><th>Event</th><th>Destination</th><th>Attempts</th><th>Last status</th><th /></tr>",
+                  "new": 25
+                },
+                {
+                  "t": "+",
+                  "s": "      </thead>",
+                  "new": 26
+                },
+                {
+                  "t": "+",
+                  "s": "      <tbody>",
+                  "new": 27
+                },
+                {
+                  "t": "+",
+                  "s": "        {items.map((d) => (",
+                  "new": 28
+                },
+                {
+                  "t": "+",
+                  "s": "          <tr key={d.id}>",
+                  "new": 29
+                },
+                {
+                  "t": "+",
+                  "s": "            <td>{d.eventId}</td>",
+                  "new": 30
+                },
+                {
+                  "t": "+",
+                  "s": "            <td>{d.destination}</td>",
+                  "new": 31
+                },
+                {
+                  "t": "+",
+                  "s": "            <td>{d.attempts}</td>",
+                  "new": 32
+                },
+                {
+                  "t": "+",
+                  "s": "            <td><span className=\"badge\">{d.lastStatus}</span></td>",
+                  "new": 33
+                },
+                {
+                  "t": "+",
+                  "s": "            <td><button disabled={busy === d.id} onClick={() => replay(d.id)}>Replay</button></td>",
+                  "new": 34
+                },
+                {
+                  "t": "+",
+                  "s": "          </tr>",
+                  "new": 35
+                },
+                {
+                  "t": "+",
+                  "s": "        ))}",
+                  "new": 36
+                },
+                {
+                  "t": "+",
+                  "s": "      </tbody>",
+                  "new": 37
+                },
+                {
+                  "t": "+",
+                  "s": "    </table>",
+                  "new": 38
+                },
+                {
+                  "t": "+",
+                  "s": "  );",
+                  "new": 39
+                },
+                {
+                  "t": "+",
+                  "s": "}",
+                  "new": 40
+                }
+              ]
+            }
+          ],
+          "notes": [
+            {
+              "line": 16,
+              "note": "Optimistic removal after replay; a failed replay leaves the row (the finally only clears busy)."
+            }
+          ],
+          "change": "added"
+        },
+        {
+          "type": "markdown",
+          "id": "ui-markdown-1",
+          "level": 2,
+          "md": "### How to verify"
+        },
+        {
+          "id": "ui-checklist-1",
+          "level": 2,
+          "type": "checklist",
+          "items": [
+            "Point a destination at a server returning 503; see attempts 0..7 in `delivery_attempts` with growing gaps.",
+            "After the 8th failure the delivery shows on /deliveries/failed.",
+            "Replay it with the server back up; it is delivered and leaves the list.",
+            "Run the down migration on a copy of prod; the worker still starts on the old binary."
+          ]
+        },
+        {
+          "id": "ui-steps-1",
+          "level": 2,
+          "type": "steps",
+          "steps": [
+            {
+              "title": "Alert on exhausted retries",
+              "detail": "Planned; not in this PR",
+              "status": "todo",
+              "area": "metrics"
+            },
+            {
+              "title": "Per-destination retry config",
+              "detail": "Only if the max-attempts question goes that way",
+              "status": "todo",
+              "area": "retry"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mechanical",
+      "title": "Mechanical changes",
+      "summary": "Lockfile bump for `date-fns`, the clock package moved out of `util`, a dev script rename and CSS re-indented; no behaviour change.",
+      "mechanical": true,
+      "blocks": [
+        {
+          "id": "mechanical-files-1",
+          "level": 3,
+          "type": "files",
+          "notes": {
+            "web/pnpm-lock.yaml": "date-fns added (used by the page's relative times, next PR)",
+            "internal/clock/clock.go": "moved from internal/util; only the package line changed",
+            "scripts/run-dev.sh": "renamed from scripts/dev.sh",
+            "web/src/styles.css": "4-space → 2-space indent",
+            "web/public/retry-icon.png": "icon for the nav entry"
+          }
+        }
+      ]
+    }
+  ],
+  "files": [
+    {
+      "path": "docs/retries.md",
+      "change": "removed",
+      "additions": 0,
+      "deletions": 4,
+      "binary": false,
+      "mechanical": false,
+      "hunks": [
+        {
+          "header": "@@ -1,4 +0,0 @@",
+          "oldStart": 1,
+          "oldLines": 4,
+          "newStart": 0,
+          "newLines": 0,
+          "lines": [
+            {
+              "t": "-",
+              "s": "# Retries",
+              "old": 1
+            },
+            {
+              "t": "-",
+              "s": "",
+              "old": 2
+            },
+            {
+              "t": "-",
+              "s": "Relay does not retry failed deliveries yet. Destinations should poll",
+              "old": 3
+            },
+            {
+              "t": "-",
+              "s": "`GET /deliveries` and reconcile on their side.",
+              "old": 4
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "path": "internal/api/deliveries.go",
+      "change": "changed",
+      "additions": 31,
+      "deletions": 2,
+      "binary": false,
+      "mechanical": false,
+      "hunks": [
+        {
+          "header": "@@ -3,23 +3,52 @@ package api",
+          "oldStart": 3,
+          "oldLines": 23,
+          "newStart": 3,
+          "newLines": 52,
+          "lines": [
+            {
+              "t": " ",
+              "s": "import (",
+              "old": 3,
+              "new": 3
+            },
+            {
+              "t": " ",
+              "s": "\t\"net/http\"",
+              "old": 4,
+              "new": 4
+            },
+            {
+              "t": " ",
+              "s": "",
+              "old": 5,
+              "new": 5
+            },
+            {
+              "t": "+",
+              "s": "\t\"github.com/acme/relay/internal/delivery\"",
+              "new": 6
+            },
+            {
+              "t": " ",
+              "s": "\t\"github.com/acme/relay/internal/store\"",
+              "old": 6,
+              "new": 7
+            },
+            {
+              "t": " ",
+              "s": ")",
+              "old": 7,
+              "new": 8
+            },
+            {
+              "t": " ",
+              "s": "",
+              "old": 8,
+              "new": 9
+            },
+            {
+              "t": " ",
+              "s": "type DeliveriesHandler struct {",
+              "old": 9,
+              "new": 10
+            },
+            {
+              "t": "-",
+              "s": "\tstore *store.Store",
+              "old": 10
+            },
+            {
+              "t": "+",
+              "s": "\tstore    *store.Store",
+              "new": 11
+            },
+            {
+              "t": "+",
+              "s": "\tattempts *store.Attempts",
+              "new": 12
+            },
+            {
+              "t": "+",
+              "s": "\tqueue    delivery.Queue",
+              "new": 13
+            },
+            {
+              "t": " ",
+              "s": "}",
+              "old": 11,
+              "new": 14
+            },
+            {
+              "t": " ",
+              "s": "",
+              "old": 12,
+              "new": 15
+            },
+            {
+              "t": " ",
+              "s": "func (h *DeliveriesHandler) Register(mux *http.ServeMux) {",
+              "old": 13,
+              "new": 16
+            },
+            {
+              "t": " ",
+              "s": "\tmux.HandleFunc(\"GET /deliveries\", h.list)",
+              "old": 14,
+              "new": 17
+            },
+            {
+              "t": "+",
+              "s": "\tmux.HandleFunc(\"GET /deliveries/{id}/attempts\", h.attemptsFor)",
+              "new": 18
+            },
+            {
+              "t": "+",
+              "s": "\tmux.HandleFunc(\"POST /deliveries/{id}/replay\", h.replay)",
+              "new": 19
+            },
+            {
+              "t": " ",
+              "s": "}",
+              "old": 15,
+              "new": 20
+            },
+            {
+              "t": " ",
+              "s": "",
+              "old": 16,
+              "new": 21
+            },
+            {
+              "t": " ",
+              "s": "func (h *DeliveriesHandler) list(w http.ResponseWriter, r *http.Request) {",
+              "old": 17,
+              "new": 22
+            },
+            {
+              "t": " ",
+              "s": "\ttenant := tenantFrom(r)",
+              "old": 18,
+              "new": 23
+            },
+            {
+              "t": "-",
+              "s": "\titems, err := h.store.ListDeliveries(r.Context(), tenant, 50)",
+              "old": 19
+            },
+            {
+              "t": "+",
+              "s": "\tstatus := r.URL.Query().Get(\"status\") // \"\", \"failed\", \"delivered\"",
+              "new": 24
+            },
+            {
+              "t": "+",
+              "s": "\titems, err := h.store.ListDeliveries(r.Context(), tenant, status, 50)",
+              "new": 25
+            },
+            {
+              "t": " ",
+              "s": "\tif err != nil {",
+              "old": 20,
+              "new": 26
+            },
+            {
+              "t": " ",
+              "s": "\t\twriteError(w, err)",
+              "old": 21,
+              "new": 27
+            },
+            {
+              "t": " ",
+              "s": "\t\treturn",
+              "old": 22,
+              "new": 28
+            },
+            {
+              "t": " ",
+              "s": "\t}",
+              "old": 23,
+              "new": 29
+            },
+            {
+              "t": " ",
+              "s": "\twriteJSON(w, http.StatusOK, items)",
+              "old": 24,
+              "new": 30
+            },
+            {
+              "t": " ",
+              "s": "}",
+              "old": 25,
+              "new": 31
+            },
+            {
+              "t": "+",
+              "s": "",
+              "new": 32
+            },
+            {
+              "t": "+",
+              "s": "func (h *DeliveriesHandler) attemptsFor(w http.ResponseWriter, r *http.Request) {",
+              "new": 33
+            },
+            {
+              "t": "+",
+              "s": "\tlist, err := h.attempts.ForEvent(r.Context(), r.PathValue(\"id\"))",
+              "new": 34
+            },
+            {
+              "t": "+",
+              "s": "\tif err != nil {",
+              "new": 35
+            },
+            {
+              "t": "+",
+              "s": "\t\twriteError(w, err)",
+              "new": 36
+            },
+            {
+              "t": "+",
+              "s": "\t\treturn",
+              "new": 37
+            },
+            {
+              "t": "+",
+              "s": "\t}",
+              "new": 38
+            },
+            {
+              "t": "+",
+              "s": "\twriteJSON(w, http.StatusOK, list)",
+              "new": 39
+            },
+            {
+              "t": "+",
+              "s": "}",
+              "new": 40
+            },
+            {
+              "t": "+",
+              "s": "",
+              "new": 41
+            },
+            {
+              "t": "+",
+              "s": "// replay re-enqueues a failed delivery as attempt 0; the original attempts stay in history.",
+              "new": 42
+            },
+            {
+              "t": "+",
+              "s": "func (h *DeliveriesHandler) replay(w http.ResponseWriter, r *http.Request) {",
+              "new": 43
+            },
+            {
+              "t": "+",
+              "s": "\td, err := h.store.GetDelivery(r.Context(), tenantFrom(r), r.PathValue(\"id\"))",
+              "new": 44
+            },
+            {
+              "t": "+",
+              "s": "\tif err != nil {",
+              "new": 45
+            },
+            {
+              "t": "+",
+              "s": "\t\twriteError(w, err)",
+              "new": 46
+            },
+            {
+              "t": "+",
+              "s": "\t\treturn",
+              "new": 47
+            },
+            {
+              "t": "+",
+              "s": "\t}",
+              "new": 48
+            },
+            {
+              "t": "+",
+              "s": "\tif err := h.queue.Enqueue(r.Context(), d.Job(0)); err != nil {",
+              "new": 49
+            },
+            {
+              "t": "+",
+              "s": "\t\twriteError(w, err)",
+              "new": 50
+            },
+            {
+              "t": "+",
+              "s": "\t\treturn",
+              "new": 51
+            },
+            {
+              "t": "+",
+              "s": "\t}",
+              "new": 52
+            },
+            {
+              "t": "+",
+              "s": "\twriteJSON(w, http.StatusAccepted, map[string]string{\"status\": \"queued\"})",
+              "new": 53
+            },
+            {
+              "t": "+",
+              "s": "}",
+              "new": 54
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "path": "internal/clock/clock.go",
+      "oldPath": "internal/util/clock.go",
+      "change": "changed",
+      "additions": 1,
+      "deletions": 1,
+      "binary": false,
+      "mechanical": false,
+      "hunks": [
+        {
+          "header": "@@ -1,4 +1,4 @@",
+          "oldStart": 1,
+          "oldLines": 4,
+          "newStart": 1,
+          "newLines": 4,
+          "lines": [
+            {
+              "t": "-",
+              "s": "package util",
+              "old": 1
+            },
+            {
+              "t": "+",
+              "s": "package clock",
+              "new": 1
+            },
+            {
+              "t": " ",
+              "s": "",
+              "old": 2,
+              "new": 2
+            },
+            {
+              "t": " ",
+              "s": "import \"time\"",
+              "old": 3,
+              "new": 3
+            },
+            {
+              "t": " ",
+              "s": "",
+              "old": 4,
+              "new": 4
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "path": "internal/delivery/metrics.go",
+      "change": "added",
+      "additions": 20,
+      "deletions": 0,
+      "binary": false,
+      "mechanical": false,
+      "hunks": [
+        {
+          "header": "@@ -0,0 +1,20 @@",
+          "oldStart": 0,
+          "oldLines": 0,
+          "newStart": 1,
+          "newLines": 20,
+          "lines": [
+            {
+              "t": "+",
+              "s": "package delivery",
+              "new": 1
+            },
+            {
+              "t": "+",
+              "s": "",
+              "new": 2
+            },
+            {
+              "t": "+",
+              "s": "import \"github.com/prometheus/client_golang/prometheus\"",
+              "new": 3
+            },
+            {
+              "t": "+",
+              "s": "",
+              "new": 4
+            },
+            {
+              "t": "+",
+              "s": "// Metrics for the delivery worker; registered once at startup.",
+              "new": 5
+            },
+            {
+              "t": "+",
+              "s": "type Metrics struct {",
+              "new": 6
+            },
+            {
+              "t": "+",
+              "s": "\tDelivered prometheus.Counter",
+              "new": 7
+            },
+            {
+              "t": "+",
+              "s": "\tRetried   prometheus.Counter",
+              "new": 8
+            },
+            {
+              "t": "+",
+              "s": "\tExhausted prometheus.Counter",
+              "new": 9
+            },
+            {
+              "t": "+",
+              "s": "}",
+              "new": 10
+            },
+            {
+              "t": "+",
+              "s": "",
+              "new": 11
+            },
+            {
+              "t": "+",
+              "s": "func NewMetrics(reg prometheus.Registerer) *Metrics {",
+              "new": 12
+            },
+            {
+              "t": "+",
+              "s": "\tm := &Metrics{",
+              "new": 13
+            },
+            {
+              "t": "+",
+              "s": "\t\tDelivered: prometheus.NewCounter(prometheus.CounterOpts{Name: \"relay_deliveries_total\"}),",
+              "new": 14
+            },
+            {
+              "t": "+",
+              "s": "\t\tRetried:   prometheus.NewCounter(prometheus.CounterOpts{Name: \"relay_delivery_retries_total\"}),",
+              "new": 15
+            },
+            {
+              "t": "+",
+              "s": "\t\tExhausted: prometheus.NewCounter(prometheus.CounterOpts{Name: \"relay_delivery_exhausted_total\"}),",
+              "new": 16
+            },
+            {
+              "t": "+",
+              "s": "\t}",
+              "new": 17
+            },
+            {
+              "t": "+",
+              "s": "\treg.MustRegister(m.Delivered, m.Retried, m.Exhausted)",
+              "new": 18
+            },
+            {
+              "t": "+",
+              "s": "\treturn m",
+              "new": 19
+            },
+            {
+              "t": "+",
+              "s": "}",
+              "new": 20
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "path": "internal/delivery/retry.go",
+      "change": "added",
+      "additions": 31,
+      "deletions": 0,
+      "binary": false,
+      "mechanical": false,
+      "hunks": [
+        {
+          "header": "@@ -0,0 +1,31 @@",
+          "oldStart": 0,
+          "oldLines": 0,
+          "newStart": 1,
+          "newLines": 31,
+          "lines": [
+            {
+              "t": "+",
+              "s": "package delivery",
+              "new": 1
+            },
+            {
+              "t": "+",
+              "s": "",
+              "new": 2
+            },
+            {
+              "t": "+",
+              "s": "import (",
+              "new": 3
+            },
+            {
+              "t": "+",
+              "s": "\t\"math/rand/v2\"",
+              "new": 4
+            },
+            {
+              "t": "+",
+              "s": "\t\"time\"",
+              "new": 5
+            },
+            {
+              "t": "+",
+              "s": ")",
+              "new": 6
+            },
+            {
+              "t": "+",
+              "s": "",
+              "new": 7
+            },
+            {
+              "t": "+",
+              "s": "// RetryScheduler decides when (and whether) a failed delivery is tried again:",
+              "new": 8
+            },
+            {
+              "t": "+",
+              "s": "// capped exponential backoff with full jitter.",
+              "new": 9
+            },
+            {
+              "t": "+",
+              "s": "type RetryScheduler struct {",
+              "new": 10
+            },
+            {
+              "t": "+",
+              "s": "\tBase        time.Duration // first delay, default 30s",
+              "new": 11
+            },
+            {
+              "t": "+",
+              "s": "\tCap         time.Duration // longest delay, default 1h",
+              "new": 12
+            },
+            {
+              "t": "+",
+              "s": "\tMaxAttempts int           // give up after this many attempts, default 8",
+              "new": 13
+            },
+            {
+              "t": "+",
+              "s": "}",
+              "new": 14
+            },
+            {
+              "t": "+",
+              "s": "",
+              "new": 15
+            },
+            {
+              "t": "+",
+              "s": "func DefaultRetry() *RetryScheduler {",
+              "new": 16
+            },
+            {
+              "t": "+",
+              "s": "\treturn &RetryScheduler{Base: 30 * time.Second, Cap: time.Hour, MaxAttempts: 8}",
+              "new": 17
+            },
+            {
+              "t": "+",
+              "s": "}",
+              "new": 18
+            },
+            {
+              "t": "+",
+              "s": "",
+              "new": 19
+            },
+            {
+              "t": "+",
+              "s": "// Next returns when attempt+1 should run, or ok=false when attempts are exhausted.",
+              "new": 20
+            },
+            {
+              "t": "+",
+              "s": "func (r *RetryScheduler) Next(attempt int, now time.Time) (at time.Time, ok bool) {",
+              "new": 21
+            },
+            {
+              "t": "+",
+              "s": "\tif attempt >= r.MaxAttempts {",
+              "new": 22
+            },
+            {
+              "t": "+",
+              "s": "\t\treturn time.Time{}, false",
+              "new": 23
+            },
+            {
+              "t": "+",
+              "s": "\t}",
+              "new": 24
+            },
+            {
+              "t": "+",
+              "s": "\td := r.Base << attempt",
+              "new": 25
+            },
+            {
+              "t": "+",
+              "s": "\tif d <= 0 || d > r.Cap {",
+              "new": 26
+            },
+            {
+              "t": "+",
+              "s": "\t\td = r.Cap",
+              "new": 27
+            },
+            {
+              "t": "+",
+              "s": "\t}",
+              "new": 28
+            },
+            {
+              "t": "+",
+              "s": "\tjitter := time.Duration(rand.Int64N(int64(d)))",
+              "new": 29
+            },
+            {
+              "t": "+",
+              "s": "\treturn now.Add(jitter), true",
+              "new": 30
+            },
+            {
+              "t": "+",
+              "s": "}",
+              "new": 31
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "path": "internal/delivery/retry_test.go",
+      "change": "added",
+      "additions": 23,
+      "deletions": 0,
+      "binary": false,
+      "mechanical": false,
+      "hunks": [
+        {
+          "header": "@@ -0,0 +1,23 @@",
+          "oldStart": 0,
+          "oldLines": 0,
+          "newStart": 1,
+          "newLines": 23,
+          "lines": [
+            {
+              "t": "+",
+              "s": "package delivery",
+              "new": 1
+            },
+            {
+              "t": "+",
+              "s": "",
+              "new": 2
+            },
+            {
+              "t": "+",
+              "s": "import (",
+              "new": 3
+            },
+            {
+              "t": "+",
+              "s": "\t\"testing\"",
+              "new": 4
+            },
+            {
+              "t": "+",
+              "s": "\t\"time\"",
+              "new": 5
+            },
+            {
+              "t": "+",
+              "s": ")",
+              "new": 6
+            },
+            {
+              "t": "+",
+              "s": "",
+              "new": 7
+            },
+            {
+              "t": "+",
+              "s": "func TestNextIsCapped(t *testing.T) {",
+              "new": 8
+            },
+            {
+              "t": "+",
+              "s": "\tr := DefaultRetry()",
+              "new": 9
+            },
+            {
+              "t": "+",
+              "s": "\tnow := time.Unix(0, 0)",
+              "new": 10
+            },
+            {
+              "t": "+",
+              "s": "\tfor attempt := 0; attempt < r.MaxAttempts; attempt++ {",
+              "new": 11
+            },
+            {
+              "t": "+",
+              "s": "\t\tat, ok := r.Next(attempt, now)",
+              "new": 12
+            },
+            {
+              "t": "+",
+              "s": "\t\tif !ok {",
+              "new": 13
+            },
+            {
+              "t": "+",
+              "s": "\t\t\tt.Fatalf(\"attempt %d: want ok\", attempt)",
+              "new": 14
+            },
+            {
+              "t": "+",
+              "s": "\t\t}",
+              "new": 15
+            },
+            {
+              "t": "+",
+              "s": "\t\tif at.Sub(now) > r.Cap {",
+              "new": 16
+            },
+            {
+              "t": "+",
+              "s": "\t\t\tt.Fatalf(\"attempt %d: delay %s over cap\", attempt, at.Sub(now))",
+              "new": 17
+            },
+            {
+              "t": "+",
+              "s": "\t\t}",
+              "new": 18
+            },
+            {
+              "t": "+",
+              "s": "\t}",
+              "new": 19
+            },
+            {
+              "t": "+",
+              "s": "\tif _, ok := r.Next(r.MaxAttempts, now); ok {",
+              "new": 20
+            },
+            {
+              "t": "+",
+              "s": "\t\tt.Fatal(\"want exhausted\")",
+              "new": 21
+            },
+            {
+              "t": "+",
+              "s": "\t}",
+              "new": 22
+            },
+            {
+              "t": "+",
+              "s": "}",
+              "new": 23
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "path": "internal/delivery/worker.go",
+      "change": "changed",
+      "additions": 37,
+      "deletions": 10,
+      "binary": false,
+      "mechanical": false,
+      "hunks": [
+        {
+          "header": "@@ -6,19 +6,23 @@ import (",
+          "oldStart": 6,
+          "oldLines": 19,
+          "newStart": 6,
+          "newLines": 23,
+          "lines": [
+            {
+              "t": " ",
+              "s": "\t\"net/http\"",
+              "old": 6,
+              "new": 6
+            },
+            {
+              "t": " ",
+              "s": "\t\"time\"",
+              "old": 7,
+              "new": 7
+            },
+            {
+              "t": " ",
+              "s": "",
+              "old": 8,
+              "new": 8
+            },
+            {
+              "t": "-",
+              "s": "\t\"github.com/acme/relay/internal/util\"",
+              "old": 9
+            },
+            {
+              "t": "+",
+              "s": "\t\"github.com/acme/relay/internal/clock\"",
+              "new": 9
+            },
+            {
+              "t": "+",
+              "s": "\t\"github.com/acme/relay/internal/store\"",
+              "new": 10
+            },
+            {
+              "t": " ",
+              "s": ")",
+              "old": 10,
+              "new": 11
+            },
+            {
+              "t": " ",
+              "s": "",
+              "old": 11,
+              "new": 12
+            },
+            {
+              "t": " ",
+              "s": "// Worker pulls delivery jobs off the queue and POSTs them to the destination.",
+              "old": 12,
+              "new": 13
+            },
+            {
+              "t": " ",
+              "s": "type Worker struct {",
+              "old": 13,
+              "new": 14
+            },
+            {
+              "t": "-",
+              "s": "\tqueue  Queue",
+              "old": 14
+            },
+            {
+              "t": "-",
+              "s": "\tclient *http.Client",
+              "old": 15
+            },
+            {
+              "t": "-",
+              "s": "\tclock  util.Clock",
+              "old": 16
+            },
+            {
+              "t": "-",
+              "s": "\tlog    *slog.Logger",
+              "old": 17
+            },
+            {
+              "t": "+",
+              "s": "\tqueue    Queue",
+              "new": 15
+            },
+            {
+              "t": "+",
+              "s": "\tclient   *http.Client",
+              "new": 16
+            },
+            {
+              "t": "+",
+              "s": "\tclock    clock.Clock",
+              "new": 17
+            },
+            {
+              "t": "+",
+              "s": "\tlog      *slog.Logger",
+              "new": 18
+            },
+            {
+              "t": "+",
+              "s": "\tretry    *RetryScheduler",
+              "new": 19
+            },
+            {
+              "t": "+",
+              "s": "\tattempts *store.Attempts",
+              "new": 20
+            },
+            {
+              "t": "+",
+              "s": "\tmetrics  *Metrics",
+              "new": 21
+            },
+            {
+              "t": " ",
+              "s": "}",
+              "old": 18,
+              "new": 22
+            },
+            {
+              "t": " ",
+              "s": "",
+              "old": 19,
+              "new": 23
+            },
+            {
+              "t": "-",
+              "s": "func NewWorker(q Queue, c *http.Client, clock util.Clock, log *slog.Logger) *Worker {",
+              "old": 20
+            },
+            {
+              "t": "-",
+              "s": "\treturn &Worker{queue: q, client: c, clock: clock, log: log}",
+              "old": 21
+            },
+            {
+              "t": "+",
+              "s": "func NewWorker(q Queue, c *http.Client, clk clock.Clock, log *slog.Logger, r *RetryScheduler, a *store.Attempts, m *Metrics) *Worker {",
+              "new": 24
+            },
+            {
+              "t": "+",
+              "s": "\treturn &Worker{queue: q, client: c, clock: clk, log: log, retry: r, attempts: a, metrics: m}",
+              "new": 25
+            },
+            {
+              "t": " ",
+              "s": "}",
+              "old": 22,
+              "new": 26
+            },
+            {
+              "t": " ",
+              "s": "",
+              "old": 23,
+              "new": 27
+            },
+            {
+              "t": " ",
+              "s": "func (w *Worker) Run(ctx context.Context) error {",
+              "old": 24,
+              "new": 28
+            }
+          ]
+        },
+        {
+          "header": "@@ -34,12 +38,28 @@ func (w *Worker) Run(ctx context.Context) error {",
+          "oldStart": 34,
+          "oldLines": 12,
+          "newStart": 38,
+          "newLines": 28,
+          "lines": [
+            {
+              "t": " ",
+              "s": "func (w *Worker) handle(ctx context.Context, job *Job) {",
+              "old": 34,
+              "new": 38
+            },
+            {
+              "t": " ",
+              "s": "\tstart := w.clock.Now()",
+              "old": 35,
+              "new": 39
+            },
+            {
+              "t": " ",
+              "s": "\tstatus, err := w.deliver(ctx, job)",
+              "old": 36,
+              "new": 40
+            },
+            {
+              "t": "-",
+              "s": "\tif err != nil || status >= 500 {",
+              "old": 37
+            },
+            {
+              "t": "-",
+              "s": "\t\tw.log.Warn(\"delivery failed\", \"event\", job.EventID, \"status\", status, \"err\", err)",
+              "old": 38
+            },
+            {
+              "t": "-",
+              "s": "\t\t// Failed deliveries are dropped; the destination has to catch up on its own.",
+              "old": 39
+            },
+            {
+              "t": "+",
+              "s": "\tattempt := store.Attempt{EventID: job.EventID, Number: job.Attempt, Status: status, At: start}",
+              "new": 41
+            },
+            {
+              "t": "+",
+              "s": "\tif err != nil || status >= 500 || status == http.StatusTooManyRequests {",
+              "new": 42
+            },
+            {
+              "t": "+",
+              "s": "\t\tattempt.Error = errString(err)",
+              "new": 43
+            },
+            {
+              "t": "+",
+              "s": "\t\tif recErr := w.attempts.Record(ctx, attempt); recErr != nil {",
+              "new": 44
+            },
+            {
+              "t": "+",
+              "s": "\t\t\t// Don't ack: if we can't record the attempt, let the queue redeliver.",
+              "new": 45
+            },
+            {
+              "t": "+",
+              "s": "\t\t\tw.log.Error(\"record attempt\", \"event\", job.EventID, \"err\", recErr)",
+              "new": 46
+            },
+            {
+              "t": "+",
+              "s": "\t\t\treturn",
+              "new": 47
+            },
+            {
+              "t": "+",
+              "s": "\t\t}",
+              "new": 48
+            },
+            {
+              "t": "+",
+              "s": "\t\tif next, ok := w.retry.Next(job.Attempt, w.clock.Now()); ok {",
+              "new": 49
+            },
+            {
+              "t": "+",
+              "s": "\t\t\tw.metrics.Retried.Inc()",
+              "new": 50
+            },
+            {
+              "t": "+",
+              "s": "\t\t\tif err := w.queue.Nack(ctx, job, next); err != nil {",
+              "new": 51
+            },
+            {
+              "t": "+",
+              "s": "\t\t\t\tw.log.Error(\"nack\", \"event\", job.EventID, \"err\", err)",
+              "new": 52
+            },
+            {
+              "t": "+",
+              "s": "\t\t\t}",
+              "new": 53
+            },
+            {
+              "t": "+",
+              "s": "\t\t\treturn",
+              "new": 54
+            },
+            {
+              "t": "+",
+              "s": "\t\t}",
+              "new": 55
+            },
+            {
+              "t": "+",
+              "s": "\t\tw.metrics.Exhausted.Inc()",
+              "new": 56
+            },
+            {
+              "t": "+",
+              "s": "\t\tw.log.Warn(\"delivery failed permanently\", \"event\", job.EventID, \"attempts\", job.Attempt)",
+              "new": 57
+            },
+            {
+              "t": " ",
+              "s": "\t\t_ = w.queue.Ack(ctx, job)",
+              "old": 40,
+              "new": 58
+            },
+            {
+              "t": " ",
+              "s": "\t\treturn",
+              "old": 41,
+              "new": 59
+            },
+            {
+              "t": " ",
+              "s": "\t}",
+              "old": 42,
+              "new": 60
+            },
+            {
+              "t": "+",
+              "s": "\t_ = w.attempts.Record(ctx, attempt)",
+              "new": 61
+            },
+            {
+              "t": "+",
+              "s": "\tw.metrics.Delivered.Inc()",
+              "new": 62
+            },
+            {
+              "t": " ",
+              "s": "\tw.log.Info(\"delivered\", \"event\", job.EventID, \"ms\", time.Since(start).Milliseconds())",
+              "old": 43,
+              "new": 63
+            },
+            {
+              "t": " ",
+              "s": "\t_ = w.queue.Ack(ctx, job)",
+              "old": 44,
+              "new": 64
+            },
+            {
+              "t": " ",
+              "s": "}",
+              "old": 45,
+              "new": 65
+            }
+          ]
+        },
+        {
+          "header": "@@ -56,3 +76,10 @@ func (w *Worker) deliver(ctx context.Context, job *Job) (int, error) {",
+          "oldStart": 56,
+          "oldLines": 3,
+          "newStart": 76,
+          "newLines": 10,
+          "lines": [
+            {
+              "t": " ",
+              "s": "\tdefer resp.Body.Close()",
+              "old": 56,
+              "new": 76
+            },
+            {
+              "t": " ",
+              "s": "\treturn resp.StatusCode, nil",
+              "old": 57,
+              "new": 77
+            },
+            {
+              "t": " ",
+              "s": "}",
+              "old": 58,
+              "new": 78
+            },
+            {
+              "t": "+",
+              "s": "",
+              "new": 79
+            },
+            {
+              "t": "+",
+              "s": "func errString(err error) string {",
+              "new": 80
+            },
+            {
+              "t": "+",
+              "s": "\tif err == nil {",
+              "new": 81
+            },
+            {
+              "t": "+",
+              "s": "\t\treturn \"\"",
+              "new": 82
+            },
+            {
+              "t": "+",
+              "s": "\t}",
+              "new": 83
+            },
+            {
+              "t": "+",
+              "s": "\treturn err.Error()",
+              "new": 84
+            },
+            {
+              "t": "+",
+              "s": "}",
+              "new": 85
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "path": "internal/store/attempts.go",
+      "change": "added",
+      "additions": 44,
+      "deletions": 0,
+      "binary": false,
+      "mechanical": false,
+      "hunks": [
+        {
+          "header": "@@ -0,0 +1,44 @@",
+          "oldStart": 0,
+          "oldLines": 0,
+          "newStart": 1,
+          "newLines": 44,
+          "lines": [
+            {
+              "t": "+",
+              "s": "package store",
+              "new": 1
+            },
+            {
+              "t": "+",
+              "s": "",
+              "new": 2
+            },
+            {
+              "t": "+",
+              "s": "import (",
+              "new": 3
+            },
+            {
+              "t": "+",
+              "s": "\t\"context\"",
+              "new": 4
+            },
+            {
+              "t": "+",
+              "s": "\t\"database/sql\"",
+              "new": 5
+            },
+            {
+              "t": "+",
+              "s": "\t\"time\"",
+              "new": 6
+            },
+            {
+              "t": "+",
+              "s": ")",
+              "new": 7
+            },
+            {
+              "t": "+",
+              "s": "",
+              "new": 8
+            },
+            {
+              "t": "+",
+              "s": "type Attempt struct {",
+              "new": 9
+            },
+            {
+              "t": "+",
+              "s": "\tEventID string",
+              "new": 10
+            },
+            {
+              "t": "+",
+              "s": "\tNumber  int",
+              "new": 11
+            },
+            {
+              "t": "+",
+              "s": "\tStatus  int",
+              "new": 12
+            },
+            {
+              "t": "+",
+              "s": "\tError   string",
+              "new": 13
+            },
+            {
+              "t": "+",
+              "s": "\tAt      time.Time",
+              "new": 14
+            },
+            {
+              "t": "+",
+              "s": "}",
+              "new": 15
+            },
+            {
+              "t": "+",
+              "s": "",
+              "new": 16
+            },
+            {
+              "t": "+",
+              "s": "type Attempts struct{ db *sql.DB }",
+              "new": 17
+            },
+            {
+              "t": "+",
+              "s": "",
+              "new": 18
+            },
+            {
+              "t": "+",
+              "s": "func NewAttempts(db *sql.DB) *Attempts { return &Attempts{db: db} }",
+              "new": 19
+            },
+            {
+              "t": "+",
+              "s": "",
+              "new": 20
+            },
+            {
+              "t": "+",
+              "s": "func (a *Attempts) Record(ctx context.Context, at Attempt) error {",
+              "new": 21
+            },
+            {
+              "t": "+",
+              "s": "\t_, err := a.db.ExecContext(ctx,",
+              "new": 22
+            },
+            {
+              "t": "+",
+              "s": "\t\t`INSERT INTO delivery_attempts (event_id, attempt, status, error, created_at) VALUES ($1, $2, $3, $4, $5)`,",
+              "new": 23
+            },
+            {
+              "t": "+",
+              "s": "\t\tat.EventID, at.Number, at.Status, at.Error, at.At)",
+              "new": 24
+            },
+            {
+              "t": "+",
+              "s": "\treturn err",
+              "new": 25
+            },
+            {
+              "t": "+",
+              "s": "}",
+              "new": 26
+            },
+            {
+              "t": "+",
+              "s": "",
+              "new": 27
+            },
+            {
+              "t": "+",
+              "s": "func (a *Attempts) ForEvent(ctx context.Context, eventID string) ([]Attempt, error) {",
+              "new": 28
+            },
+            {
+              "t": "+",
+              "s": "\trows, err := a.db.QueryContext(ctx,",
+              "new": 29
+            },
+            {
+              "t": "+",
+              "s": "\t\t`SELECT event_id, attempt, status, error, created_at FROM delivery_attempts WHERE event_id = $1 ORDER BY attempt`, eventID)",
+              "new": 30
+            },
+            {
+              "t": "+",
+              "s": "\tif err != nil {",
+              "new": 31
+            },
+            {
+              "t": "+",
+              "s": "\t\treturn nil, err",
+              "new": 32
+            },
+            {
+              "t": "+",
+              "s": "\t}",
+              "new": 33
+            },
+            {
+              "t": "+",
+              "s": "\tdefer rows.Close()",
+              "new": 34
+            },
+            {
+              "t": "+",
+              "s": "\tvar out []Attempt",
+              "new": 35
+            },
+            {
+              "t": "+",
+              "s": "\tfor rows.Next() {",
+              "new": 36
+            },
+            {
+              "t": "+",
+              "s": "\t\tvar at Attempt",
+              "new": 37
+            },
+            {
+              "t": "+",
+              "s": "\t\tif err := rows.Scan(&at.EventID, &at.Number, &at.Status, &at.Error, &at.At); err != nil {",
+              "new": 38
+            },
+            {
+              "t": "+",
+              "s": "\t\t\treturn nil, err",
+              "new": 39
+            },
+            {
+              "t": "+",
+              "s": "\t\t}",
+              "new": 40
+            },
+            {
+              "t": "+",
+              "s": "\t\tout = append(out, at)",
+              "new": 41
+            },
+            {
+              "t": "+",
+              "s": "\t}",
+              "new": 42
+            },
+            {
+              "t": "+",
+              "s": "\treturn out, rows.Err()",
+              "new": 43
+            },
+            {
+              "t": "+",
+              "s": "}",
+              "new": 44
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "path": "internal/store/migrations/0012_delivery_attempts.down.sql",
+      "change": "added",
+      "additions": 2,
+      "deletions": 0,
+      "binary": false,
+      "mechanical": false,
+      "hunks": [
+        {
+          "header": "@@ -0,0 +1,2 @@",
+          "oldStart": 0,
+          "oldLines": 0,
+          "newStart": 1,
+          "newLines": 2,
+          "lines": [
+            {
+              "t": "+",
+              "s": "ALTER TABLE deliveries DROP COLUMN last_status;",
+              "new": 1
+            },
+            {
+              "t": "+",
+              "s": "DROP TABLE delivery_attempts;",
+              "new": 2
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "path": "internal/store/migrations/0012_delivery_attempts.up.sql",
+      "change": "added",
+      "additions": 11,
+      "deletions": 0,
+      "binary": false,
+      "mechanical": false,
+      "hunks": [
+        {
+          "header": "@@ -0,0 +1,11 @@",
+          "oldStart": 0,
+          "oldLines": 0,
+          "newStart": 1,
+          "newLines": 11,
+          "lines": [
+            {
+              "t": "+",
+              "s": "CREATE TABLE delivery_attempts (",
+              "new": 1
+            },
+            {
+              "t": "+",
+              "s": "  id          BIGSERIAL PRIMARY KEY,",
+              "new": 2
+            },
+            {
+              "t": "+",
+              "s": "  event_id    TEXT        NOT NULL,",
+              "new": 3
+            },
+            {
+              "t": "+",
+              "s": "  attempt     INT         NOT NULL,",
+              "new": 4
+            },
+            {
+              "t": "+",
+              "s": "  status      INT         NOT NULL DEFAULT 0,",
+              "new": 5
+            },
+            {
+              "t": "+",
+              "s": "  error       TEXT        NOT NULL DEFAULT '',",
+              "new": 6
+            },
+            {
+              "t": "+",
+              "s": "  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()",
+              "new": 7
+            },
+            {
+              "t": "+",
+              "s": ");",
+              "new": 8
+            },
+            {
+              "t": "+",
+              "s": "CREATE INDEX delivery_attempts_event_idx ON delivery_attempts (event_id, attempt);",
+              "new": 9
+            },
+            {
+              "t": "+",
+              "s": "",
+              "new": 10
+            },
+            {
+              "t": "+",
+              "s": "ALTER TABLE deliveries ADD COLUMN last_status TEXT NOT NULL DEFAULT 'pending';",
+              "new": 11
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "path": "scripts/run-dev.sh",
+      "oldPath": "scripts/dev.sh",
+      "change": "changed",
+      "additions": 0,
+      "deletions": 0,
+      "binary": false,
+      "mechanical": true,
+      "hunks": []
+    },
+    {
+      "path": "web/pnpm-lock.yaml",
+      "change": "changed",
+      "additions": 5,
+      "deletions": 0,
+      "binary": false,
+      "mechanical": true,
+      "hunks": [
+        {
+          "header": "@@ -5,6 +5,11 @@ importers:",
+          "oldStart": 5,
+          "oldLines": 6,
+          "newStart": 5,
+          "newLines": 11,
+          "lines": [
+            {
+              "t": " ",
+              "s": "      react:",
+              "old": 5,
+              "new": 5
+            },
+            {
+              "t": " ",
+              "s": "        specifier: ^19.0.0",
+              "old": 6,
+              "new": 6
+            },
+            {
+              "t": " ",
+              "s": "        version: 19.0.0",
+              "old": 7,
+              "new": 7
+            },
+            {
+              "t": "+",
+              "s": "      date-fns:",
+              "new": 8
+            },
+            {
+              "t": "+",
+              "s": "        specifier: ^4.1.0",
+              "new": 9
+            },
+            {
+              "t": "+",
+              "s": "        version: 4.1.0",
+              "new": 10
+            },
+            {
+              "t": " ",
+              "s": "packages:",
+              "old": 8,
+              "new": 11
+            },
+            {
+              "t": "+",
+              "s": "  date-fns@4.1.0:",
+              "new": 12
+            },
+            {
+              "t": "+",
+              "s": "    resolution: {integrity: sha512-bbbb}",
+              "new": 13
+            },
+            {
+              "t": " ",
+              "s": "  react@19.0.0:",
+              "old": 9,
+              "new": 14
+            },
+            {
+              "t": " ",
+              "s": "    resolution: {integrity: sha512-aaaa}",
+              "old": 10,
+              "new": 15
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "path": "web/public/retry-icon.png",
+      "change": "added",
+      "additions": 0,
+      "deletions": 0,
+      "binary": true,
+      "mechanical": false,
+      "hunks": []
+    },
+    {
+      "path": "web/src/pages/FailedDeliveries.tsx",
+      "change": "added",
+      "additions": 40,
+      "deletions": 0,
+      "binary": false,
+      "mechanical": false,
+      "hunks": [
+        {
+          "header": "@@ -0,0 +1,40 @@",
+          "oldStart": 0,
+          "oldLines": 0,
+          "newStart": 1,
+          "newLines": 40,
+          "lines": [
+            {
+              "t": "+",
+              "s": "import { useEffect, useState } from \"react\";",
+              "new": 1
+            },
+            {
+              "t": "+",
+              "s": "import { api, type Delivery } from \"../api\";",
+              "new": 2
+            },
+            {
+              "t": "+",
+              "s": "",
+              "new": 3
+            },
+            {
+              "t": "+",
+              "s": "export function FailedDeliveries() {",
+              "new": 4
+            },
+            {
+              "t": "+",
+              "s": "  const [items, setItems] = useState<Delivery[]>([]);",
+              "new": 5
+            },
+            {
+              "t": "+",
+              "s": "  const [busy, setBusy] = useState<string | null>(null);",
+              "new": 6
+            },
+            {
+              "t": "+",
+              "s": "",
+              "new": 7
+            },
+            {
+              "t": "+",
+              "s": "  useEffect(() => {",
+              "new": 8
+            },
+            {
+              "t": "+",
+              "s": "    api.get<Delivery[]>(\"/deliveries?status=failed\").then(setItems);",
+              "new": 9
+            },
+            {
+              "t": "+",
+              "s": "  }, []);",
+              "new": 10
+            },
+            {
+              "t": "+",
+              "s": "",
+              "new": 11
+            },
+            {
+              "t": "+",
+              "s": "  async function replay(id: string) {",
+              "new": 12
+            },
+            {
+              "t": "+",
+              "s": "    setBusy(id);",
+              "new": 13
+            },
+            {
+              "t": "+",
+              "s": "    try {",
+              "new": 14
+            },
+            {
+              "t": "+",
+              "s": "      await api.post(`/deliveries/${id}/replay`);",
+              "new": 15
+            },
+            {
+              "t": "+",
+              "s": "      setItems((xs) => xs.filter((x) => x.id !== id));",
+              "new": 16
+            },
+            {
+              "t": "+",
+              "s": "    } finally {",
+              "new": 17
+            },
+            {
+              "t": "+",
+              "s": "      setBusy(null);",
+              "new": 18
+            },
+            {
+              "t": "+",
+              "s": "    }",
+              "new": 19
+            },
+            {
+              "t": "+",
+              "s": "  }",
+              "new": 20
+            },
+            {
+              "t": "+",
+              "s": "",
+              "new": 21
+            },
+            {
+              "t": "+",
+              "s": "  return (",
+              "new": 22
+            },
+            {
+              "t": "+",
+              "s": "    <table className=\"table\">",
+              "new": 23
+            },
+            {
+              "t": "+",
+              "s": "      <thead>",
+              "new": 24
+            },
+            {
+              "t": "+",
+              "s": "        <tr><th>Event</th><th>Destination</th><th>Attempts</th><th>Last status</th><th /></tr>",
+              "new": 25
+            },
+            {
+              "t": "+",
+              "s": "      </thead>",
+              "new": 26
+            },
+            {
+              "t": "+",
+              "s": "      <tbody>",
+              "new": 27
+            },
+            {
+              "t": "+",
+              "s": "        {items.map((d) => (",
+              "new": 28
+            },
+            {
+              "t": "+",
+              "s": "          <tr key={d.id}>",
+              "new": 29
+            },
+            {
+              "t": "+",
+              "s": "            <td>{d.eventId}</td>",
+              "new": 30
+            },
+            {
+              "t": "+",
+              "s": "            <td>{d.destination}</td>",
+              "new": 31
+            },
+            {
+              "t": "+",
+              "s": "            <td>{d.attempts}</td>",
+              "new": 32
+            },
+            {
+              "t": "+",
+              "s": "            <td><span className=\"badge\">{d.lastStatus}</span></td>",
+              "new": 33
+            },
+            {
+              "t": "+",
+              "s": "            <td><button disabled={busy === d.id} onClick={() => replay(d.id)}>Replay</button></td>",
+              "new": 34
+            },
+            {
+              "t": "+",
+              "s": "          </tr>",
+              "new": 35
+            },
+            {
+              "t": "+",
+              "s": "        ))}",
+              "new": 36
+            },
+            {
+              "t": "+",
+              "s": "      </tbody>",
+              "new": 37
+            },
+            {
+              "t": "+",
+              "s": "    </table>",
+              "new": 38
+            },
+            {
+              "t": "+",
+              "s": "  );",
+              "new": 39
+            },
+            {
+              "t": "+",
+              "s": "}",
+              "new": 40
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "path": "web/src/routes.ts",
+      "change": "changed",
+      "additions": 2,
+      "deletions": 0,
+      "binary": false,
+      "mechanical": false,
+      "hunks": [
+        {
+          "header": "@@ -1,7 +1,9 @@",
+          "oldStart": 1,
+          "oldLines": 7,
+          "newStart": 1,
+          "newLines": 9,
+          "lines": [
+            {
+              "t": " ",
+              "s": "import { Dashboard } from \"./pages/Dashboard\";",
+              "old": 1,
+              "new": 1
+            },
+            {
+              "t": " ",
+              "s": "import { Destinations } from \"./pages/Destinations\";",
+              "old": 2,
+              "new": 2
+            },
+            {
+              "t": "+",
+              "s": "import { FailedDeliveries } from \"./pages/FailedDeliveries\";",
+              "new": 3
+            },
+            {
+              "t": " ",
+              "s": "",
+              "old": 3,
+              "new": 4
+            },
+            {
+              "t": " ",
+              "s": "export const routes = [",
+              "old": 4,
+              "new": 5
+            },
+            {
+              "t": " ",
+              "s": "  { path: \"/\", component: Dashboard, title: \"Dashboard\" },",
+              "old": 5,
+              "new": 6
+            },
+            {
+              "t": " ",
+              "s": "  { path: \"/destinations\", component: Destinations, title: \"Destinations\" },",
+              "old": 6,
+              "new": 7
+            },
+            {
+              "t": "+",
+              "s": "  { path: \"/deliveries/failed\", component: FailedDeliveries, title: \"Failed deliveries\" },",
+              "new": 8
+            },
+            {
+              "t": " ",
+              "s": "];",
+              "old": 7,
+              "new": 9
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "path": "web/src/styles.css",
+      "change": "changed",
+      "additions": 4,
+      "deletions": 4,
+      "binary": false,
+      "mechanical": true,
+      "hunks": [
+        {
+          "header": "@@ -1,8 +1,8 @@",
+          "oldStart": 1,
+          "oldLines": 8,
+          "newStart": 1,
+          "newLines": 8,
+          "lines": [
+            {
+              "t": " ",
+              "s": ".table {",
+              "old": 1,
+              "new": 1
+            },
+            {
+              "t": "-",
+              "s": "    width: 100%;",
+              "old": 2
+            },
+            {
+              "t": "-",
+              "s": "    border-collapse: collapse;",
+              "old": 3
+            },
+            {
+              "t": "+",
+              "s": "  width: 100%;",
+              "new": 2
+            },
+            {
+              "t": "+",
+              "s": "  border-collapse: collapse;",
+              "new": 3
+            },
+            {
+              "t": " ",
+              "s": "}",
+              "old": 4,
+              "new": 4
+            },
+            {
+              "t": " ",
+              "s": ".badge {",
+              "old": 5,
+              "new": 5
+            },
+            {
+              "t": "-",
+              "s": "    padding: 2px 6px;",
+              "old": 6
+            },
+            {
+              "t": "-",
+              "s": "    border-radius: 4px;",
+              "old": 7
+            },
+            {
+              "t": "+",
+              "s": "  padding: 2px 6px;",
+              "new": 6
+            },
+            {
+              "t": "+",
+              "s": "  border-radius: 4px;",
+              "new": 7
+            },
+            {
+              "t": " ",
+              "s": "}",
+              "old": 8,
+              "new": 8
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "questions": [
+    {
+      "q": "Max attempts before giving up?",
+      "options": [
+        "8 (~2h of retries)",
+        "12 (~10h)",
+        "configurable per destination"
+      ],
+      "recommend": "8 (~2h of retries)",
+      "why": "Matches the plan and keeps the queue small; per-destination config can come later without a migration."
+    }
+  ],
+  "warnings": [],
+  "planLink": {
+    "src": "../retries.plan",
+    "title": "Retry failed webhook deliveries",
+    "done": [
+      "worker",
+      "retry",
+      "attempts",
+      "api",
+      "ui"
+    ],
+    "notDone": [
+      "alerts"
+    ],
+    "unplanned": [
+      "metrics"
+    ]
+  }
+}

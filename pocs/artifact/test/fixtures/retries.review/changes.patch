@@ -1,0 +1,434 @@
+diff --git a/docs/retries.md b/docs/retries.md
+deleted file mode 100644
+index e309953..0000000
+--- a/docs/retries.md
++++ /dev/null
+@@ -1,4 +0,0 @@
+-# Retries
+-
+-Relay does not retry failed deliveries yet. Destinations should poll
+-`GET /deliveries` and reconcile on their side.
+diff --git a/internal/api/deliveries.go b/internal/api/deliveries.go
+index f1be42d..eb3f870 100644
+--- a/internal/api/deliveries.go
++++ b/internal/api/deliveries.go
+@@ -3,23 +3,52 @@ package api
+ import (
+ 	"net/http"
+ 
++	"github.com/acme/relay/internal/delivery"
+ 	"github.com/acme/relay/internal/store"
+ )
+ 
+ type DeliveriesHandler struct {
+-	store *store.Store
++	store    *store.Store
++	attempts *store.Attempts
++	queue    delivery.Queue
+ }
+ 
+ func (h *DeliveriesHandler) Register(mux *http.ServeMux) {
+ 	mux.HandleFunc("GET /deliveries", h.list)
++	mux.HandleFunc("GET /deliveries/{id}/attempts", h.attemptsFor)
++	mux.HandleFunc("POST /deliveries/{id}/replay", h.replay)
+ }
+ 
+ func (h *DeliveriesHandler) list(w http.ResponseWriter, r *http.Request) {
+ 	tenant := tenantFrom(r)
+-	items, err := h.store.ListDeliveries(r.Context(), tenant, 50)
++	status := r.URL.Query().Get("status") // "", "failed", "delivered"
++	items, err := h.store.ListDeliveries(r.Context(), tenant, status, 50)
+ 	if err != nil {
+ 		writeError(w, err)
+ 		return
+ 	}
+ 	writeJSON(w, http.StatusOK, items)
+ }
++
++func (h *DeliveriesHandler) attemptsFor(w http.ResponseWriter, r *http.Request) {
++	list, err := h.attempts.ForEvent(r.Context(), r.PathValue("id"))
++	if err != nil {
++		writeError(w, err)
++		return
++	}
++	writeJSON(w, http.StatusOK, list)
++}
++
++// replay re-enqueues a failed delivery as attempt 0; the original attempts stay in history.
++func (h *DeliveriesHandler) replay(w http.ResponseWriter, r *http.Request) {
++	d, err := h.store.GetDelivery(r.Context(), tenantFrom(r), r.PathValue("id"))
++	if err != nil {
++		writeError(w, err)
++		return
++	}
++	if err := h.queue.Enqueue(r.Context(), d.Job(0)); err != nil {
++		writeError(w, err)
++		return
++	}
++	writeJSON(w, http.StatusAccepted, map[string]string{"status": "queued"})
++}
+diff --git a/internal/util/clock.go b/internal/clock/clock.go
+similarity index 93%
+rename from internal/util/clock.go
+rename to internal/clock/clock.go
+index f27d4e1..1fc43fb 100644
+--- a/internal/util/clock.go
++++ b/internal/clock/clock.go
+@@ -1,4 +1,4 @@
+-package util
++package clock
+ 
+ import "time"
+ 
+diff --git a/internal/delivery/metrics.go b/internal/delivery/metrics.go
+new file mode 100644
+index 0000000..25db3c6
+--- /dev/null
++++ b/internal/delivery/metrics.go
+@@ -0,0 +1,20 @@
++package delivery
++
++import "github.com/prometheus/client_golang/prometheus"
++
++// Metrics for the delivery worker; registered once at startup.
++type Metrics struct {
++	Delivered prometheus.Counter
++	Retried   prometheus.Counter
++	Exhausted prometheus.Counter
++}
++
++func NewMetrics(reg prometheus.Registerer) *Metrics {
++	m := &Metrics{
++		Delivered: prometheus.NewCounter(prometheus.CounterOpts{Name: "relay_deliveries_total"}),
++		Retried:   prometheus.NewCounter(prometheus.CounterOpts{Name: "relay_delivery_retries_total"}),
++		Exhausted: prometheus.NewCounter(prometheus.CounterOpts{Name: "relay_delivery_exhausted_total"}),
++	}
++	reg.MustRegister(m.Delivered, m.Retried, m.Exhausted)
++	return m
++}
+diff --git a/internal/delivery/retry.go b/internal/delivery/retry.go
+new file mode 100644
+index 0000000..96e0fc9
+--- /dev/null
++++ b/internal/delivery/retry.go
+@@ -0,0 +1,31 @@
++package delivery
++
++import (
++	"math/rand/v2"
++	"time"
++)
++
++// RetryScheduler decides when (and whether) a failed delivery is tried again:
++// capped exponential backoff with full jitter.
++type RetryScheduler struct {
++	Base        time.Duration // first delay, default 30s
++	Cap         time.Duration // longest delay, default 1h
++	MaxAttempts int           // give up after this many attempts, default 8
++}
++
++func DefaultRetry() *RetryScheduler {
++	return &RetryScheduler{Base: 30 * time.Second, Cap: time.Hour, MaxAttempts: 8}
++}
++
++// Next returns when attempt+1 should run, or ok=false when attempts are exhausted.
++func (r *RetryScheduler) Next(attempt int, now time.Time) (at time.Time, ok bool) {
++	if attempt >= r.MaxAttempts {
++		return time.Time{}, false
++	}
++	d := r.Base << attempt
++	if d <= 0 || d > r.Cap {
++		d = r.Cap
++	}
++	jitter := time.Duration(rand.Int64N(int64(d)))
++	return now.Add(jitter), true
++}
+diff --git a/internal/delivery/retry_test.go b/internal/delivery/retry_test.go
+new file mode 100644
+index 0000000..4add01c
+--- /dev/null
++++ b/internal/delivery/retry_test.go
+@@ -0,0 +1,23 @@
++package delivery
++
++import (
++	"testing"
++	"time"
++)
++
++func TestNextIsCapped(t *testing.T) {
++	r := DefaultRetry()
++	now := time.Unix(0, 0)
++	for attempt := 0; attempt < r.MaxAttempts; attempt++ {
++		at, ok := r.Next(attempt, now)
++		if !ok {
++			t.Fatalf("attempt %d: want ok", attempt)
++		}
++		if at.Sub(now) > r.Cap {
++			t.Fatalf("attempt %d: delay %s over cap", attempt, at.Sub(now))
++		}
++	}
++	if _, ok := r.Next(r.MaxAttempts, now); ok {
++		t.Fatal("want exhausted")
++	}
++}
+diff --git a/internal/delivery/worker.go b/internal/delivery/worker.go
+index 1cfbb0b..187dbde 100644
+--- a/internal/delivery/worker.go
++++ b/internal/delivery/worker.go
+@@ -6,19 +6,23 @@ import (
+ 	"net/http"
+ 	"time"
+ 
+-	"github.com/acme/relay/internal/util"
++	"github.com/acme/relay/internal/clock"
++	"github.com/acme/relay/internal/store"
+ )
+ 
+ // Worker pulls delivery jobs off the queue and POSTs them to the destination.
+ type Worker struct {
+-	queue  Queue
+-	client *http.Client
+-	clock  util.Clock
+-	log    *slog.Logger
++	queue    Queue
++	client   *http.Client
++	clock    clock.Clock
++	log      *slog.Logger
++	retry    *RetryScheduler
++	attempts *store.Attempts
++	metrics  *Metrics
+ }
+ 
+-func NewWorker(q Queue, c *http.Client, clock util.Clock, log *slog.Logger) *Worker {
+-	return &Worker{queue: q, client: c, clock: clock, log: log}
++func NewWorker(q Queue, c *http.Client, clk clock.Clock, log *slog.Logger, r *RetryScheduler, a *store.Attempts, m *Metrics) *Worker {
++	return &Worker{queue: q, client: c, clock: clk, log: log, retry: r, attempts: a, metrics: m}
+ }
+ 
+ func (w *Worker) Run(ctx context.Context) error {
+@@ -34,12 +38,28 @@ func (w *Worker) Run(ctx context.Context) error {
+ func (w *Worker) handle(ctx context.Context, job *Job) {
+ 	start := w.clock.Now()
+ 	status, err := w.deliver(ctx, job)
+-	if err != nil || status >= 500 {
+-		w.log.Warn("delivery failed", "event", job.EventID, "status", status, "err", err)
+-		// Failed deliveries are dropped; the destination has to catch up on its own.
++	attempt := store.Attempt{EventID: job.EventID, Number: job.Attempt, Status: status, At: start}
++	if err != nil || status >= 500 || status == http.StatusTooManyRequests {
++		attempt.Error = errString(err)
++		if recErr := w.attempts.Record(ctx, attempt); recErr != nil {
++			// Don't ack: if we can't record the attempt, let the queue redeliver.
++			w.log.Error("record attempt", "event", job.EventID, "err", recErr)
++			return
++		}
++		if next, ok := w.retry.Next(job.Attempt, w.clock.Now()); ok {
++			w.metrics.Retried.Inc()
++			if err := w.queue.Nack(ctx, job, next); err != nil {
++				w.log.Error("nack", "event", job.EventID, "err", err)
++			}
++			return
++		}
++		w.metrics.Exhausted.Inc()
++		w.log.Warn("delivery failed permanently", "event", job.EventID, "attempts", job.Attempt)
+ 		_ = w.queue.Ack(ctx, job)
+ 		return
+ 	}
++	_ = w.attempts.Record(ctx, attempt)
++	w.metrics.Delivered.Inc()
+ 	w.log.Info("delivered", "event", job.EventID, "ms", time.Since(start).Milliseconds())
+ 	_ = w.queue.Ack(ctx, job)
+ }
+@@ -56,3 +76,10 @@ func (w *Worker) deliver(ctx context.Context, job *Job) (int, error) {
+ 	defer resp.Body.Close()
+ 	return resp.StatusCode, nil
+ }
++
++func errString(err error) string {
++	if err == nil {
++		return ""
++	}
++	return err.Error()
++}
+diff --git a/internal/store/attempts.go b/internal/store/attempts.go
+new file mode 100644
+index 0000000..1234839
+--- /dev/null
++++ b/internal/store/attempts.go
+@@ -0,0 +1,44 @@
++package store
++
++import (
++	"context"
++	"database/sql"
++	"time"
++)
++
++type Attempt struct {
++	EventID string
++	Number  int
++	Status  int
++	Error   string
++	At      time.Time
++}
++
++type Attempts struct{ db *sql.DB }
++
++func NewAttempts(db *sql.DB) *Attempts { return &Attempts{db: db} }
++
++func (a *Attempts) Record(ctx context.Context, at Attempt) error {
++	_, err := a.db.ExecContext(ctx,
++		`INSERT INTO delivery_attempts (event_id, attempt, status, error, created_at) VALUES ($1, $2, $3, $4, $5)`,
++		at.EventID, at.Number, at.Status, at.Error, at.At)
++	return err
++}
++
++func (a *Attempts) ForEvent(ctx context.Context, eventID string) ([]Attempt, error) {
++	rows, err := a.db.QueryContext(ctx,
++		`SELECT event_id, attempt, status, error, created_at FROM delivery_attempts WHERE event_id = $1 ORDER BY attempt`, eventID)
++	if err != nil {
++		return nil, err
++	}
++	defer rows.Close()
++	var out []Attempt
++	for rows.Next() {
++		var at Attempt
++		if err := rows.Scan(&at.EventID, &at.Number, &at.Status, &at.Error, &at.At); err != nil {
++			return nil, err
++		}
++		out = append(out, at)
++	}
++	return out, rows.Err()
++}
+diff --git a/internal/store/migrations/0012_delivery_attempts.down.sql b/internal/store/migrations/0012_delivery_attempts.down.sql
+new file mode 100644
+index 0000000..0a78e51
+--- /dev/null
++++ b/internal/store/migrations/0012_delivery_attempts.down.sql
+@@ -0,0 +1,2 @@
++ALTER TABLE deliveries DROP COLUMN last_status;
++DROP TABLE delivery_attempts;
+diff --git a/internal/store/migrations/0012_delivery_attempts.up.sql b/internal/store/migrations/0012_delivery_attempts.up.sql
+new file mode 100644
+index 0000000..d2ea12b
+--- /dev/null
++++ b/internal/store/migrations/0012_delivery_attempts.up.sql
+@@ -0,0 +1,11 @@
++CREATE TABLE delivery_attempts (
++  id          BIGSERIAL PRIMARY KEY,
++  event_id    TEXT        NOT NULL,
++  attempt     INT         NOT NULL,
++  status      INT         NOT NULL DEFAULT 0,
++  error       TEXT        NOT NULL DEFAULT '',
++  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
++);
++CREATE INDEX delivery_attempts_event_idx ON delivery_attempts (event_id, attempt);
++
++ALTER TABLE deliveries ADD COLUMN last_status TEXT NOT NULL DEFAULT 'pending';
+diff --git a/scripts/dev.sh b/scripts/run-dev.sh
+similarity index 100%
+rename from scripts/dev.sh
+rename to scripts/run-dev.sh
+diff --git a/web/pnpm-lock.yaml b/web/pnpm-lock.yaml
+index b1a123a..1b5db2a 100644
+--- a/web/pnpm-lock.yaml
++++ b/web/pnpm-lock.yaml
+@@ -5,6 +5,11 @@ importers:
+       react:
+         specifier: ^19.0.0
+         version: 19.0.0
++      date-fns:
++        specifier: ^4.1.0
++        version: 4.1.0
+ packages:
++  date-fns@4.1.0:
++    resolution: {integrity: sha512-bbbb}
+   react@19.0.0:
+     resolution: {integrity: sha512-aaaa}
+diff --git a/web/public/retry-icon.png b/web/public/retry-icon.png
+new file mode 100644
+index 0000000000000000000000000000000000000000..f7bd5c5355cb59edc683073794b90664f6eb9d96
+GIT binary patch
+literal 29
+ecmeAS@N?(olHy`uVBq!ia0vp^0wB!61|$JNGy@C(
+
+literal 0
+HcmV?d00001
+
+diff --git a/web/src/pages/FailedDeliveries.tsx b/web/src/pages/FailedDeliveries.tsx
+new file mode 100644
+index 0000000..b4d726f
+--- /dev/null
++++ b/web/src/pages/FailedDeliveries.tsx
+@@ -0,0 +1,40 @@
++import { useEffect, useState } from "react";
++import { api, type Delivery } from "../api";
++
++export function FailedDeliveries() {
++  const [items, setItems] = useState<Delivery[]>([]);
++  const [busy, setBusy] = useState<string | null>(null);
++
++  useEffect(() => {
++    api.get<Delivery[]>("/deliveries?status=failed").then(setItems);
++  }, []);
++
++  async function replay(id: string) {
++    setBusy(id);
++    try {
++      await api.post(`/deliveries/${id}/replay`);
++      setItems((xs) => xs.filter((x) => x.id !== id));
++    } finally {
++      setBusy(null);
++    }
++  }
++
++  return (
++    <table className="table">
++      <thead>
++        <tr><th>Event</th><th>Destination</th><th>Attempts</th><th>Last status</th><th /></tr>
++      </thead>
++      <tbody>
++        {items.map((d) => (
++          <tr key={d.id}>
++            <td>{d.eventId}</td>
++            <td>{d.destination}</td>
++            <td>{d.attempts}</td>
++            <td><span className="badge">{d.lastStatus}</span></td>
++            <td><button disabled={busy === d.id} onClick={() => replay(d.id)}>Replay</button></td>
++          </tr>
++        ))}
++      </tbody>
++    </table>
++  );
++}
+diff --git a/web/src/routes.ts b/web/src/routes.ts
+index b2c06ae..511b9a7 100644
+--- a/web/src/routes.ts
++++ b/web/src/routes.ts
+@@ -1,7 +1,9 @@
+ import { Dashboard } from "./pages/Dashboard";
+ import { Destinations } from "./pages/Destinations";
++import { FailedDeliveries } from "./pages/FailedDeliveries";
+ 
+ export const routes = [
+   { path: "/", component: Dashboard, title: "Dashboard" },
+   { path: "/destinations", component: Destinations, title: "Destinations" },
++  { path: "/deliveries/failed", component: FailedDeliveries, title: "Failed deliveries" },
+ ];
+diff --git a/web/src/styles.css b/web/src/styles.css
+index 1cd3a49..4ad602a 100644
+--- a/web/src/styles.css
++++ b/web/src/styles.css
+@@ -1,8 +1,8 @@
+ .table {
+-    width: 100%;
+-    border-collapse: collapse;
++  width: 100%;
++  border-collapse: collapse;
+ }
+ .badge {
+-    padding: 2px 6px;
+-    border-radius: 4px;
++  padding: 2px 6px;
++  border-radius: 4px;
+ }

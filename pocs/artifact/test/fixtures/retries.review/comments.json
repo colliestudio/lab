@@ -1,0 +1,17 @@
+[
+  {
+    "id": "c1",
+    "anchor": { "section": "retry", "block": "retry-questions-1" },
+    "author": "alex",
+    "body": "8 is fine for now. Make the cap configurable in a follow-up?",
+    "created": "2026-10-05T10:12:00Z"
+  },
+  {
+    "id": "c2",
+    "anchor": { "section": "worker", "block": "worker-diff-1", "file": "internal/delivery/worker.go", "line": 61 },
+    "author": "alex",
+    "body": "Log the record error at least, even if we don't fail on it.",
+    "created": "2026-10-05T10:15:00Z",
+    "resolved": true
+  }
+]
