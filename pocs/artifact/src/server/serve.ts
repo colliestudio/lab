@@ -6,11 +6,13 @@ import type { AddressInfo } from "node:net";
 import type { Doc } from "../model.ts";
 import { loadBundle } from "../parse/index.ts";
 import { appendComment, commentsFile, openBundle, readComments, type BundleReader } from "./bundle.ts";
-import { guard, handleApi, injectBoot, send, viewerTemplate, type DocSource } from "./http.ts";
+import { guard, handleApi, handleAsset, send, sendViewer, type DocSource } from "./http.ts";
 
 export interface Running { url: string; close(): Promise<void> }
 
-export async function startServe(bundlePath: string, opts: { port?: number; host?: string; log?: (s: string) => void } = {}): Promise<Running> {
+const LOCAL_HOST = /^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i;
+
+export async function startServe(bundlePath: string, opts: { port?: number; log?: (s: string) => void } = {}): Promise<Running> {
   const path = resolve(bundlePath);
   const log = opts.log ?? ((s) => console.error(s));
   let doc: Doc = (await loadBundle(path)).doc;
@@ -44,11 +46,12 @@ export async function startServe(bundlePath: string, opts: { port?: number; host
   });
 
   const server = createServer(guard(async (req, res) => {
+    // Local only: refuse other Host names (DNS rebinding: a website that resolves its name to 127.0.0.1)
+    if (!LOCAL_HOST.test(req.headers.host ?? "")) return send(res, 403, "forbidden host");
     const url = new URL(req.url ?? "/", "http://x");
     const p = url.pathname;
-    if (p === "/" || p === "/index.html") {
-      return send(res, 200, injectBoot(viewerTemplate(), { doc, api: "/api" }, "/api/events"), "text/html; charset=utf-8");
-    }
+    if (p === "/" || p === "/index.html") return sendViewer(res, { doc, api: "/api" }, { events: "/api/events" });
+    if (handleAsset(req, res, p)) return;
     if (p === "/api/events") {
       res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" });
       res.write(": hi\n\n");
@@ -60,10 +63,10 @@ export async function startServe(bundlePath: string, opts: { port?: number; host
     send(res, 404, "not found");
   }));
 
-  await new Promise<void>((ok, err) => { server.once("error", err); server.listen(opts.port ?? 0, opts.host ?? "127.0.0.1", ok); });
+  await new Promise<void>((ok, err) => { server.once("error", err); server.listen(opts.port ?? 0, "127.0.0.1", ok); });
   const { port } = server.address() as AddressInfo;
   return {
-    url: `http://${opts.host ?? "127.0.0.1"}:${port}/`,
+    url: `http://127.0.0.1:${port}/`,
     close: () => new Promise<void>((ok) => {
       clearTimeout(timer);
       watcher.close();

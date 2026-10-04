@@ -34,7 +34,26 @@ export function openBundle(path: string): BundleReader {
   return zipReader(readFileSync(path));
 }
 
-export function zipReader(zip: Uint8Array): BundleReader {
+/** Caps for unzipping untrusted uploads. Sizes come from the zip headers; fflate never inflates past them. */
+export interface ZipLimits { maxBytes: number; maxEntries: number }
+export const UPLOAD_LIMITS: ZipLimits = { maxBytes: 200 * 1024 * 1024, maxEntries: 2000 };
+
+/** Throws (status 400) before inflating anything if the zip's declared total size or entry count is over `limits`. */
+export function checkZip(zip: Uint8Array, limits: ZipLimits): void {
+  let bytes = 0, entries = 0;
+  const over = (what: string) => Object.assign(new Error(`bundle too large: ${what}`), { status: 400 });
+  unzipSync(zip, {
+    filter: (f) => {
+      bytes += f.originalSize;
+      if (++entries > limits.maxEntries) throw over(`more than ${limits.maxEntries} files`);
+      if (bytes > limits.maxBytes) throw over(`more than ${limits.maxBytes / 1024 / 1024} MB unzipped`);
+      return false; // count only
+    },
+  });
+}
+
+export function zipReader(zip: Uint8Array, limits?: ZipLimits): BundleReader {
+  if (limits) checkZip(zip, limits);
   const files = unzipSync(zip);
   return {
     isDir: false,
@@ -81,7 +100,7 @@ export function commentsFile(bundlePath: string): string {
   return statSync(bundlePath).isDirectory() ? join(bundlePath, "comments.json") : bundlePath + ".comments.json";
 }
 
-export function readComments(file: string, fallback?: BundleReader): Comment[] {
+export function readComments(file: string, fallback?: Pick<BundleReader, "read">): Comment[] {
   try {
     if (existsSync(file)) return JSON.parse(readFileSync(file, "utf8"));
     const inZip = fallback?.read("comments.json");
@@ -109,7 +128,7 @@ export function newComment(input: unknown): Comment {
   };
 }
 
-export function appendComment(file: string, c: Comment, fallback?: BundleReader): Comment[] {
+export function appendComment(file: string, c: Comment, fallback?: Pick<BundleReader, "read">): Comment[] {
   const all = [...readComments(file, fallback), c];
   writeJsonAtomic(file, all);
   return all;

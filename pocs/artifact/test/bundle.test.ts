@@ -83,7 +83,7 @@ test("cli pack / unpack in place, model and comments", () => {
   assert.equal(cli("model", b), before);
 });
 
-test("cli md and server stub", () => {
+test("cli md", () => {
   const cli = (...a: string[]) => execFileSync(process.execPath, ["--import", "tsx", join(root, "src/cli.ts"), ...a], { cwd: root, encoding: "utf8", stdio: "pipe" });
   const md = cli("md", join(fixtures, "retries.review"), "--link", "https://example.com/d/abc");
   assert.match(md, /^### Review: Retry failed webhook deliveries/);

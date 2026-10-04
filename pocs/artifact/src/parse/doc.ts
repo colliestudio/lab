@@ -112,7 +112,10 @@ function scan(body: string, lineOffset: number, warn: (m: string) => void): Toke
       const type = (BLOCK_TYPES as readonly string[]).includes(word) ? (word as BlockType) : ALIASES[word];
       // find the closing fence
       let j = i + 1;
-      const closeRe = new RegExp(`^ {0,3}${fence[0] === "`" ? "`" : "~"}{${fence.length},}\\s*$`);
+      // diff bodies: a context line ` ```` (a fenced Markdown file in the diff) must not close the block, so the
+      // closing fence there takes exactly the opener's indent
+      const indent = type === "diff" ? " ".repeat(/^ */.exec(line)![0].length) : " {0,3}";
+      const closeRe = new RegExp(`^${indent}${fence[0] === "`" ? "`" : "~"}{${fence.length},}\\s*$`);
       while (j < lines.length && !closeRe.test(lines[j])) j++;
       if (j >= lines.length) warn(`line ${i + 1 + lineOffset}: unclosed code fence`);
       if (type) {

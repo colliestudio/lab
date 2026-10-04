@@ -1,9 +1,10 @@
-// Entry for `recap serve | build | server | publish` (src/cli.ts dynamic-imports this and calls run).
+// Entry for `recap serve | build | server | publish` (src/cli.ts calls run).
 import { writeFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { buildHtml } from "./build.ts";
 import { startHosted } from "./hosted.ts";
-import { publish } from "./publish.ts";
+import { parseArgs } from "../args.ts";
+import { publish, savedSecret, saveRecord } from "./publish.ts";
 import { startServe, type Running } from "./serve.ts";
 
 export { buildHtml, startHosted, publish, startServe };
@@ -12,20 +13,13 @@ const USAGE = `usage:
   recap serve <bundle> [--port N] [--open]
   recap build <bundle> -o out.html
   recap server --data <dir> [--port N] [--host H] [--token T]
-  recap publish <bundle> --to <url> [--token T] [--id <id>]`;
+  recap publish <bundle> --to <url> [--token T] [--id <id> [--secret S]]
+    first publish saves the doc's edit secret to .recap-publish.json next to the bundle;
+    re-publish with --id uses it (or --secret / RECAP_EDIT_SECRET, or the server token)`;
 
-function parseArgs(args: string[]) {
-  const pos: string[] = [], flags: Record<string, string | true> = {};
-  for (let i = 0; i < args.length; i++) {
-    const a = args[i];
-    const m = /^--?([\w-]+)(?:=(.*))?$/.exec(a);
-    if (!m) { pos.push(a); continue; }
-    if (m[2] !== undefined) flags[m[1]] = m[2];
-    else if (m[1] === "open") flags.open = true;
-    else if (i + 1 < args.length) flags[m[1]] = args[++i];
-    else flags[m[1]] = true;
-  }
-  const str = (k: string) => (typeof flags[k] === "string" ? (flags[k] as string) : undefined);
+function parse(args: string[]) {
+  const { pos, flags } = parseArgs(args);
+  const str = (k: string) => (flags[k] && flags[k] !== "true" ? flags[k] : undefined);
   const port = str("port") ? Number(str("port")) : undefined;
   if (port !== undefined && !Number.isInteger(port)) throw new Error("--port must be a number");
   return { pos, flags, str, port };
@@ -42,13 +36,13 @@ function untilSignal(r: Running): Promise<number> {
 
 export async function run(cmd: string, args: string[]): Promise<number> {
   try {
-    const { pos, flags, str, port } = parseArgs(args);
+    const { pos, flags, str, port } = parse(args);
     switch (cmd) {
       case "serve": {
         if (!pos[0]) break;
         const r = await startServe(pos[0], { port });
         console.log(`serving ${pos[0]} at ${r.url}  (Ctrl-C to stop)`);
-        if (flags.open) spawn(process.platform === "darwin" ? "open" : process.platform === "win32" ? "explorer" : "xdg-open", [r.url], { stdio: "ignore", detached: true }).unref();
+        if (flags.open === "true") spawn(process.platform === "darwin" ? "open" : process.platform === "win32" ? "explorer" : "xdg-open", [r.url], { stdio: "ignore", detached: true }).unref();
         return untilSignal(r);
       }
       case "build": {
@@ -69,8 +63,14 @@ export async function run(cmd: string, args: string[]): Promise<number> {
       case "publish": {
         const to = str("to");
         if (!pos[0] || !to) break;
-        const r = await publish(pos[0], { to, token: str("token") ?? process.env.RECAP_TOKEN, id: str("id") });
+        const id = str("id");
+        const secret = id ? str("secret") ?? process.env.RECAP_EDIT_SECRET ?? savedSecret(pos[0], to, id) : undefined;
+        const r = await publish(pos[0], { to, token: str("token") ?? process.env.RECAP_TOKEN, id, secret });
         console.log(r.url);
+        if (r.secret) {
+          const file = saveRecord(pos[0], to, r);
+          console.error(`id ${r.id}; edit secret saved to ${file} (keep it out of git). Re-publish: recap publish ${pos[0]} --to ${to} --id ${r.id}`);
+        }
         return 0;
       }
     }

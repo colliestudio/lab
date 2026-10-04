@@ -6,6 +6,9 @@ import { checkBundle } from "./check.ts";
 import { collect, EMPTY_BASE } from "./collect.ts";
 import { renderMarkdown } from "./md.ts";
 import { loadBundle, openFiles, packFiles, zipFiles } from "./parse/index.ts";
+import { parseArgs } from "./args.ts";
+import { commentsFile, readComments } from "./server/bundle.ts";
+import { run as runServer } from "./server/index.ts";
 
 type Cmd = (args: string[]) => Promise<number>;
 
@@ -18,7 +21,7 @@ const USAGE = `recap <command>
                                          (--root = against the empty tree: the whole repo at head)
   pack <dir> [-o <zip>]                  dir bundle → zip (in place unless -o)
   unpack <zip> [-o <dir>]                zip bundle → dir (in place unless -o)
-  comments <bundle> [--open]             print comments.json
+  comments <bundle> [--open]             print comments (dir: comments.json; zip: <bundle>.comments.json)
   md <bundle> [--link <url>]             GitHub comment fallback (markdown + Mermaid map)
   serve | build | server | publish       viewer / hosting (src/server)
 `;
@@ -105,8 +108,7 @@ const commands: Record<string, Cmd> = {
   async comments(args) {
     const { pos, flags } = parseArgs(args);
     const b = await loadBundle(need(pos[0], "bundle"), { linkPlan: false });
-    const raw = b.files.read("comments.json");
-    let list: { resolved?: boolean }[] = raw ? JSON.parse(new TextDecoder().decode(raw)) : [];
+    let list = readComments(commentsFile(b.path), b.files);
     if (flags.open === "true") list = list.filter((c) => !c.resolved);
     process.stdout.write(JSON.stringify(list, null, 2) + "\n");
     return 0;
@@ -119,49 +121,11 @@ const commands: Record<string, Cmd> = {
     return 0;
   },
 
-  // ---- STUBS: implemented by the serve/build/server dev in src/server/index.ts ----
-  // Contract: `export async function run(cmd: string, args: string[]): Promise<number>`
-  serve: (args) => server("serve", args),
-  build: (args) => server("build", args),
-  server: (args) => server("server", args),
-  publish: (args) => server("publish", args),
+  serve: (args) => runServer("serve", args),
+  build: (args) => runServer("build", args),
+  server: (args) => runServer("server", args),
+  publish: (args) => runServer("publish", args),
 };
-
-async function server(cmd: string, args: string[]): Promise<number> {
-  const spec = "./server/index.ts"; // via a variable so tsc doesn't require the module to exist
-  let mod: { run?: (cmd: string, args: string[]) => Promise<number> };
-  try {
-    mod = await import(spec);
-  } catch (e) {
-    const err = e as NodeJS.ErrnoException;
-    if ((err.code === "ERR_MODULE_NOT_FOUND" || err.code === "MODULE_NOT_FOUND") && String(err.message).includes("server/index")) {
-      console.error(`recap ${cmd}: not implemented yet`);
-      return 2;
-    }
-    throw e;
-  }
-  if (typeof mod.run !== "function") {
-    console.error(`recap ${cmd}: not implemented yet (src/server/index.ts has no run export)`);
-    return 2;
-  }
-  return mod.run(cmd, args);
-}
-
-/** `-o x --base main pos1 --flag` → {pos, flags}; a flag followed by another flag (or nothing) is "true". */
-export function parseArgs(args: string[]): { pos: string[]; flags: Record<string, string> } {
-  const pos: string[] = [];
-  const flags: Record<string, string> = {};
-  for (let i = 0; i < args.length; i++) {
-    const a = args[i];
-    if (a.startsWith("-") && a.length > 1) {
-      const [k, v] = a.replace(/^--?/, "").split(/=(.*)/s, 2);
-      if (v !== undefined) flags[k] = v;
-      else if (args[i + 1] !== undefined && !args[i + 1].startsWith("-")) flags[k] = args[++i];
-      else flags[k] = "true";
-    } else pos.push(a);
-  }
-  return { pos, flags };
-}
 
 function need(v: string | undefined, what: string): string {
   if (!v || v === "true") throw new UsageError(`missing ${what}`);

@@ -11,7 +11,7 @@ import { zipBundle } from "../src/server/publish.ts";
 const FIXTURE = new URL("./fixtures/sample.review", import.meta.url).pathname;
 const tmp = () => mkdtempSync(join(tmpdir(), "recap-test-"));
 const copyFixture = () => { const d = join(tmp(), "sample.review"); cpSync(FIXTURE, d, { recursive: true }); return d; };
-const bootOf = (html: string): ViewerBoot => JSON.parse(/window\.__RECAP__=(.*?)<\/script>/s.exec(html)![1]);
+const bootOf = (html: string): ViewerBoot => JSON.parse(/window\.__RECAP__=(.*?);(?:new EventSource|<\/script>)/s.exec(html)![1]);
 const postComment = (url: string, body: object) =>
   fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 
@@ -117,9 +117,10 @@ test("server: publish, view, comment, re-publish in place, auth, unlisted index"
     assert.equal(png.headers.get("content-type"), "image/png");
     assert.equal((await postComment(api + "/comments", { author: "r", body: "looks good" })).status, 201);
 
-    // re-publish (PR re-push): same id, new content, comments kept
+    // re-publish (PR re-push): same id, new content, comments kept; the token alone is enough
     const dir = copyFixture();
     writeFileSync(join(dir, "doc.md"), readFileSync(join(dir, "doc.md"), "utf8").replace("title: Todo app sign-in and export", "title: v2"));
+    await assert.rejects(publish(dir, { to, id }), /401/);
     const again = await publish(dir, { to, token: "sekrit", id });
     assert.equal(again.id, id);
     assert.equal((await (await fetch(api + "/doc")).json()).title, "v2");
@@ -148,7 +149,7 @@ test("build: a real sample boots the real viewer; injected JSON never closes the
   const start = html.indexOf("window.__RECAP__=");
   assert.ok(start > 0, "boot script present");
   const end = html.indexOf("</script>", start);
-  const json = html.slice(start + "window.__RECAP__=".length, end);
+  const json = html.slice(start + "window.__RECAP__=".length, end).replace(/;$/, "");
   assert.ok(!/<\/script/i.test(json) && !json.includes("<!--") && !json.includes("<"), "no raw < inside the injected JSON");
   const boot: ViewerBoot = JSON.parse(json);
   assert.equal(boot.doc.title, "Hostile </script><script>alert(1)</script> <!-- title");

@@ -128,10 +128,19 @@ function kindFromPath(p: string): Kind | undefined {
   return undefined;
 }
 
-/** `plan:` is relative to the bundle (so `../x.plan` = sibling); fall back to relative to its parent dir. */
+/** A zip plan bigger than this is not read (a hostile `plan: /dev/zero` or huge file would hang the process). */
+const MAX_PLAN_ZIP = 100 * 1024 * 1024;
+
+/**
+ * `plan:` is relative to the bundle (so `../x.plan` = sibling); fall back to relative to its parent dir.
+ * Only a dir with doc.md or a regular file under MAX_PLAN_ZIP counts (no devices, fifos, huge files).
+ * Local use only: the hosted server parses uploads with linkPlan: false.
+ */
 function resolvePlanPath(bundleAbs: string, plan: string): string | undefined {
   for (const c of [resolve(bundleAbs, plan), resolve(dirname(bundleAbs), plan)]) {
-    if (existsSync(c) && (statSync(c).isDirectory() ? existsSync(join(c, "doc.md")) : true)) return c;
+    let st;
+    try { st = statSync(c); } catch { continue; }
+    if (st.isDirectory() ? existsSync(join(c, "doc.md")) : st.isFile() && st.size <= MAX_PLAN_ZIP) return c;
   }
   return undefined;
 }
