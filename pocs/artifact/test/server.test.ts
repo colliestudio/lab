@@ -137,3 +137,22 @@ test("server: publish, view, comment, re-publish in place, auth, unlisted index"
     assert.equal((await fetch(to + "d/zzzzzzzzzz")).status, 404);
   } finally { await srv.close(); }
 });
+
+test("build: a real sample boots the real viewer; injected JSON never closes the script", async () => {
+  const dir = join(tmp(), "replay-lab-backend.review");
+  cpSync(new URL("../samples/replay-lab-backend.review", import.meta.url).pathname, dir, { recursive: true });
+  const md = readFileSync(join(dir, "doc.md"), "utf8");
+  writeFileSync(join(dir, "doc.md"), md.replace(/^title: .*$/m, "title: \"Hostile </script><script>alert(1)</script> <!-- title\""));
+  const { html, files } = await buildHtml(dir);
+  assert.deepEqual(files, ["demos/todo-otel.replay", "demos/webhooks-otel.replay"]);
+  const start = html.indexOf("window.__RECAP__=");
+  assert.ok(start > 0, "boot script present");
+  const end = html.indexOf("</script>", start);
+  const json = html.slice(start + "window.__RECAP__=".length, end);
+  assert.ok(!/<\/script/i.test(json) && !json.includes("<!--") && !json.includes("<"), "no raw < inside the injected JSON");
+  const boot: ViewerBoot = JSON.parse(json);
+  assert.equal(boot.doc.title, "Hostile </script><script>alert(1)</script> <!-- title");
+  assert.ok(boot.doc.overviewBlocks.length > 0);
+  assert.match(html, /<div id="root"><\/div>/, "real viewer, not a stub");
+  assert.ok(html.indexOf("window.__RECAP__=") < html.indexOf('<script type="module"'), "boot runs before the viewer module");
+});

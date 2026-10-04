@@ -31,7 +31,7 @@ export function loadReplay(bytes: Uint8Array): Replay {
 }
 
 const fmt = (ms: number) => `${Math.max(0, ms / 1000).toFixed(1)}s`;
-const LIST_W = 210, GAP = 10, MIN_SIDE_BY_SIDE = 560;
+const LIST_W = 240, GAP = 12, MIN_SIDE_BY_SIDE = 560, MAX_FRAME_H = 440;
 
 type Player = InstanceType<typeof RrwebPlayer>;
 const mountPlayer = (target: HTMLElement, r: Replay, width: number, showController: boolean): Player => {
@@ -79,7 +79,9 @@ export function DemoBlock({ block, getFile }: DemoBlockProps) {
   useEffect(() => {
     if (!replay || !hasScreen || !stage.current || !box.current) return;
     const w = box.current.clientWidth || 720;
-    const playerW = Math.max(240, w >= MIN_SIDE_BY_SIDE ? w - LIST_W - GAP : w) - 8; // rr-player adds a small frame
+    const vp = replay.manifest.viewport ?? { width: 1280, height: 800 };
+    const maxW = Math.round((MAX_FRAME_H * vp.width) / vp.height); // keep the frame within one screen
+    const playerW = Math.min(maxW, Math.max(240, w >= MIN_SIDE_BY_SIDE ? w - LIST_W - GAP : w) - 8); // rr-player adds a small frame
     stage.current.innerHTML = "";
     const p = mountPlayer(stage.current, replay, playerW, true);
     setListMax(Math.max(200, stage.current.offsetHeight));
@@ -155,9 +157,9 @@ const S: Record<string, CSSProperties> = {
   figure: { margin: 0 },
   caption: { margin: "0 0 10px", fontSize: 13, lineHeight: 1.5, color: "var(--muted, #666)" },
   row: { display: "flex", gap: GAP, alignItems: "flex-start" },
-  stage: { flex: "1 1 auto", minWidth: 0 },
+  stage: { flex: "0 1 auto", minWidth: 0 },
   note: { flex: "1 1 auto", padding: 12, border: "1px dashed var(--collie-color-border, #bbb)", borderRadius: 8, color: "var(--muted, #666)", fontSize: 13 },
-  list: { listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 4, flex: "0 0 auto", overflowY: "auto" },
+  list: { listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 4, flex: "1 0 auto", minWidth: 200, maxWidth: 360, overflowY: "auto" },
   li: { margin: 0 },
   step: {
     display: "grid", gridTemplateColumns: "20px 1fr auto", gap: 6, width: "100%", textAlign: "left", alignItems: "start",
