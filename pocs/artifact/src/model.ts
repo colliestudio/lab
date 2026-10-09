@@ -4,7 +4,8 @@
 export const FORMAT = "collie-doc/0";
 
 export type Kind = "review" | "plan";
-export type Level = 0 | 1 | 2 | 3;
+/** Zoom level: 1 Headline, 2 Map, 3 Areas, 4 Code (keys 1–4). */
+export type Level = 1 | 2 | 3 | 4;
 export type Change = "added" | "changed" | "removed" | "unchanged" | "planned" | "deferred"; // deferred: plan work explicitly left for later
 export type NodeKind =
   | "service" | "module" | "ui" | "db" | "api" | "queue" | "job" | "external" | "config" | "doc";
@@ -24,11 +25,11 @@ export interface Doc {
   };
   stats?: { files: number; additions: number; deletions: number };
   map: DocMap;
-  overview: string;          // markdown under the map (level 1), all overview text joined
+  overview: string;          // markdown under the map (level 2), all overview text joined
   overviewBlocks: Block[];   // everything between the map and the first section, in source order (markdown blocks included)
-  sections: Section[];       // level 2+
+  sections: Section[];       // level 3+
   files: FileChange[];       // from changes.patch; [] when absent
-  questions: Question[];     // collected from all `questions` blocks (shown at level 0)
+  questions: Question[];     // collected from all `questions` blocks (shown at level 1)
   planLink?: PlanLink;       // review with `plan:` resolved (parser fills it when the plan is a local path)
   warnings: string[];        // non-fatal parse issues
 }

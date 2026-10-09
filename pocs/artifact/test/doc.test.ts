@@ -38,11 +38,11 @@ test("map, overview, sections", () => {
 test("blocks: ids, levels, attrs, YAML bodies", () => {
   const flow = block("worker-flow-1");
   assert.equal(flow.type === "flow" && flow.caption, "One delivery attempt, after this change");
-  assert.equal(flow.level, 2);
+  assert.equal(flow.level, 3);
   const callout = block("worker-callout-1");
   assert.equal(callout.type === "callout" && callout.tone, "risk");
   const q = block("retry-questions-1");
-  assert.equal(q.level, 0);
+  assert.equal(q.level, 1);
   assert.equal(doc.questions.length, 1);
   assert.equal(doc.questions[0].recommend, "8 (~2h of retries)");
   const dm = block("attempts-data-model-1");
@@ -55,13 +55,13 @@ test("blocks: ids, levels, attrs, YAML bodies", () => {
     "GET /deliveries changed", "GET /deliveries/{id}/attempts added", "POST /deliveries/{id}/replay added",
   ]);
   const code = block("retry-code-1");
-  assert.ok(code.type === "code" && code.lang === "go" && code.file === "internal/delivery/retry.go" && code.level === 3);
+  assert.ok(code.type === "code" && code.lang === "go" && code.file === "internal/delivery/retry.go" && code.level === 4);
   const steps = block("ui-steps-1");
   assert.ok(steps.type === "steps" && steps.steps[0].status === "todo");
   const cl = block("ui-checklist-1");
   assert.ok(cl.type === "checklist" && cl.items.length === 4);
   const files = block("mechanical-files-1");
-  assert.ok(files.type === "files" && files.level === 3 && files.notes["scripts/run-dev.sh"].startsWith("renamed"));
+  assert.ok(files.type === "files" && files.level === 4 && files.notes["scripts/run-dev.sh"].startsWith("renamed"));
 });
 
 test("diff blocks: file reference, hunks=, annotations, inline", () => {
@@ -103,7 +103,7 @@ test("soft problems become warnings, never throws", () => {
   ].join("\n"));
   const w = d.warnings.join("\n");
   for (const re of [/frontmatter: invalid YAML/, /before the first section/, /map block should come before/, /unknown change "weird"/,
-    /missing\.go" not found/, /data-model: invalid YAML/, /level must be 0-3/, /unclosed code fence/, /no title/]) {
+    /missing\.go" not found/, /data-model: invalid YAML/, /level must be 1-4/, /unclosed code fence/, /no title/]) {
     assert.match(w, re);
   }
   assert.deepEqual(d.sections.map((s) => s.id), ["a", "a-2"]);

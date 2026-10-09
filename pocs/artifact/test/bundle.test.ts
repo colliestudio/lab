@@ -25,7 +25,7 @@ test("planLink: review ↔ plan by node id", async () => {
   });
 });
 
-test("plan kind from bundle, plan questions at level 0", async () => {
+test("plan kind from bundle, plan questions at level 1", async () => {
   const b = await loadBundle(join(fixtures, "retries.plan"));
   assert.equal(b.doc.kind, "plan");
   assert.equal(b.doc.questions.length, 2);

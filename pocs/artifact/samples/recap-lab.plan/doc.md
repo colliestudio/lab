@@ -74,9 +74,9 @@ entities:
     fields:
       - { name: kind, type: "review | plan", change: planned }
       - { name: "title, tldr, goal, risk, ask", type: frontmatter, change: planned, note: level 0 }
-      - { name: map, type: "DocMap (groups, nodes, edges)", change: planned, note: level 1; node ids shared between plan and review }
+      - { name: map, type: "DocMap (groups, nodes, edges)", change: planned, note: level 2; node ids shared between plan and review }
       - { name: overviewBlocks, type: "Block[]", change: planned, note: "between the map and the first section: the questions live here" }
-      - { name: sections, type: "Section[]", change: planned, note: "level 2+, each opened by a map node" }
+      - { name: sections, type: "Section[]", change: planned, note: "level 3+, each opened by a map node" }
       - { name: files, type: "FileChange[]", change: planned, note: "from changes.patch" }
       - { name: planLink, type: "PlanLink?", change: planned, note: "done / notDone / deferred / unplanned node ids" }
   - name: Bundle

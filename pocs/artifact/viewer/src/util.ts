@@ -6,11 +6,12 @@ export { globToRe, matchAny } from "../../src/glob.ts";
 import { matchAny } from "../../src/glob.ts";
 
 export const LEVELS = [
-  { n: 0, name: "Headline" },
-  { n: 1, name: "Map" },
-  { n: 2, name: "Areas" },
-  { n: 3, name: "Code" },
+  { n: 1, name: "Headline" },
+  { n: 2, name: "Map" },
+  { n: 3, name: "Areas" },
+  { n: 4, name: "Code" },
 ] as const;
+export const levelName = (n: number) => LEVELS.find((l) => l.n === n)?.name ?? "";
 
 export const CHANGE_LABEL: Record<Change, string> = {
   added: "added", changed: "changed", removed: "removed", unchanged: "context", planned: "planned", deferred: "deferred",

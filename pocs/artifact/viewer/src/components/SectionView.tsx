@@ -28,7 +28,7 @@ export function SectionView({ section, level, focused }: { section: Section; lev
   const [open, setOpen] = useState(!section.mechanical || !!focused);
   const blocks = section.blocks.filter((b) => b.level <= level);
   const hidden = section.blocks.length - blocks.length;
-  const extra = useMemo(() => (level >= 3 ? autoFiles(doc, section.id) : []), [doc, section.id, level]);
+  const extra = useMemo(() => (level >= 4 ? autoFiles(doc, section.id) : []), [doc, section.id, level]);
   const sectionFiles = useMemo(() => {
     const fs = fileSections(doc);
     return doc.files.filter((f) => fs.get(f.path) === section.id);
@@ -73,19 +73,19 @@ export function SectionView({ section, level, focused }: { section: Section; lev
         <div className="sec-body">
           {blocks.map((b) => (
             <Commentable key={b.id} anchor={{ section: section.id, block: b.id }}
-              className={cx("blk", `blk-${b.type}`, b.level >= 3 && "l3")}>
+              className={cx("blk", `blk-${b.type}`, b.level >= 4 && "l4")}>
               <BlockView block={b} />
             </Commentable>
           ))}
           {extra.length > 0 && (
-            <div className="blk l3 auto-files">
+            <div className="blk l4 auto-files">
               <div className="blk-label">Files in this area</div>
               <FileTree entries={extra.map((f) => ({ path: f.path, file: f }))} />
               {extra.map((f) => <FileDiff key={f.path} file={f} defaultOpen={!f.mechanical && extra.length <= 4} />)}
             </div>
           )}
-          {hidden > 0 && level < 3 && (
-            <button className="sec-more" onClick={() => setLevel(3)}>
+          {hidden > 0 && level < 4 && (
+            <button className="sec-more" onClick={() => setLevel(4)}>
               <Icon name="plus" size={12} /> {plural(hidden, "code block")} · zoom to Code <span className="kbd">4</span>
             </button>
           )}

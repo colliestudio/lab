@@ -11,14 +11,14 @@ import { FileDiff } from "./blocks/diff.tsx";
 import { Icon } from "./components/icons.tsx";
 import { Commentable } from "./components/Comments.tsx";
 import { BlockView } from "./blocks/index.tsx";
-import { LEVELS, cx, diffId, nodeForSection, orderedSections, plural, sectionDomId } from "./util.ts";
+import { LEVELS, cx, levelName, diffId, nodeForSection, orderedSections, plural, sectionDomId } from "./util.ts";
 
 type Theme = "light" | "dark";
-const clampLevel = (n: number) => Math.max(0, Math.min(3, n)) as Level;
+const clampLevel = (n: number) => Math.max(1, Math.min(4, n)) as Level;
 
 function readHash(): { level: Level; focus: string | null } {
-  const m = location.hash.match(/^#\/L([0-3])(?:\/(.+))?$/);
-  return m ? { level: Number(m[1]) as Level, focus: m[2] ? decodeURIComponent(m[2]) : null } : { level: 1, focus: null };
+  const m = location.hash.match(/^#\/L([1-4])(?:\/(.+))?$/);
+  return m ? { level: Number(m[1]) as Level, focus: m[2] ? decodeURIComponent(m[2]) : null } : { level: 2, focus: null };
 }
 
 const systemTheme = (): Theme => (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
@@ -67,7 +67,7 @@ export function App({ boot }: { boot: ViewerBoot }) {
 
   const setFocus = useCallback((id: string | null) => {
     setFocusRaw(id);
-    if (id) setLevelRaw((l) => (l < 2 ? 2 : l));
+    if (id) setLevelRaw((l) => (l < 3 ? 3 : l));
     window.scrollTo(0, 0);
     if (!id) requestAnimationFrame(() => document.getElementById("map-panel")?.scrollIntoView({ block: "start" }));
   }, []);
@@ -92,7 +92,7 @@ export function App({ boot }: { boot: ViewerBoot }) {
       requestAnimationFrame(() => requestAnimationFrame(() => {
         const el = document.getElementById(diffId(path));
         if (!el) {
-          if (tries > 0) { setFocusRaw(null); setLevelRaw(3); setTimeout(() => go(tries - 1), 60); }
+          if (tries > 0) { setFocusRaw(null); setLevelRaw(4); setTimeout(() => go(tries - 1), 60); }
           return;
         }
         // diffs that just mounted (e.g. inside a mechanical section that opened) missed the first event
@@ -127,7 +127,7 @@ export function App({ boot }: { boot: ViewerBoot }) {
     const on = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
       if (t.closest?.("input, textarea, [contenteditable]") || e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.key >= "1" && e.key <= "4") setLevel((Number(e.key) - 1) as Level);
+      if (e.key >= "1" && e.key <= "4") setLevel(Number(e.key) as Level);
       else if (e.key === "+" || e.key === "=") setLevel(clampLevel(level + 1));
       else if (e.key === "-" || e.key === "_") setLevel(clampLevel(level - 1));
       else if (e.key === "Escape" && focus) setFocus(null);
@@ -142,7 +142,7 @@ export function App({ boot }: { boot: ViewerBoot }) {
 
   const ctx: ViewerCtx = { doc, getFile, level, setLevel, theme, focus, setFocus, revealFile, api: boot.api, comments, addComment };
   const focused = focus ? doc.sections.find((s) => s.id === focus) : undefined;
-  const showOutline = level >= 2;
+  const showOutline = level >= 3;
 
   return (
     <Ctx.Provider value={ctx}>
@@ -155,10 +155,10 @@ export function App({ boot }: { boot: ViewerBoot }) {
           ) : (
             <>
               <Headline overlay={overlay} setOverlay={setOverlay} />
-              {level === 0 && <NextLevel doc={doc} />}
-              {level >= 1 && <MapPanel overlay={overlay} />}
-              {level >= 2 && <Areas />}
-              {level >= 3 && <AllFiles />}
+              {level === 1 && <NextLevel doc={doc} />}
+              {level >= 2 && <MapPanel overlay={overlay} />}
+              {level >= 3 && <Areas />}
+              {level >= 4 && <AllFiles />}
             </>
           )}
         </main>
@@ -179,23 +179,23 @@ function TopBar({ doc, theme, toggleTheme, overlay, setOverlay }: {
         <span className="tb-title" title={doc.title}>{doc.title}</span>
       </div>
       <div className="zoom" role="group" aria-label="Zoom level">
-        <button className="zbtn step" onClick={() => setLevel(clampLevel(level - 1))} disabled={level === 0} title="Zoom out (−)">
+        <button className="zbtn step" onClick={() => setLevel(clampLevel(level - 1))} disabled={level === 1} title="Zoom out (−)">
           <Icon name="minus" size={13} />
         </button>
         <div className="zseg">
           {LEVELS.map((l) => (
             <button key={l.n} className={cx("zbtn", level === l.n && "on", level > l.n && "above")}
-              onClick={() => setLevel(l.n)} title={`${l.name} (key ${l.n + 1})`} aria-pressed={level === l.n}>
+              onClick={() => setLevel(l.n)} title={`${l.name} (key ${l.n})`} aria-pressed={level === l.n}>
               <span className="zdot">{l.n}</span>{l.name}
             </button>
           ))}
         </div>
-        <button className="zbtn step" onClick={() => setLevel(clampLevel(level + 1))} disabled={level === 3} title="Zoom in (+)">
+        <button className="zbtn step" onClick={() => setLevel(clampLevel(level + 1))} disabled={level === 4} title="Zoom in (+)">
           <Icon name="plus" size={13} />
         </button>
       </div>
       <div className="tb-right">
-        {doc.planLink && level >= 1 && (
+        {doc.planLink && level >= 2 && (
           <button className={cx("btn small", overlay && "on")} onClick={() => setOverlay(!overlay)} title="Compare with plan (p)">
             <Icon name="target" size={13} /> vs plan
           </button>
@@ -213,7 +213,7 @@ function NextLevel({ doc }: { doc: Doc }) {
   // same count as the headline card: areas = non-mechanical sections
   const areas = doc.sections.filter((s) => !s.mechanical).length;
   return (
-    <button className="next-level" onClick={() => setLevel(1)}>
+    <button className="next-level" onClick={() => setLevel(2)}>
       <span>Zoom in to the <b>map</b>: {plural(areas, "area")}, {plural(doc.map.edges.length, "connection")}</span>
       <span className="kbd">2</span>
     </button>
@@ -223,7 +223,7 @@ function NextLevel({ doc }: { doc: Doc }) {
 function LevelRule({ n, note }: { n: number; note?: string }) {
   return (
     <div className="level-rule">
-      <span className="lr-tag">{n} · {LEVELS[n].name}</span>
+      <span className="lr-tag">{n} · {levelName(n)}</span>
       {note && <span className="lr-note">{note}</span>}
     </div>
   );
@@ -235,7 +235,7 @@ function MapPanel({ overlay }: { overlay: boolean }) {
   const blocks = (doc.overviewBlocks ?? []).filter((b) => b.level <= level && b.type !== "questions");
   return (
     <section className="map-panel" id="map-panel">
-      <LevelRule n={1} note="hover a node for its summary · click to focus" />
+      <LevelRule n={2} note="hover a node for its summary · click to focus" />
       <div className="card map-card">
         <MapView overlay={overlay} onOpen={setFocus} />
       </div>
@@ -259,7 +259,7 @@ function Areas() {
   const mech = secs.filter((s) => s.mechanical);
   return (
     <div className="areas">
-      <LevelRule n={2} note={`${plural(main.length, "area")}${mech.length ? ` · ${mech.length} mechanical` : ""}`} />
+      <LevelRule n={3} note={`${plural(main.length, "area")}${mech.length ? ` · ${mech.length} mechanical` : ""}`} />
       {main.map((s) => <SectionView key={s.id} section={s} level={level} />)}
       {mech.length > 0 && (
         <div className="mech-group">
@@ -279,7 +279,7 @@ function AllFiles() {
   const rest = doc.files.filter((f) => !covered.has(f.path));
   return (
     <section className="all-files" id="all-files" data-section="all-files">
-      <LevelRule n={3} note={`all ${plural(doc.files.length, "changed file")}`} />
+      <LevelRule n={4} note={`all ${plural(doc.files.length, "changed file")}`} />
       <div className="card pad">
         <FileTree entries={doc.files.map((f) => ({ path: f.path, file: f }))} />
       </div>
@@ -330,7 +330,7 @@ function Outline() {
           </button>,
         ];
       })}
-      {level >= 3 && !focus && doc.files.length > 0 && (
+      {level >= 4 && !focus && doc.files.length > 0 && (
         <>
           <div className="ol-sep" />
           <button className={cx("ol-item", cur === "all-files" && "on")} onClick={() => document.getElementById("all-files")?.scrollIntoView({ behavior: "smooth" })}>
@@ -380,7 +380,7 @@ function FocusView({ sectionId, overlay }: { sectionId: string; overlay: boolean
         <span className="crumb-sep">›</span>
         <span className="crumb cur">{section.title}</span>
         <span className="sec-spacer" />
-        <span className="muted small">level {Math.max(level, 2)} · <span className="kbd">Esc</span> back</span>
+        <span className="muted small">level {Math.max(level, 3)} · <span className="kbd">Esc</span> back</span>
       </nav>
       <div className="card focus-context">
         <MapView compact focusSection={sectionId} overlay={overlay} onOpen={setFocus} />
@@ -397,7 +397,7 @@ function FocusView({ sectionId, overlay }: { sectionId: string; overlay: boolean
           </div>
         )}
       </div>
-      <SectionView key={section.id} section={section} level={Math.max(level, 2) as Level} focused />
+      <SectionView key={section.id} section={section} level={Math.max(level, 3) as Level} focused />
       <div className="focus-nav">
         {prev ? <button className="fn prev" onClick={() => setFocus(prev.id)}><span className="muted">← Previous</span>{prev.title}</button> : <span />}
         {next ? <button className="fn next" onClick={() => setFocus(next.id)}><span className="muted">Next →</span>{next.title}</button> : <span />}

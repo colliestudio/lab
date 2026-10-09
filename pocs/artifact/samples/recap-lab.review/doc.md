@@ -65,7 +65,7 @@ entities:
     change: added
     fields:
       - { name: "kind, title, tldr, goal, risk, ask", type: frontmatter, change: added, note: "level 0; goal stands in for tldr in plans" }
-      - { name: map, type: "DocMap {groups, nodes, edges}", change: added, note: "level 1; node change includes planned and deferred" }
+      - { name: map, type: "DocMap {groups, nodes, edges}", change: added, note: "level 2; node change includes planned and deferred" }
       - { name: overviewBlocks, type: "Block[]", change: added, note: "between the map and the first section, in source order" }
       - { name: sections, type: "Section[]", change: added, note: "summary = first paragraph = the map hover" }
       - { name: files, type: "FileChange[]", change: added, note: "from changes.patch, mechanical flag per file" }
@@ -175,7 +175,7 @@ caption: Clicking a map node trades the whole system for one area in context.
 
 ```diff file=viewer/src/App.tsx lines=52-73,119-135,150-161
 @53: zooming changes page height a lot; the first visible section is remembered and put back at the same offset
-@70: focus forces at least level 2, otherwise the focused section would not render
+@70: focus forces at least level 3 (Areas), otherwise the focused section would not render
 @123: keys are ignored while typing (comment box) and with modifiers, so Cmd+1 still switches tabs
 @129: p (plan overlay) only exists when the review links a plan
 @158: each level renders itself plus everything above it; nothing is hidden with CSS

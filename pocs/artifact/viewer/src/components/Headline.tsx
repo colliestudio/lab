@@ -21,12 +21,12 @@ export function Headline({ overlay, setOverlay }: { overlay: boolean; setOverlay
   const areas = doc.sections.filter((s) => !s.mechanical).length;
   const ps = planStats(doc);
   const pl = doc.planLink;
-  // Above the map (level 1+) a long list of decisions folds to one line so the map starts on the first screen.
-  const collapsible = level >= 1 && doc.questions.length > 2;
+  // Above the map (level 2+) a long list of decisions folds to one line so the map starts on the first screen.
+  const collapsible = level >= 2 && doc.questions.length > 2;
   const [showQ, setShowQ] = useState(false);
 
   return (
-    <header className={cx("headline", level === 0 && "solo")} id="headline">
+    <header className={cx("headline", level === 1 && "solo")} id="headline">
       <div className="hl-kicker">
         <span className="kind">{isPlan ? "Visual plan" : "Visual review"}</span>
         {doc.status && <span className={cx("pill", `st-${doc.status}`)}>{doc.status}</span>}
@@ -88,7 +88,7 @@ export function Headline({ overlay, setOverlay }: { overlay: boolean; setOverlay
           <span className="pm-text pm-notDone">{pl.notDone.length} not done</span>
           {pl.deferred?.length > 0 && <span className="pm-text pm-deferred">{pl.deferred.length} deferred</span>}
           <span className="pm-text pm-unplanned">{pl.unplanned.length} unplanned</span>
-          <button className={cx("btn small", overlay && "on")} onClick={() => { setOverlay(!overlay); if (level < 1) setLevel(1); }}>
+          <button className={cx("btn small", overlay && "on")} onClick={() => { setOverlay(!overlay); if (level < 2) setLevel(2); }}>
             {overlay ? "Hide on map" : "Show on map"}
           </button>
         </div>

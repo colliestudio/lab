@@ -158,8 +158,8 @@ code, pre, .mono { font-family: var(--mono); font-size: 0.92em; }
 .layout { display: grid; grid-template-columns: 1fr; justify-content: center; padding: 28px 24px 120px; }
 .layout.with-outline { grid-template-columns: 200px minmax(0, var(--wide-w)); gap: 40px; }
 .content { width: 100%; max-width: var(--wide-w); margin: 0 auto; min-width: 0; }
-.layout.lvl-0 .content { max-width: 760px; padding-top: 6vh; }
-.layout.lvl-1 .content { max-width: var(--wide-w); }
+.layout.lvl-1 .content { max-width: 760px; padding-top: 6vh; }
+.layout.lvl-2 .content { max-width: var(--wide-w); }
 
 /* level rules: the visible seams of the zoom ladder */
 .level-rule { display: flex; align-items: center; gap: 10px; margin: 40px 0 14px; color: var(--muted); font-size: 12px; }
@@ -170,7 +170,7 @@ code, pre, .mono { font-family: var(--mono); font-size: 0.92em; }
 }
 .lr-note { order: 2; }
 
-/* ---------- headline (level 0) */
+/* ---------- headline (level 1) */
 .headline {
   background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 26px 30px 22px;
   box-shadow: 0 1px 2px rgb(0 0 0 / .04);
@@ -407,7 +407,7 @@ code, pre, .mono { font-family: var(--mono); font-size: 0.92em; }
 .section.mechanical .sec-summary { font-size: 13.5px; color: var(--muted); margin-top: 6px; }
 .section.mechanical.focused { background: var(--card); }
 .blk-label { font-size: 11px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
-.blk.l3 { position: relative; }
+.blk.l4 { position: relative; }
 .auto-files { display: flex; flex-direction: column; gap: 10px; }
 
 /* ---------- comments */
@@ -657,9 +657,9 @@ button.nb:hover { background: var(--collie-color-neutral-subtle); }
   .before-after .ba-grid, .ep-body { grid-template-columns: 1fr; }
 }
 
-/* ---------- level 1: the map breaks out of the text column so it fits one screen unscaled */
-.layout.lvl-1 .map-panel .map-card { width: min(1392px, calc(100vw - 48px)); position: relative; left: 50%; transform: translateX(-50%); }
-.layout.lvl-1 .map-panel .level-rule { width: min(1392px, calc(100vw - 48px)); position: relative; left: 50%; transform: translateX(-50%); }
+/* ---------- level 2: the map breaks out of the text column so it fits one screen unscaled */
+.layout.lvl-2 .map-panel .map-card { width: min(1392px, calc(100vw - 48px)); position: relative; left: 50%; transform: translateX(-50%); }
+.layout.lvl-2 .map-panel .level-rule { width: min(1392px, calc(100vw - 48px)); position: relative; left: 50%; transform: translateX(-50%); }
 
 /* ---------- demo block inside the viewer: rrweb-player themed with the viewer tokens */
 .recap-demo .rr-player { float: none; background: var(--card); border: 1px solid var(--line); border-radius: 10px; box-shadow: none; overflow: hidden; }
@@ -676,7 +676,7 @@ button.nb:hover { background: var(--collie-color-neutral-subtle); }
 .shot-frame.replay { aspect-ratio: auto; display: block; }
 .shot-step { margin-left: 8px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--muted); }
 
-/* ---------- headline above the map (levels 1+): same content, tighter, so the map starts high on the page */
+/* ---------- headline above the map (levels 2+): same content, tighter, so the map starts high on the page */
 .headline:not(.solo) { padding: 20px 24px 16px; }
 .headline:not(.solo) .hl-title { font-size: 24px; margin: 10px 0 6px; }
 .headline:not(.solo) .hl-tldr { font-size: 15px; margin-bottom: 14px; }
@@ -685,7 +685,7 @@ button.nb:hover { background: var(--collie-color-neutral-subtle); }
 .headline:not(.solo) .hl-decisions { margin-top: 12px; padding-top: 12px; }
 .headline:not(.solo) .hl-foot { margin-top: 10px; }
 .hl-goal.sub { font-size: 14px; color: var(--muted); }
-.layout.lvl-1 .map-panel .level-rule { margin-top: 28px; }
+.layout.lvl-2 .map-panel .level-rule { margin-top: 28px; }
 
 /* decisions as rows (headline) */
 .qrows { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--page); }

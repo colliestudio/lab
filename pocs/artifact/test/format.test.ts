@@ -127,13 +127,13 @@ test("overview: blocks between the map and the first section, questions collecte
     "```questions", "- q: And this?", "```",
   ]);
   assert.deepEqual(d.overviewBlocks.map((b) => `${b.id}:${b.level}`), [
-    "overview-markdown-1:1", "overview-flow-1:2", "overview-markdown-2:1", "overview-questions-1:0", "overview-callout-1:2",
+    "overview-markdown-1:2", "overview-flow-1:3", "overview-markdown-2:2", "overview-questions-1:1", "overview-callout-1:3",
   ]);
   assert.equal(d.overview, "Overview text.\n\nMore text.");
   assert.deepEqual(d.questions.map((q) => q.q), ["Ship it?", "And this?"]);
   assert.ok(!d.warnings.some((w) => /ignored/.test(w)), d.warnings.join("\n"));
-  const lvl3 = doc(["```diff file=internal/delivery/retry.go", "```", "## A {#a}", "", "Summary."]);
-  assert.ok(lvl3.warnings.some((w) => /diff block in the overview is level 3/.test(w)));
+  const lvl4 = doc(["```diff file=internal/delivery/retry.go", "```", "## A {#a}", "", "Summary."]);
+  assert.ok(lvl4.warnings.some((w) => /diff block in the overview is level 4/.test(w)));
 });
 
 test("plans: goal frontmatter, deferred nodes; planLink keeps deferred apart from not done", () => {

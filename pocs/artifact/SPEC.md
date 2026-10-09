@@ -6,14 +6,14 @@ Names are placeholders: CLI `recap`, format `collie-doc/0`.
 
 ## 1. Zoom ladder
 
-Every doc renders at four named levels. The viewer has a zoom control (keys `1`–`4`, `+`/`-`); each level shows itself plus everything above it.
+Every doc renders at four named levels, numbered 1–4 everywhere (UI badge, keys `1`–`4`, URL `#/L1`…`#/L4`, `level=` attrs). The viewer has a zoom control (`+`/`-` step); each level shows itself plus everything above it.
 
 | level | name | review shows | plan shows |
 |---|---|---|---|
-| 0 | **Headline** | title, tl;dr (one sentence), risk + why, the ask ("approve", "check X"), stats | title, goal, the decisions needed from the reader |
-| 1 | **Map** | change map: areas/components as nodes, change status coloured (added / changed / removed), edges = calls / data flow; each node = one section; mechanical areas greyed and collapsed | same map; nodes `planned` (new) or `changed`, existing context nodes `unchanged`, work left for later `deferred` |
-| 2 | **Areas** | per-area section: narrative, flow diagrams, demo clips, before/after, data model, API | per-area approach, steps, open questions, sketches |
-| 3 | **Code** | file list, annotated diffs | code sketches, file list of where things land |
+| 1 | **Headline** | title, tl;dr (one sentence), risk + why, the ask ("approve", "check X"), stats | title, goal, the decisions needed from the reader |
+| 2 | **Map** | change map: areas/components as nodes, change status coloured (added / changed / removed), edges = calls / data flow; each node = one section; mechanical areas greyed and collapsed | same map; nodes `planned` (new) or `changed`, existing context nodes `unchanged`, work left for later `deferred` |
+| 3 | **Areas** | per-area section: narrative, flow diagrams, demo clips, before/after, data model, API | per-area approach, steps, open questions, sketches |
+| 4 | **Code** | file list, annotated diffs | code sketches, file list of where things land |
 
 - Clicking a map node **focuses** that area: only its section, breadcrumb back to the map, neighbours listed as context (Ilograph-style).
 - Sections are ordered by dependency ("what must I understand first"), not alphabetically. Mechanical sections (renames, formatting, generated, lockfiles) go last, collapsed.
@@ -36,7 +36,7 @@ name.review/
 
 Markdown + YAML frontmatter + **typed fenced blocks**. Degrades readably on GitHub. The parser turns it into the JSON model in `src/model.ts` (the contract between parser, viewer and server).
 
-### Frontmatter (level 0)
+### Frontmatter (level 1)
 
 ```yaml
 ---
@@ -60,7 +60,7 @@ date: 2026-10-05
 
 `stats` (files / additions / deletions) are computed from `changes.patch` when present. `tldr` is required; when it is missing, `goal` stands in for it (plans often say only the goal). Unrecognized frontmatter keys are a warning.
 
-### Map (level 1)
+### Map (level 2)
 
 Exactly one ` ```map ` block, YAML body, before the first section:
 
@@ -85,7 +85,7 @@ edges:
 - `files`: optional globs; the viewer uses them to attach file-level diffs to the node.
 - Allowed keys: groups `id, label`; nodes `id, label, kind, change, group, section, mechanical, note, files`; edges `from, to, label, change`. Any other key is a `check` **error**: it almost always comes from an unquoted `, ` or `: ` inside `{ }` / `[ ]` (`{ label: Player (a, b) }` parses as `label: "Player (a"` plus a key `b)`). Quote such values.
 
-### Sections (level 2)
+### Sections (level 3)
 
 Each `## ` heading starts a section. Id from `{#id}` or slugified title. Attributes in the braces: `.mechanical`.
 
@@ -97,29 +97,29 @@ First paragraph = the section summary (shown on map hover and at the top of the 
 More markdown...
 ```
 
-Everything between the map and the first `##` is the **overview**, shown under the map: a short level-1 narrative plus any blocks that describe the whole change (`flow`, `callout`, `questions`, `checklist`, …). Overview markdown is level 1; typed blocks keep their default level (level-3 blocks there get a warning: they belong in a section). Model: `doc.overviewBlocks` (all of it, in source order, ids `overview-<type>-<n>`) and `doc.overview` (the markdown joined, for previews and `recap md`).
+Everything between the map and the first `##` is the **overview**, shown under the map: a short level-2 narrative plus any blocks that describe the whole change (`flow`, `callout`, `questions`, `checklist`, …). Overview markdown is level 2; typed blocks keep their default level (level-4 blocks there get a warning: they belong in a section). Model: `doc.overviewBlocks` (all of it, in source order, ids `overview-<type>-<n>`) and `doc.overview` (the markdown joined, for previews and `recap md`).
 
 ### Blocks
 
-Fence info string: ` ```<type> key=value key="quoted value" `. Body: YAML for structured blocks, raw for `diff` / `flow` / `code`. Markdown between fences becomes `markdown` blocks. Every block takes `id=` and `level=N`; other attributes are per type (below), unknown ones are a warning. YAML keys are checked per object like the map's (keys listed in the table); an unknown key, or a mapping where a string was expected (a `checklist` item or `options` entry with an unquoted `: `), is a `check` error. Default level per type:
+Fence info string: ` ```<type> key=value key="quoted value" `. Body: YAML for structured blocks, raw for `diff` / `flow` / `code`. Markdown between fences becomes `markdown` blocks. Every block takes `id=` and `level=N` (1-4; anything else, including the old `level=0`, is a `check` error); other attributes are per type (below), unknown ones are a warning. YAML keys are checked per object like the map's (keys listed in the table); an unknown key, or a mapping where a string was expected (a `checklist` item or `options` entry with an unquoted `: `), is a `check` error. Default level per type:
 
 | type | level | body | renders |
 |---|---|---|---|
-| (markdown) | 2 | markdown | prose |
-| `callout` | 2 | markdown; attr `tone=info\|warn\|risk\|decision` | highlighted note |
-| `flow` | 2 | Mermaid source (sequence, flowchart, state, ER) | diagram |
-| `demo` | 2 | YAML: `src: demos/x.replay`, `steps: [2,3]` (1-based step numbers as in the recording; omit = all), `caption:` | embedded Collie Demo player, step list, seek to step |
-| `before-after` | 2 | YAML: `before: {src\|demo+step, caption}`, `after: {...}`, `caption`; `step` is 1-based | side-by-side images (or replay frames) |
-| `data-model` | 2 | YAML: `entities: [{name, change, note, fields: [{name, type, change, note}]}]` | entity cards with change flags |
-| `api` | 2 | YAML: `endpoints: [{method, path, change, summary, request, response}]` | endpoint cards |
-| `steps` | 2 | YAML: `[{title, detail, status: todo\|doing\|done, area}]` | plan steps |
-| `questions` | 0 | YAML: `[{q, options: [...], recommend, why}]` | decisions needed (shown at level 0 = "the ask") |
-| `checklist` | 2 | YAML list of strings | how to verify |
-| `files` | 3 | optional YAML `{path: note}` (or `{notes, paths}`); paths may be globs (`src/server/**`, `*.ts`) or directories, expanded against `changes.patch` (a file's own note wins over a glob's) | file tree with change flags, notes, +/− counts |
-| `diff` | 3 | a raw unified diff, or empty with `file=path` (from `changes.patch`); attrs `hunks=`, `lines=`; `@<line>: note` lines | split/unified diff with inline notes |
-| `code` | 3 | raw; attrs `lang`, `file`, `start`, `lines`; `@<line>: note` lines | highlighted code with line numbers and notes |
+| (markdown) | 3 | markdown | prose |
+| `callout` | 3 | markdown; attr `tone=info\|warn\|risk\|decision` | highlighted note |
+| `flow` | 3 | Mermaid source (sequence, flowchart, state, ER) | diagram |
+| `demo` | 3 | YAML: `src: demos/x.replay`, `steps: [2,3]` (1-based step numbers as in the recording; omit = all), `caption:` | embedded Collie Demo player, step list, seek to step |
+| `before-after` | 3 | YAML: `before: {src\|demo+step, caption}`, `after: {...}`, `caption`; `step` is 1-based | side-by-side images (or replay frames) |
+| `data-model` | 3 | YAML: `entities: [{name, change, note, fields: [{name, type, change, note}]}]` | entity cards with change flags |
+| `api` | 3 | YAML: `endpoints: [{method, path, change, summary, request, response}]` | endpoint cards |
+| `steps` | 3 | YAML: `[{title, detail, status: todo\|doing\|done, area}]` | plan steps |
+| `questions` | 1 | YAML: `[{q, options: [...], recommend, why}]` | decisions needed (shown at level 1 = "the ask") |
+| `checklist` | 3 | YAML list of strings | how to verify |
+| `files` | 4 | optional YAML `{path: note}` (or `{notes, paths}`); paths may be globs (`src/server/**`, `*.ts`) or directories, expanded against `changes.patch` (a file's own note wins over a glob's) | file tree with change flags, notes, +/− counts |
+| `diff` | 4 | a raw unified diff, or empty with `file=path` (from `changes.patch`); attrs `hunks=`, `lines=`; `@<line>: note` lines | split/unified diff with inline notes |
+| `code` | 4 | raw; attrs `lang`, `file`, `start`, `lines`; `@<line>: note` lines | highlighted code with line numbers and notes |
 
-**`questions`** may sit in any section or in the overview; every one is collected into `doc.questions` (the level-0 ask). The overview is the natural place: the reader meets the decisions before the details.
+**`questions`** may sit in any section or in the overview; every one is collected into `doc.questions` (the level-1 ask). The overview is the natural place: the reader meets the decisions before the details.
 
 **`diff`** picks:
 - `hunks=1,3`: hunk numbers **per file, 1-based**, in patch order.

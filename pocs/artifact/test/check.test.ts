@@ -18,6 +18,24 @@ test("fixtures pass check", async () => {
   }
 });
 
+test("check fails on the old 0-3 level numbering and out-of-range levels", async () => {
+  const dir = join(mkdtempSync(join(tmpdir(), "recap-")), "lvl.review");
+  mkdirSync(dir);
+  writeFileSync(join(dir, "doc.md"), [
+    "---", "kind: review", "title: Levels", "tldr: One.", "risk: low", "ask: none", "---",
+    "```map", "nodes: [{ id: a, change: added, section: a }]", "```",
+    "## A {#a}", "", "Summary.", "",
+    "```callout level=0", "Old headline numbering.", "```",
+    "```callout level=5", "Too deep.", "```",
+    "```callout level=4", "Fine.", "```",
+  ].join("\n"));
+  const b = await loadBundle(dir);
+  const e = checkBundle(b).errors.join("\n");
+  assert.match(e, /callout: level=0 is not a level; levels are 1-4/);
+  assert.match(e, /callout: level must be 1-4, got "5"/);
+  assert.deepEqual(b.doc.sections[0].blocks.filter((x) => x.type === "callout").map((x) => x.level), [3, 3, 4]);
+});
+
 test("check flags broken links, missing files and budgets", async () => {
   const dir = join(mkdtempSync(join(tmpdir(), "recap-")), "bad.review");
   mkdirSync(dir);

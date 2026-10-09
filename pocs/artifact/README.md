@@ -41,12 +41,12 @@ Full spec: `SPEC.md`; the JSON model the parser emits and the viewer reads: `src
 
 ## Zoom ladder
 
-| level | key | shows |
-|---|---|---|
-| 0 Headline | `1` | title, tl;dr, risk + why, the ask, decisions, stats |
-| 1 Map | `2` | change map (click a node to focus its area), overview |
-| 2 Areas | `3` | per-area narrative, flows, demos, before/after, data model, API |
-| 3 Code | `4` | file trees, annotated diffs and code, every changed file |
+| level (= key) | shows |
+|---|---|
+| 1 Headline | title, tl;dr, risk + why, the ask, decisions, stats |
+| 2 Map | change map (click a node to focus its area), overview |
+| 3 Areas | per-area narrative, flows, demos, before/after, data model, API |
+| 4 Code | file trees, annotated diffs and code, every changed file |
 
 `+`/`-` step, `p` map vs plan, `t` theme, `Esc` leaves focus.
 

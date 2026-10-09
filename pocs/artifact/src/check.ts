@@ -1,9 +1,10 @@
 // `recap check` (SPEC §5): structural errors fail; style/budget issues and parse warnings are warnings,
-// except YAML that parsed into the wrong shape (unknown keys, mappings for strings): those fail, since they lose content silently.
+// except YAML that parsed into the wrong shape (unknown keys, mappings for strings): those fail, since they lose content silently;
+// and invalid `level=` attrs (e.g. the old 0-3 numbering), which fail so they don't silently fall back to the default level.
 
 import type { Block } from "./model.ts";
 import type { Bundle } from "./parse/bundle.ts";
-import { QUOTE_HINT } from "./parse/doc.ts";
+import { LEVEL_HINT, QUOTE_HINT } from "./parse/doc.ts";
 
 export interface CheckResult { errors: string[]; warnings: string[] }
 
@@ -11,8 +12,9 @@ export const BUDGET = { mapNodes: 12, sections: 8, diffLines: 150 };
 
 export function checkBundle(b: Bundle): CheckResult {
   const { doc, files } = b;
-  const errors: string[] = doc.warnings.filter((w) => w.endsWith(QUOTE_HINT));
-  const warnings: string[] = doc.warnings.filter((w) => !w.endsWith(QUOTE_HINT));
+  const isError = (w: string) => w.endsWith(QUOTE_HINT) || w.endsWith(LEVEL_HINT);
+  const errors: string[] = doc.warnings.filter(isError);
+  const warnings: string[] = doc.warnings.filter((w) => !isError(w));
 
   // headline
   if (!doc.title) errors.push("frontmatter: title missing");

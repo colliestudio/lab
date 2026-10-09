@@ -24,10 +24,10 @@ A doc is a bundle dir `name.review/` or `name.plan/`: `doc.md` (source), `change
 
 | level | contains | rules |
 |---|---|---|
-| 0 Headline | frontmatter `title`, `tldr`, `risk` + `risk_why`, `ask`; `questions` (put them in the overview) | tl;dr = one sentence, the outcome, not the activity ("Failed deliveries retry with backoff", not "This PR adds…"). `risk_why` = what breaks if this is wrong. `ask` = what you need from the reader. |
-| 1 Map | one ` ```map `, then the overview: 2-4 sentences, plus whole-change blocks (`questions`, a `flow` or `callout` that spans areas) | one node per area + `unchanged` context nodes (1 hop) that explain the shape; edges = calls / data flow, verb labels |
-| 2 Areas | `## Title {#id}` per area: summary paragraph, then visual blocks | summary = 1-2 sentences, readable alone (it is the map hover) |
-| 3 Code | `files`, `diff`, `code` | only the hunks that carry the decisions |
+| 1 Headline | frontmatter `title`, `tldr`, `risk` + `risk_why`, `ask`; `questions` (put them in the overview) | tl;dr = one sentence, the outcome, not the activity ("Failed deliveries retry with backoff", not "This PR adds…"). `risk_why` = what breaks if this is wrong. `ask` = what you need from the reader. |
+| 2 Map | one ` ```map `, then the overview: 2-4 sentences, plus whole-change blocks (`questions`, a `flow` or `callout` that spans areas) | one node per area + `unchanged` context nodes (1 hop) that explain the shape; edges = calls / data flow, verb labels |
+| 3 Areas | `## Title {#id}` per area: summary paragraph, then visual blocks | summary = 1-2 sentences, readable alone (it is the map hover) |
+| 4 Code | `files`, `diff`, `code` | only the hunks that carry the decisions |
 
 ## Writing rules
 
@@ -52,7 +52,7 @@ A doc is a bundle dir `name.review/` or `name.plan/`: `doc.md` (source), `change
 
 One diagram per area at most. A section with only prose + diff is fine for small areas.
 
-## Diffs (level 3)
+## Diffs (level 4)
 
 - `` ```diff file=src/x.ts hunks=2,4 `` with body lines `@<newLine>: note`. Hunks are numbered per file from 1; note lines are new-side numbers and must fall on a shown line.
 - `lines=163-199` (or `lines=18,163-199`) cuts the shown hunks to new-side line ranges, alone or after `hunks=`. A new file is one hunk: over 150 lines, show the part that matters with `lines=` instead of excerpting by hand.
@@ -83,7 +83,7 @@ One diagram per area at most. A section with only prose + diff is fine for small
 1. `recap collect --base <base> [--head HEAD] -o x.review` → `changes.patch` + a scaffold `doc.md`. A whole repo or a first commit: `--root` (diff against the empty tree, `base: (empty)`). Leave out bulk that no reader opens (nested bundles, screenshots, recorded fixtures) with `--exclude '<glob>'` (repeatable) and say so in the mechanical section; re-collect with the same flags.
 2. **Rewrite** `doc.md` (the scaffold is a file dump, not a review): areas, map, sections, picks.
 3. `recap check x.review` until clean (map ↔ sections, diff refs, demo files, budgets, one-sentence tl;dr).
-4. `recap serve x.review` and **look** at each zoom level: does L0 alone tell the story, does the map explain the system, does each node open the right section, do notes sit on the right lines? One fix pass.
+4. `recap serve x.review` and **look** at each zoom level: does level 1 (Headline) alone tell the story, does the map explain the system, does each node open the right section, do notes sit on the right lines? One fix pass.
 5. Share: `recap build x.review -o x.html` (one offline file), `recap publish x.review --to <url>` (unlisted link), `recap md x.review` (PR comment: headline + map + link).
 6. Report the path or link and the tl;dr. Nothing else.
 

@@ -22,8 +22,8 @@ type BlockType = (typeof BLOCK_TYPES)[number];
 const ALIASES: Record<string, BlockType> = { mermaid: "flow" };
 
 const DEFAULT_LEVEL: Record<string, Level> = {
-  markdown: 2, callout: 2, flow: 2, demo: 2, "before-after": 2, "data-model": 2, api: 2, steps: 2,
-  questions: 0, checklist: 2, files: 3, diff: 3, code: 3,
+  markdown: 3, callout: 3, flow: 3, demo: 3, "before-after": 3, "data-model": 3, api: 3, steps: 3,
+  questions: 1, checklist: 3, files: 4, diff: 4, code: 4,
 };
 
 const CHANGES: Change[] = ["added", "changed", "removed", "unchanged", "planned", "deferred"];
@@ -33,6 +33,9 @@ const NODE_KINDS: NodeKind[] = ["service", "module", "ui", "db", "api", "queue",
  * Appended to warnings about YAML that parsed into the wrong shape (unknown keys, mappings where a string was
  * expected): almost always an unquoted `, ` or `: ` inside a flow `{ }` / `[ ]`. `recap check` treats these as errors.
  */
+/** Ends every invalid `level=` warning; `recap check` treats these as errors. */
+export const LEVEL_HINT = "(levels: 1 Headline, 2 Map, 3 Areas, 4 Code)";
+
 export const QUOTE_HINT = "(an unquoted \", \" or \": \" inside { } or [ ] splits a value; quote it)";
 
 /** Allowed YAML keys per structured object (SPEC §3). */
@@ -300,7 +303,7 @@ export function parseDoc(md: string, patch?: string, opts: ParseOptions = {}): D
         }
         if (text.trim()) {
           overview.push(text.trim());
-          doc.overviewBlocks.push({ type: "markdown", id: nextBlockId("markdown", {}, tok.line), level: 1, md: text.trim() });
+          doc.overviewBlocks.push({ type: "markdown", id: nextBlockId("markdown", {}, tok.line), level: 2, md: text.trim() });
         }
         continue;
       }
@@ -310,7 +313,7 @@ export function parseDoc(md: string, patch?: string, opts: ParseOptions = {}): D
         section.summary = first;
         text = rest;
       }
-      if (text) section.blocks.push({ type: "markdown", id: nextBlockId("markdown", {}, tok.line), level: 2, md: text });
+      if (text) section.blocks.push({ type: "markdown", id: nextBlockId("markdown", {}, tok.line), level: 3, md: text });
       continue;
     }
 
@@ -328,7 +331,7 @@ export function parseDoc(md: string, patch?: string, opts: ParseOptions = {}): D
     if (block.type === "questions") doc.questions.push(...block.questions);
     block.id = nextBlockId(tok.type, tok.attrs, tok.line);
     if (!section) {
-      if (block.level === 3) warn(`line ${tok.line}: ${tok.type} block in the overview is level 3; it belongs in a section`);
+      if (block.level === 4) warn(`line ${tok.line}: ${tok.type} block in the overview is level 4 (Code); it belongs in a section`);
       doc.overviewBlocks.push(block);
       continue;
     }
@@ -431,11 +434,12 @@ function toChange(v: unknown, dflt: Change, where: string, warn: (m: string) => 
 
 function parseBlock(tok: Extract<Token, { t: "fence" }>, files: FileChange[], warn: (m: string) => void): Block | null {
   const where = `line ${tok.line}: ${tok.type}`;
-  let level = DEFAULT_LEVEL[tok.type] ?? 2;
+  let level = DEFAULT_LEVEL[tok.type] ?? 3;
   if (tok.attrs.level !== undefined) {
     const n = Number(tok.attrs.level);
-    if ([0, 1, 2, 3].includes(n)) level = n as Level;
-    else warn(`${where}: level must be 0-3`);
+    if ([1, 2, 3, 4].includes(n)) level = n as Level;
+    else if (n === 0) warn(`${where}: level=0 is not a level; levels are 1-4 now (old 0-3 + 1) ${LEVEL_HINT}`);
+    else warn(`${where}: level must be 1-4, got "${tok.attrs.level}" ${LEVEL_HINT}`);
   }
   const base = { id: "", level };
   const a = tok.attrs;
