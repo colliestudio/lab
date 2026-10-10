@@ -74,9 +74,17 @@ export interface DocView extends CanvasDoc {
 export type Change =
   | { op: 'add'; node: CanvasNode }
   | { op: 'set'; id: string; key: string; value: unknown }
-  | { op: 'del'; id: string };
+  | { op: 'del'; id: string }
+  /**
+   * Document-level data (JSON Canvas top-level fields, e.g. a library of component types).
+   * `key` = "x-plugin" (whole value) or "x-plugin.entry" (one entry: concurrent edits to different
+   * entries both survive). `value: undefined` deletes it. Undoable like node changes.
+   */
+  | { op: 'meta'; key: string; value: unknown };
 
 export const set = (id: string, key: string, value: unknown): Change => ({ op: 'set', id, key, value });
+
+export const setMeta = (key: string, value: unknown): Change => ({ op: 'meta', key, value });
 
 export const emptyDoc = (): CanvasDoc => ({ nodes: [], edges: [] });
 

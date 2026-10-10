@@ -65,6 +65,12 @@ type YNode = Y.Map<unknown>;
 const isNested = (key: string, v: unknown): v is Record<string, unknown> =>
   key.startsWith('x-') && !!v && typeof v === 'object' && !Array.isArray(v);
 
+function toYMap(v: Record<string, unknown>): Y.Map<unknown> {
+  const sub = new Y.Map<unknown>();
+  for (const [k, x] of Object.entries(v)) if (x !== undefined) sub.set(k, x);
+  return sub;
+}
+
 function toY(node: CanvasNode): YNode {
   const m = new Y.Map<unknown>();
   for (const [k, v] of Object.entries(node)) {
@@ -129,7 +135,7 @@ export class Store {
     this.meta = this.ydoc.getMap('meta');
     this.log = this.ydoc.getArray('log');
     // captureTimeout: we decide grouping ourselves (each dispatch = one undo step unless merged)
-    this.undoManager = new Y.UndoManager([this.nodes, this.edges], {
+    this.undoManager = new Y.UndoManager([this.nodes, this.edges, this.meta], {
       trackedOrigins: new Set([LOCAL]),
       captureTimeout: Number.MAX_SAFE_INTEGER,
     });
@@ -289,6 +295,25 @@ export class Store {
         this.nodes.delete(c.id);
         for (const [id, e] of this.edges) if (e.fromNode === c.id || e.toNode === c.id) this.edges.delete(id);
         return;
+      case 'meta': {
+        const dot = c.key.indexOf('.');
+        if (dot < 0) {
+          if (c.value === undefined) this.meta.delete(c.key);
+          else this.meta.set(c.key, isNested(c.key, c.value) ? toYMap(c.value) : c.value);
+          return;
+        }
+        const ns = c.key.slice(0, dot);
+        let sub = this.meta.get(ns);
+        if (!(sub instanceof Y.Map)) {
+          if (c.value === undefined) return;
+          sub = new Y.Map<unknown>();
+          this.meta.set(ns, sub);
+        }
+        const m = sub as Y.Map<unknown>;
+        if (c.value === undefined) m.delete(c.key.slice(dot + 1));
+        else m.set(c.key.slice(dot + 1), c.value);
+        return;
+      }
       case 'set': {
         // A node deleted (maybe concurrently) stays deleted: never resurrect it through a set.
         const node = this.nodes.get(c.id);
@@ -325,7 +350,7 @@ export class Store {
       this.meta.clear();
       d.nodes.forEach((n, i) => this.nodes.set(n.id, toY({ ...n, z: n.z ?? i + 1 })));
       for (const e of d.edges) this.edges.set(e.id, e);
-      for (const [k, v] of Object.entries(d.extra ?? {})) this.meta.set(k, v);
+      for (const [k, v] of Object.entries(d.extra ?? {})) this.meta.set(k, isNested(k, v) ? toYMap(v) : v);
       if (this.log.length) this.log.delete(0, this.log.length); // a new table starts a new log
     }, LOAD);
     this.migrate();
