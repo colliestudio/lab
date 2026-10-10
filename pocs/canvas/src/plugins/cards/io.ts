@@ -41,7 +41,12 @@ export const repairImport: DocFilter = (doc, ctx) => {
         if (f.hand === true && typeof n.owner === 'string') d.layout ??= 'fan';
       }
       if (typeof f.color === 'string' && /^#[0-9a-f]{6}$/i.test(f.color)) d.color = f.color;
-      if (f.blind === true && !d.home) d.blind = true;
+      if (!d.home) {
+        if (f.blind === true) d.blind = true;
+        if (f.showing === true) d.showing = true;
+        if (f.hideCount === true) d.hideCount = true;
+        if (typeof f.width === 'number' && Number.isFinite(f.width)) d.width = f.width;
+      }
       out.push({ ...n, [FIELD]: d });
       continue;
     }

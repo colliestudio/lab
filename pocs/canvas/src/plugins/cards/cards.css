@@ -188,76 +188,156 @@
   text-overflow: ellipsis;
 }
 
-/* hands: a card shown to the table is raised out of the row, glowing in the owner's color */
+/* hands: a card shown to the table sits in the strip, glowing in the owner's color */
 .pc-card.pc-raised {
-  transform: scale(1.04);
-  transform-origin: 50% 100%;
   box-shadow:
     0 0 0 2px var(--pc-owner),
-    0 0 16px 3px color-mix(in srgb, var(--pc-owner) 65%, transparent),
-    0 10px 18px rgba(0, 0, 0, 0.35);
+    0 0 14px 2px color-mix(in srgb, var(--pc-owner) 55%, transparent),
+    0 6px 14px rgba(0, 0, 0, 0.3);
+}
+/* a selected card in a hand: lifted, with a strong outline on the card itself */
+.cv-node[data-inhand].cv-selected {
+  outline: none;
+}
+.cv-node[data-inhand].cv-selected > .pc-card {
+  transform: translateY(-14px);
+  box-shadow:
+    0 0 0 3px #ffd54a,
+    0 0 0 5px rgba(0, 0, 0, 0.35),
+    0 12px 20px rgba(0, 0, 0, 0.4);
+}
+.cv-node[data-inhand] > .pc-card {
+  transition: transform 90ms ease-out;
 }
 .pc-lane {
   position: absolute;
   left: 14px;
   right: 14px;
-  top: 14px;
+  top: 8px;
   box-sizing: border-box;
-  border-bottom: 1px dashed rgba(255, 255, 255, 0.22);
-  display: flex;
-  align-items: flex-end;
-  justify-content: flex-end;
-  padding: 0 4px 3px;
-  font: 600 10px/1 system-ui, sans-serif;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.35);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
   pointer-events: none;
+  transition: background 120ms;
+}
+.pc-lane span {
+  position: absolute;
+  right: 8px;
+  top: 6px;
+  font: 600 11px/1 system-ui, sans-serif;
+  color: rgba(255, 255, 255, 0.45);
+}
+.pc-threshold {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  height: 0;
+  border-top: 2px dashed #ffd54a;
+  pointer-events: none;
+  display: none;
+}
+.pc-threshold span {
+  position: absolute;
+  right: 6px;
+  top: -16px;
+  font: 600 10px/1 system-ui, sans-serif;
+  color: #ffd54a;
+}
+/* dragging one of this hand's cards: the strip is a visible drop zone, the threshold line shows */
+.cv-node.pc-drag-home .pc-lane {
+  background: color-mix(in srgb, var(--pc-group) 30%, rgba(255, 255, 255, 0.12));
+  outline: 2px dashed rgba(255, 255, 255, 0.45);
+}
+.cv-node.pc-drag-home .pc-threshold {
+  display: block;
+}
+.pc-resize {
+  position: absolute;
+  right: -5px;
+  top: 20%;
+  bottom: 20%;
+  width: 10px;
+  border-radius: 5px;
+  cursor: ew-resize;
+  background: rgba(255, 255, 255, 0.18);
+  opacity: 0;
+  transition: opacity 120ms;
+}
+.cv-node:hover > .pc-hand .pc-resize,
+.pc-resize:hover {
+  opacity: 1;
+}
+/* others, when the count is hidden: one generic pile, whatever is in the hand */
+.pc-pile {
+  position: absolute;
+  left: 50%;
+  width: 120px;
+  height: 168px;
+  margin-left: -60px;
+  pointer-events: none;
+}
+.pc-pile i {
+  position: absolute;
+  inset: 0;
+  border-radius: 7px;
+  border: 1px solid #cfcfcf;
+  background:
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.16) 0 3px, transparent 3px 9px),
+    radial-gradient(circle at center, #b0263a, #6d1020 75%);
+  box-shadow: inset 0 0 0 6px #fff, 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+.pc-pile i:nth-child(1) {
+  transform: translate(-16px, 4px) rotate(-5deg);
+}
+.pc-pile i:nth-child(3) {
+  transform: translate(16px, 4px) rotate(5deg);
 }
 .pc-blind {
   opacity: 0.8;
   margin-left: 2px;
 }
-@keyframes pc-pulse {
-  0% {
-    filter: brightness(1);
-    scale: 1;
+/* a card just shown: one short glow */
+@keyframes pc-glow {
+  from {
+    filter: drop-shadow(0 0 10px var(--pc-owner, #ffd54a));
   }
-  35% {
-    filter: brightness(1.15) drop-shadow(0 0 12px var(--pc-owner, #ffd54a));
-    scale: 1.1;
-  }
-  100% {
-    filter: brightness(1);
-    scale: 1;
+  to {
+    filter: none;
   }
 }
-.cv-node.pc-pulse > .pc-card {
-  animation: pc-pulse 0.9s ease-out;
+.cv-node.pc-glow {
+  animation: pc-glow 280ms ease-out;
+}
+/* a card that just landed on the table near a hand: a brief outline */
+@keyframes pc-landed {
+  from {
+    outline-color: #7fe3ff;
+  }
+  to {
+    outline-color: transparent;
+  }
+}
+.cv-node.pc-landed {
+  outline: 3px solid transparent;
+  outline-offset: 3px;
+  border-radius: 8px;
+  animation: pc-landed 1.2s ease-out;
 }
 .pc-toast {
   position: absolute;
   transform: translateY(-100%);
   z-index: 100000;
-  padding: 6px 10px;
-  border-radius: 8px;
-  background: rgba(20, 22, 28, 0.88);
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(20, 22, 28, 0.8);
   color: #fff;
-  font: 600 13px/1.2 system-ui, sans-serif;
+  font: 600 11px/1.2 system-ui, sans-serif;
   white-space: nowrap;
   pointer-events: none;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
-  animation: pc-toast-in 0.18s ease-out;
-  transition: opacity 0.4s;
+  transition: opacity 0.35s;
 }
 .pc-toast.pc-toast-out {
   opacity: 0;
-}
-@keyframes pc-toast-in {
-  from {
-    opacity: 0;
-    margin-top: 6px;
-  }
 }
 .pc-viewas {
   position: absolute;
@@ -275,4 +355,8 @@
 }
 .pc-viewas[hidden] {
   display: none;
+}
+/* a selected card in a hand comes to the front on your screen, so you see all of it */
+.cv-node[data-inhand].cv-selected {
+  z-index: 900000 !important;
 }

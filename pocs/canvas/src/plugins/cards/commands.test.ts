@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
-import { Store, parse, serialize, type CanvasNode, type CommandCtx } from '../../core';
+import { OTHERS, Store, parse, serialize, type CanvasNode, type CommandCtx } from '../../core';
 import { registerCoreCommands } from '../../core/commands';
 import { registerCardsLogic } from './index';
 import { DROP_FAN, DROP_STACK, dropMode, freeSpot } from './commands';
-import { CARD_H, FIELD, card, cardNode, cardsIn, deckNode, hiddenFrom, isBlind, isCard, isDeck, isHomeDeck, layoutOf, standardDeck } from './deck';
-import { PAD, RAISE, liftedDrop, slots } from './layout';
-import { groupHtml, tabText } from './render';
-import { revealText } from './handUx';
+import { CARD_W, FIELD, card, concealedFrom, isShown, cardNode, cardsIn, deckNode, hiddenFrom, isBlind, isCard, isDeck, isHomeDeck, layoutOf, standardDeck } from './deck';
+import { HAND_W, PAD, RAISE, handSlots, liftedDrop, rowTop, slots, thresholdY } from './layout';
+import { handHtml, tabText } from './render';
+import { parkedCursor, revealText } from './handUx';
+import { showLabel } from './index';
 
 function ctx(prefix = 'id', seed = 1): CommandCtx {
   let n = 0;
@@ -380,7 +381,7 @@ describe('groups and hands', () => {
     const box = s.doc.get(h)!;
     s.dispatch('cards.drop', { target: 'l0', ids: ['l2'], at: { x: box.x + PAD + 2, y: box.y + 60 } });
     expect(order(s, h)).toEqual(['JD', 'KH', 'QS']);
-    expect(hiddenFrom(s.doc, s.doc.get('l0')!, 'bob')).toBe(!card(s.doc.get('l0')!).faceUp); // face up in a hand = shown
+    expect(hiddenFrom(s.doc, s.doc.get('l0')!, 'bob')).toBe(true); // private: this hand doesn't allow showing
     expect(hiddenFrom(s.doc, s.doc.get('l0')!, 'alice')).toBe(false);
     // emptied hand stays; can't become a pile
     for (const id of ['l0', 'l1', 'l2']) s.dispatch('cards.pullOut', { id });
@@ -419,7 +420,7 @@ describe('groups and hands', () => {
     const json = JSON.parse(serialize(s.exportDoc()));
     const g = json.nodes.find((n: any) => n.id === h);
     expect(g).toMatchObject({ type: 'group', label: "Alice's hand", owner: 'alice' });
-    expect(g.width).toBe(slots('fan', 2, 3).w);
+    expect(g.width).toBe(HAND_W);
     const kh = json.nodes.find((n: any) => n.id === 'l0');
     expect(kh.x).toBe(s.doc.get('l0')!.x);
     expect(json.nodes.indexOf(kh)).toBeGreaterThan(json.nodes.indexOf(g)); // drawn above the group
@@ -495,7 +496,7 @@ describe('drop modes, stack ⇄ fan, private groups', () => {
     const box = s.doc.get(g)!;
     expect(box.owner).toBe('alice');
     expect(layoutOf(box)).toBe('fan');
-    expect(hiddenFrom(s.doc, s.doc.get('l0')!, 'bob')).toBe(!card(s.doc.get('l0')!).faceUp); // face up in a hand = shown
+    expect(hiddenFrom(s.doc, s.doc.get('l0')!, 'bob')).toBe(true); // private: this hand doesn't allow showing
     expect(hiddenFrom(s.doc, s.doc.get('l0')!, 'alice')).toBe(false);
     s.dispatch('cards.own', { id: g, owner: null });
     expect(s.doc.get(g)!.owner).toBeUndefined();
@@ -515,7 +516,7 @@ describe('drop modes, stack ⇄ fan, private groups', () => {
     });
     expect((t.doc.get('h')![FIELD] as any).hand).toBeUndefined();
     expect(t.doc.get('h')!.owner).toBe('alice');
-    expect(hiddenFrom(t.doc, t.doc.get('c')!, 'bob')).toBe(!card(t.doc.get('c')!).faceUp); // face up in a hand = shown
+    expect(hiddenFrom(t.doc, t.doc.get('c')!, 'bob')).toBe(true); // private: this hand doesn't allow showing
   });
 
   it('freeSpot slides a box off occupied space', () => {
@@ -747,7 +748,7 @@ describe('kinds, layouts, put on table, showdown', () => {
     expect(layoutOf(s.doc.get(g)!)).toBe('fan');
     s.dispatch('cards.turnInto', { id: g, kind: 'hand', owner: 'alice', label: "Alice's hand", color: '#3cb44b' });
     expect(s.doc.get(g)!.owner).toBe('alice');
-    expect(hiddenFrom(s.doc, s.doc.get('l0')!, 'bob')).toBe(!card(s.doc.get('l0')!).faceUp); // face up in a hand = shown
+    expect(hiddenFrom(s.doc, s.doc.get('l0')!, 'bob')).toBe(true); // private: this hand doesn't allow showing
     s.dispatch('cards.turnInto', { id: g, kind: 'deck' });
     expect(s.doc.get(g)!.owner).toBeUndefined();
     expect(layoutOf(s.doc.get(g)!)).toBe('stack');
@@ -817,94 +818,188 @@ describe('kinds, layouts, put on table, showdown', () => {
   });
 });
 
-describe('hands: shown vs private', () => {
-  /** Alice's hand `h` at (0, 600) holding KH (shown), QS, JD (private); plus a loose 2C face down. */
-  function table() {
-    const s = withDeck(1, ...['KH', 'QS', 'JD'].map((f, i) => cardNode(`l${i}`, 400 + i * 200, 400, { face: f, faceUp: i === 0 }, 100 + i)), cardNode('x', 0, 0, { face: '2C', faceUp: false }, 200));
+describe('hands: fixed frame, shown strip, hidden count', () => {
+  /** Alice's hand `h` holding KH, QS, JD (all private), plus a loose 2C face up. Optionally allowing showing. */
+  function table(showing = false) {
+    const s = withDeck(1, ...['KH', 'QS', 'JD'].map((f, i) => cardNode(`l${i}`, 400 + i * 200, 400, { face: f, faceUp: false }, 100 + i)), cardNode('x', 0, 0, { face: '2C', faceUp: true }, 200));
     const h = s.dispatch('cards.newHand', { owner: 'alice', label: "Alice's hand", color: '#e6194b', x: 0, y: 600 }).select![0];
     s.dispatch('cards.drop', { target: h, ids: ['l0', 'l1', 'l2'] });
+    if (showing) s.dispatch('cards.allowShowing', { id: h, on: true });
     return { s, h };
   }
   const up = (s: Store, id: string) => card(s.doc.get(id)!).faceUp;
+  const more = (n: number) => standardDeck().slice(13, 13 + n).map((f, i) => cardNode(`m${i}`, 1000 + i * 10, 0, { face: f, faceUp: false }, 300 + i));
 
-  it('shown cards are raised by RAISE in every layout; the hand keeps a lane for them', () => {
-    const { s, h } = table();
-    for (const layout of ['fan', 'row', 'grid'] as const) {
-      s.dispatch('cards.setLayout', { id: h, layout });
-      const box = s.doc.get(h)!;
-      const ref = slots(layout, 3, 3, { lane: RAISE });
-      expect(s.doc.get('l0')!.y).toBe(box.y + ref.at[0].dy - RAISE); // KH shown: lifted
-      expect(s.doc.get('l1')!.y).toBe(box.y + ref.at[1].dy); // QS private: in the row
-      expect(box.height).toBe(ref.h);
+  it('A: the frame is the same size whatever the count; the fan compresses to fit; resizable', () => {
+    for (const showing of [false, true]) {
+      const s = withDeck(1, ...more(13));
+      const h = s.dispatch('cards.newHand', { owner: 'alice', x: 0, y: 600 }).select![0];
+      if (showing) s.dispatch('cards.allowShowing', { id: h, on: true });
+      const sizes = new Set<string>();
+      for (let i = 0; i <= 13; i++) {
+        if (i) s.dispatch('cards.drop', { target: h, ids: [`m${i - 1}`] });
+        const box = s.doc.get(h)!;
+        sizes.add(`${box.width}x${box.height}`);
+        for (const c of cardsIn(s.doc, h)) expect(c.x >= box.x && c.x + CARD_W <= box.x + box.width).toBe(true); // all inside
+      }
+      expect([...sizes]).toEqual([`${HAND_W}x${s.doc.get(h)!.height}`]);
     }
-    expect(RAISE / CARD_H).toBeGreaterThanOrEqual(0.35);
-    expect(RAISE / CARD_H).toBeLessThanOrEqual(0.45);
+    const { s, h } = table();
+    s.dispatch('cards.resizeHand', { id: h, width: 900 });
+    expect(s.doc.get(h)!.width).toBe(900);
+    s.dispatch('cards.resizeHand', { id: h, width: 10 });
+    expect(s.doc.get(h)!.width).toBeGreaterThan(CARD_W); // clamped
+    expect(s.dispatch('cards.resizeHand', { id: 'd', width: 900 }).changes).toEqual([]);
   });
 
-  it('show / hide: multi-select, whole hand, owner only, loose cards untouched; one step each', () => {
+  it('allow showing: off by default (no strip, show is a no-op); on adds the strip above, never revealing; off hides all in one step', () => {
     const { s, h } = table();
-    s.dispatch('cards.show', { ids: ['l1', 'l2', 'x'], shown: true, by: 'alice' });
-    expect([up(s, 'l1'), up(s, 'l2'), up(s, 'x')]).toEqual([true, true, false]);
-    expect(hiddenFrom(s.doc, s.doc.get('l1')!, 'bob')).toBe(false);
+    const y0 = s.doc.get(h)!.y;
+    const rowY = s.doc.get('l0')!.y;
+    expect(s.dispatch('cards.show', { ids: ['l0'], shown: true, by: 'alice' }).changes).toEqual([]);
+    s.dispatch('cards.allowShowing', { id: h, on: true });
+    expect(s.doc.get(h)!.y).toBe(y0 - RAISE); // grows upward…
+    expect(s.doc.get('l0')!.y).toBe(rowY); // …the row stays put
+    expect(cardsIn(s.doc, h).every((c) => !isShown(s.doc, c))).toBe(true);
+    s.dispatch('cards.show', { ids: ['l0', 'l1'], shown: true, by: 'alice' });
+    expect(s.doc.get('l0')!.y).toBe(s.doc.get(h)!.y + PAD); // in the strip
+    s.dispatch('cards.allowShowing', { id: h, on: false });
+    expect(cardsIn(s.doc, h).some((c) => card(c).faceUp)).toBe(false);
+    expect(hiddenFrom(s.doc, s.doc.get('l0')!, 'bob')).toBe(true);
     s.undo();
-    expect([up(s, 'l1'), up(s, 'l2')]).toEqual([false, false]);
-    expect(s.dispatch('cards.show', { ids: ['l1'], shown: true, by: 'bob' }).changes).toEqual([]); // not bob's hand
-    s.dispatch('cards.show', { ids: [h], shown: false, by: 'alice' });
-    expect(cardsIn(s.doc, h).every((c) => !card(c).faceUp)).toBe(true);
-    expect(s.dispatch('cards.show', { ids: [h, 'l0'], shown: true }).changes).toHaveLength(3); // no dup changes
+    expect([isShown(s.doc, s.doc.get('l0')!), isShown(s.doc, s.doc.get('l1')!)]).toEqual([true, true]); // one step
+    // a face-up card dropped into a hand without the strip goes in private
+    s.dispatch('cards.allowShowing', { id: h, on: false });
+    s.dispatch('cards.drop', { target: h, ids: ['x'] });
+    expect([up(s, 'x'), hiddenFrom(s.doc, s.doc.get('x')!, 'bob')]).toEqual([false, true]);
   });
 
-  it('flip (double-click, F) never changes facing in a hand, also via the hand itself', () => {
-    const { s, h } = table();
-    const before = cardsIn(s.doc, h).map((c) => card(c).faceUp);
+  it('show / hide: multi-select, whole hand, owner only, loose cards untouched; wording with counts', () => {
+    const { s, h } = table(true);
+    s.dispatch('cards.show', { ids: ['l1', 'l2', 'x'], shown: true, by: 'alice' });
+    expect([isShown(s.doc, s.doc.get('l1')!), isShown(s.doc, s.doc.get('l2')!), up(s, 'x')]).toEqual([true, true, true]);
+    s.undo();
+    expect(s.dispatch('cards.show', { ids: ['l1'], shown: true, by: 'bob' }).changes).toEqual([]);
+    s.dispatch('cards.show', { ids: [h], shown: true, by: 'alice' });
+    expect(cardsIn(s.doc, h).every((c) => isShown(s.doc, c))).toBe(true);
+    expect(showLabel(true, 1)).toBe('Show to table');
+    expect(showLabel(true, 3)).toBe('Show 3 to table');
+    expect(showLabel(false, 1)).toBe('Hide from table');
+    expect(showLabel(false, 2)).toBe('Hide 2 from table');
+  });
+
+  it('the strip is laid out on its own: shown cards’ spots say nothing about the private ones', () => {
+    const a = table(true);
+    const b = withDeck(1, ...more(8), cardNode('k', 0, 0, { face: 'KH', faceUp: false }, 400));
+    const hb = b.dispatch('cards.newHand', { owner: 'alice', x: 0, y: 600 }).select![0];
+    b.dispatch('cards.allowShowing', { id: hb, on: true });
+    b.dispatch('cards.drop', { target: hb, ids: ['m0', 'm1', 'm2', 'k', 'm3', 'm4', 'm5', 'm6', 'm7'] });
+    a.s.dispatch('cards.show', { ids: ['l0'], shown: true, by: 'alice' });
+    b.dispatch('cards.show', { ids: ['k'], shown: true, by: 'alice' });
+    const rel = (s: Store, h: string, id: string) => [s.doc.get(id)!.x - s.doc.get(h)!.x, s.doc.get(id)!.y - s.doc.get(h)!.y];
+    expect(rel(b, hb, 'k')).toEqual(rel(a.s, a.h, 'l0')); // 3 vs 9 cards, one shown: same spot
+    // strip under the row (the row's corners stay readable)
+    expect(a.s.doc.get('l0')!.z!).toBeLessThan(a.s.doc.get('l1')!.z!);
+    expect(handSlots(a.s.doc.get(a.h)!, [true, false]).at[0].dy).toBe(PAD);
+  });
+
+  it('drag up past the threshold line = shown, below = private; rearranging never changes visibility', () => {
+    const { s, h } = table(true);
+    const box = s.doc.get(h)!;
+    const t = thresholdY(box);
+    expect(t).toBeGreaterThan(box.y + PAD);
+    expect(t).toBeLessThan(box.y + rowTop(box));
+    expect([liftedDrop(box, t - 1), liftedDrop(box, t + 1), liftedDrop(box, box.y + rowTop(box))]).toEqual([true, false, false]);
+    s.dispatch('cards.allowShowing', { id: h, on: false });
+    expect(liftedDrop(s.doc.get(h)!, -9999)).toBe(false); // no strip, no threshold
+    s.dispatch('cards.allowShowing', { id: h, on: true });
+    const hb = s.doc.get(h)!;
+    const vis = () => cardsIn(s.doc, h).map((c) => `${card(c).face}:${isShown(s.doc, c)}:${hiddenFrom(s.doc, c, 'bob')}`).sort();
+    const before = vis();
+    // rearrange: JD to the front of the row; sort; another order
+    s.dispatch('cards.drop', { target: h, ids: ['l2'], at: { x: hb.x + 20, y: hb.y + 120 }, shown: false });
+    expect(faces(s, h)[0]).toBe('JD');
+    s.dispatch('cards.sort', { id: h });
+    s.dispatch('cards.drop', { target: h, ids: ['l0'], at: { x: hb.x + hb.width - 20, y: hb.y + 120 } });
+    expect(vis()).toEqual(before);
+    // drop above the line: shown, into the strip
+    s.dispatch('cards.drop', { target: h, ids: ['l1'], at: { x: hb.x + 60, y: hb.y + 30 }, shown: true });
+    expect(isShown(s.doc, s.doc.get('l1')!)).toBe(true);
+    expect(s.doc.get('l1')!.y).toBe(hb.y + PAD);
+    // a shown card rearranged within the strip stays shown; dragged down it's private again
+    s.dispatch('cards.drop', { target: h, ids: ['l1'], at: { x: hb.x + 300, y: hb.y + 30 } });
+    expect(isShown(s.doc, s.doc.get('l1')!)).toBe(true);
+    s.dispatch('cards.drop', { target: h, ids: ['l1'], at: { x: hb.x + 60, y: hb.y + 150 }, shown: false });
+    expect(isShown(s.doc, s.doc.get('l1')!)).toBe(false);
+  });
+
+  it('flip (double-click, F) never changes a hand card, also via the hand itself', () => {
+    const { s, h } = table(true);
+    s.dispatch('cards.show', { ids: ['l0'], shown: true, by: 'alice' });
     for (const by of [undefined, 'alice', 'bob']) {
       expect(s.dispatch('cards.flip', { ids: ['l0', 'l1'], by }).changes).toEqual([]);
       expect(s.dispatch('cards.flip', { ids: [h], by }).changes).toEqual([]);
     }
-    expect(cardsIn(s.doc, h).map((c) => card(c).faceUp)).toEqual(before);
-    s.dispatch('cards.flip', { ids: ['x', 'l1'], by: 'alice' }); // loose card in the mix still flips
-    expect([up(s, 'x'), up(s, 'l1')]).toEqual([true, false]);
+    s.dispatch('cards.flip', { ids: ['x', 'l1'], by: 'alice' }); // a loose card in the mix still flips
+    expect([up(s, 'x'), up(s, 'l1')]).toEqual([false, false]);
   });
 
-  it('drag-up classification: past halfway to the raised spot = shown, else private', () => {
-    const { s, h } = table();
-    const box = s.doc.get(h)!;
-    const row = box.y + slots('fan', 3, 3, { lane: RAISE }).at[1].dy;
-    expect(liftedDrop(box, 3, 1, row)).toBe(false); // dropped back in the row
-    expect(liftedDrop(box, 3, 1, row - RAISE / 2 + 2)).toBe(false); // not far enough
-    expect(liftedDrop(box, 3, 1, row - RAISE / 2 - 2)).toBe(true);
-    expect(liftedDrop(box, 3, 1, row - RAISE)).toBe(true); // the raised spot
-    expect(liftedDrop(box, 3, 1, row - RAISE - 40)).toBe(true); // above it, still in the hand
+  it('B: hide card count: others get no trace of private cards (shown ones stay); the owner sees all', () => {
+    const { s, h } = table(true);
+    s.dispatch('cards.show', { ids: ['l0'], shown: true, by: 'alice' });
+    expect(concealedFrom(s.doc, s.doc.get('l1')!, 'bob')).toBe(false); // off: a back
+    s.dispatch('cards.hideCount', { id: h, on: true });
+    expect(concealedFrom(s.doc, s.doc.get('l1')!, 'bob')).toBe(true);
+    expect(concealedFrom(s.doc, s.doc.get('l0')!, 'bob')).toBe(false); // shown: public
+    expect(concealedFrom(s.doc, s.doc.get('l1')!, 'alice')).toBe(false);
+    expect(concealedFrom(s.doc, s.doc.get('l1')!, 'alice', true)).toBe(true); // view as others
+    const others = handHtml({ label: "Alice's hand", mine: false, count: undefined, shown: 1, pile: true, blind: false, lane: RAISE, threshold: 50, rowTop: 87 });
+    expect(others).toContain("Alice's hand</div>");
+    expect(others).not.toMatch(/· \d/);
+    expect(others).toContain('pc-pile');
+    expect(others).not.toContain('pc-resize');
+    // saved and reopened
+    const t = store();
+    t.load(parse(serialize(s.exportDoc())));
+    expect(concealedFrom(t.doc, t.doc.get('l1')!, 'bob')).toBe(true);
+    expect(isShown(t.doc, t.doc.get('l0')!)).toBe(true);
   });
 
-  it('tab reads "Alice\'s hand · 3 · 1 shown"', () => {
+  it('tab: "Alice\'s hand · 3 · 1 shown" for the owner (and others when the count shows)', () => {
     expect(tabText("Alice's hand", 3, 1)).toBe("Alice's hand · 3 · 1 shown");
     expect(tabText("Alice's hand", 3, 0)).toBe("Alice's hand · 3");
-    expect(groupHtml(5, { hand: true, label: "Alex's hand", shown: 2, mine: true, lane: RAISE })).toContain("Alex's hand · 5 · 2 shown");
+    expect(handHtml({ label: "Alex's hand", mine: true, count: 5, shown: 2, pile: false, blind: false, lane: RAISE, threshold: 50, rowTop: 87 })).toContain("Alex's hand · 5 · 2 shown");
+    expect(handHtml({ label: "Alex's hand", mine: true, count: 5, shown: 0, pile: false, blind: false, lane: 0, threshold: 0, rowTop: 20 })).not.toContain('pc-lane');
   });
 
-  it('reveal toasts: names and counts', () => {
-    expect(revealText('Alex', ['K♠'], 0)).toEqual(['Alex showed K♠']);
-    expect(revealText('Alex', ['K♠', '2♥', '3♣', '4♦'], 1)).toEqual(['Alex showed 4 cards', 'Alex hid a card']);
-    expect(revealText('Alex', [], 2)).toEqual(['Alex hid 2 cards']);
+  it('C: private cards are hidden from others (never outlined or broadcast); the pointer parks at the tab over my row', () => {
+    const { s, h } = table(true);
+    s.dispatch('cards.show', { ids: ['l0'], shown: true, by: 'alice' });
+    expect(hiddenFrom(s.doc, s.doc.get('l1')!, OTHERS)).toBe(true); // never broadcast
+    expect(hiddenFrom(s.doc, s.doc.get('l0')!, OTHERS)).toBe(false); // shown: fine
+    expect(hiddenFrom(s.doc, s.doc.get('x')!, OTHERS)).toBe(false);
+    const hb = s.doc.get(h)!;
+    const fake = { doc: s.doc, viewer: 'alice' } as any;
+    const tab = { x: hb.x + 48, y: hb.y - 12 };
+    expect(parkedCursor(fake, { x: hb.x + 100, y: hb.y + rowTop(hb) + 40 })).toEqual(tab); // over the private row
+    expect(parkedCursor(fake, { x: hb.x + 100, y: hb.y + 20 })).toBeUndefined(); // the shown strip is public
+    expect(parkedCursor(fake, { x: hb.x - 50, y: hb.y + 150 })).toBeUndefined(); // off the hand
+    expect(parkedCursor({ doc: s.doc, viewer: 'bob' } as any, { x: hb.x + 100, y: hb.y + rowTop(hb) + 40 })).toBeUndefined(); // not bob's
   });
 
-  it('turning a group into a hand grows the lane upward (cards stay put) and back', () => {
-    const s = withDeck(1, ...['KH', 'QS'].map((f, i) => cardNode(`l${i}`, 400 + i * 60, 400, { face: f, faceUp: false }, 100 + i)));
-    const g = s.dispatch('cards.gather', { ids: ['l0', 'l1'] }).select![0];
-    const y0 = s.doc.get('l0')!.y;
-    s.dispatch('cards.turnInto', { id: g, kind: 'hand', owner: 'alice' });
-    expect(s.doc.get('l0')!.y).toBe(y0);
-    s.dispatch('cards.turnInto', { id: g, kind: 'group' });
-    expect(s.doc.get('l0')!.y).toBe(y0);
+  it('E: only showing is announced', () => {
+    expect(revealText('Alex', ['K♠'])).toBe('Alex showed K♠');
+    expect(revealText('Alex', ['K♠', '2♥', '3♣', '4♦'])).toBe('Alex showed 4 cards');
   });
 });
 
 describe('hands: See my cards (blind hand)', () => {
   function table() {
-    const s = withDeck(1, ...['KH', 'QS', 'JD'].map((f, i) => cardNode(`l${i}`, 400 + i * 200, 400, { face: f, faceUp: i === 0 }, 100 + i)));
+    const s = withDeck(1, ...['KH', 'QS', 'JD'].map((f, i) => cardNode(`l${i}`, 400 + i * 200, 400, { face: f, faceUp: false }, 100 + i)));
     const h = s.dispatch('cards.newHand', { owner: 'alice', label: "Alice's hand", x: 0, y: 600 }).select![0];
     s.dispatch('cards.drop', { target: h, ids: ['l0', 'l1', 'l2'] });
+    s.dispatch('cards.allowShowing', { id: h, on: true });
+    s.dispatch('cards.show', { ids: ['l0'], shown: true, by: 'alice' });
     return { s, h };
   }
   const hidden = (s: Store, id: string, who: string) => hiddenFrom(s.doc, s.doc.get(id)!, who);
@@ -921,25 +1016,23 @@ describe('hands: See my cards (blind hand)', () => {
     const { s, h } = table();
     s.dispatch('cards.seeMine', { id: h, on: false });
     expect(isBlind(s.doc.get(h)!)).toBe(true);
-    expect(hidden(s, 'l1', 'alice')).toBe(false); // default state 2: face up for me
+    expect(hidden(s, 'l1', 'alice')).toBe(false); // default: face up for me
     s.dispatch('cards.flip', { ids: ['l1', 'l2'], by: 'alice' });
-    expect([hidden(s, 'l1', 'alice'), hidden(s, 'l2', 'alice')]).toEqual([true, true]); // state 3
+    expect([hidden(s, 'l1', 'alice'), hidden(s, 'l2', 'alice')]).toEqual([true, true]); // face down for me
     expect([card(s.doc.get('l1')!).faceUp, hidden(s, 'l1', 'bob')]).toEqual([false, true]);
     expect(s.dispatch('cards.flip', { ids: ['l1'], by: 'bob' }).changes).toEqual([]); // only the owner
     expect(s.dispatch('cards.flip', { ids: ['l0'], by: 'alice' }).changes).toEqual([]); // shown: not flippable
     s.dispatch('cards.flip', { ids: ['l1'], by: 'alice' });
     expect(hidden(s, 'l1', 'alice')).toBe(false);
-    // checked again: the per-card field is ignored but kept
     s.dispatch('cards.seeMine', { id: h, on: true });
-    expect(hidden(s, 'l2', 'alice')).toBe(false);
-    expect(card(s.doc.get('l2')!).mine).toBe(false);
+    expect(hidden(s, 'l2', 'alice')).toBe(false); // checked: the field is ignored…
+    expect(card(s.doc.get('l2')!).mine).toBe(false); // …but kept
     s.dispatch('cards.seeMine', { id: h, on: false });
     expect(hidden(s, 'l2', 'alice')).toBe(true);
-    // showing a state-3 card: everyone sees it; hiding it again goes back to state 3
     s.dispatch('cards.show', { ids: ['l2'], shown: true, by: 'alice' });
     expect([hidden(s, 'l2', 'alice'), hidden(s, 'l2', 'bob')]).toEqual([false, false]);
     s.dispatch('cards.show', { ids: ['l2'], shown: false, by: 'alice' });
-    expect(hidden(s, 'l2', 'alice')).toBe(true);
+    expect(hidden(s, 'l2', 'alice')).toBe(true); // back to face down for me
   });
 
   it('survives Save → Open', () => {

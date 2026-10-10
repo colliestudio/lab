@@ -78,27 +78,52 @@ export function tabText(label: string, count: number, shown = 0): string {
   return `${label} · ${count}${shown ? ` · ${shown} shown` : ''}`;
 }
 
-/**
- * A spread-out group or a hand: a frame under its cards, with a tab "Group · 4" (drag = move all,
- * click = menu). A hand also marks the lane above its row where cards shown to the table sit.
- */
-export function groupHtml(
-  count: number,
-  o: { hand: boolean; home?: boolean; label: string; color?: string; mine?: boolean; shown?: number; blind?: boolean; lane?: number },
-): string {
-  const color = o.color ?? (o.hand ? '#2f4b7c' : o.home ? '#233257' : '#555');
-  const tip = o.hand
-    ? o.mine
-      ? `Your hand: cards in the row are private, raised cards are shown to everyone${o.blind ? ' (See my cards is off: you see only the cards you flipped up for yourself)' : ''} • drag a card up to show it, down to hide it • click for actions • drag to move`
-      : `${esc(o.label)}: raised cards are shown to the table, the rest you see face down • click for actions • drag to move`
-    : o.home
-      ? 'The home deck, spread out as a group • click for actions (L stacks it again) • drag here to move'
-      : 'Group: every card shown • click for actions (turn into a deck or hand, layout, put on table) • drag here to move';
-  const lane = o.hand && o.lane ? `<div class="pc-lane" style="height:${o.lane}px">shown to table</div>` : '';
+/** A spread-out group: a frame under its cards, with a tab "Group · 4" (drag = move all, click = menu). */
+export function groupHtml(count: number, o: { hand?: false; home?: boolean; label: string; color?: string }): string {
+  const color = o.color ?? (o.home ? '#233257' : '#555');
+  const tip = o.home
+    ? 'The home deck, spread out as a group • click for actions (L stacks it again) • drag here to move'
+    : 'Group: every card shown • click for actions (turn into a deck or hand, layout, put on table) • drag here to move';
   return (
-    `<div class="pc-group${o.hand ? ' pc-hand' : ''}" style="--pc-group:${color}">` +
-    lane +
+    `<div class="pc-group" style="--pc-group:${color}">` +
     `<div class="pc-grip pc-group-tab" data-grip title="${tip}" style="background:${color}">` +
-    `<span class="pc-grip-dots">⠿</span>${esc(tabText(o.label, count, o.shown))}${o.hand && o.mine && o.blind ? ' <span class="pc-blind" title="See my cards is off">◐</span>' : ''}</div></div>`
+    `<span class="pc-grip-dots">⠿</span>${esc(tabText(o.label, count))}</div></div>`
+  );
+}
+
+/**
+ * A hand: a fixed frame (same for everyone), the "Shown to table" strip if it allows showing (with
+ * the drag-up threshold line, visible while dragging one of its cards), and for others when the count
+ * is hidden a generic pile instead of its cards. `count` undefined = not shown on the tab.
+ */
+export function handHtml(o: {
+  label: string;
+  color?: string;
+  mine: boolean;
+  count?: number;
+  shown: number;
+  pile: boolean;
+  blind: boolean;
+  lane: number;
+  threshold: number;
+  rowTop: number;
+}): string {
+  const color = o.color ?? '#2f4b7c';
+  const tip = o.mine
+    ? `Your hand: only you see the cards in the row${o.lane ? '; cards in the strip above are shown to everyone (drag a card up above the line to show it, back down to hide it)' : ''}${o.blind ? ' • See my cards is off: you see only the cards you flipped up for yourself' : ''} • click for actions • drag to move • drag the right edge to resize`
+    : `${esc(o.label)}${o.lane ? ': cards in the strip are shown to the table' : ''} • click for actions • drag to move`;
+  const text = o.count === undefined ? o.label : tabText(o.label, o.count, o.lane ? o.shown : 0);
+  const strip = o.lane
+    ? `<div class="pc-lane" style="height:${o.lane}px"><span>Shown to table</span></div><div class="pc-threshold" style="top:${o.threshold}px"><span>above the line: shown</span></div>`
+    : '';
+  const pile = o.pile ? `<div class="pc-pile" style="top:${o.rowTop}px"><i></i><i></i><i></i></div>` : '';
+  return (
+    `<div class="pc-group pc-hand" style="--pc-group:${color}">` +
+    strip +
+    pile +
+    `<div class="pc-grip pc-group-tab" data-grip title="${tip}" style="background:${color}">` +
+    `<span class="pc-grip-dots">⠿</span>${esc(text)}${o.mine && o.blind ? ' <span class="pc-blind" title="See my cards is off">◐</span>' : ''}</div>` +
+    (o.mine ? '<div class="pc-resize" title="Drag to resize the hand"></div>' : '') +
+    `</div>`
   );
 }

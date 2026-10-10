@@ -1,6 +1,6 @@
-import { isIds, isNum, pick, set, toFront, type CanvasNode, type Change, type Command, type DocView } from '../../core';
-import { CARD_H, CARD_W, FIELD, RANKS, card, isBlind, cardNode, cardsHomedAt, cardsIn, deckNode, groupNode, isCard, isCardish, isDeck, isHand, isHomeDeck, isSpreadOut, isStacked, layoutOf, packOf, parseFace, standardDeck, type DeckField, type Layout } from './deck';
-import { PAD, RAISE, emptyHandSize, slotIndex, slots } from './layout';
+import { isIds, isNum, pick, set, toFront, type CanvasNode, type Change, type Command, type CommandResult, type DocView } from '../../core';
+import { CARD_H, CARD_W, FIELD, RANKS, allowsShowing, card, hidesCount, isBlind, shownIn, cardNode, cardsHomedAt, cardsIn, deckNode, groupNode, isCard, isCardish, isDeck, isHand, isHomeDeck, isSpreadOut, isStacked, layoutOf, packOf, parseFace, standardDeck, type DeckField, type Layout } from './deck';
+import { HAND_MAX_W, HAND_MIN_W, PAD, RAISE, emptyHandSize, handSlotIndex, laneOf, slotIndex, slots } from './layout';
 
 /**
  * How a drop would land (shown while hovering, then passed to `drop`). Onto a container, or a card
@@ -89,6 +89,8 @@ function insertInto(doc: DocView, box: CanvasNode, moving: CanvasNode[], index?:
   const at = index === undefined ? inBox.length : Math.max(0, Math.min(inBox.length, index));
   const orders = ordersAt(inBox, at, incoming.length);
   const changes = incoming.flatMap((c, i) => stackInto(c, box, orders[i]));
+  // a hand without a shown strip holds private cards only (so turning the strip on never reveals one)
+  if (isHand(box) && !allowsShowing(box)) for (const c of incoming) changes.push(...conform(c, false));
   // containers merged away, and groups the cards were pulled out of
   const touched = new Set<string>();
   for (const n of moving) {
@@ -150,11 +152,40 @@ export const flip: Command<{ ids: string[]; by?: string }> = (doc, a) =>
 export const show: Command<{ ids: string[]; shown: boolean; by?: string }> = (doc, a) => {
   if (!isBool(a?.shown)) return [];
   const seen = new Set<string>();
-  const ok = (h: CanvasNode | undefined): h is CanvasNode => !!h && isHand(h) && (!a.by || h.owner === a.by);
+  const ok = (h: CanvasNode | undefined): h is CanvasNode => !!h && isHand(h) && allowsShowing(h) && (!a.by || h.owner === a.by);
   return pick(doc, a.ids).flatMap((n) => {
     const cards = isHand(n) ? (ok(n) ? cardsIn(doc, n.id) : []) : isCard(n) && ok(handOfCard(doc, n)) ? [n] : [];
     return cards.filter((c) => !seen.has(c.id) && !!seen.add(c.id)).flatMap((c) => conform(c, a.shown));
   });
+};
+
+/**
+ * "Allow showing cards to table" on a hand. Either way every card ends private (turning it on never
+ * reveals a card; turning it off hides the shown ones back into the row), in one step. The frame grows
+ * / shrinks the strip upward so the row stays where it is.
+ */
+export const allowShowing: Command<{ id: string; on: boolean }> = (doc, a) => {
+  const box = typeof a?.id === 'string' ? doc.get(a.id) : undefined;
+  if (!box || !isHand(box) || !isBool(a.on) || allowsShowing(box) === a.on) return [];
+  return [
+    set(box.id, F('showing'), a.on ? true : undefined),
+    set(box.id, 'y', box.y + (a.on ? -RAISE : RAISE)),
+    ...cardsIn(doc, box.id).flatMap((c) => conform(c, false)),
+  ];
+};
+
+/** "Hide card count": others see a generic pile instead of the private cards. */
+export const hideCount: Command<{ id: string; on: boolean }> = (doc, a) => {
+  const box = typeof a?.id === 'string' ? doc.get(a.id) : undefined;
+  if (!box || !isHand(box) || !isBool(a.on) || hidesCount(box) === a.on) return [];
+  return [set(box.id, F('hideCount'), a.on ? true : undefined)];
+};
+
+/** Resize a hand's frame (its cards compress or spread to fit). */
+export const resizeHand: Command<{ id: string; width: number }> = (doc, a) => {
+  const box = typeof a?.id === 'string' ? doc.get(a.id) : undefined;
+  if (!box || !isHand(box) || !isNum(a.width)) return [];
+  return [set(box.id, F('width'), Math.max(HAND_MIN_W, Math.min(HAND_MAX_W, Math.round(a.width))))];
 };
 
 /** "See my cards" on a hand: on (default) = the owner sees every private card; off = a blind hand. */
@@ -315,8 +346,17 @@ export const setLayout: Command<{ id: string; layout: Layout }> = (doc, a) => {
 export type Kind = 'deck' | 'group' | 'hand';
 export const kindOf = (box: CanvasNode): Kind => (isStacked(box) ? 'deck' : isHand(box) ? 'hand' : 'group');
 
+const HAND_OPTIONS = ['color', 'blind', 'showing', 'hideCount', 'width'] as const;
+/** A hand becomes public: owner, label and the hand's options go. */
 const unown = (box: CanvasNode, text: string): Change[] =>
-  box.owner ? [set(box.id, 'owner', undefined), set(box.id, 'label', undefined), set(box.id, 'text', text), set(box.id, F('color'), undefined)] : [];
+  box.owner
+    ? [
+        set(box.id, 'owner', undefined),
+        set(box.id, 'label', undefined),
+        set(box.id, 'text', text),
+        ...HAND_OPTIONS.filter((k) => (box[FIELD] as Record<string, unknown>)[k] !== undefined).map((k) => set(box.id, F(k), undefined)),
+      ]
+    : [];
 
 /**
  * Turn a container into a deck, group or hand. Hand → deck or group makes it public first. Into a
@@ -327,7 +367,7 @@ export const turnInto: Command<{ id: string; kind: Kind; owner?: string; label?:
   const box = typeof a?.id === 'string' ? doc.get(a.id) : undefined;
   if (!box || !isDeck(box) || kindOf(box) === a.kind) return [];
   // a hand keeps a lane for raised cards above its row: going public drops it, cards stay put
-  const shifted = isHand(box) ? { ...box, y: box.y + RAISE } : box;
+  const shifted = laneOf(box) ? { ...box, y: box.y + laneOf(box) } : box;
   if (a.kind === 'deck') return [...unown(box, 'Pile'), ...relayout(shifted, 'stack')];
   if (a.kind === 'group') return [...unown(box, 'Group'), ...(shifted !== box ? [set(box.id, 'y', shifted.y)] : []), ...relayout(shifted, 'fan')];
   if (a.kind === 'hand') return own(doc, { id: box.id, owner: a.owner ?? '', label: a.label, color: a.color }, ctx);
@@ -450,15 +490,13 @@ export const own: Command<{ id: string; owner: string | null; label?: string; co
   if (!box || !isDeck(box) || isHomeDeck(box)) return [];
   if (a.owner === null) {
     if (!box.owner) return [];
-    return [...unown(box, 'Group'), set(box.id, 'y', box.y + RAISE)];
+    return [...unown(box, 'Group'), ...(laneOf(box) ? [set(box.id, 'y', box.y + laneOf(box))] : [])];
   }
   if (typeof a.owner !== 'string' || !a.owner) return [];
   const changes = [set(box.id, 'owner', a.owner)];
   if (typeof a.label === 'string') changes.push(set(box.id, 'label', a.label.slice(0, 40)), set(box.id, 'text', a.label.slice(0, 40)));
   if (okColor(a.color)) changes.push(set(box.id, F('color'), okColor(a.color)));
-  // becoming a hand: the frame grows a lane for raised cards upward, so the cards stay put
-  if (isStacked(box)) changes.push(...relayout({ ...box, y: box.y - RAISE }, 'fan'));
-  else if (!box.owner) changes.push(set(box.id, 'y', box.y - RAISE));
+  if (isStacked(box)) changes.push(...relayout(box, 'fan'));
   return changes;
 };
 
@@ -564,7 +602,7 @@ export const repairHomes: Command<Record<string, never>> = (doc, _a, ctx) => {
  * Something was dropped onto `target`. Onto a container, or a card shown in one: into that container
  * (a pile: on top; a group or hand: at the drop point `at`). Onto a loose card: a new group.
  */
-export const drop: Command<{ target: string; ids: string[]; at?: { x: number; y: number }; as?: 'stack' | 'fan' }> = (doc, a, ctx) => {
+export const drop: Command<{ target: string; ids: string[]; at?: { x: number; y: number }; as?: 'stack' | 'fan'; shown?: boolean }> = (doc, a, ctx) => {
   const target = typeof a?.target === 'string' ? doc.get(a.target) : undefined;
   if (!target || !isCardish(target) || !isIds(a.ids)) return [];
   const dropped = pick(doc, a.ids).filter((n) => isCardish(n) && n.id !== target.id && doc.isVisible(n.id));
@@ -577,9 +615,29 @@ export const drop: Command<{ target: string; ids: string[]; at?: { x: number; y:
   const movingIds = new Set(dropped.flatMap((n) => (isDeck(n) ? cardsIn(doc, n.id) : [n])).map((c) => c.id));
   const staying = cardsIn(doc, host.id).filter((c) => !movingIds.has(c.id));
   const at = a.at && isNum(a.at.x) && isNum(a.at.y) ? a.at : undefined;
+  if (isHand(host)) return dropInHand(doc, host, dropped, staying, at, a.shown);
   const index = at ? slotIndex(host, staying.length, at) : parent ? staying.findIndex((c) => c.id === target.id) + 1 : undefined;
   return { changes: insertInto(doc, host, dropped, index), select: dropped.map((n) => n.id) };
 };
+
+/**
+ * Into a hand at drop point `at`: into the strip (shown) or the row (private), at the spot nearest the
+ * drop. `shown` (the owner's drag up / down) sets it; else each card keeps how it was. Order in the
+ * other part is untouched, so rearranging never changes what anyone sees of the other cards.
+ */
+function dropInHand(doc: DocView, host: CanvasNode, dropped: CanvasNode[], staying: CanvasNode[], at: { x: number; y: number } | undefined, shown?: boolean): CommandResult {
+  const lead = dropped.find(isCard) ?? cardsIn(doc, dropped[0].id)[0];
+  const toStrip = allowsShowing(host) && (isBool(shown) ? shown : !!lead && card(lead).faceUp);
+  const part = staying.filter((c) => shownIn(host, c) === toStrip);
+  let index: number | undefined;
+  if (at) {
+    const k = handSlotIndex(host, part.length, at.x);
+    index = k < part.length ? staying.indexOf(part[k]) : part.length ? staying.indexOf(part[part.length - 1]) + 1 : staying.length;
+  }
+  const changes = insertInto(doc, host, dropped, index);
+  if (isBool(shown) && allowsShowing(host)) for (const n of dropped) for (const c of isDeck(n) ? cardsIn(doc, n.id) : [n]) changes.push(...conform(c, shown));
+  return { changes, select: dropped.map((n) => n.id) };
+}
 
 /** Lay a deck out as an overlapping row, bottom card left. Removes the deck. */
 export const spread: Command<{ id: string; step?: number }> = (doc, a) => {
@@ -641,4 +699,4 @@ export const resetAll: Command<Record<string, never>> = (doc, _a, ctx) => {
   return changes;
 };
 
-export const commands = { flip, show, seeMine, face, move, shuffle, draw, deal, gather, recall, drop, spread, setup, repairHomes, pullOut, setLayout, ungroup, sort, newHand, own, toggleStack, handLabel, migrateHands, turnInto, putOnTable, showdown, resetAll };
+export const commands = { flip, show, seeMine, allowShowing, hideCount, resizeHand, face, move, shuffle, draw, deal, gather, recall, drop, spread, setup, repairHomes, pullOut, setLayout, ungroup, sort, newHand, own, toggleStack, handLabel, migrateHands, turnInto, putOnTable, showdown, resetAll };
