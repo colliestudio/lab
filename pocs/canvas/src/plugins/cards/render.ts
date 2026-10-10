@@ -1,4 +1,9 @@
-import { SUITS, parseFace, rankLabel, type CardData, type Rank } from './deck';
+import { SUITS, parseFace, rankLabel, type Rank } from './deck';
+
+export interface CardData {
+  face: string;
+  faceUp: boolean;
+}
 
 // Card faces are built from data: corners + pip layout / court glyph. No image assets.
 
@@ -49,10 +54,9 @@ export function cardHtml(c: CardData): string {
   return `<div class="pc-card pc-face ${s.red ? 'pc-red' : 'pc-black'}">${corner('tl')}${center}${corner('br')}</div>`;
 }
 
-/** A stack: its top card plus a visible edge whose thickness follows the card count. */
-export function stackHtml(cards: CardData[]): string {
-  const top = cards[cards.length - 1];
-  const layers = Math.min(10, Math.ceil(cards.length / 4));
+/** A deck: its top card plus a visible edge whose thickness follows the card count. */
+export function deckHtml(top: CardData | undefined, count: number): string {
+  const layers = Math.min(10, Math.ceil(count / 4));
   const shadow = Array.from({ length: layers }, (_, i) => {
     const o = (i + 1) * 1.1;
     return `${o}px ${o}px 0 0 ${i % 2 ? '#bdb7aa' : '#ece7dc'}`;
@@ -60,7 +64,7 @@ export function stackHtml(cards: CardData[]): string {
   shadow.push(`${layers * 1.1 + 2}px ${layers * 1.1 + 4}px 10px rgba(0,0,0,.35)`);
   return (
     `<div class="pc-stack" style="--pc-stack-shadow:${shadow.join(',')}">` +
-    (top ? cardHtml(top) : '') +
-    `<div class="pc-count">${cards.length}</div></div>`
+    (top ? cardHtml(top) : '<div class="pc-card pc-empty"></div>') +
+    `<div class="pc-count">${count}</div></div>`
   );
 }

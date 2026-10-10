@@ -89,3 +89,9 @@
   color: #888;
   font: 12px ui-monospace, monospace;
 }
+.cv-node.cv-drop-target {
+  outline: 3px dashed #7fe3ff;
+  outline-offset: 6px;
+  border-radius: 8px;
+  filter: brightness(1.08);
+}

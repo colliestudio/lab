@@ -147,3 +147,7 @@
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
   z-index: 1;
 }
+.pc-empty {
+  border: 2px dashed rgba(255, 255, 255, 0.4);
+  box-shadow: none;
+}

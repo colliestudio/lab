@@ -1,16 +1,28 @@
 import type { App } from './app';
 import type { CanvasNode } from './doc';
+import type { RenderCtx } from './plugin';
 
 type Pt = { x: number; y: number };
 
 type Gesture =
   | { kind: 'pan'; last: Pt; start: Pt; moved: boolean; onEmpty: boolean }
-  | { kind: 'drag'; ids: string[]; clickId: string; shift: boolean; start: Pt; applied: Pt; moved: boolean }
+  | {
+      kind: 'drag';
+      ids: string[];
+      clickId: string;
+      shift: boolean;
+      start: Pt;
+      applied: Pt;
+      moved: boolean;
+      target?: string;
+    }
   | { kind: 'marquee'; start: Pt; base: Set<string> }
   | { kind: 'pinch'; dist: number; mid: Pt };
 
 const DRAG_THRESHOLD = 4; // screen px
 const DOUBLE_CLICK_MS = 350;
+/** A drop onto another object needs the pointer over it and this much overlap (of the smaller box). */
+const DROP_OVERLAP = 0.5;
 
 /** Renders the doc as DOM boxes inside a transformed "world" layer and turns input into commands. */
 export class View {
@@ -72,10 +84,11 @@ export class View {
   // ---------------------------------------------------------------- rendering
 
   render() {
-    const { nodes } = this.app.store.doc;
+    const doc = this.app.store.doc;
+    const ctx: RenderCtx = { doc, viewer: this.app.viewer };
     const sel = this.app.store.selection;
     const alive = new Set<string>();
-    nodes.forEach((n, i) => {
+    doc.visible.forEach((n, i) => {
       alive.add(n.id);
       let box = this.els.get(n.id);
       if (!box) {
@@ -87,15 +100,15 @@ export class View {
       box.style.transform = `translate(${n.x}px, ${n.y}px)`;
       box.style.zIndex = String(i + 1);
       box.classList.toggle('cv-selected', sel.has(n.id));
-      const key = contentKey(n);
+      const type = this.app.typeOf(n);
+      const key = (type?.id ?? '') + '\n' + (type?.renderKey?.(n, ctx) ?? contentKey(n));
       if (this.contentKeys.get(n.id) !== key) {
         this.contentKeys.set(n.id, key);
         box.style.width = `${n.width}px`;
         box.style.height = `${n.height}px`;
-        const type = this.app.typeOf(n);
         box.dataset.kind = type?.id ?? n.type;
         box.replaceChildren();
-        if (type) type.render(n, box);
+        if (type) type.render(n, box, ctx);
         else renderFallback(n, box);
       }
     });
@@ -118,7 +131,7 @@ export class View {
 
   /** Zoom/pan so every node is visible. */
   fit(padding = 60) {
-    const { nodes } = this.app.store.doc;
+    const nodes = this.app.store.doc.visible;
     if (!nodes.length) return this.app.viewport.set(this.root.clientWidth / 2, this.root.clientHeight / 2, 1);
     const minX = Math.min(...nodes.map((n) => n.x));
     const minY = Math.min(...nodes.map((n) => n.y));
@@ -173,6 +186,7 @@ export class View {
     let id = nodeEl.dataset.nodeId!;
     const node = this.app.node(id);
     if (!node) return;
+    this.app.store.newUndoStep(); // the whole press-drag-drop is one undo step
     const swapped = this.app.typeOf(node)?.onPointerDown?.(node, e, this.app);
     const store = this.app.store;
     if (swapped) {
@@ -188,7 +202,7 @@ export class View {
       store.select([id]);
     }
     const ids = this.app.selected().map((n) => n.id);
-    this.app.dispatch('core.front', { ids });
+    this.app.dispatch('core.front', { ids }, { merge: true });
     const w = this.world_(p);
     this.gesture = { kind: 'drag', ids, clickId: id, shift: e.shiftKey, start: w, applied: { x: 0, y: 0 }, moved: false };
   }
@@ -228,9 +242,10 @@ export class View {
         const dx = tx - g.applied.x;
         const dy = ty - g.applied.y;
         if (dx || dy) {
-          this.app.dispatch('core.move', { ids: g.ids, dx, dy });
+          this.app.dispatch('core.move', { ids: g.ids, dx, dy }, { merge: true });
           g.applied = { x: tx, y: ty };
         }
+        this.setDropTarget(g, this.findDropTarget(g, e));
         return;
       }
       case 'marquee': {
@@ -244,7 +259,7 @@ export class View {
           width: `${r.w * s1.zoom}px`,
           height: `${r.h * s1.zoom}px`,
         });
-        const hits = this.app.store.doc.nodes.filter(
+        const hits = this.app.store.doc.visible.filter(
           (n) => n.x < r.x + r.w && n.x + n.width > r.x && n.y < r.y + r.h && n.y + n.height > r.y,
         );
         this.app.store.select([...g.base, ...hits.map((n) => n.id)]);
@@ -271,13 +286,10 @@ export class View {
 
     for (const id of g.ids) this.els.get(id)?.classList.remove('cv-dragging');
     if (g.moved) {
-      const dragged = new Set(g.ids);
-      const targetEl = document
-        .elementsFromPoint(e.clientX, e.clientY)
-        .map((x) => x.closest<HTMLElement>('[data-node-id]'))
-        .find((x) => x && !dragged.has(x.dataset.nodeId!));
-      const target = targetEl && this.app.node(targetEl.dataset.nodeId!);
-      if (target) this.app.typeOf(target)?.onDrop?.(target, g.ids, this.app);
+      const targetId = this.findDropTarget(g, e);
+      this.setDropTarget(g, undefined);
+      const target = targetId && this.app.node(targetId);
+      if (target) this.app.store.merged(() => this.app.typeOf(target)?.onDrop?.(target, g.ids, this.app));
       return;
     }
     // plain click
@@ -330,7 +342,13 @@ export class View {
     }
     if (mod && e.key.toLowerCase() === 'a') {
       e.preventDefault();
-      store.select(store.doc.nodes.map((n) => n.id));
+      store.select(store.doc.visible.map((n) => n.id));
+      return;
+    }
+    if (mod && (e.key.toLowerCase() === 'z' || e.key.toLowerCase() === 'y')) {
+      e.preventDefault();
+      if (e.key.toLowerCase() === 'y' || e.shiftKey) store.redo();
+      else store.undo();
       return;
     }
     const combo = `${mod ? 'mod+' : ''}${e.altKey ? 'alt+' : ''}${e.shiftKey ? 'shift+' : ''}${e.key.toLowerCase()}`;
@@ -339,6 +357,32 @@ export class View {
       e.preventDefault();
       binding.run(this.app);
     }
+  }
+
+  /** The object a drag would land on: topmost under the pointer, overlapping enough, and willing. */
+  private findDropTarget(g: Extract<Gesture, { kind: 'drag' }>, e: PointerEvent): string | undefined {
+    const dragged = new Set(g.ids);
+    const primary = this.app.node(g.clickId);
+    if (!primary) return;
+    const under = document
+      .elementsFromPoint(e.clientX, e.clientY)
+      .map((x) => x.closest<HTMLElement>('[data-node-id]'))
+      .find((x) => x && !dragged.has(x.dataset.nodeId!));
+    const target = under && this.app.node(under.dataset.nodeId!);
+    if (!target) return;
+    const type = this.app.typeOf(target);
+    if (!type?.onDrop) return;
+    if (overlap(primary, target) < DROP_OVERLAP) return;
+    const dropped = g.ids.map((id) => this.app.node(id)).filter((n): n is CanvasNode => !!n);
+    if (type.canDrop && !type.canDrop(target, dropped, this.app)) return;
+    return target.id;
+  }
+
+  private setDropTarget(g: Extract<Gesture, { kind: 'drag' }>, id: string | undefined) {
+    if (g.target === id) return;
+    if (g.target) this.els.get(g.target)?.classList.remove('cv-drop-target');
+    g.target = id;
+    if (id) this.els.get(id)?.classList.add('cv-drop-target');
   }
 
   // ---------------------------------------------------------------- context menu
@@ -391,10 +435,18 @@ function renderFallback(n: CanvasNode, box: HTMLElement) {
   box.append(d);
 }
 
-/** Everything but position: if this is unchanged, the content doesn't need re-rendering. */
+/** Everything but position/z: if this is unchanged, the content doesn't need re-rendering. */
 function contentKey(n: CanvasNode) {
-  const { x: _x, y: _y, ...rest } = n;
+  const { x: _x, y: _y, z: _z, ...rest } = n;
   return JSON.stringify(rest);
+}
+
+/** Intersection area over the smaller box's area. */
+function overlap(a: CanvasNode, b: CanvasNode) {
+  const w = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
+  const h = Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y);
+  if (w <= 0 || h <= 0) return 0;
+  return (w * h) / Math.min(a.width * a.height, b.width * b.height);
 }
 
 const dist = (a: Pt, b: Pt) => Math.hypot(a.x - b.x, a.y - b.y);

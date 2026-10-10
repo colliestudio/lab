@@ -1,7 +1,9 @@
-export { App } from './app';
+export { App, LOCAL_PLAYER } from './app';
 export * from './doc';
 export * from './store';
 export * from './io';
 export * from './files';
-export type { ObjectType, KeyBinding, MenuItem, Plugin } from './plugin';
+export * from './persist';
+export { isIds, isNum, pick, toFront } from './commands';
+export type { ObjectType, KeyBinding, MenuItem, Plugin, RenderCtx } from './plugin';
 export { Viewport } from './viewport';

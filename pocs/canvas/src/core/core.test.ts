@@ -1,50 +1,86 @@
 import { describe, expect, it } from 'vitest';
-import { applyChanges, type CanvasDoc } from './doc';
 import { parse, serialize } from './io';
 import { Store } from './store';
 import { registerCoreCommands } from './commands';
+import type { CanvasDoc } from './doc';
 
-const doc: CanvasDoc = {
+const file = {
+  version: '1.0-x',
+  'x-app': { theme: 'felt' },
   nodes: [
-    { id: 'a', type: 'text', x: 0, y: 0, width: 10, height: 10, text: 'A♠', 'x-cards': { pack: 'standard-52', face: 'AS', faceUp: false } },
-    { id: 'b', type: 'text', x: 5, y: 5, width: 10, height: 10, text: 'hi', color: '3' },
+    { id: 'a', type: 'text', x: 0, y: 0, width: 10, height: 10, text: 'A♠', color: '3' },
+    { id: 'b', type: 'text', x: 5, y: 5, width: 10, height: 10, text: 'hi', 'x-other': { k: [1, 2] } },
   ],
   edges: [{ id: 'e', fromNode: 'a', toNode: 'b', label: 'x', 'x-other': 1 }],
 };
 
+function store(doc?: CanvasDoc) {
+  const s = new Store();
+  registerCoreCommands(s);
+  if (doc) s.load(doc);
+  return s;
+}
+
 describe('io', () => {
-  it('round-trips JSON Canvas including plugin fields', () => {
-    const text = serialize(doc);
-    expect(parse(text)).toEqual(doc);
-    expect(JSON.parse(text).nodes[0]['x-cards'].face).toBe('AS');
+  it('round-trips nodes, edges and unknown top-level fields through the Y store', () => {
+    const s = store(parse(JSON.stringify(file)));
+    expect(JSON.parse(serialize(s.exportDoc()))).toEqual(file);
   });
-  it('accepts a file with no edges', () => {
-    expect(parse('{"nodes":[]}')).toEqual({ nodes: [], edges: [] });
+  it('exports nodes in z order without the z field', () => {
+    const s = store(parse(JSON.stringify(file)));
+    s.dispatch('core.front', { ids: ['a'] });
+    const out = JSON.parse(serialize(s.exportDoc()));
+    expect(out.nodes.map((n: any) => n.id)).toEqual(['b', 'a']);
+    expect(out.nodes[0].z).toBeUndefined();
   });
-  it('rejects malformed nodes', () => {
-    expect(() => parse('{"nodes":[{"id":"a","type":"text","x":"0","y":0,"width":1,"height":1}]}')).toThrow();
+  it('skips malformed nodes and dangling edges instead of failing', () => {
+    const d = parse(
+      JSON.stringify({ nodes: [{ id: 'a', type: 'text', x: '0', y: 0, width: 1, height: 1 }, file.nodes[0]], edges: file.edges }),
+    );
+    expect(d.nodes.map((n) => n.id)).toEqual(['a']);
+    expect(d.edges).toEqual([]);
+    expect(d.skipped).toHaveLength(2);
     expect(() => parse('[]')).toThrow();
   });
 });
 
-describe('changes', () => {
-  it('put replaces in place, front reorders, del drops edges', () => {
-    let d = applyChanges(doc, [{ op: 'put', node: { ...doc.nodes[0], x: 99 } }]);
-    expect(d.nodes.map((n) => n.id)).toEqual(['a', 'b']);
-    expect(d.nodes[0].x).toBe(99);
-    expect(doc.nodes[0].x).toBe(0); // immutable
-    d = applyChanges(d, [{ op: 'front', ids: ['a'] }]);
-    expect(d.nodes.map((n) => n.id)).toEqual(['b', 'a']);
-    d = applyChanges(d, [{ op: 'del', id: 'a' }]);
-    expect(d.nodes.map((n) => n.id)).toEqual(['b']);
-    expect(d.edges).toEqual([]);
+describe('store', () => {
+  it('applies per-field changes and keeps plugin fields as nested maps', () => {
+    const s = store(parse(JSON.stringify(file)));
+    s.apply([{ op: 'set', id: 'b', key: 'x-other.k', value: 7 }, { op: 'set', id: 'a', key: 'color', value: undefined }]);
+    expect(s.doc.get('b')!['x-other']).toEqual({ k: 7 });
+    expect(s.doc.get('a')!.color).toBeUndefined();
+    // a set on a deleted node doesn't resurrect it
+    s.apply([{ op: 'del', id: 'a' }, { op: 'set', id: 'a', key: 'x', value: 1 }]);
+    expect(s.doc.get('a')).toBeUndefined();
+    expect(s.doc.edges).toEqual([]);
   });
-  it('store dispatches core commands and prunes selection', () => {
-    const s = new Store();
-    registerCoreCommands(s);
-    s.setDoc(doc);
-    s.dispatch('core.move', { ids: ['a', 'b'], dx: 2, dy: -1 });
-    expect(s.doc.nodes.map((n) => [n.x, n.y])).toEqual([[2, -1], [7, 4]]);
+  it('front is a no-op when already on top', () => {
+    const s = store(parse(JSON.stringify(file)));
+    expect(s.dispatch('core.front', { ids: ['b'] }).changes).toEqual([]);
+    expect(s.dispatch('core.front', { ids: ['a'] }).changes).toHaveLength(1);
+  });
+  it('rejects bad args without throwing', () => {
+    const s = store(parse(JSON.stringify(file)));
+    expect(s.dispatch('core.move', { ids: 'a', dx: 1, dy: 1 }).changes).toEqual([]);
+    expect(s.dispatch('core.move', null).changes).toEqual([]);
+    expect(s.dispatch('nope', {}).ok).toBe(false);
+  });
+  it('undo/redo one dispatch at a time; merged dispatches undo together', () => {
+    const s = store(parse(JSON.stringify(file)));
+    s.dispatch('core.move', { ids: ['a'], dx: 10, dy: 0 });
+    s.dispatch('core.move', { ids: ['a'], dx: 10, dy: 0 });
+    s.dispatch('core.move', { ids: ['a'], dx: 10, dy: 0 }, { merge: true });
+    expect(s.doc.get('a')!.x).toBe(30);
+    s.undo();
+    expect(s.doc.get('a')!.x).toBe(10);
+    s.undo();
+    expect(s.doc.get('a')!.x).toBe(0);
+    s.redo();
+    expect(s.doc.get('a')!.x).toBe(10);
+  });
+  it('selection drops deleted nodes', () => {
+    const s = store(parse(JSON.stringify(file)));
     s.select(['a', 'b']);
     s.dispatch('core.delete', { ids: ['a'] });
     expect([...s.selection]).toEqual(['b']);

@@ -1,6 +1,7 @@
-// Document model: JSON Canvas 1.0 (https://jsoncanvas.org/spec/1.0/).
-// Plugins keep their data in namespaced `x-<plugin>` fields on standard nodes,
-// so any JSON Canvas reader (Obsidian) still opens the file.
+// Document model. The live doc is a Y.Doc (see store.ts); commands read a plain, read-only
+// snapshot of it (DocView) and return per-field Changes. JSON Canvas 1.0
+// (https://jsoncanvas.org/spec/1.0/) is the import/export format (see io.ts).
+// Plugins keep their data in namespaced `x-<plugin>` fields on standard nodes.
 
 export type ExtFields = { [ext: `x-${string}`]: unknown };
 
@@ -11,6 +12,10 @@ export interface CanvasNode extends ExtFields {
   y: number;
   width: number;
   height: number;
+  /** Stacking order (higher = on top). Live doc only; on export it becomes array order. */
+  z?: number;
+  /** Player id that owns this node (private hands, peeking). Unused until fog of war. */
+  owner?: string;
   color?: string;
   text?: string;
   file?: string;
@@ -30,43 +35,72 @@ export interface CanvasEdge extends ExtFields {
   label?: string;
 }
 
-/** Node array order is z-order (first = bottom), as in the spec. */
+/** Plain document: what JSON Canvas files hold. `extra` = unknown top-level fields, kept verbatim. */
 export interface CanvasDoc {
   nodes: CanvasNode[];
   edges: CanvasEdge[];
+  extra?: Record<string, unknown>;
 }
 
-/** The only ways a document changes. Plain data, so they can later be sent over the wire. */
+/** Read-only snapshot handed to commands and renderers. `nodes` sorted by z (bottom first). */
+export interface DocView extends CanvasDoc {
+  get(id: string): CanvasNode | undefined;
+  /** Nodes shown on the table: everything not contained in another node (e.g. cards inside a deck). */
+  visible: CanvasNode[];
+  /** Nodes contained in `id`, in z order. */
+  children(id: string): CanvasNode[];
+  /** Id of the containing node, if it exists. */
+  parentOf(id: string): string | undefined;
+  /** Highest z in the doc (0 if empty). */
+  topZ: number;
+}
+
+/**
+ * The only ways a document changes. Plain data (sendable, replayable).
+ * `set` targets one field; `key` may be "x-plugin.field" to reach into a plugin namespace,
+ * so concurrent edits to different fields of the same node both survive.
+ * `value: undefined` deletes the field.
+ */
 export type Change =
-  | { op: 'put'; node: CanvasNode } // add (on top) or replace in place
-  | { op: 'del'; id: string }
-  | { op: 'front'; ids: string[] }; // move to top, keeping relative order
+  | { op: 'add'; node: CanvasNode }
+  | { op: 'set'; id: string; key: string; value: unknown }
+  | { op: 'del'; id: string };
+
+export const set = (id: string, key: string, value: unknown): Change => ({ op: 'set', id, key, value });
 
 export const emptyDoc = (): CanvasDoc => ({ nodes: [], edges: [] });
 
-export function applyChanges(doc: CanvasDoc, changes: readonly Change[]): CanvasDoc {
-  let nodes = doc.nodes.slice();
-  let edges = doc.edges;
-  for (const c of changes) {
-    switch (c.op) {
-      case 'put': {
-        const i = nodes.findIndex((n) => n.id === c.node.id);
-        if (i >= 0) nodes[i] = c.node;
-        else nodes.push(c.node);
-        break;
-      }
-      case 'del':
-        nodes = nodes.filter((n) => n.id !== c.id);
-        edges = edges.filter((e) => e.fromNode !== c.id && e.toNode !== c.id);
-        break;
-      case 'front': {
-        const ids = new Set(c.ids);
-        nodes = [...nodes.filter((n) => !ids.has(n.id)), ...nodes.filter((n) => ids.has(n.id))];
+export const byZ = (a: CanvasNode, b: CanvasNode) => (a.z ?? 0) - (b.z ?? 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+
+/** Containment rule supplied by plugins: return the id of the node that contains `node`, if any. */
+export type ParentOf = (node: CanvasNode, get: (id: string) => CanvasNode | undefined) => string | undefined;
+
+export function makeView(doc: CanvasDoc, parentRules: readonly ParentOf[] = []): DocView {
+  const nodes = doc.nodes.slice().sort(byZ);
+  const map = new Map(nodes.map((n) => [n.id, n]));
+  const get = (id: string) => map.get(id);
+  const parent = new Map<string, string>();
+  const kids = new Map<string, CanvasNode[]>();
+  for (const n of nodes) {
+    for (const rule of parentRules) {
+      const p = rule(n, get);
+      if (p && p !== n.id && map.has(p)) {
+        parent.set(n.id, p);
+        let list = kids.get(p);
+        if (!list) kids.set(p, (list = []));
+        list.push(n);
         break;
       }
     }
   }
-  return { nodes, edges };
+  return {
+    nodes,
+    edges: doc.edges,
+    extra: doc.extra,
+    get,
+    visible: nodes.filter((n) => !parent.has(n.id)),
+    children: (id) => kids.get(id) ?? [],
+    parentOf: (id) => parent.get(id),
+    topZ: nodes.length ? (nodes[nodes.length - 1].z ?? 0) : 0,
+  };
 }
-
-export const getNode = (doc: CanvasDoc, id: string) => doc.nodes.find((n) => n.id === id);

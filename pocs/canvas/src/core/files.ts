@@ -1,4 +1,3 @@
-import type { App } from './app';
 import { parse, serialize } from './io';
 import type { CanvasDoc } from './doc';
 
@@ -62,29 +61,4 @@ export async function openFile(): Promise<{ name: string; doc: CanvasDoc } | nul
 /** Forget the current file handle (next save asks where). */
 export function resetFileHandle() {
   handle = null;
-}
-
-/** Persist doc + viewport to localStorage, debounced. Returns the saved state if any. */
-export function autosave(app: App, key: string): { doc: CanvasDoc; view?: { x: number; y: number; zoom: number } } | null {
-  let saved = null;
-  try {
-    const raw = localStorage.getItem(key);
-    if (raw) {
-      const { canvas, view } = JSON.parse(raw);
-      saved = { doc: parse(JSON.stringify(canvas)), view };
-    }
-  } catch (e) {
-    console.warn('autosave unreadable, starting fresh', e);
-  }
-  let t: ReturnType<typeof setTimeout> | undefined;
-  const write = () => {
-    clearTimeout(t);
-    t = setTimeout(() => {
-      const { x, y, zoom } = app.viewport;
-      localStorage.setItem(key, JSON.stringify({ canvas: app.store.doc, view: { x, y, zoom } }));
-    }, 300);
-  };
-  app.store.subscribe(write);
-  app.viewport.onChange(write);
-  return saved;
 }
