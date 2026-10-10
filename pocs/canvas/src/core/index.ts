@@ -5,7 +5,7 @@ export * from './io';
 export * from './files';
 export * from './persist';
 export { isIds, isNum, pick, toFront } from './commands';
-export type { ObjectType, KeyBinding, MenuItem, Plugin, RenderCtx } from './plugin';
+export type { ObjectType, KeyBinding, MenuItem, MenuEntry, MenuProvider, Plugin, RenderCtx } from './plugin';
 export { Viewport } from './viewport';
 export { mountZoomControl } from './zoomControl';
 export { Presence, mountPresenceView, type PlayerInfo, type Peer } from './presence';

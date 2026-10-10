@@ -1,7 +1,7 @@
 import './core.css';
 import { registerCoreCommands } from './commands';
-import type { CanvasNode, ParentOf } from './doc';
-import type { KeyBinding, MenuItem, ObjectType, Plugin } from './plugin';
+import type { CanvasNode, LayoutRule, ParentOf } from './doc';
+import type { KeyBinding, MenuItem, MenuProvider, ObjectType, Plugin } from './plugin';
 import { Store, type Command, type DispatchResult, type DocFilter } from './store';
 import { View } from './view';
 import { Viewport } from './viewport';
@@ -17,6 +17,7 @@ export class App {
   readonly types: ObjectType[] = [];
   readonly keys = new Map<string, KeyBinding>();
   readonly menu: MenuItem[] = [];
+  readonly menuProviders: MenuProvider[] = [];
   readonly view: View;
   viewer = LOCAL_PLAYER;
   /** Set when the table is shared (multiplayer); null when playing solo. */
@@ -56,9 +57,17 @@ export class App {
   registerMenuItem(item: MenuItem) {
     this.menu.push(item);
   }
+  /** Right-click menu built per selection (submenus, checkmarks, disabled reasons). */
+  registerMenu(provider: MenuProvider) {
+    this.menuProviders.push(provider);
+  }
   /** Containment: contained nodes aren't rendered or selectable and are deleted with their parent. */
   registerParentRule(rule: ParentOf) {
     this.store.addParentRule(rule);
+  }
+  /** Layouts place contained nodes (fanned hands, rows...); derived on read, never stored. */
+  registerLayout(rule: LayoutRule) {
+    this.store.addLayout(rule);
   }
   registerImportFilter(f: DocFilter) {
     this.store.importFilters.push(f);
