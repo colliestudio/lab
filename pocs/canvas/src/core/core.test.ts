@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import * as Y from 'yjs';
 import { parse, serialize } from './io';
 import { Store } from './store';
 import { registerCoreCommands } from './commands';
@@ -78,6 +79,38 @@ describe('store', () => {
     expect(s.doc.get('a')!.x).toBe(0);
     s.redo();
     expect(s.doc.get('a')!.x).toBe(10);
+  });
+  it('repairs: after an undo/redo they fix what it touched, in the same step; after a remote change on every peer', () => {
+    // a toy invariant: `x-pair.x` mirrors x (a partial undo could break it)
+    const pairs = (s: Store) =>
+      s.repairs.push((doc, a) =>
+        doc.nodes.filter((n) => a.ids.includes(n.id) && (n as any)['x-pair'] && (n as any)['x-pair'].x !== n.x).map((n) => ({ op: 'set' as const, id: n.id, key: 'x-pair.x', value: n.x })),
+      );
+    const da = new Y.Doc();
+    const db = new Y.Doc();
+    da.on('update', (u: Uint8Array, o: unknown) => o !== 'remote' && Y.applyUpdate(db, u, 'remote'));
+    db.on('update', (u: Uint8Array, o: unknown) => o !== 'remote' && Y.applyUpdate(da, u, 'remote'));
+    const A = new Store({ ydoc: da });
+    const B = new Store({ ydoc: db });
+    registerCoreCommands(A);
+    registerCoreCommands(B);
+    pairs(A);
+    pairs(B);
+    A.dispatch('core.add', { nodes: [{ id: 'p', type: 'text', x: 0, y: 0, width: 1, height: 1, 'x-pair': { x: 0 } }] });
+    A.newUndoStep();
+    A.apply([{ op: 'set', id: 'p', key: 'x', value: 5 }, { op: 'set', id: 'p', key: 'x-pair.x', value: 5 }]);
+    // B changes only the mirror: A's undo can't restore it (never overwrites another player's change)
+    B.apply([{ op: 'set', id: 'p', key: 'x-pair.x', value: 9 }], 'other');
+    expect((A.doc.get('p') as any)['x-pair'].x).toBe(5); // the remote change was repaired: mirror = x again
+    A.undo();
+    for (const s of [A, B]) expect(s.doc.get('p')!.x).toBe(0);
+    for (const s of [A, B]) expect((s.doc.get('p') as any)['x-pair'].x).toBe(0);
+    expect(A.undoManager.redoStack).toHaveLength(1);
+    A.redo();
+    expect(A.doc.get('p')!.x).toBe(5);
+    expect((A.doc.get('p') as any)['x-pair'].x).toBe(5);
+    expect(A.undoManager.undoStack).toHaveLength(2);
+    expect(A.undoManager.redoStack).toHaveLength(0);
   });
   it('selection drops deleted nodes', () => {
     const s = store(parse(JSON.stringify(file)));
