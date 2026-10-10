@@ -1,7 +1,8 @@
 import './style.css';
-import { App, joinRoom, localPlayer, mountZoomControl, openFile, parse, persistLocally, persistViewport, resetFileHandle, roomDbName, saveFile, type CanvasDoc } from './core';
+import { App, joinRoom, loadPlayer, mountZoomControl, savePlayer, openFile, parse, persistLocally, persistViewport, resetFileHandle, roomDbName, saveFile, type CanvasDoc } from './core';
 import { copyText, createRoomFrom, mountRoomStatus, roomFromUrl, roomLink } from './share';
-import { cardsPlugin } from './plugins/cards';
+import { askName } from './nameDialog';
+import { cardsPlugin, handLabelOf } from './plugins/cards';
 import { chessPlugin } from './plugins/chess';
 import { clockPlugin } from './plugins/clock';
 import { mountHelp, removeHelpNote } from './help';
@@ -11,6 +12,8 @@ const DB_NAME = ROOM ? roomDbName(ROOM) : 'canvas-poc';
 const VIEW_KEY = 'canvas-poc:view';
 
 const app = new App(document.getElementById('table')!);
+// this browser's player id (also in solo play) = who "my hand" belongs to and who views the table
+app.viewer = loadPlayer().id;
 app.use(cardsPlugin);
 app.use(chessPlugin);
 app.use(clockPlugin);
@@ -75,10 +78,11 @@ button('Reset', 'Put everything back to its starting state (keeps what is on the
   if (confirm(ROOM ? 'Reset the table for everyone in this room? (Undo brings it back)' : 'Reset the table to its starting state? (Undo brings it back)'))
     app.dispatch('core.reset', {});
 });
-const addBtn = button('Add…', 'Put something on the table: a deck of cards, a chess set…', () =>
+const addBtn = button('Add…', 'Put something on the table: a deck of cards, a chess set, a game clock…', () =>
   app.view.openMenu(
     app.kits.map((k) => ({ label: k.label, run: () => k.create(app, app.viewCenter()) })),
     addBtn,
+    'Add to the table',
   ),
 );
 button('Open…', 'Open a .canvas file (⌘O)', doOpen);
@@ -121,7 +125,26 @@ if (!ROOM) {
   });
   bar.append(share);
 }
-bar.append(helpBtn, status);
+// Hand: a new private fan group (others see backs), in free space near the bottom of the view
+const handBtn = document.createElement('button');
+handBtn.textContent = 'New hand';
+handBtn.title = 'New hand: a private group for cards you hold (others see them face down)';
+handBtn.addEventListener('click', () => {
+  const me = app.presence?.me ?? loadPlayer();
+  const vp = app.viewport;
+  const root = app.view.root;
+  // preferred spot: bottom middle of the view; the command slides it into free space
+  const [x, y] = vp.toWorld(root.clientWidth / 2, root.clientHeight - 40);
+  const res = app.dispatch('cards.newHand', { owner: me.id, label: handLabelOf(me.name), color: me.color, x: x - 210, y: y - 230 });
+  const h = res.select?.[0] && app.node(res.select[0]);
+  if (h) {
+    const sx = h.x * vp.zoom + vp.x;
+    const sy = h.y * vp.zoom + vp.y;
+    const offscreen = sx < 0 || sy < 0 || sx + h.width * vp.zoom > root.clientWidth || sy + h.height * vp.zoom > root.clientHeight;
+    if (offscreen) vp.set(root.clientWidth / 2 - (h.x + h.width / 2) * vp.zoom, root.clientHeight - (h.y + h.height) * vp.zoom - 40, vp.zoom);
+  }
+});
+bar.append(handBtn, helpBtn, status);
 app.onNotify(flash);
 mountHelp(app, helpBtn);
 mountZoomControl(app);
@@ -154,13 +177,29 @@ persistLocally(app, DB_NAME).then(({ empty }) => {
     return;
   }
   // Room: the table comes from this device (if it was here before) and from the other players.
-  const me = localPlayer();
-  const room = joinRoom(app, ROOM, me);
+  // Join right away (the table loads meanwhile); ask for a name in-app if none was chosen yet.
+  const stored = loadPlayer();
+  const info = ({ id, name, color }: { id: string; name: string; color: string }) => ({ id, name, color });
+  const room = joinRoom(app, ROOM, info(stored));
   (window as any).room = room;
-  mountRoomStatus(app, room, bar, () => {
-    room.leave();
-    location.href = location.pathname;
-  });
+  const rename = async (first = false) => {
+    const choice = await askName(room.presence.me, first ? { title: 'Join the table', action: 'Join' } : { title: 'Your name and color', action: 'Save' });
+    if (!choice) return;
+    const me = info(savePlayer(choice));
+    room.presence.setMe(me);
+    app.dispatch('cards.handLabel', { owner: me.id, label: handLabelOf(me.name), color: me.color });
+  };
+  mountRoomStatus(
+    app,
+    room,
+    bar,
+    () => {
+      room.leave();
+      location.href = location.pathname;
+    },
+    () => void rename(),
+  );
+  if (!stored.named) void rename(true);
   const shared = sessionStorage.getItem('canvas-poc:shared');
   sessionStorage.removeItem('canvas-poc:shared');
   if (shared === 'copied') flash('Room created, link copied: send it to the other players');

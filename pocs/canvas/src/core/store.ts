@@ -1,5 +1,5 @@
 import * as Y from 'yjs';
-import { makeView, type CanvasDoc, type CanvasEdge, type CanvasNode, type Change, type CarrierOf, type DocView, type DuplicateRule, type ParentOf } from './doc';
+import { makeView, type CanvasDoc, type CanvasEdge, type CanvasNode, type Change, type CarrierOf, type DocView, type DuplicateRule, type LayoutRule, type ParentOf } from './doc';
 
 /** Everything non-deterministic a command may use; injectable for tests / replay. */
 export interface CommandCtx {
@@ -69,6 +69,7 @@ export class Store {
   readonly undoManager: Y.UndoManager;
   private parentRules: ParentOf[] = [];
   private riderRules: CarrierOf[] = [];
+  private layouts: LayoutRule[] = [];
   readonly importFilters: DocFilter[] = [];
   readonly exportFilters: DocFilter[] = [];
   /** How `core.duplicate` copies plugin objects (see DuplicateRule). */
@@ -109,7 +110,7 @@ export class Store {
   get doc(): DocView {
     if (!this.view) {
       const nodes = [...this.nodes.values()].map((m) => m.toJSON() as CanvasNode);
-      this.view = makeView({ nodes, edges: [...this.edges.values()], extra: this.meta.toJSON() }, this.parentRules, this.riderRules);
+      this.view = makeView({ nodes, edges: [...this.edges.values()], extra: this.meta.toJSON() }, this.parentRules, this.layouts, this.riderRules);
     }
     return this.view;
   }
@@ -129,6 +130,12 @@ export class Store {
 
   addRiderRule(rule: CarrierOf) {
     this.riderRules.push(rule);
+    this.view = null;
+  }
+
+  /** Layouts place contained nodes (derived on read, never stored). */
+  addLayout(rule: LayoutRule) {
+    this.layouts.push(rule);
     this.view = null;
   }
 
@@ -262,14 +269,14 @@ export class Store {
 
   select(ids: Iterable<string>) {
     const v = this.doc;
-    this.selection = new Set([...ids].filter((id) => v.get(id) && !v.parentOf(id)));
+    this.selection = new Set([...ids].filter((id) => v.isVisible(id)));
     this.emit();
   }
 
   private pruneSelection() {
     if (!this.selection.size) return;
     const v = this.doc;
-    const next = [...this.selection].filter((id) => v.get(id) && !v.parentOf(id));
+    const next = [...this.selection].filter((id) => v.isVisible(id));
     if (next.length !== this.selection.size) this.selection = new Set(next);
   }
 

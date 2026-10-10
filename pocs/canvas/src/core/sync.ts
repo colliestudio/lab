@@ -27,7 +27,9 @@ export function signalingUrl(loc: Location = location): string {
   const override = new URLSearchParams(loc.search).get('signal');
   if (override) return override;
   const ws = loc.protocol === 'https:' ? 'wss' : 'ws';
-  return loc.port === '5190' || loc.port === '5191' ? `${ws}://${loc.hostname}:5192` : `${ws}://${loc.host}`;
+  // dev servers (any port) use the separate wrangler signaling on 5192; a deploy serves it same-origin
+  const dev = loc.port === '5190' || loc.port === '5191' || !!(import.meta as { env?: { DEV?: boolean } }).env?.DEV;
+  return dev ? `${ws}://${loc.hostname}:5192` : `${ws}://${loc.host}`;
 }
 
 export const roomDbName = (id: string) => `canvas-poc:room:${id}`;

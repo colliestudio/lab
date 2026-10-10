@@ -3,7 +3,9 @@ import * as Y from 'yjs';
 import { Store, parse, serialize, type CanvasNode, type CommandCtx } from '../../core';
 import { registerCoreCommands } from '../../core/commands';
 import { registerCardsLogic } from './index';
-import { FIELD, card, cardNode, cardsIn, deckNode, isCard, isDeck, isHomeDeck, standardDeck } from './deck';
+import { DROP_FAN, DROP_STACK, dropMode, freeSpot } from './commands';
+import { FIELD, card, cardNode, cardsIn, deckNode, hiddenFrom, isCard, isDeck, isHomeDeck, layoutOf, standardDeck } from './deck';
+import { PAD, slots } from './layout';
 
 function ctx(prefix = 'id', seed = 1): CommandCtx {
   let n = 0;
@@ -122,14 +124,19 @@ describe('cards commands', () => {
     expect(t.doc.get('d')).toBeDefined();
   });
 
-  it('gather stacks cards and decks at the first node, first on the bottom', () => {
+  it('G with a deck in the selection puts the rest into it; without one, a fan group where the first card was', () => {
     const s = withDeck(2, cardNode('a', 10, 20, { face: 'KH', faceUp: true }, 50), cardNode('b', 50, 50, { face: 'QH', faceUp: false }, 51));
     const r = s.dispatch('cards.gather', { ids: ['b', 'd', 'a'] });
-    const deck = r.select![0];
-    expect(cardsIn(s.doc, 'd')).toHaveLength(0); // merged away, stays as its cards' home
-    expect(s.doc.visible.map((n) => n.id).sort()).toEqual(['d', deck].sort());
-    expect([s.doc.get(deck)!.x, s.doc.get(deck)!.y]).toEqual([50, 50]);
-    expect(faces(s, deck)).toEqual(['QH', 'AS', '2S', 'KH']);
+    expect(r.select).toEqual(['d']);
+    expect(faces(s)).toEqual(['AS', '2S', 'QH', 'KH']);
+    const t = withDeck(2, cardNode('a', 10, 20, { face: 'KH', faceUp: true }, 50), cardNode('b', 50, 50, { face: 'QH', faceUp: false }, 51));
+    const g = t.dispatch('cards.gather', { ids: ['a', 'b'] }).select![0];
+    expect(layoutOf(t.doc.get(g)!)).toBe('fan');
+    expect(faces(t, g)).toEqual(['KH', 'QH']);
+    // the first card stays where it was; every card is visible, with its own facing
+    expect([t.doc.get('a')!.x, t.doc.get('a')!.y]).toEqual([10, 20]);
+    expect(t.doc.isVisible('a') && t.doc.isVisible('b')).toBe(true);
+    expect(card(t.doc.get('a')!).faceUp && !card(t.doc.get('b')!).faceUp).toBe(true);
   });
 
   it('drop onto a deck puts cards on top and keeps the deck id; drop needs card targets', () => {
@@ -284,6 +291,239 @@ describe('home deck vs piles', () => {
   });
 });
 
+describe('groups and hands', () => {
+  const loose = (...faces: string[]) => faces.map((f, i) => cardNode(`l${i}`, 400 + i * 200, 400, { face: f, faceUp: i % 2 === 0 }, 100 + i));
+  const order = (s: Store, box: string) => faces(s, box);
+
+  it('layouts: fan overlaps with a slight arc, row and grid show every card, sizes follow the count', () => {
+    const fan = slots('fan', 5);
+    expect(fan.at[1].dx - fan.at[0].dx).toBeLessThan(120); // overlapping
+    expect(fan.at[0].angle).toBeLessThan(0);
+    expect(fan.at[4].angle).toBeGreaterThan(0);
+    expect(fan.at[2].angle).toBeUndefined(); // middle card upright
+    const row = slots('row', 3);
+    expect(row.at.map((a) => a.dx)).toEqual([PAD, PAD + 130, PAD + 260]);
+    const grid = slots('grid', 5);
+    expect(new Set(grid.at.map((a) => a.dy)).size).toBe(2); // 3 + 2
+    expect(slots('fan', 10).w).toBeGreaterThan(slots('fan', 3).w);
+  });
+
+  it('dropping a card on a loose card makes a fan group; every card shown in order at its slot', () => {
+    const s = withDeck(1, ...loose('KH', 'QS', 'JD'));
+    const g = s.dispatch('cards.drop', { target: 'l0', ids: ['l1'] }).select![0];
+    expect(layoutOf(s.doc.get(g)!)).toBe('fan');
+    const box = s.doc.get(g)!;
+    expect(order(s, g)).toEqual(['KH', 'QS']);
+    expect(s.doc.visible.map((n) => n.id)).toEqual(expect.arrayContaining([g, 'l0', 'l1']));
+    expect(s.doc.get('l1')!.x).toBeGreaterThan(s.doc.get('l0')!.x);
+    expect(box.width).toBe(slots('fan', 2).w);
+    // facing kept per card
+    expect(card(s.doc.get('l0')!).faceUp).toBe(true);
+    expect(card(s.doc.get('l1')!).faceUp).toBe(false);
+    // moving the group moves its cards (layout is derived, one node written)
+    const r = s.dispatch('core.move', { ids: [g], dx: 100, dy: 0 });
+    expect(r.changes).toHaveLength(2);
+    expect(s.doc.get('l0')!.x).toBe(box.x + 100 + slots('fan', 2).at[0].dx);
+  });
+
+  it('drop onto a group inserts at the drop point; pull out; a group of one dissolves', () => {
+    const s = withDeck(1, ...loose('KH', 'QS', 'JD'));
+    const g = s.dispatch('cards.drop', { target: 'l0', ids: ['l1'] }).select![0];
+    const box = s.doc.get(g)!;
+    // drop JD near the left edge -> first
+    s.dispatch('cards.drop', { target: g, ids: ['l2'], at: { x: box.x + PAD + 5, y: box.y + 50 } });
+    expect(order(s, g)).toEqual(['JD', 'KH', 'QS']);
+    // pull KH out where it is shown
+    const shown = s.doc.get('l0')!;
+    s.dispatch('cards.pullOut', { id: 'l0' });
+    expect(s.doc.parentOf('l0')).toBeUndefined();
+    expect([s.doc.get('l0')!.x, s.doc.get('l0')!.y]).toEqual([shown.x, shown.y]);
+    expect(order(s, g)).toEqual(['JD', 'QS']);
+    s.dispatch('cards.pullOut', { id: 'l2' });
+    expect(s.doc.get(g)).toBeUndefined(); // one card left: just a card
+    expect(s.doc.parentOf('l1')).toBeUndefined();
+    expect(s.doc.isVisible('l1')).toBe(true);
+  });
+
+  it('setLayout, sort, ungroup; a group set to stack acts like a deck', () => {
+    const s = withDeck(1, ...loose('KH', '2S', 'AS'));
+    const g = s.dispatch('cards.gather', { ids: ['l0', 'l1', 'l2'] }).select![0];
+    s.dispatch('cards.sort', { id: g });
+    expect(order(s, g)).toEqual(['AS', '2S', 'KH']);
+    s.dispatch('cards.setLayout', { id: g, layout: 'grid' });
+    expect(layoutOf(s.doc.get(g)!)).toBe('grid');
+    s.dispatch('cards.setLayout', { id: g, layout: 'stack' });
+    expect(s.doc.isVisible('l0')).toBe(false); // hidden in the pile
+    const drawn = s.dispatch('cards.draw', { id: g }).select![0];
+    expect(card(s.doc.get(drawn)!).face).toBe('KH');
+    s.dispatch('cards.setLayout', { id: g, layout: 'row' });
+    const r = s.dispatch('cards.ungroup', { id: g });
+    expect(s.doc.get(g)).toBeUndefined();
+    expect(r.select).toHaveLength(2);
+  });
+
+  it('hands: owned groups, any number, persist when empty, reorder by dropping, others see backs', () => {
+    const s = withDeck(1, ...loose('KH', 'QS', 'JD'));
+    const h = s.dispatch('cards.newHand', { owner: 'alice', label: "Alice's hand", color: '#e6194b', x: 0, y: 600 }).select![0];
+    const h2 = s.dispatch('cards.newHand', { owner: 'alice', x: 0, y: 600 }).select![0];
+    expect(h2).not.toBe(h); // a new one each time…
+    const [a1, a2] = [s.doc.get(h)!, s.doc.get(h2)!];
+    expect(a2.x >= a1.x + a1.width || a2.x + a2.width <= a1.x || a2.y + a2.height <= a1.y).toBe(true); // …never on top of another
+    s.dispatch('cards.drop', { target: h, ids: ['l0'] });
+    s.dispatch('cards.drop', { target: h, ids: ['l1'] });
+    s.dispatch('cards.drop', { target: h, ids: ['l2'] });
+    expect(order(s, h)).toEqual(['KH', 'QS', 'JD']);
+    // drag JD out and drop it back at the front
+    s.dispatch('cards.pullOut', { id: 'l2' });
+    const box = s.doc.get(h)!;
+    s.dispatch('cards.drop', { target: 'l0', ids: ['l2'], at: { x: box.x + PAD + 2, y: box.y + 60 } });
+    expect(order(s, h)).toEqual(['JD', 'KH', 'QS']);
+    expect(hiddenFrom(s.doc, s.doc.get('l0')!, 'bob')).toBe(true);
+    expect(hiddenFrom(s.doc, s.doc.get('l0')!, 'alice')).toBe(false);
+    // emptied hand stays; can't become a pile
+    for (const id of ['l0', 'l1', 'l2']) s.dispatch('cards.pullOut', { id });
+    expect(s.doc.get(h)).toBeDefined();
+    expect(s.dispatch('cards.setLayout', { id: h, layout: 'stack' }).changes).toEqual([]);
+    s.dispatch('cards.handLabel', { owner: 'alice', label: "Ali's hand", color: '#3cb44b' });
+    expect(s.doc.get(h)!.label).toBe("Ali's hand");
+    // gather-all reaches into hands, the hand stays
+    s.dispatch('cards.drop', { target: h, ids: ['l0'] });
+    s.dispatch('cards.recall', { id: 'd' });
+    expect(s.doc.get(h)).toBeDefined();
+    expect(cardsIn(s.doc, h)).toHaveLength(0);
+  });
+
+  it('old piles (stacks without a layout) load unchanged, as stack groups that can be spread out', () => {
+    const t = store();
+    t.load({
+      nodes: [
+        deckNode('home', 0, 0, 1, undefined, true),
+        deckNode('pile', 300, 0, 2),
+        cardNode('a', 300, 0, { face: 'AS', faceUp: true, stack: 'pile', order: 1, home: 'home' }, 3),
+        cardNode('b', 300, 0, { face: 'KS', faceUp: false, stack: 'pile', order: 2, home: 'home' }, 4),
+      ],
+      edges: [],
+    });
+    expect(layoutOf(t.doc.get('pile')!)).toBe('stack');
+    expect(t.doc.isVisible('a')).toBe(false);
+    t.dispatch('cards.setLayout', { id: 'pile', layout: 'fan' });
+    expect(t.doc.isVisible('a') && t.doc.isVisible('b')).toBe(true);
+  });
+
+  it('export: a hand is a JSON Canvas group sized to its layout, cards at their slots; round-trips', () => {
+    const s = withDeck(1, ...loose('KH', 'QS'));
+    const h = s.dispatch('cards.newHand', { owner: 'alice', label: "Alice's hand", x: 0, y: 600 }).select![0];
+    s.dispatch('cards.drop', { target: h, ids: ['l0', 'l1'] });
+    const json = JSON.parse(serialize(s.exportDoc()));
+    const g = json.nodes.find((n: any) => n.id === h);
+    expect(g).toMatchObject({ type: 'group', label: "Alice's hand", owner: 'alice' });
+    expect(g.width).toBe(slots('fan', 2, 3).w);
+    const kh = json.nodes.find((n: any) => n.id === 'l0');
+    expect(kh.x).toBe(s.doc.get('l0')!.x);
+    expect(json.nodes.indexOf(kh)).toBeGreaterThan(json.nodes.indexOf(g)); // drawn above the group
+    const t = store();
+    t.load(parse(serialize(s.exportDoc())));
+    expect(JSON.parse(serialize(t.exportDoc()))).toEqual(JSON.parse(serialize(s.exportDoc())));
+    expect(faces(t, h)).toEqual(['KH', 'QS']);
+  });
+
+  it('two peers dropping into the same hand at once: both cards end up in it, same order everywhere', () => {
+    const a = store(ctx('a'));
+    a.load({ nodes: [deckNode('d', 0, 0, 1, undefined, true), ...loose('KH', 'QS', 'JD').map((c) => ({ ...c, [FIELD]: { ...(c[FIELD] as object), home: 'd' } }))], edges: [] });
+    const h = a.dispatch('cards.newHand', { owner: 'alice', x: 0, y: 600 }).select![0];
+    a.dispatch('cards.drop', { target: h, ids: ['l0'] });
+    const b = store(ctx('b'));
+    sync(a.ydoc, b.ydoc);
+    a.dispatch('cards.drop', { target: h, ids: ['l1'] });
+    b.dispatch('cards.drop', { target: h, ids: ['l2'] });
+    b.dispatch('cards.pullOut', { id: 'l0' }); // and b takes one out meanwhile
+    sync(a.ydoc, b.ydoc);
+    expect(a.ydoc.getMap('nodes').toJSON()).toEqual(b.ydoc.getMap('nodes').toJSON());
+    expect(faces(a, h).sort()).toEqual(['JD', 'QS']);
+    expect(faces(a, h)).toEqual(faces(b, h));
+    expect(a.doc.isVisible('l0') && !a.doc.parentOf('l0')).toBe(true);
+  });
+});
+
+describe('drop modes, stack ⇄ fan, private groups', () => {
+  const loose = (...faces: string[]) => faces.map((f, i) => cardNode(`l${i}`, 400 + i * 200, 400, { face: f, faceUp: true }, 100 + i));
+
+  it('classifies drops: squarely on a loose card = stack, partly = fan, barely = nothing; containers = add', () => {
+    const s = withDeck(3, ...loose('KH', 'QS'));
+    const c = s.doc.get('l0')!;
+    expect(dropMode(s.doc, c, 1)).toBe('stack');
+    expect(dropMode(s.doc, c, DROP_STACK)).toBe('stack');
+    expect(dropMode(s.doc, c, 0.6)).toBe('fan');
+    expect(dropMode(s.doc, c, DROP_FAN)).toBe('fan');
+    expect(dropMode(s.doc, c, 0.2)).toBeNull();
+    expect(dropMode(s.doc, s.doc.get('d')!, 0.9)).toBe('add');
+    expect(dropMode(s.doc, s.doc.get('d')!, 0.4)).toBe('add');
+    const g = s.dispatch('cards.drop', { target: 'l0', ids: ['l1'], as: 'fan' }).select![0];
+    expect(dropMode(s.doc, s.doc.get('l1')!, 0.5)).toBe('add'); // a card shown in a group = its group
+    expect(layoutOf(s.doc.get(g)!)).toBe('fan');
+  });
+
+  it("drop as 'stack' makes a subdeck (cards hidden, acts like a deck)", () => {
+    const s = withDeck(1, ...loose('KH', 'QS'));
+    const g = s.dispatch('cards.drop', { target: 'l0', ids: ['l1'], as: 'stack' }).select![0];
+    expect(layoutOf(s.doc.get(g)!)).toBe('stack');
+    expect(s.doc.isVisible('l0') || s.doc.isVisible('l1')).toBe(false);
+    expect([s.doc.get(g)!.x, s.doc.get(g)!.y]).toEqual([400, 400]);
+    expect(card(s.doc.get(s.dispatch('cards.draw', { id: g }).select![0])!).face).toBe('QS');
+  });
+
+  it('toggleStack (L) converts subdeck ⇄ fan group in one step; private groups stay spread', () => {
+    const s = withDeck(1, ...loose('KH', 'QS', 'JD'));
+    const g = s.dispatch('cards.drop', { target: 'l0', ids: ['l1', 'l2'], as: 'stack' }).select![0];
+    s.dispatch('cards.toggleStack', { id: g });
+    expect(layoutOf(s.doc.get(g)!)).toBe('fan');
+    expect(['l0', 'l1', 'l2'].every((id) => s.doc.isVisible(id))).toBe(true);
+    s.dispatch('cards.toggleStack', { id: g });
+    expect(layoutOf(s.doc.get(g)!)).toBe('stack');
+    s.undo();
+    expect(layoutOf(s.doc.get(g)!)).toBe('fan'); // one undo step per conversion
+    s.dispatch('cards.own', { id: g, owner: 'alice', label: "Alice's hand" });
+    expect(s.dispatch('cards.toggleStack', { id: g }).changes).toEqual([]);
+  });
+
+  it('make mine / make public: owner drives who sees backs; owning a subdeck spreads it', () => {
+    const s = withDeck(1, ...loose('KH', 'QS'));
+    const g = s.dispatch('cards.drop', { target: 'l0', ids: ['l1'], as: 'stack' }).select![0];
+    s.dispatch('cards.own', { id: g, owner: 'alice', label: "Alice's hand", color: '#3cb44b' });
+    const box = s.doc.get(g)!;
+    expect(box.owner).toBe('alice');
+    expect(layoutOf(box)).toBe('fan');
+    expect(hiddenFrom(s.doc, s.doc.get('l0')!, 'bob')).toBe(true);
+    expect(hiddenFrom(s.doc, s.doc.get('l0')!, 'alice')).toBe(false);
+    s.dispatch('cards.own', { id: g, owner: null });
+    expect(s.doc.get(g)!.owner).toBeUndefined();
+    expect(hiddenFrom(s.doc, s.doc.get('l0')!, 'bob')).toBe(false);
+    expect(s.dispatch('cards.own', { id: 'd', owner: 'alice' }).changes).toEqual([]); // not the home deck
+  });
+
+  it('migrates stage-2 hands (hand: true) to owned groups', () => {
+    const t = store();
+    t.load({
+      nodes: [
+        deckNode('d', 0, 0, 1, undefined, true),
+        { id: 'h', type: 'text', x: 0, y: 500, width: 120, height: 168, z: 2, owner: 'alice', label: "Alice's hand", [FIELD]: { pack: 'standard-52', deck: true, layout: 'fan', hand: true } },
+        cardNode('c', 0, 0, { face: 'AS', faceUp: true, stack: 'h', order: 1, home: 'd' }, 3),
+      ],
+      edges: [],
+    });
+    expect((t.doc.get('h')![FIELD] as any).hand).toBeUndefined();
+    expect(t.doc.get('h')!.owner).toBe('alice');
+    expect(hiddenFrom(t.doc, t.doc.get('c')!, 'bob')).toBe(true);
+  });
+
+  it('freeSpot slides a box off occupied space', () => {
+    const s = withDeck(1, cardNode('x', 0, 0, { face: 'KH', faceUp: true }, 5));
+    const p = freeSpot(s.doc, 0, 0, 200, 200);
+    const occupied = s.doc.visible.filter((n) => !s.doc.parentOf(n.id));
+    expect(occupied.every((n) => n.x >= p.x + 200 || n.x + n.width <= p.x || n.y >= p.y + 200 || n.y + n.height <= p.y)).toBe(true);
+  });
+});
+
 describe('JSON Canvas', () => {
   it('a set-up table survives export → import, cards in decks exported at the deck', () => {
     const s = store();
@@ -292,7 +532,8 @@ describe('JSON Canvas', () => {
     const json = JSON.parse(text);
     expect(json.nodes).toHaveLength(53);
     const deck = json.nodes.find((n: any) => n[FIELD].deck);
-    expect(deck.text).toBe('Deck: 36 cards');
+    expect(deck.type).toBe('group');
+    expect(deck.label).toBe('Deck: 36 cards');
     const inDeck = json.nodes.filter((n: any) => n[FIELD].stack === deck.id);
     expect(inDeck.every((n: any) => n.x === 100 && n.y === 50)).toBe(true);
     const t = store();
@@ -444,5 +685,128 @@ describe('facing is kept unless asked', () => {
     expect(s.doc.visible).toHaveLength(1);
     expect(allFaces(s)).toEqual(standardDeck().sort());
   });
+
+  it('reset table keeps hands (emptied) and stacks a fanned home deck again', () => {
+    const s = store();
+    s.dispatch('cards.setup', {});
+    const h = s.dispatch('cards.newHand', { owner: 'p1', label: 'Ann', color: '#f00', x: 0, y: 600 }).select![0];
+    const loose = s.doc.visible.filter(isCard).map((c) => c.id);
+    s.dispatch('cards.drop', { target: h, ids: loose.slice(0, 2) });
+    const home = s.doc.nodes.find(isHomeDeck)!;
+    s.dispatch('cards.setLayout', { id: home.id, layout: 'fan' });
+    s.dispatch('core.reset', {});
+    expect(s.doc.get(h)).toBeDefined();
+    expect(cardsIn(s.doc, h)).toHaveLength(0);
+    expect(cardsIn(s.doc, home.id)).toHaveLength(52);
+    expect((s.doc.get(home.id)![FIELD] as any).layout).toBeUndefined();
+  });
 });
 
+describe('kinds, layouts, put on table, showdown', () => {
+  const loose = (...faces: string[]) => faces.map((f, i) => cardNode(`l${i}`, 400 + i * 200, 400, { face: f, faceUp: i % 2 === 0 }, 100 + i));
+  const homeTable = (...extra: CanvasNode[]) => {
+    const s = store();
+    s.load({
+      nodes: [
+        deckNode('d', 0, 0, 1, undefined, true),
+        ...['AS', '2S', '3S', '4S'].map((face, i) => cardNode(`c${i}`, 0, 0, { face, faceUp: i === 3, stack: 'd', order: i + 1, home: 'd' }, 2 + i)),
+        ...extra,
+      ],
+      edges: [],
+    });
+    return s;
+  };
+
+  it('the home deck switches layouts (L too) and stays the home: gather all still fills it', () => {
+    const s = homeTable();
+    s.dispatch('cards.setLayout', { id: 'd', layout: 'grid' });
+    expect(layoutOf(s.doc.get('d')!)).toBe('grid');
+    expect(isHomeDeck(s.doc.get('d')!)).toBe(true);
+    expect(['c0', 'c1', 'c2', 'c3'].every((id) => s.doc.isVisible(id))).toBe(true);
+    s.dispatch('cards.toggleStack', { id: 'd' });
+    expect(layoutOf(s.doc.get('d')!)).toBe('stack');
+    s.dispatch('cards.toggleStack', { id: 'd' });
+    expect(layoutOf(s.doc.get('d')!)).toBe('fan');
+    s.dispatch('cards.draw', { id: 'd', x: 900, y: 900 });
+    s.dispatch('cards.recall', { id: 'd' });
+    expect(cardsIn(s.doc, 'd')).toHaveLength(4);
+    s.migrate();
+    expect(isHomeDeck(s.doc.get('d')!)).toBe(true); // repair keeps a spread-out home deck
+  });
+
+  it('turnInto: deck ⇄ group ⇄ hand; hand → deck goes public; the home deck is never a hand', () => {
+    const s = homeTable(...loose('KH', 'QS', 'JD'));
+    const g = s.dispatch('cards.gather', { ids: ['l0', 'l1', 'l2'], layout: 'stack' }).select![0];
+    s.dispatch('cards.turnInto', { id: g, kind: 'group' });
+    expect(layoutOf(s.doc.get(g)!)).toBe('fan');
+    s.dispatch('cards.turnInto', { id: g, kind: 'hand', owner: 'alice', label: "Alice's hand", color: '#3cb44b' });
+    expect(s.doc.get(g)!.owner).toBe('alice');
+    expect(hiddenFrom(s.doc, s.doc.get('l0')!, 'bob')).toBe(true);
+    s.dispatch('cards.turnInto', { id: g, kind: 'deck' });
+    expect(s.doc.get(g)!.owner).toBeUndefined();
+    expect(layoutOf(s.doc.get(g)!)).toBe('stack');
+    s.undo();
+    expect(s.doc.get(g)!.owner).toBe('alice'); // one undo step
+    s.dispatch('cards.turnInto', { id: g, kind: 'group' });
+    expect(s.doc.get(g)!.owner).toBeUndefined();
+    expect(layoutOf(s.doc.get(g)!)).toBe('fan');
+    expect(s.dispatch('cards.turnInto', { id: 'd', kind: 'hand', owner: 'alice' }).changes).toEqual([]);
+    s.dispatch('cards.turnInto', { id: 'd', kind: 'group' });
+    expect(layoutOf(s.doc.get('d')!)).toBe('fan');
+  });
+
+  it('put cards on table: a row where the group was, facing kept, group gone, one undo step', () => {
+    const s = homeTable(...loose('KH', 'QS', 'JD'));
+    const g = s.dispatch('cards.gather', { ids: ['l0', 'l1', 'l2'] }).select![0];
+    const box = s.doc.get(g)!;
+    const r = s.dispatch('cards.putOnTable', { id: g });
+    expect(s.doc.get(g)).toBeUndefined();
+    expect(r.select).toEqual(['l0', 'l1', 'l2']);
+    const cs = ['l0', 'l1', 'l2'].map((id) => s.doc.get(id)!);
+    expect(cs.every((c) => !s.doc.parentOf(c.id) && c.y === box.y + PAD)).toBe(true);
+    expect(cs[0].x).toBe(box.x + PAD);
+    expect(cs[1].x - cs[0].x).toBeGreaterThanOrEqual(120); // a row, not overlapping
+    expect(cs.map((c) => card(c).faceUp)).toEqual([true, false, true]);
+    s.undo();
+    expect(cardsIn(s.doc, g)).toHaveLength(3);
+  });
+
+  it('put cards on table from a deck and from the home deck (the empty home slot stays)', () => {
+    const s = homeTable(...loose('KH', 'QS'));
+    const p = s.dispatch('cards.gather', { ids: ['l0', 'l1'], layout: 'stack' }).select![0];
+    s.dispatch('cards.putOnTable', { id: p });
+    expect(s.doc.get(p)).toBeUndefined();
+    expect(s.doc.get('l0')!.x).toBe(400);
+    s.dispatch('cards.putOnTable', { id: 'd' });
+    expect(isHomeDeck(s.doc.get('d')!)).toBe(true);
+    expect(cardsIn(s.doc, 'd')).toHaveLength(0);
+    expect(s.doc.get('c0')!.x).toBeGreaterThanOrEqual(120);
+    expect(card(s.doc.get('c3')!).faceUp).toBe(true);
+    expect(card(s.doc.get('c0')!).faceUp).toBe(false);
+    s.dispatch('cards.recall', { id: 'd' });
+    expect(cardsIn(s.doc, 'd')).toHaveLength(6);
+  });
+
+  it('showdown: every hand becomes a face-up row in place, rows never overlap, the rest untouched', () => {
+    const s = homeTable(...loose('KH', 'QS', 'JD', '9C', '8C'));
+    const a = s.dispatch('cards.newHand', { owner: 'alice', x: 0, y: 600 }).select![0];
+    const b = s.dispatch('cards.newHand', { owner: 'bob', x: 300, y: 600 }).select![0];
+    s.dispatch('cards.drop', { target: a, ids: ['l0', 'l1', 'l2'] });
+    s.dispatch('cards.drop', { target: b, ids: ['l3'] });
+    const r = s.dispatch('cards.showdown', {});
+    expect(s.doc.get(a)).toBeUndefined();
+    expect(s.doc.get(b)).toBeUndefined();
+    expect(r.select!.sort()).toEqual(['l0', 'l1', 'l2', 'l3']);
+    const cs = ['l0', 'l1', 'l2', 'l3'].map((id) => s.doc.get(id)!);
+    expect(cs.every((c) => card(c).faceUp && !s.doc.parentOf(c.id))).toBe(true);
+    const [lo, hi] = [cs.slice(0, 3), cs.slice(3)];
+    const apart = (p: CanvasNode[], q: CanvasNode[]) =>
+      Math.max(...p.map((c) => c.x)) + 120 <= Math.min(...q.map((c) => c.x)) || Math.max(...q.map((c) => c.x)) + 120 <= Math.min(...p.map((c) => c.x)) || Math.abs(p[0].y - q[0].y) >= 168;
+    expect(apart(lo, hi)).toBe(true); // rows don't overlap
+    expect(s.doc.get('l4')!.x).toBe(1200); // the loose card is untouched
+    s.undo();
+    expect(cardsIn(s.doc, a)).toHaveLength(3);
+    expect(s.dispatch('cards.showdown', {}).changes).not.toEqual([]);
+    expect(store().dispatch('cards.showdown', {}).changes).toEqual([]);
+  });
+});

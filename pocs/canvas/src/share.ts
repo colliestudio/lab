@@ -55,7 +55,7 @@ export async function createRoomFrom(app: App): Promise<string> {
 }
 
 /** Toolbar: players (color dot + name) and status (room, peers, signaling). */
-export function mountRoomStatus(app: App, room: Room, bar: HTMLElement, onLeave: () => void) {
+export function mountRoomStatus(app: App, room: Room, bar: HTMLElement, onLeave: () => void, onRename: () => void) {
   const box = document.createElement('span');
   box.className = 'room';
   const players = document.createElement('span');
@@ -77,9 +77,10 @@ export function mountRoomStatus(app: App, room: Room, bar: HTMLElement, onLeave:
   bar.append(box);
 
   const dot = (color: string, name: string, you = false) => {
-    const s = document.createElement('span');
-    s.className = 'player';
-    s.title = you ? `${name} (you)` : name;
+    const s = document.createElement(you ? 'button' : 'span');
+    s.className = you ? 'player me' : 'player';
+    s.title = you ? 'You: click to change your name or color' : name;
+    if (you) s.addEventListener('click', onRename);
     s.innerHTML = `<i></i><b></b>`;
     (s.firstChild as HTMLElement).style.background = color;
     (s.lastChild as HTMLElement).textContent = you ? `${name} (you)` : name;
@@ -89,7 +90,13 @@ export function mountRoomStatus(app: App, room: Room, bar: HTMLElement, onLeave:
   let everConnected = false;
   const draw = () => {
     const me = room.presence.me;
-    players.replaceChildren(dot(me.color, me.name, true), ...room.presence.peers().map((p) => dot(p.color, p.name)));
+    // rebuild only when it changed, so a click on your own entry isn't lost to a re-render
+    const peers = room.presence.peers();
+    const key = JSON.stringify([me.name, me.color, peers.map((p) => [p.clientId, p.name, p.color])]);
+    if (key !== players.dataset.key) {
+      players.dataset.key = key;
+      players.replaceChildren(dot(me.color, me.name, true), ...peers.map((p) => dot(p.color, p.name)));
+    }
     const sig = room.signalingConnected();
     everConnected ||= sig;
     const connecting = !sig && !everConnected && Date.now() - started < 8000;

@@ -1,6 +1,7 @@
 import type { App } from './app';
 import type { CanvasNode } from './doc';
-import type { ObjectType, RenderCtx } from './plugin';
+import { Menu } from './menu';
+import type { MenuEntry, ObjectType, RenderCtx } from './plugin';
 import { Viewport, wheelZoomFactor } from './viewport';
 
 type Pt = { x: number; y: number };
@@ -18,6 +19,7 @@ type Gesture =
       applied: Pt;
       moved: boolean;
       target?: string;
+      mode?: string;
     }
   | { kind: 'marquee'; start: Pt; base: Set<string> }
   | { kind: 'pinch'; dist: number; mid: Pt };
@@ -33,7 +35,7 @@ export class View {
   private els = new Map<string, HTMLElement>();
   private contentKeys = new Map<string, string>();
   private marquee: HTMLElement;
-  private menuEl: HTMLElement | null = null;
+  readonly menu: Menu;
   private gesture: Gesture | null = null;
   private pointers = new Map<number, Pt>();
   private spaceDown = false;
@@ -53,6 +55,7 @@ export class View {
     this.world = el('div', 'cv-world');
     this.marquee = el('div', 'cv-marquee');
     root.append(this.world, this.marquee);
+    this.menu = new Menu(root);
 
     app.viewport.onChange(() => this.applyViewport());
     app.store.subscribe(() => this.render());
@@ -109,15 +112,16 @@ export class View {
         this.world.append(box);
         this.els.set(n.id, box);
       }
-      box.style.transform = `translate(${n.x}px, ${n.y}px)`;
+      const angle = doc.styleOf(n.id)?.angle;
+      box.style.transform = `translate(${n.x}px, ${n.y}px)` + (angle ? ` rotate(${angle}deg)` : '');
       box.style.zIndex = String(i + 1);
+      box.style.width = `${n.width}px`;
+      box.style.height = `${n.height}px`;
       box.classList.toggle('cv-selected', sel.has(n.id));
       const type = this.app.typeOf(n);
       const key = (type?.id ?? '') + '\n' + (type?.renderKey?.(n, ctx) ?? contentKey(n));
       if (this.contentKeys.get(n.id) !== key) {
         this.contentKeys.set(n.id, key);
-        box.style.width = `${n.width}px`;
-        box.style.height = `${n.height}px`;
         box.dataset.kind = type?.id ?? n.type;
         box.replaceChildren();
         if (type) type.render(n, box, ctx);
@@ -301,7 +305,8 @@ export class View {
           this.app.dispatch('core.move', { ids: g.ids, dx, dy }, { merge: true });
           g.applied = { x: tx, y: ty };
         }
-        this.setDropTarget(g, this.findDropTarget(g, e));
+        const t = this.findDropTarget(g, e);
+        this.setDropTarget(g, t?.id, t?.mode);
         return;
       }
       case 'marquee': {
@@ -347,10 +352,11 @@ export class View {
 
     for (const id of g.ids) this.els.get(id)?.classList.remove('cv-dragging');
     if (g.moved) {
-      const targetId = this.findDropTarget(g, e);
+      const found = this.findDropTarget(g, e);
       this.setDropTarget(g, undefined);
-      const target = targetId && this.app.node(targetId);
-      if (target) this.app.store.merged(() => this.app.typeOf(target)?.onDrop?.(target, g.ids, this.app));
+      const target = found && this.app.node(found.id);
+      const at = this.world_(this.local(e));
+      if (target) this.app.store.merged(() => this.app.typeOf(target)?.onDrop?.(target, g.ids, this.app, at, found.mode));
       this.endDrag(g.ids, target ? target.id : undefined);
       return;
     }
@@ -487,7 +493,7 @@ export class View {
   }
 
   /** The object a drag would land on: topmost under the pointer, overlapping enough, and willing. */
-  private findDropTarget(g: Extract<Gesture, { kind: 'drag' }>, e: PointerEvent): string | undefined {
+  private findDropTarget(g: Extract<Gesture, { kind: 'drag' }>, e: PointerEvent): { id: string; mode?: string } | undefined {
     const dragged = new Set(g.ids);
     const primary = this.app.node(g.clickId);
     if (!primary) return;
@@ -499,17 +505,28 @@ export class View {
     if (!target) return;
     const type = this.app.typeOf(target);
     if (!type?.onDrop) return;
-    if (overlap(primary, target) < DROP_OVERLAP) return;
+    const ov = overlap(primary, target);
+    if (!type.canDrop) return ov >= DROP_OVERLAP ? { id: target.id } : undefined;
     const dropped = g.ids.map((id) => this.app.node(id)).filter((n): n is CanvasNode => !!n);
-    if (type.canDrop && !type.canDrop(target, dropped, this.app)) return;
-    return target.id;
+    const verdict = type.canDrop(target, dropped, this.app, ov);
+    if (!verdict) return;
+    return { id: target.id, mode: typeof verdict === 'string' ? verdict : undefined };
   }
 
-  private setDropTarget(g: Extract<Gesture, { kind: 'drag' }>, id: string | undefined) {
-    if (g.target === id) return;
-    if (g.target) this.els.get(g.target)?.classList.remove('cv-drop-target');
+  private setDropTarget(g: Extract<Gesture, { kind: 'drag' }>, id: string | undefined, mode?: string) {
+    if (g.target === id && g.mode === mode) return;
+    if (g.target) {
+      const old = this.els.get(g.target);
+      old?.classList.remove('cv-drop-target');
+      if (old) delete old.dataset.dropLabel;
+    }
     g.target = id;
-    if (id) this.els.get(id)?.classList.add('cv-drop-target');
+    g.mode = mode;
+    const box = id ? this.els.get(id) : undefined;
+    if (box) {
+      box.classList.add('cv-drop-target');
+      if (mode) box.dataset.dropLabel = mode;
+    }
   }
 
   // ---------------------------------------------------------------- context menu
@@ -521,45 +538,31 @@ export class View {
     if (nodeEl && !store.selection.has(nodeEl.dataset.nodeId!)) store.select([nodeEl.dataset.nodeId!]);
     if (!nodeEl) store.select([]);
     const selected = this.app.selected();
-    const items = this.app.menu
+    const groups: MenuEntry[][] = [];
+    let title: string | undefined;
+    const plain = this.app.menu
       .filter((i) => i.when(this.app, selected))
-      .map((i) => ({ label: i.label, hint: i.hint, run: () => i.run(this.app, this.app.selected()) }));
-    if (selected.length) items.push({ label: 'Delete', hint: '⌫', run: () => this.app.dispatch('core.delete', { ids: this.app.selected().map((n) => n.id) }) });
-    this.openMenu(items, this.local(e));
+      .map((i): MenuEntry => ({ label: i.label, hint: i.hint, run: () => i.run(this.app, this.app.selected()) }));
+    if (plain.length) groups.push(plain);
+    for (const provide of this.app.menuProviders) {
+      const out = provide(this.app, selected);
+      if (!out?.entries.length) continue;
+      title ??= out.title;
+      groups.push(out.entries);
+    }
+    // every selection can be deleted (a carrier takes its riders along)
+    if (selected.length) groups.push([{ label: 'Delete', hint: '⌫', run: () => this.app.dispatch('core.delete', { ids: this.app.selected().map((n) => n.id) }) }]);
+    const entries = groups.flatMap((g, k) => g.map((x, i) => (k > 0 && i === 0 ? { ...x, separator: true } : x)));
+    this.openMenu(entries, this.local(e), title);
   }
 
   /** Show a menu at a table point, or anchored below an element (e.g. an object's tab). */
-  openMenu(items: { label: string; hint?: string; run: () => void }[], at: { x: number; y: number } | Element) {
-    this.closeMenu();
-    if (!items.length) return;
-    const menu = el('div', 'cv-menu');
-    for (const item of items) {
-      const b = el('button', 'cv-menu-item');
-      b.innerHTML = `<span></span><kbd></kbd>`;
-      b.children[0].textContent = item.label;
-      b.children[1].textContent = item.hint ?? '';
-      b.addEventListener('click', () => {
-        this.closeMenu();
-        item.run();
-      });
-      menu.append(b);
-    }
-    let p: Pt;
-    if (at instanceof Element) {
-      const r = at.getBoundingClientRect();
-      const root = this.root.getBoundingClientRect();
-      p = { x: r.left - root.left, y: r.bottom - root.top + 4 };
-    } else p = at;
-    menu.style.left = `${p.x}px`;
-    menu.style.top = `${p.y}px`;
-    menu.addEventListener('pointerdown', (ev) => ev.stopPropagation());
-    this.root.append(menu);
-    this.menuEl = menu;
+  openMenu(entries: MenuEntry[], at: { x: number; y: number } | Element, title?: string) {
+    this.menu.open(entries, at, title);
   }
 
   closeMenu() {
-    this.menuEl?.remove();
-    this.menuEl = null;
+    this.menu.close();
   }
 }
 

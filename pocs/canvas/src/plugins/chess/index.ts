@@ -1,8 +1,8 @@
 import './chess.css';
-import type { App, CanvasNode, Command, Plugin, Store } from '../../core';
+import type { App, CanvasNode, Command, MenuEntry, Plugin, Store } from '../../core';
 import { commands, duplicatePiece } from './commands';
 import { repairImport, shapeExport } from './io';
-import { board, boardIdOf, isBoard, isPiece, piece } from './model';
+import { board, boardIdOf, isBoard, isPiece, piece, pieceName } from './model';
 import { mountPalette, targetBoard } from './palette';
 import { boardHtml, pieceHtml } from './render';
 
@@ -19,15 +19,15 @@ export function registerChessLogic(store: Store) {
 }
 
 /** Actions for one board (its tab menu and the right-click menu). */
-function boardMenu(app: App, b: CanvasNode, pieces: () => void) {
+function boardMenu(app: App, b: CanvasNode, pieces: () => void): MenuEntry[] {
   const id = b.id;
   const locked = !board(b).unlocked;
   return [
     { label: 'Set up pieces', run: () => app.dispatch('chess.setup', { id }) },
-    { label: board(b).flipped ? 'Flip board (view from white)' : 'Flip board (view from black)', run: () => app.dispatch('chess.flip', { id }) },
     { label: 'Clear board', run: () => app.dispatch('chess.clear', { id }) },
-    { label: 'Pieces…', run: pieces },
-    { label: locked ? 'Unlock (drag anywhere to move)' : 'Lock (drag the tab to move)', run: () => app.dispatch('chess.lock', { id, locked: !locked }) },
+    { label: 'Seen from black (flipped)', checked: !!board(b).flipped, run: () => app.dispatch('chess.flip', { id }) },
+    { label: 'Locked (move by the tab)', checked: locked, run: () => app.dispatch('chess.lock', { id, locked: !locked }) },
+    { label: 'Pieces…', separator: true, run: pieces },
   ];
 }
 
@@ -55,7 +55,7 @@ export const chessPlugin: Plugin = {
       grabbable: (node, down) => onGrip(down) || !!board(node).unlocked,
       onClick(node, down, app) {
         if (!onGrip(down)) return false;
-        app.view.openMenu(boardMenu(app, node, openPalette), (down.target as Element).closest('[data-grip]')!);
+        app.view.openMenu(boardMenu(app, node, openPalette), (down.target as Element).closest('[data-grip]')!, 'Chessboard');
         return true;
       },
     });
@@ -70,22 +70,16 @@ export const chessPlugin: Plugin = {
       onDragEnd: (dragged, app) => app.dispatch('chess.place', { ids: dragged.map((n) => n.id) }),
     });
 
-    const hasBoard = (a: App, sel: CanvasNode[]) => !!targetBoard(a, sel);
-    const onBoard = (fn: (a: App, b: CanvasNode) => void) => (a: App, sel: CanvasNode[]) => {
+    app.registerMenu((a, sel) => {
+      if (!sel.length || !sel.every((n) => isBoard(n) || isPiece(n))) return;
       const b = targetBoard(a, sel);
-      if (b) fn(a, b);
-    };
-    app.registerMenuItem({ label: 'Set up pieces', when: hasBoard, run: onBoard((a, b) => a.dispatch('chess.setup', { id: b.id })) });
-    app.registerMenuItem({ label: 'Flip board', when: hasBoard, run: onBoard((a, b) => a.dispatch('chess.flip', { id: b.id })) });
-    app.registerMenuItem({ label: 'Clear board', when: hasBoard, run: onBoard((a, b) => a.dispatch('chess.clear', { id: b.id })) });
-    app.registerMenuItem({ label: 'Pieces…', when: hasBoard, run: openPalette });
-    app.registerMenuItem({
-      get label() {
-        const b = targetBoard(app, app.selected());
-        return b && board(b).unlocked ? 'Lock board' : 'Unlock board';
-      },
-      when: (_a, sel) => sel.some(isBoard),
-      run: onBoard((a, b) => a.dispatch('chess.lock', { id: b.id, locked: !!board(b).unlocked })),
+      if (sel.length === 1 && isBoard(sel[0])) return { title: 'Chessboard', entries: boardMenu(a, sel[0], openPalette) };
+      const pieces = sel.filter(isPiece);
+      const entries: MenuEntry[] = [
+        { label: pieces.length > 1 ? `Duplicate ${pieces.length} pieces` : 'Duplicate', hint: '⌘D', run: () => a.dispatch('core.duplicate', { ids: pieces.map((n) => n.id) }) },
+      ];
+      if (b) entries.push({ label: 'Board', items: () => boardMenu(a, b, openPalette) });
+      return { title: pieces.length > 1 ? `${pieces.length} chess pieces` : pieceName(piece(pieces[0])).replace(/^./, (c) => c.toUpperCase()), entries };
     });
   },
 };

@@ -168,3 +168,22 @@
 .pc-grip.pc-home:hover {
   background: #2e4170;
 }
+.pc-group {
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  border: 2px dashed color-mix(in srgb, var(--pc-group) 70%, white);
+  background: color-mix(in srgb, var(--pc-group) 16%, transparent);
+  box-sizing: border-box;
+}
+.pc-group.pc-hand {
+  border-style: solid;
+  background: color-mix(in srgb, var(--pc-group) 26%, rgba(0, 0, 0, 0.15));
+}
+.pc-group-tab {
+  left: 14px;
+  transform: none;
+  max-width: calc(100% - 28px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

@@ -23,7 +23,13 @@ export const create: Command<{ x: number; y: number; base?: number; inc?: number
   if (!isNum(a?.x) || !isNum(a?.y)) return [];
   const base = isNum(a.base) && a.base > 0 ? a.base : 5 * 60_000;
   const inc = isNum(a.inc) && a.inc >= 0 ? a.inc : 0;
-  return [{ op: 'add', node: clockNode(ctx.newId(), Math.round(a.x - W / 2), Math.round(a.y - H / 2), base, inc, doc.topZ + 1) }];
+  // first spot clear of other objects, sliding right
+  let x = Math.round(a.x - W / 2);
+  const y = Math.round(a.y - H / 2);
+  const gap = 40;
+  const clash = (x: number) => doc.visible.some((n) => n.x < x + W + gap && n.x + n.width + gap > x && n.y < y + H + gap && n.y + n.height + gap > y);
+  for (let i = 0; i < 60 && clash(x); i++) x += 60;
+  return [{ op: 'add', node: clockNode(ctx.newId(), x, y, base, inc, doc.topZ + 1) }];
 };
 
 /**

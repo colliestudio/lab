@@ -35,22 +35,26 @@ export function withRiders(doc: DocView, nodes: CanvasNode[]): CanvasNode[] {
 
 /**
  * Changes that put `nodes` on top (keeping their relative order), or none if they already are.
- * Riders come along, just above their carrier (a board stays under its pieces).
+ * Riders come along, just above their carrier (a board stays under its pieces). Contained nodes
+ * stack with their container (their z comes from its layout).
  */
-export function toFront(doc: DocView, nodes: CanvasNode[]): Change[] {
+export function toFront(doc: DocView, all: CanvasNode[]): Change[] {
+  const nodes = all.filter((n) => !doc.parentOf(n.id));
   if (!nodes.length) return [];
   const sorted = withRiders(doc, nodes.slice().sort((a, b) => (a.z ?? 0) - (b.z ?? 0)));
-  const vis = doc.visible;
+  const vis = doc.visible.filter((n) => !doc.parentOf(n.id));
   const top = vis.slice(vis.length - sorted.length);
   if (top.length === sorted.length && top.every((n, i) => n.id === sorted[i].id)) return [];
-  return sorted.map((n, i) => set(n.id, 'z', doc.topZ + 1 + i));
+  const base = Math.floor(doc.topZ);
+  return sorted.map((n, i) => set(n.id, 'z', base + 1 + i));
 }
 
 export function registerCoreCommands(store: Store) {
   store.register('core.move', (doc, a: { ids: string[]; dx: number; dy: number }) => {
     if (!isNum(a?.dx) || !isNum(a?.dy)) return [];
-    // riders (a board's pieces) move with their carrier
-    return withRiders(doc, pick(doc, a.ids)).flatMap((n) => [set(n.id, 'x', Math.round(n.x + a.dx)), set(n.id, 'y', Math.round(n.y + a.dy))]);
+    // contained nodes go where their container's layout puts them; riders (a board's pieces) move with their carrier
+    const nodes = pick(doc, a.ids).filter((n) => !doc.parentOf(n.id));
+    return withRiders(doc, nodes).flatMap((n) => [set(n.id, 'x', Math.round(n.x + a.dx)), set(n.id, 'y', Math.round(n.y + a.dy))]);
   });
   store.register('core.front', (doc, a: { ids: string[] }) => toFront(doc, pick(doc, a?.ids)));
   /** Deletes nodes, everything they contain and everything riding on them (a board's pieces). */
