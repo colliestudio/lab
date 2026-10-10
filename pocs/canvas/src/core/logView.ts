@@ -45,7 +45,18 @@ export function mountLog(app: App, parent: HTMLElement = document.body) {
   app.view.root.append(layer);
   type Bubble = { el: HTMLElement; x: number; y: number; anchor: string };
   const bubbles = new Set<Bubble>();
-  const place = (b: Bubble) => (b.el.style.transform = `translate(${Math.round(b.x * vp.zoom + vp.x)}px, ${Math.round(b.y * vp.zoom + vp.y)}px)`);
+  /** Above the object (clear of its tab), kept inside the table's visible area. */
+  const place = (b: Bubble) => {
+    const r = app.view.root;
+    const label = b.el.firstElementChild as HTMLElement;
+    const w = label.offsetWidth;
+    const h = label.offsetHeight + 30; // the label sits 30px above the anchor point
+    let sx = b.x * vp.zoom + vp.x;
+    let sy = b.y * vp.zoom + vp.y;
+    if (r.clientWidth) sx = Math.max(w / 2 + 8, Math.min(r.clientWidth - w / 2 - 8, sx));
+    if (r.clientHeight) sy = Math.max(h + 64, Math.min(r.clientHeight - 8, sy));
+    b.el.style.transform = `translate(${Math.round(sx)}px, ${Math.round(sy)}px)`;
+  };
   vp.onChange(() => bubbles.forEach(place));
 
   const cue = (e: LogEvent) => {
@@ -57,8 +68,8 @@ export function mountLog(app: App, parent: HTMLElement = document.body) {
     label.textContent = line(e);
     if (e.actor) label.style.setProperty('--cv-actor', e.actor.color);
     b.el.append(label);
-    place(b);
     layer.append(b.el);
+    place(b);
     bubbles.add(b);
     setTimeout(() => b.el.classList.add('cv-bubble-out'), BUBBLE_MS - 400);
     setTimeout(() => {

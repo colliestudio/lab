@@ -279,7 +279,7 @@
 }
 .cv-bubble-text {
   position: absolute;
-  bottom: 8px;
+  bottom: 30px; /* clear of a deck's or hand's tab */
   left: 0;
   transform: translateX(-50%);
   max-width: 320px;
