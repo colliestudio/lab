@@ -208,6 +208,22 @@ describe('chess undo', () => {
     expect(snap(A)).toBe(snap(B));
   });
 
+  it('undoing a table reset brings the pieces back but not the running clock', () => {
+    const s = store();
+    s.dispatch('chess.create', { x: 0, y: 0 });
+    s.dispatch('clock.create', { x: 1200, y: 0 });
+    const clockId = s.doc.nodes.find(isClock)!.id;
+    gesture(s, [at(s, 'e2')!.id], sqCenter(s, 'e4'));
+    s.dispatch('clock.tap', { id: clockId, side: 0, now: 1000 }, { undoable: false });
+    const moved = snap(s);
+    s.dispatch('core.reset', {});
+    expect(at(s, 'e4')).toBeUndefined();
+    s.undo();
+    expect(snap(s)).toBe(moved);
+    const c = s.doc.get(clockId)!['x-clock'] as Record<string, unknown>;
+    expect([c.run, c.since]).toEqual([undefined, undefined]);
+  });
+
   it('redo of an arrow-key nudge keeps the piece off-center (repairs snap only pieces off their square)', () => {
     const s = store();
     s.dispatch('chess.create', { x: 0, y: 0 });

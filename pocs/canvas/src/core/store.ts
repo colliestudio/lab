@@ -16,6 +16,11 @@ export interface CommandResult {
   select?: string[];
   /** What to log (see log.ts). Appended after the changes, never an undo step of its own. */
   events?: Events;
+  /**
+   * Changes that go with this command but stay when it is undone (time: a game clock that a table
+   * reset put back must not come back running with a stale start time). Applied first, not undoable.
+   */
+  untracked?: Change[];
 }
 
 /**
@@ -217,6 +222,7 @@ export class Store {
     }
     const merge = !!opts.merge || this.mergeAll;
     const top = this.undoManager.undoStack.at(-1);
+    if (res.untracked?.length) this.apply(res.untracked, UNDOABLE_NOT);
     if (opts.undoable === false) this.apply(res.changes, UNDOABLE_NOT);
     else {
       if (!merge) this.undoManager.stopCapturing();

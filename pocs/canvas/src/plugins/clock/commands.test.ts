@@ -92,6 +92,20 @@ describe('clock time math', () => {
     expect(c(t).left0).toBe(5 * MIN);
   });
 
+  it('undoing a table reset leaves a reset clock reset (no running clock with a stale start time)', () => {
+    const s = withClock();
+    s.dispatch('clock.create', { x: 400, y: 0 });
+    tap(s, 1, 0);
+    tap(s, 0, 2000);
+    s.dispatch('clock.rotate', { id: 'id2' });
+    s.dispatch('core.reset', {}); // only clocks to reset: not an undo step at all
+    s.undo(); // undoes the rotate; the clocks stay as reset
+    expect(clock(s.doc.get('id2')!).rot).toBeUndefined();
+    expect(c(s).run).toBeUndefined();
+    expect(c(s).since).toBeUndefined();
+    expect(c(s).left0).toBe(5 * MIN);
+  });
+
   it('concurrent taps on two peers converge to one state', () => {
     const a = withClock();
     const b = store(new Y.Doc(), 'p');

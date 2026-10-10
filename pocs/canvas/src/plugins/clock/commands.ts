@@ -140,7 +140,10 @@ export const names: Command<{ id: string; name0?: string; name1?: string }> = (d
   return diff(n, { name0: clean(a.name0), name1: clean(a.name1) });
 };
 
-/** Reset table (core `registerReset`): every clock back to its time control. */
-export const resetAll: Command<Record<string, never>> = (doc) => doc.nodes.filter(isClock).flatMap((n) => diff(n, fresh(clock(n))));
+/**
+ * Reset table (core `resets`): every clock back to its time control. Not undone with the table
+ * reset (`untracked`): time doesn't go back, and an undo would restart a clock from a stale start time.
+ */
+export const resetAll: Command<Record<string, never>> = (doc) => ({ changes: [], untracked: doc.nodes.filter(isClock).flatMap((n) => diff(n, fresh(clock(n)))) });
 
 export const commands = { create, tap, pause, resume, flag, reset, control, rotate, names, resetAll };
