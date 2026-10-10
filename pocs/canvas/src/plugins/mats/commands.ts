@@ -265,7 +265,7 @@ export const dealKlondike: Command<{ id: string }> = (doc, a) => {
       out.push(set(c.id, C('stack'), cols[k].id), set(c.id, C('order'), r + 1), set(c.id, 'x', cols[k].x), set(c.id, 'y', cols[k].y));
       if (card(c).faceUp !== up) out.push(set(c.id, C('faceUp'), up));
     }
-  return { changes: out, select: [] };
+  return { changes: out, select: [], events: [{ type: 'mats.deal', text: 'dealt Klondike', targets: [stock.id, ...cols.map((c) => c.id)], cue: 'deal' }] };
 };
 
 export { MAT_COLORS };

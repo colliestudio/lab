@@ -154,7 +154,12 @@ export const preset: Command<{ preset: PresetId; x?: number; y?: number; players
     changes.push({ op: 'add', node: zoneNode(id, m.id, nextZ(), spec) });
   }
   // cards above their zone (a new deck's cards were numbered before the zones: lift them)
-  return { changes: [...changes, ...later.map((c) => (c.op === 'add' ? { ...c, node: { ...c.node, z: nextZ() } } : c))], select: [] };
+  const took = later.some((c) => c.op === 'set') ? ' (the table’s deck moved in, shuffled)' : '';
+  return {
+    changes: [...changes, ...later.map((c) => (c.op === 'add' ? { ...c, node: { ...c.node, z: nextZ() } } : c))],
+    select: [],
+    events: [{ type: 'mats.preset', text: `added a mat: ${p.label}${took}`, targets: [m.id] }],
+  };
 };
 
 export const presetOf = (n: CanvasNode) => (n['x-mats'] as { preset?: string } | undefined)?.preset;

@@ -157,6 +157,9 @@ describe('mats', () => {
     expect(s.dispatch('mats.dealKlondike', { id: m.id }).changes).toEqual([]);
     s.dispatch('core.reset', {});
     expect(cardsIn(s.doc, stock.id)).toHaveLength(52);
+    // logged: the preset, the deal (once: the refused second deal isn't), the reset; zone edits aren't
+    s.dispatch('mats.configZone', { id: stock.id, name: 'Talon' });
+    expect(s.log.toArray().map((e) => e.text)).toEqual(['added a mat: Solitaire (Klondike)', 'dealt Klondike', 'reset the table']);
   });
 
   it('player mat: a private hand row for the player, deck / play / discard public', () => {
