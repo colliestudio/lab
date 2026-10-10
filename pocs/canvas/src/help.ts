@@ -88,7 +88,7 @@ const GROUPS: [string, [string, string][]][] = [
     [
       ['Add… › Game clock', 'A two-sided clock for any game (starts at 5+0)'],
       ['Tap your side', 'Ends your turn: your time stops (+ increment), the other side’s runs'],
-      ['Space over the clock', 'Tap for the side that is running (or start / resume)'],
+      ['Space with the pointer on the clock', 'Tap for the side that is running (or start / resume); elsewhere Space pans'],
       ['▶ / ❚❚', 'Start (left side first) / pause / resume'],
       ['Click its ⠿ tab', 'Time control (1+0 … 15+10, custom, per side for a handicap), pause, reset, side names, rotate'],
       ['R over the clock', 'Rotate 90° (tall: each half faces its player at the end)'],

@@ -87,11 +87,14 @@ export function parseControl(v: string | null | undefined) {
   return m ? { base: Number(m[1]) * 60000, inc: Number(m[2] ?? 0) * 1000 } : undefined;
 }
 
+/** The clock under the mouse. */
+function hoveredClock(app: App) {
+  const h = app.view.hovered && app.node(app.view.hovered);
+  return h && isClock(h) ? h : undefined;
+}
 /** The clock a key aims at: under the mouse, else the selected one. */
 function targetClock(app: App) {
-  const h = app.view.hovered && app.node(app.view.hovered);
-  if (h && isClock(h)) return h;
-  return app.selected().filter(isClock).at(-1);
+  return hoveredClock(app) ?? app.selected().filter(isClock).at(-1);
 }
 
 export const clockPlugin: Plugin = {
@@ -122,9 +125,10 @@ export const clockPlugin: Plugin = {
     app.registerKey({
       key: 'space',
       label: 'Tap the clock',
-      when: (a) => !!targetClock(a),
+      // only with the pointer on the clock: anywhere else Space keeps panning
+      when: (a) => !!hoveredClock(a),
       run: (a) => {
-        const n = targetClock(a);
+        const n = hoveredClock(a);
         if (!n) return;
         const c = clock(n);
         if (c.run === undefined || c.paused) toggle(a, n);
