@@ -458,3 +458,30 @@
   font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
+
+/* JSON Canvas edges (under every node) */
+.cv-edges {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 0;
+}
+.cv-edges line {
+  stroke: rgba(255, 255, 255, 0.75);
+  stroke-width: 2.5;
+}
+.cv-edges marker path {
+  fill: rgba(255, 255, 255, 0.85);
+}
+.cv-edges text {
+  fill: #fff;
+  font: 13px system-ui, sans-serif;
+  text-anchor: middle;
+  paint-order: stroke;
+  stroke: rgba(0, 0, 0, 0.5);
+  stroke-width: 3px;
+}

@@ -289,6 +289,17 @@ export class Store {
         this.nodes.delete(c.id);
         for (const [id, e] of this.edges) if (e.fromNode === c.id || e.toNode === c.id) this.edges.delete(id);
         return;
+      case 'edge': {
+        const e = c.edge;
+        if (!this.nodes.has(e.fromNode) || !this.nodes.has(e.toNode)) return;
+        const clean: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(e)) if (v !== undefined) clean[k] = v;
+        this.edges.set(e.id, clean as unknown as CanvasEdge);
+        return;
+      }
+      case 'unedge':
+        this.edges.delete(c.id);
+        return;
       case 'set': {
         // A node deleted (maybe concurrently) stays deleted: never resurrect it through a set.
         const node = this.nodes.get(c.id);

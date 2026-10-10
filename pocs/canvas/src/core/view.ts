@@ -1,6 +1,6 @@
 import type { App } from './app';
 import { raise } from './commands';
-import type { CanvasNode } from './doc';
+import type { CanvasNode, DocView } from './doc';
 import { Menu } from './menu';
 import type { MenuEntry, ObjectType, RenderCtx } from './plugin';
 import { Viewport, wheelZoomFactor } from './viewport';
@@ -41,6 +41,8 @@ export class View {
   private contentKeys = new Map<string, string>();
   /** Box geometry last written per node: unchanged boxes get no style writes. */
   private boxKeys = new Map<string, string>();
+  private edgeLayer: SVGSVGElement | undefined;
+  private edgeKey = '';
   /** Nodes moving with the current drag (promoted to their own layers: moving them repaints nothing). */
   private moving: string[] = [];
   private marquee: HTMLElement;
@@ -164,12 +166,59 @@ export class View {
         else renderFallback(n, box);
       }
     });
+    this.renderEdges(doc, alive);
     for (const [id, box] of this.els) {
       if (!alive.has(id)) {
         box.remove();
         this.els.delete(id);
         this.contentKeys.delete(id);
         this.boxKeys.delete(id);
+      }
+    }
+  }
+
+  /** JSON Canvas edges between rendered nodes: straight lines box edge to box edge, arrow at `toEnd` (default arrow). */
+  private renderEdges(doc: DocView, alive: Set<string>) {
+    const shown = doc.edges.filter((e) => alive.has(e.fromNode) && alive.has(e.toNode));
+    const off = (id: string) => (this.localDrag?.ids.has(id) ? this.localDrag : undefined);
+    const boxOf = (id: string) => {
+      const n = doc.get(id)!;
+      const o = off(id);
+      return { x: n.x + (o?.dx ?? 0), y: n.y + (o?.dy ?? 0), w: n.width, h: n.height };
+    };
+    const lines = shown.map((e) => ({ e, a: boxOf(e.fromNode), b: boxOf(e.toNode) }));
+    const key = JSON.stringify(lines);
+    if (key === this.edgeKey) return;
+    this.edgeKey = key;
+    if (!this.edgeLayer) {
+      this.edgeLayer = document.createElementNS(SVG, 'svg');
+      this.edgeLayer.classList.add('cv-edges');
+      this.edgeLayer.innerHTML = `<defs><marker id="cv-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z"/></marker></defs><g></g>`;
+      this.world.prepend(this.edgeLayer);
+    }
+    const g = this.edgeLayer.querySelector('g')!;
+    g.replaceChildren();
+    for (const { e, a, b } of lines) {
+      const ca = { x: a.x + a.w / 2, y: a.y + a.h / 2 };
+      const cb = { x: b.x + b.w / 2, y: b.y + b.h / 2 };
+      const p = clipToBox(cb, ca, a);
+      const q = clipToBox(ca, cb, b);
+      const line = document.createElementNS(SVG, 'line');
+      line.setAttribute('x1', String(p.x));
+      line.setAttribute('y1', String(p.y));
+      line.setAttribute('x2', String(q.x));
+      line.setAttribute('y2', String(q.y));
+      if (e.color) line.style.stroke = e.color;
+      if ((e.toEnd ?? 'arrow') === 'arrow') line.setAttribute('marker-end', 'url(#cv-arrow)');
+      if (e.fromEnd === 'arrow') line.setAttribute('marker-start', 'url(#cv-arrow)');
+      line.dataset.edgeId = e.id;
+      g.append(line);
+      if (e.label) {
+        const t = document.createElementNS(SVG, 'text');
+        t.setAttribute('x', String((p.x + q.x) / 2));
+        t.setAttribute('y', String((p.y + q.y) / 2 - 6));
+        t.textContent = e.label;
+        g.append(t);
       }
     }
   }
@@ -728,6 +777,19 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string) {
   const e = document.createElement(tag);
   e.className = cls;
   return e;
+}
+
+const SVG = 'http://www.w3.org/2000/svg';
+
+/** Where the segment from `from` toward the center `to` of `box` crosses the box's border. */
+export function clipToBox(from: Pt, to: Pt, box: { x: number; y: number; w: number; h: number }): Pt {
+  const dx = from.x - to.x;
+  const dy = from.y - to.y;
+  if (!dx && !dy) return to;
+  const sx = dx ? box.w / 2 / Math.abs(dx) : Infinity;
+  const sy = dy ? box.h / 2 / Math.abs(dy) : Infinity;
+  const s = Math.min(1, sx, sy);
+  return { x: to.x + dx * s, y: to.y + dy * s };
 }
 
 function renderFallback(n: CanvasNode, box: HTMLElement) {
