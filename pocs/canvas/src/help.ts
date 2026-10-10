@@ -52,6 +52,17 @@ const GROUPS: [string, [string, string][]][] = [
     ],
   ],
   [
+    'Playing together',
+    [
+      ['Share', 'Copy this table into a new room and copy its link'],
+      ['Open the link', 'Join the room (your name is asked once)'],
+      ['', 'You see the others’ cursors and selections in their color'],
+      ['', 'A card someone is dragging can’t be grabbed until they let go'],
+      ['Undo', 'Only undoes your own moves'],
+      ['Leave', 'Back to your own table; the room stays on this device'],
+    ],
+  ],
+  [
     'Files',
     [
       ['⌘S / ⇧⌘S', 'Save / save as .canvas (JSON Canvas, opens in Obsidian)'],
