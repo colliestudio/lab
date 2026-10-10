@@ -14,6 +14,7 @@ export function registerChessLogic(store: Store) {
   store.addRiderRule(boardIdOf);
   store.duplicateRules.push(duplicatePiece);
   store.resets.push(commands.resetAll as Command);
+  store.repairs.push(commands.repair as Command);
   store.importFilters.push(repairImport);
   store.exportFilters.push(shapeExport);
 }

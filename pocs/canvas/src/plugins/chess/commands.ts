@@ -318,6 +318,70 @@ export const spawn: Command<{ piece: Kind; color: Color; x?: number; y?: number;
 };
 
 /**
+ * Repair (core `repairs`) after an undo/redo or a remote change: no two pieces share a square.
+ * After an undo/redo (`undo`), the pieces it touched (and the pieces of a board it touched) also
+ * stand on the square they say they are on (a partial undo can give a piece its square back but not
+ * its position, when another player moved the board or that piece since), and when one of them lands
+ * on a square another piece took in the meantime, the restored piece is set aside beside the board
+ * (owner's side). After a remote change
+ * (two players dropping on one square at once), every peer runs this: it depends on the doc only, the
+ * piece with the smallest id keeps the square and the other is captured (capturer's side). Positions
+ * of remote pieces are left alone: a piece being dragged is off its square until the drop.
+ */
+export const repair: Command<{ ids: string[]; undo?: boolean }> = (doc, a) => {
+  const nodes = pick(doc, a?.ids);
+  const touched = new Set(nodes.filter(isPiece).map((n) => n.id));
+  const undo = a.undo === true;
+  // a board an undo put back: its pieces' squares say where they belong
+  const snap = new Set(touched);
+  if (undo) for (const b of nodes.filter(isBoard)) for (const p of doc.riders(b.id)) if (isPiece(p)) snap.add(p.id);
+  if (!snap.size) return [];
+  const changes: Change[] = [];
+  const boards = new Set<string>();
+  for (const id of snap) {
+    const f = piece(doc.get(id)!);
+    if (f.board && f.square && isBoard(doc.get(f.board))) boards.add(f.board);
+  }
+  for (const bid of boards) {
+    const b = doc.get(bid)!;
+    const bySquare = new Map<string, CanvasNode[]>();
+    for (const p of doc.riders(bid)) {
+      if (!isPiece(p) || !piece(p).square) continue;
+      const l = bySquare.get(piece(p).square!) ?? [];
+      l.push(p);
+      bySquare.set(piece(p).square!, l);
+    }
+    const aside = new Set<string>();
+    const moving = new Set<string>();
+    const out: CanvasNode[] = [];
+    for (const [, l] of bySquare) {
+      if (l.length < 2 || !l.some((p) => snap.has(p.id))) continue;
+      const sorted = l.slice().sort((x, y) => (x.id < y.id ? -1 : 1));
+      // after an undo the piece that stayed keeps the square; else (or if all were restored) the smallest id
+      const keep = (undo && sorted.find((p) => !touched.has(p.id))) || sorted[0];
+      for (const p of sorted) {
+        if (p === keep) continue;
+        aside.add(p.id);
+        moving.add(p.id);
+        out.push(p);
+      }
+    }
+    const slot = slots(doc, b, moving);
+    for (const p of out) changes.push(...moveTo(p, { board: bid, ...slot(piece(p).color, undo ? 'owner' : 'capturer') }));
+    if (!undo) continue;
+    for (const id of snap) {
+      const p = doc.get(id)!;
+      const f = piece(p);
+      if (aside.has(id) || f.board !== bid || !f.square) continue;
+      // a nudged piece stands off-center on purpose: only snap one that is off its square
+      const c = center(p);
+      if (squareAt(b, c.x, c.y) !== f.square) changes.push(...moveTo(p, { board: bid, square: f.square, ...squarePos(b, f.square) }));
+    }
+  }
+  return changes;
+};
+
+/**
  * Duplicate rule (see core `registerDuplicateRule`): a piece copy keeps its board and set but no
  * square (it lies beside where it was copied from until dropped); boards aren't duplicated.
  */
@@ -328,4 +392,4 @@ export function duplicatePiece(node: CanvasNode): CanvasNode | null | undefined 
   return { ...node, text: pieceText(f), [FIELD]: f };
 }
 
-export const commands = { create, setup, flip, clear, lock, place, spawn, resetAll };
+export const commands = { create, setup, flip, clear, lock, place, spawn, resetAll, repair };
