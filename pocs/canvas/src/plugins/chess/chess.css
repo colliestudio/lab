@@ -47,7 +47,6 @@
 }
 .ch-files.ch-top {
   top: 0;
-  transform: rotate(180deg);
 }
 .ch-files.ch-bottom {
   bottom: 0;
@@ -63,6 +62,10 @@
 }
 .ch-ranks.ch-right {
   right: 0;
+}
+/* the far-side labels read the right way up for the player across the table */
+.ch-files.ch-top span,
+.ch-ranks.ch-right span {
   transform: rotate(180deg);
 }
 .ch-files span,
