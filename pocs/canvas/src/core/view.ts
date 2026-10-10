@@ -516,12 +516,11 @@ export class View {
     if (nodeEl && !store.selection.has(nodeEl.dataset.nodeId!)) store.select([nodeEl.dataset.nodeId!]);
     if (!nodeEl) store.select([]);
     const selected = this.app.selected();
-    const items = this.app.menu.filter((i) => i.when(this.app, selected));
-    const p = this.local(e);
-    this.openMenu(
-      items.map((i) => ({ label: i.label, hint: i.hint, run: () => i.run(this.app, this.app.selected()) })),
-      p,
-    );
+    const items = this.app.menu
+      .filter((i) => i.when(this.app, selected))
+      .map((i) => ({ label: i.label, hint: i.hint, run: () => i.run(this.app, this.app.selected()) }));
+    if (selected.length) items.push({ label: 'Delete', hint: '⌫', run: () => this.app.dispatch('core.delete', { ids: this.app.selected().map((n) => n.id) }) });
+    this.openMenu(items, this.local(e));
   }
 
   /** Show a menu at a table point, or anchored below an element (e.g. an object's tab). */

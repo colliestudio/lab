@@ -53,13 +53,14 @@ export function registerCoreCommands(store: Store) {
     return withRiders(doc, pick(doc, a.ids)).flatMap((n) => [set(n.id, 'x', Math.round(n.x + a.dx)), set(n.id, 'y', Math.round(n.y + a.dy))]);
   });
   store.register('core.front', (doc, a: { ids: string[] }) => toFront(doc, pick(doc, a?.ids)));
-  /** Deletes nodes and everything they contain. */
+  /** Deletes nodes, everything they contain and everything riding on them (a board's pieces). */
   store.register('core.delete', (doc, a: { ids: string[] }) => {
     const out = new Set<string>();
     const walk = (id: string) => {
       if (out.has(id)) return;
       out.add(id);
       for (const c of doc.children(id)) walk(c.id);
+      for (const r of doc.riders(id)) walk(r.id);
     };
     for (const n of pick(doc, a?.ids)) walk(n.id);
     return [...out].map((id): Change => ({ op: 'del', id }));
@@ -82,6 +83,13 @@ export function registerCoreCommands(store: Store) {
     }
     return { changes, select: ids.length ? ids : undefined };
   });
+  /** Every plugin puts its objects back in their starting state (kits stay; what they hold resets). */
+  store.register('core.reset', (doc, _a, ctx) =>
+    store.resets.flatMap((cmd) => {
+      const r = cmd(doc, {}, ctx);
+      return Array.isArray(r) ? r : r.changes;
+    }),
+  );
   store.register('core.add', (doc, a: { nodes: CanvasNode[] }) => {
     if (!Array.isArray(a?.nodes)) return [];
     return a.nodes

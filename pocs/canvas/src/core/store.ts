@@ -71,6 +71,8 @@ export class Store {
   readonly exportFilters: DocFilter[] = [];
   /** How `core.duplicate` copies plugin objects (see DuplicateRule). */
   readonly duplicateRules: DuplicateRule[] = [];
+  /** Per-plugin "back to the starting state" commands, run together by `core.reset` (one undo step). */
+  readonly resets: Command[] = [];
   /** Commands that upgrade older docs in place; run (not undoable) after every load. Must be idempotent. */
   readonly migrations: Command[] = [];
   selection: ReadonlySet<string> = new Set();

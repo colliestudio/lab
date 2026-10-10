@@ -69,6 +69,10 @@ async function doOpen() {
 button('New table', ROOM ? 'Clear the table and deal a fresh deck (for everyone in the room)' : 'Clear the table and deal a fresh deck', () => {
   if (confirm(ROOM ? 'Start a new table for everyone in this room?' : 'Start a new table? Unsaved changes are lost.')) newTable();
 });
+button('Reset', 'Put everything back to its starting state (keeps what is on the table)', () => {
+  if (confirm(ROOM ? 'Reset the table for everyone in this room? (Undo brings it back)' : 'Reset the table to its starting state? (Undo brings it back)'))
+    app.dispatch('core.reset', {});
+});
 const addBtn = button('Add…', 'Put something on the table: a deck of cards, a chess set…', () =>
   app.view.openMenu(
     app.kits.map((k) => ({ label: k.label, run: () => k.create(app, app.viewCenter()) })),

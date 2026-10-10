@@ -71,6 +71,10 @@ export class App {
   registerDuplicateRule(rule: DuplicateRule) {
     this.store.duplicateRules.push(rule);
   }
+  /** A command that puts this plugin's objects back in their starting state (Reset table). */
+  registerReset(cmd: Command) {
+    this.store.resets.push(cmd);
+  }
   registerKit(kit: Kit) {
     this.kits.push(kit);
   }
