@@ -28,7 +28,7 @@ export const repairImport: DocFilter = (doc, ctx) => {
       if (!entries.length) continue;
       out.push(deckNode(n.id, n.x, n.y, undefined, pack));
       entries.forEach((c, i) =>
-        out.push(cardNode(ctx.newId(), n.x, n.y, { face: c.face, faceUp: c.faceUp === true, stack: n.id, order: i + 1 }, undefined, pack)),
+        out.push(cardNode(ctx.newId(), n.x, n.y, { face: c.face, faceUp: c.faceUp === true, stack: n.id, order: i + 1, home: n.id }, undefined, pack)),
       );
       continue;
     }
@@ -42,16 +42,18 @@ export const repairImport: DocFilter = (doc, ctx) => {
         c.stack = f.stack;
         c.order = typeof f.order === 'number' && Number.isFinite(f.order) ? f.order : 0;
       }
+      if (typeof f.home === 'string') c.home = f.home;
       out.push({ ...n, text: n.text ?? label(f.face), [FIELD]: c });
       continue;
     }
     out.push(strip(n));
   }
-  // unhook cards whose deck is missing; drop decks without cards
+  // unhook cards whose deck is missing; drop decks that hold no cards and are nobody's home
   const decks = new Set(out.filter((n) => obj(n[FIELD]) && (n[FIELD] as any).deck === true).map((n) => n.id));
   const used = new Set<string>();
   for (const n of out) {
     const f = n[FIELD] as CardField | undefined;
+    if (f?.home && decks.has(f.home)) used.add(f.home);
     if (!f?.stack) continue;
     if (decks.has(f.stack)) used.add(f.stack);
     else {

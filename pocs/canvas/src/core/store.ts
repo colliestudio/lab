@@ -68,6 +68,8 @@ export class Store {
   private parentRules: ParentOf[] = [];
   readonly importFilters: DocFilter[] = [];
   readonly exportFilters: DocFilter[] = [];
+  /** Commands that upgrade older docs in place; run (not undoable) after every load. Must be idempotent. */
+  readonly migrations: Command[] = [];
   selection: ReadonlySet<string> = new Set();
   private commands = new Map<string, Command>();
   private listeners = new Set<() => void>();
@@ -204,9 +206,18 @@ export class Store {
       for (const e of d.edges) this.edges.set(e.id, e);
       for (const [k, v] of Object.entries(d.extra ?? {})) this.meta.set(k, v);
     }, LOAD);
+    this.migrate();
     this.undoManager.clear();
     this.selection = new Set();
     this.emit();
+  }
+
+  /** Run migrations on the current doc (after loading from a file or local storage). */
+  migrate() {
+    for (const m of this.migrations) {
+      const r = m(this.doc, {}, this.ctx);
+      this.apply(Array.isArray(r) ? r : r.changes, LOAD);
+    }
   }
 
   /** Start a new undo step: the next dispatches with `merge: true` join it. */

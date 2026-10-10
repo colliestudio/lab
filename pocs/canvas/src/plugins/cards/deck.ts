@@ -26,6 +26,8 @@ export interface CardField {
   faceUp: boolean;
   stack?: string;
   order?: number;
+  /** The deck this card belongs to: "gather all" on that deck pulls it back from anywhere. */
+  home?: string;
 }
 /** A deck node's `x-cards` field. Its cards are the card nodes pointing at it. */
 export interface DeckField {
@@ -78,10 +80,41 @@ export function cardsIn(doc: DocView, deckId: string): CanvasNode[] {
   return list;
 }
 
+const homeCache = new WeakMap<DocView, Map<string, CanvasNode[]>>();
+/** Cards whose home is `deckId`, wherever they are, in z order. */
+export function cardsHomedAt(doc: DocView, deckId: string): CanvasNode[] {
+  let m = homeCache.get(doc);
+  if (!m) {
+    m = new Map();
+    for (const n of doc.nodes) {
+      const h = isCard(n) ? card(n).home : undefined;
+      if (!h) continue;
+      let l = m.get(h);
+      if (!l) m.set(h, (l = []));
+      l.push(n);
+    }
+    homeCache.set(doc, m);
+  }
+  return m.get(deckId) ?? [];
+}
+
+/** Home deck id if that deck still exists. */
+export function liveHome(doc: DocView, c: CanvasNode): string | undefined {
+  const h = card(c).home;
+  return h && isDeck(doc.get(h)) ? h : undefined;
+}
+
+/** Facing of a deck = its top card's; an empty deck counts as face down. */
+export function deckFacing(doc: DocView, deckId: string): boolean {
+  const top = cardsIn(doc, deckId).at(-1);
+  return top ? card(top).faceUp : false;
+}
+
 export function cardNode(id: string, x: number, y: number, c: Omit<CardField, 'pack'>, z?: number, pack = PACK): CanvasNode {
   const f: CardField = { pack, face: c.face, faceUp: c.faceUp };
   if (c.stack !== undefined) f.stack = c.stack;
   if (c.order !== undefined) f.order = c.order;
+  if (c.home !== undefined) f.home = c.home;
   return { id, type: 'text', x, y, width: CARD_W, height: CARD_H, text: label(c.face), z, [FIELD]: f };
 }
 

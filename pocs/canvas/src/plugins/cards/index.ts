@@ -1,6 +1,6 @@
 import './cards.css';
 import type { App, CanvasNode, Command, Plugin, Store } from '../../core';
-import { commands } from './commands';
+import { commands, outCount } from './commands';
 import { CARD_W, card, cardsIn, deckIdOf, isCard, isCardish, isDeck } from './deck';
 import { repairImport, shapeExport } from './io';
 import { cardHtml, deckHtml } from './render';
@@ -20,6 +20,7 @@ export function registerCardsLogic(store: Store) {
   store.addParentRule(deckIdOf);
   store.importFilters.push(repairImport);
   store.exportFilters.push(shapeExport);
+  store.migrations.push(commands.migrateHomes as Command);
 }
 
 export const cardsPlugin: Plugin = {
@@ -76,6 +77,10 @@ export const cardsPlugin: Plugin = {
       const d = lastDeck(a);
       if (d) a.dispatch('cards.spread', { id: d.id, step: Math.round(CARD_W / 4) });
     };
+    const recallDeck = (a: App) => {
+      const d = targetDeck(a);
+      if (d) a.dispatch('cards.recall', { id: d.id });
+    };
     const gatherSel = (faceUp?: boolean) => (a: App) => a.dispatch('cards.gather', { ids: ids(selectedCards(a)), faceUp });
 
     app.registerKey({ key: 'f', label: 'Flip', run: flipSel });
@@ -83,6 +88,7 @@ export const cardsPlugin: Plugin = {
     app.registerKey({ key: 'd', label: 'Draw face up', run: drawSel(true) });
     app.registerKey({ key: 'shift+d', label: 'Draw face down', run: drawSel(false) });
     app.registerKey({ key: 'g', label: 'Gather into a deck', run: gatherSel() });
+    app.registerKey({ key: 'shift+g', label: "Gather all of a deck's cards", run: recallDeck });
     app.registerKey({ key: 'e', label: 'Spread deck', run: spreadSel });
     const dealN = (count: number, faceUp: boolean) => (a: App) => {
       const d = targetDeck(a);
@@ -105,6 +111,19 @@ export const cardsPlugin: Plugin = {
     app.registerMenuItem({ label: 'Deal 5 face down', hint: '⇧5', when: hasDeck, run: dealN(5, false) });
     app.registerMenuItem({ label: 'Spread out', hint: 'E', when: hasDeck, run: spreadSel });
     app.registerMenuItem({ label: 'Gather into deck', hint: 'G', when: several, run: gatherSel() });
+    // label shows how many are out; built when the menu opens
+    app.registerMenuItem({
+      get label() {
+        const d = lastDeck(app);
+        return `Gather all cards (${d ? outCount(app.doc, d.id) : 0} out)`;
+      },
+      hint: '⇧G',
+      when: (a, sel) => sel.filter(isCardish).length === 1 && hasDeck(a, sel),
+      run: (a) => {
+        const d = lastDeck(a);
+        if (d) a.dispatch('cards.recall', { id: d.id });
+      },
+    });
     app.registerMenuItem({ label: 'Gather face down', when: several, run: gatherSel(false) });
   },
 };

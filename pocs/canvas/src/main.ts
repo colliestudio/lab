@@ -18,12 +18,13 @@ Drop a card squarely onto a card or deck to stack it (it lights up)
 Drag a deck to take its top card • drag its ⠿ tab (or Alt+drag) to move the deck
 Deck: S shuffle • D draw (⇧D face down) • 1–9 deal N face up (⇧ face down) • E spread
 Number keys and D act on the deck under the mouse, else the selected one
-G gather selection into a deck • right-click for more
+G gather selection into a deck • ⇧G gather all of a deck's cards back (from anywhere)
+Cards entering a deck take its facing (new deck, gather all: face down) • right-click: more
 ⌘Z undo • ⇧⌘Z redo • ⌘S save .canvas • ⌘O open`;
 
 function newTable() {
   resetFileHandle();
-  const help: CanvasNode = { id: 'help', type: 'text', x: -40, y: -450, width: 640, height: 310, text: HELP, z: 1 };
+  const help: CanvasNode = { id: 'help', type: 'text', x: -40, y: -480, width: 640, height: 340, text: HELP, z: 1 };
   app.store.load({ nodes: [help], edges: [] });
   app.dispatch('cards.setup', { x: 0, y: 0 });
   app.store.undoManager.clear();

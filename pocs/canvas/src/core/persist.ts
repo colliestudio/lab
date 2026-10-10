@@ -8,6 +8,7 @@ import type { App } from './app';
 export async function persistLocally(app: App, name: string): Promise<{ empty: boolean }> {
   const p = new IndexeddbPersistence(name, app.store.ydoc);
   await p.whenSynced;
+  app.store.migrate();
   app.store.undoManager.clear();
   return { empty: app.store.nodes.size === 0 };
 }

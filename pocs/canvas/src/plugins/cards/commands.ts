@@ -1,5 +1,5 @@
 import { isIds, isNum, pick, set, toFront, type CanvasNode, type Change, type Command, type DocView } from '../../core';
-import { CARD_H, CARD_W, FIELD, card, cardNode, cardsIn, deckNode, isCard, isCardish, isDeck, packOf, standardDeck } from './deck';
+import { CARD_H, CARD_W, FIELD, card, cardNode, cardsHomedAt, cardsIn, deckFacing, deckNode, isCard, isCardish, isDeck, liveHome, packOf, standardDeck } from './deck';
 
 // Pure commands: (read-only doc, args, ctx) -> per-field changes. No DOM. Bad args = no-op.
 // Cards live as separate nodes; "in a deck" = `x-cards.stack` points at the deck. Moving a card
@@ -32,6 +32,15 @@ const stackInto = (c: CanvasNode, deck: CanvasNode, order: number): Change[] => 
   set(c.id, F('order'), order),
   set(c.id, 'x', deck.x),
   set(c.id, 'y', deck.y),
+];
+
+/** A deck that just lost its last card: removed, unless it is still home to some card (then it stays as an empty slot). */
+const emptied = (doc: DocView, deck: CanvasNode): Change[] => (cardsHomedAt(doc, deck.id).length ? [] : [{ op: 'del', id: deck.id }]);
+
+/** Card entering a deck: take the deck's facing; homeless cards (none, or home deleted) adopt this deck. */
+const conform = (doc: DocView, c: CanvasNode, deckId: string, faceUp: boolean): Change[] => [
+  ...(card(c).faceUp !== faceUp ? [set(c.id, F('faceUp'), faceUp)] : []),
+  ...(liveHome(doc, c) || (card(c).home === deckId) ? [] : [set(c.id, F('home'), deckId)]),
 ];
 
 const topOrder = (doc: DocView, deckId: string) => {
@@ -72,7 +81,7 @@ export const draw: Command<{ id: string; faceUp?: boolean; x?: number; y?: numbe
   if (!deck || !isDeck(deck)) return [];
   const cards = cardsIn(doc, deck.id);
   const top = cards[cards.length - 1];
-  if (!top) return [{ op: 'del', id: deck.id }];
+  if (!top) return [];
   const y = isNum(a.y) ? a.y : deck.y;
   let x = isNum(a.x) ? a.x : undefined;
   if (x === undefined) {
@@ -82,7 +91,7 @@ export const draw: Command<{ id: string; faceUp?: boolean; x?: number; y?: numbe
   const changes = release(top, Math.round(x), Math.round(y), doc.topZ + 1);
   if (isBool(a.faceUp)) changes.push(set(top.id, F('faceUp'), a.faceUp));
   const deckLeft = cards.length > 1;
-  if (!deckLeft) changes.push({ op: 'del', id: deck.id });
+  if (!deckLeft) changes.push(...emptied(doc, deck));
   return { changes, select: a.select === 'deck' && deckLeft ? [deck.id] : [top.id] };
 };
 
@@ -106,11 +115,11 @@ export const deal: Command<{ id: string; count: number; faceUp?: boolean }> = (d
   const mid = (n - 1) / 2;
   const dealt = cards.slice(-n).reverse(); // top card first, leftmost
   const changes = dealt.flatMap((c, i) => [
-    ...release(c, x0 + i * step, deck.y + Math.round(Math.abs(i - mid) ** 2 * 1.5), doc.topZ + 1 + i),
+    ...release(c, x0 + i * step, deck.y + Math.round(((i - mid) / Math.max(mid, 1)) ** 2 * Math.min(24, n * 3)), doc.topZ + 1 + i),
     ...(card(c).faceUp !== faceUp ? [set(c.id, F('faceUp'), faceUp)] : []),
   ]);
   const deckLeft = cards.length > n;
-  if (!deckLeft) changes.push({ op: 'del', id: deck.id });
+  if (!deckLeft) changes.push(...emptied(doc, deck));
   return { changes, select: deckLeft ? [deck.id] : dealt.map((c) => c.id) };
 };
 
@@ -127,30 +136,86 @@ export const gather: Command<{ ids: string[]; faceUp?: boolean }> = (doc, a, ctx
   const total = nodes.reduce((k, n) => k + (isDeck(n) ? cardsIn(doc, n.id).length : 1), 0);
   if (nodes.length < 2 || total < 2) return [];
 
+  // Facing of the result: explicit arg, else an existing deck's (its top card), else face down.
   const anchor = nodes[0];
   const changes: Change[] = [];
   let deck: CanvasNode;
   let order: number;
+  let faceUp: boolean;
   if (isDeck(anchor)) {
     deck = anchor;
     order = topOrder(doc, deck.id);
+    faceUp = isBool(a.faceUp) ? a.faceUp : deckFacing(doc, deck.id);
     changes.push(...toFront(doc, [deck]));
   } else {
     deck = deckNode(ctx.newId(), anchor.x, anchor.y, doc.topZ + 1, packOf(anchor));
     order = 0;
+    faceUp = isBool(a.faceUp) ? a.faceUp : false;
     changes.push({ op: 'add', node: deck });
   }
-  const orient = (c: CanvasNode) => (isBool(a.faceUp) && card(c).faceUp !== a.faceUp ? [set(c.id, F('faceUp'), a.faceUp)] : []);
   for (const n of nodes) {
     if (n.id === deck.id) {
-      for (const c of cardsIn(doc, n.id)) changes.push(...orient(c));
+      for (const c of cardsIn(doc, n.id)) changes.push(...conform(doc, c, deck.id, faceUp));
       continue;
     }
     const cards = isDeck(n) ? cardsIn(doc, n.id) : [n];
-    for (const c of cards) changes.push(...stackInto(c, deck, ++order), ...orient(c));
-    if (isDeck(n)) changes.push({ op: 'del', id: n.id });
+    for (const c of cards) changes.push(...stackInto(c, deck, ++order), ...conform(doc, c, deck.id, faceUp));
+    // a merged-away deck that is some card's home stays as an empty slot
+    if (isDeck(n)) changes.push(...emptied(doc, n));
   }
   return { changes, select: [deck.id] };
+};
+
+/**
+ * Gather all: every card whose home is this deck, wherever it is (table, other decks), goes back on
+ * top, face down, in table order. Cards already inside are turned face down too. Decks left empty
+ * by this are removed unless they are a home themselves.
+ */
+export const recall: Command<{ id: string }> = (doc, a) => {
+  const deck = typeof a?.id === 'string' ? doc.get(a.id) : undefined;
+  if (!deck || !isDeck(deck)) return [];
+  const homed = cardsHomedAt(doc, deck.id);
+  const out = homed.filter((c) => doc.parentOf(c.id) !== deck.id);
+  const changes: Change[] = [];
+  for (const c of cardsIn(doc, deck.id)) if (card(c).faceUp) changes.push(set(c.id, F('faceUp'), false));
+  let order = topOrder(doc, deck.id);
+  const drained = new Map<string, number>();
+  for (const c of out) {
+    const from = doc.parentOf(c.id);
+    if (from) drained.set(from, (drained.get(from) ?? 0) + 1);
+    changes.push(...stackInto(c, deck, ++order));
+    if (card(c).faceUp) changes.push(set(c.id, F('faceUp'), false));
+  }
+  for (const [from, k] of drained) {
+    const other = doc.get(from)!;
+    if (isDeck(other) && cardsIn(doc, from).length === k) changes.push(...emptied(doc, other));
+  }
+  changes.push(...toFront(doc, [deck]));
+  return { changes, select: [deck.id] };
+};
+
+/** How many of a deck's own cards are elsewhere. */
+export const outCount = (doc: DocView, deckId: string) => cardsHomedAt(doc, deckId).filter((c) => doc.parentOf(c.id) !== deckId).length;
+
+/**
+ * Migration for docs from before `home`: a card in a deck gets that deck; a loose card gets the
+ * only deck of its pack if there is exactly one. Idempotent.
+ */
+export const migrateHomes: Command<Record<string, never>> = (doc) => {
+  const decksByPack = new Map<string, string[]>();
+  for (const d of doc.nodes.filter(isDeck)) {
+    const l = decksByPack.get(packOf(d)) ?? [];
+    l.push(d.id);
+    decksByPack.set(packOf(d), l);
+  }
+  const changes: Change[] = [];
+  for (const c of doc.nodes) {
+    if (!isCard(c) || card(c).home) continue;
+    const decks = decksByPack.get(packOf(c)) ?? [];
+    const home = doc.parentOf(c.id) ?? (decks.length === 1 ? decks[0] : undefined);
+    if (home) changes.push(set(c.id, F('home'), home));
+  }
+  return changes;
 };
 
 /** Something was dropped onto `target`: stack it there if both sides are cards/decks. */
@@ -170,8 +235,10 @@ export const spread: Command<{ id: string; step?: number }> = (doc, a) => {
   if (!deck || !isDeck(deck)) return [];
   const step = isNum(a.step) ? a.step : 30;
   const cards = cardsIn(doc, deck.id);
-  const changes = cards.flatMap((c, i) => release(c, deck.x + i * step, deck.y, doc.topZ + 1 + i));
-  changes.push({ op: 'del', id: deck.id });
+  const stays = emptied(doc, deck).length === 0; // home deck: leave the empty slot, spread beside it
+  const x0 = stays ? deck.x + CARD_W + 24 : deck.x;
+  const changes = cards.flatMap((c, i) => release(c, x0 + i * step, deck.y, doc.topZ + 1 + i));
+  if (!stays) changes.push({ op: 'del', id: deck.id });
   return { changes, select: cards.map((c) => c.id) };
 };
 
@@ -191,20 +258,20 @@ export const setup: Command<{ x?: number; y?: number }> = (doc, a, ctx) => {
   const deck = deckNode(ctx.newId(), ox, oy, ++z);
   changes.push({ op: 'add', node: deck });
   rest.forEach((face, i) => {
-    changes.push({ op: 'add', node: cardNode(ctx.newId(), ox, oy, { face, faceUp: false, stack: deck.id, order: i + 1 }, ++z) });
+    changes.push({ op: 'add', node: cardNode(ctx.newId(), ox, oy, { face, faceUp: false, stack: deck.id, order: i + 1, home: deck.id }, ++z) });
   });
   spades.forEach((face, i) => {
     const x = ox + 200 + i * 62;
     const y = oy - 30 + Math.round(Math.sin((i / (spades.length - 1)) * Math.PI) * -70);
-    changes.push({ op: 'add', node: cardNode(ctx.newId(), x, y, { face, faceUp: true }, ++z) });
+    changes.push({ op: 'add', node: cardNode(ctx.newId(), x, y, { face, faceUp: true, home: deck.id }, ++z) });
   });
   mystery.forEach((face, i) => {
     changes.push({
       op: 'add',
-      node: cardNode(ctx.newId(), ox + 340 + i * (CARD_W + 40), oy + CARD_H + 60, { face, faceUp: false }, ++z),
+      node: cardNode(ctx.newId(), ox + 340 + i * (CARD_W + 40), oy + CARD_H + 60, { face, faceUp: false, home: deck.id }, ++z),
     });
   });
   return changes;
 };
 
-export const commands = { flip, move, shuffle, draw, deal, gather, drop, spread, setup };
+export const commands = { flip, move, shuffle, draw, deal, gather, recall, drop, spread, setup, migrateHomes };

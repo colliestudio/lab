@@ -64,7 +64,7 @@ describe('cards commands', () => {
     expect([...faces(a)].sort()).toEqual(standardDeck().slice(0, 13).sort());
   });
 
-  it('draw takes the top card into a free slot; the last draw removes the deck', () => {
+  it('draw takes the top card into a free slot; an emptied home deck stays as a slot', () => {
     const s = withDeck(2);
     const r = s.dispatch('cards.draw', { id: 'd', faceUp: true, select: 'deck' });
     expect(r.select).toEqual(['d']);
@@ -73,8 +73,10 @@ describe('cards commands', () => {
     expect(card(c1)).toMatchObject({ face: '2S', faceUp: true });
     expect(c1.x).toBeGreaterThan(0);
     s.dispatch('cards.draw', { id: 'd' });
-    expect(s.doc.get('d')).toBeUndefined();
-    const xs = s.doc.visible.map((n) => n.x);
+    expect(cardsIn(s.doc, 'd')).toHaveLength(0);
+    expect(s.doc.get('d')).toBeDefined(); // still home to its cards
+    expect(s.dispatch('cards.draw', { id: 'd' }).changes).toEqual([]); // empty: nothing to draw
+    const xs = s.doc.visible.filter((n) => n.id !== 'd').map((n) => n.x);
     expect(new Set(xs).size).toBe(2); // second draw went to the next slot
     expect(s.dispatch('cards.draw', { id: 'c0' }).changes).toEqual([]); // a card isn't a deck
   });
@@ -101,25 +103,31 @@ describe('cards commands', () => {
     expect(s.dispatch('cards.deal', { id: 'd', count: 0 }).changes).toEqual([]);
     expect(s.dispatch('cards.deal', { id: 'd', count: 'x' }).changes).toEqual([]);
     const r = s.dispatch('cards.deal', { id: 'd', count: 9 });
-    expect(s.doc.get('d')).toBeUndefined();
+    expect(cardsIn(s.doc, 'd')).toHaveLength(0);
     expect(r.select).toHaveLength(2);
   });
 
-  it('drawing at the deck position (deck drag) keeps orientation and removes a 1-card deck', () => {
+  it('drawing at the deck position (deck drag) keeps orientation; a non-home deck goes when empty', () => {
     const s = withDeck(1);
     const r = s.dispatch('cards.draw', { id: 'd', x: 0, y: 0 });
     expect(r.select).toEqual(['c0']);
     expect(card(s.doc.get('c0')!).faceUp).toBe(false);
     expect([s.doc.get('c0')!.x, s.doc.get('c0')!.y]).toEqual([0, 0]);
-    expect(s.doc.get('d')).toBeUndefined();
+    expect(s.doc.get('d')).toBeDefined(); // home deck stays
+    // a deck that is nobody's home disappears with its last card
+    const t = store();
+    t.load({ nodes: [deckNode('d', 0, 0, 1), deckNode('p', 300, 0, 2), cardNode('c', 300, 0, { face: 'AS', faceUp: false, stack: 'p', order: 1, home: 'd' }, 3)], edges: [] });
+    t.dispatch('cards.draw', { id: 'p' });
+    expect(t.doc.get('p')).toBeUndefined();
+    expect(t.doc.get('d')).toBeDefined();
   });
 
   it('gather stacks cards and decks at the first node, first on the bottom', () => {
     const s = withDeck(2, cardNode('a', 10, 20, { face: 'KH', faceUp: true }, 50), cardNode('b', 50, 50, { face: 'QH', faceUp: false }, 51));
     const r = s.dispatch('cards.gather', { ids: ['b', 'd', 'a'] });
     const deck = r.select![0];
-    expect(s.doc.get('d')).toBeUndefined();
-    expect(s.doc.visible.map((n) => n.id)).toEqual([deck]);
+    expect(cardsIn(s.doc, 'd')).toHaveLength(0); // merged away, stays as its cards' home
+    expect(s.doc.visible.map((n) => n.id).sort()).toEqual(['d', deck].sort());
     expect([s.doc.get(deck)!.x, s.doc.get(deck)!.y]).toEqual([50, 50]);
     expect(faces(s, deck)).toEqual(['QH', 'AS', '2S', 'KH']);
   });
@@ -134,9 +142,9 @@ describe('cards commands', () => {
   it('spread lays a deck out as cards', () => {
     const s = withDeck(4);
     const r = s.dispatch('cards.spread', { id: 'd' });
-    expect(s.doc.get('d')).toBeUndefined();
+    expect(cardsIn(s.doc, 'd')).toHaveLength(0);
     expect(r.select).toHaveLength(4);
-    expect(s.doc.visible.map((n) => n.x)).toEqual([0, 30, 60, 90]);
+    expect(s.doc.visible.filter((n) => n.id !== 'd').map((n) => n.x)).toEqual([144, 174, 204, 234]);
   });
 
   it('delete removes a deck with its cards; undo brings them back', () => {
@@ -145,6 +153,93 @@ describe('cards commands', () => {
     expect(s.doc.nodes).toHaveLength(0);
     s.undo();
     expect(faces(s)).toEqual(['AS', '2S', '3S']);
+  });
+});
+
+describe('home decks, gather all, uniform facing', () => {
+  const homeOf = (s: Store, id: string) => card(s.doc.get(id)!).home;
+
+  it('setup gives every card the deck as home', () => {
+    const s = store();
+    s.dispatch('cards.setup', {});
+    const deck = s.doc.nodes.find(isDeck)!.id;
+    expect(s.doc.nodes.filter(isCard).every((c) => card(c).home === deck)).toBe(true);
+  });
+
+  it('recall pulls loose cards and cards from another deck back, face down, one undo step', () => {
+    const s = withDeck(6);
+    s.dispatch('cards.deal', { id: 'd', count: 4 }); // 6S..3S out face up
+    s.dispatch('cards.gather', { ids: ['c5', 'c4'] }); // two of them into a new pile
+    const pile = s.doc.parentOf('c5')!;
+    expect(homeOf(s, 'c5')).toBe('d'); // gathering elsewhere keeps the home
+    const r = s.dispatch('cards.recall', { id: 'd' });
+    expect(r.select).toEqual(['d']);
+    expect(cardsIn(s.doc, 'd')).toHaveLength(6);
+    expect(cardsIn(s.doc, 'd').every((c) => !card(c).faceUp)).toBe(true);
+    expect(s.doc.get(pile)).toBeUndefined(); // emptied pile (nobody's home) is gone
+    expect(s.doc.visible.map((n) => n.id)).toEqual(['d']);
+    s.undo();
+    expect(cardsIn(s.doc, 'd')).toHaveLength(2);
+    expect(s.doc.get(pile)).toBeDefined();
+  });
+
+  it('a merged deck keeps both homes; each recall pulls its own', () => {
+    const s = withDeck(3, deckNode('e', 500, 0, 40), cardNode('k1', 500, 0, { face: 'KH', faceUp: false, stack: 'e', order: 1 }, 41), cardNode('k2', 500, 0, { face: 'KD', faceUp: false, stack: 'e', order: 2 }, 42));
+    s.dispatch('cards.drop', { target: 'd', ids: ['e'] });
+    expect(cardsIn(s.doc, 'd')).toHaveLength(5);
+    expect(homeOf(s, 'k1')).toBe('e');
+    s.dispatch('cards.recall', { id: 'e' });
+    expect(faces(s, 'e')).toEqual(['KH', 'KD']);
+    expect(faces(s)).toEqual(['AS', '2S', '3S']);
+  });
+
+  it('cards whose home was deleted adopt the deck they are gathered into', () => {
+    const s = withDeck(2, deckNode('e', 500, 0, 40), cardNode('k1', 500, 0, { face: 'KH', faceUp: false, stack: 'e', order: 1 }, 41));
+    s.dispatch('cards.spread', { id: 'e' }); // e stays as an empty home slot
+    s.dispatch('core.delete', { ids: ['e'] });
+    expect(s.dispatch('cards.recall', { id: 'e' }).changes).toEqual([]);
+    s.dispatch('cards.drop', { target: 'd', ids: ['k1'] });
+    expect(homeOf(s, 'k1')).toBe('d');
+  });
+
+  it('everything entering a deck takes its facing: gather, drop, recall; new deck = face down', () => {
+    const up = (c: string) => card(s.doc.get(c)!).faceUp;
+    const s = withDeck(2, cardNode('u1', 300, 0, { face: 'KH', faceUp: true }, 50), cardNode('u2', 500, 0, { face: 'QH', faceUp: true }, 51), cardNode('u3', 700, 0, { face: 'JH', faceUp: false }, 52));
+    // drop a face-up card on a face-down deck
+    s.dispatch('cards.drop', { target: 'd', ids: ['u1'] });
+    expect(up('u1')).toBe(false);
+    // flip the deck (all face up), then G-gather a face-down card into it
+    s.dispatch('cards.flip', { ids: ['d'] });
+    s.dispatch('cards.gather', { ids: ['d', 'u3'] });
+    expect(cardsIn(s.doc, 'd').every((c) => card(c).faceUp)).toBe(true);
+    // two face-up loose cards make a new face-down deck
+    s.dispatch('cards.spread', { id: 'd' });
+    const r = s.dispatch('cards.drop', { target: 'u2', ids: ['u1'] });
+    expect(cardsIn(s.doc, r.select![0]).map((c) => card(c).faceUp)).toEqual([false, false]);
+    // recall: face down, even if the deck was face up
+    s.dispatch('cards.recall', { id: 'd' });
+    expect(cardsIn(s.doc, 'd').length).toBeGreaterThan(0);
+    expect(cardsIn(s.doc, 'd').every((c) => !card(c).faceUp)).toBe(true);
+  });
+
+  it('migration: deck cards get their deck, loose cards the only deck of their pack', () => {
+    const t = store();
+    const legacy = { pack: 'standard-52', face: 'AS', faceUp: true };
+    t.load({
+      nodes: [
+        deckNode('d', 0, 0, 1),
+        { ...cardNode('in', 0, 0, { face: '2S', faceUp: false, stack: 'd', order: 1 }, 2) },
+        { id: 'loose', type: 'text', x: 0, y: 0, width: 1, height: 1, [FIELD]: legacy },
+      ],
+      edges: [],
+    });
+    expect(homeOf(t, 'in')).toBe('d');
+    expect(homeOf(t, 'loose')).toBe('d');
+    // two decks: a loose card's home is ambiguous, left unset
+    const u = store();
+    u.load({ nodes: [deckNode('d', 0, 0, 1), deckNode('e', 0, 0, 2), cardNode('x', 0, 0, { face: '2S', faceUp: false, stack: 'e', order: 1 }, 3), cardNode('y', 0, 0, { face: '3S', faceUp: false, stack: 'd', order: 1 }, 4), { id: 'l', type: 'text', x: 0, y: 0, width: 1, height: 1, [FIELD]: legacy }], edges: [] });
+    expect(homeOf(u, 'l')).toBeUndefined();
+    expect(homeOf(u, 'x')).toBe('e');
   });
 });
 
@@ -230,6 +325,22 @@ describe('concurrent edits (two Y.Docs)', () => {
     sync(a.ydoc, b.ydoc);
     expect(a.ydoc.getMap('nodes').toJSON()).toEqual(b.ydoc.getMap('nodes').toJSON());
     expect(allFaces(a)).toEqual(standardDeck().sort());
+  });
+
+  it('recall on one peer and draws on the other converge without duplicates', () => {
+    const { a, b, deck } = pair();
+    b.dispatch('cards.deal', { id: deck, count: 3 });
+    sync(a.ydoc, b.ydoc);
+    a.dispatch('cards.recall', { id: deck });
+    b.dispatch('cards.draw', { id: deck, faceUp: true });
+    b.dispatch('cards.deal', { id: deck, count: 2 });
+    sync(a.ydoc, b.ydoc);
+    expect(a.ydoc.getMap('nodes').toJSON()).toEqual(b.ydoc.getMap('nodes').toJSON());
+    expect(allFaces(a)).toEqual(standardDeck().sort());
+    // every card is either in the deck or on the table, exactly once
+    const inDeck = cardsIn(a.doc, deck).length;
+    const loose = a.doc.visible.filter(isCard).length;
+    expect(inDeck + loose).toBe(52);
   });
 
   it('undo only reverts local changes', () => {
