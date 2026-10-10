@@ -1,11 +1,11 @@
 import './cards.css';
 import './standard';
 import { loadPlayer, type App, type CanvasNode, type Command, type DocView, type MenuEntry, type Plugin, type Store } from '../../core';
-import { DROP_ADD, SORT_MODES, commands, dropMode, incomingCount, kindOf, outCount, sortPrefOf, type DropMode, type Kind, type SortMode } from './commands';
-import { CARD_W, FIELD, PACK, allowsShowing, areaOf, capacityOf, card, pileAt, hasFixedFrame, cardsIn, concealedFrom, deckFacing, deckIdOf, handOf, hiddenFrom, hidesCount, homeFor, isBlind, isCard, isCardish, isDeck, isHand, isHomeDeck, isShown, isSpot, isSpreadOut, isStacked, layoutOf, packOf, roomIn, shownIn, type Layout } from './deck';
+import { DROP_ADD, PUT_DOWN_STEP, SORT_MODES, commands, dropMode, incomingCount, kindOf, outCount, sortPrefOf, type DealSeat, type DropMode, type Kind, type SortMode } from './commands';
+import { CARD_H, CARD_W, FIELD, PACK, allowsShowing, areaOf, capacityOf, card, enterOf, pileAt, hasFixedFrame, cardsIn, concealedFrom, deckFacing, deckIdOf, handOf, hiddenFrom, hidesCount, homeFor, isBlind, isCard, isCardish, isDeck, isHand, isHomeDeck, isShown, isSpot, isSpreadOut, isStacked, layoutOf, packOf, roomIn, shownIn, type Layout } from './deck';
 import { mountHandUx, VIEW_AS_KEY, type HandUx } from './handUx';
 import { repairImport, shapeExport } from './io';
-import { cardLayouts, laneOf, liftedDrop, rowTop, slots, thresholdY } from './layout';
+import { cardLayouts, handSlotIndex, laneOf, liftedDrop, rowTop, slotIndex, slots, thresholdY } from './layout';
 import { getPack } from './packs';
 import { cardHtml, deckHtml, groupHtml, handHtml } from './render';
 
@@ -204,7 +204,61 @@ const tabNotes: TabNote[] = [];
 export const registerTabNote = (t: TabNote) => void tabNotes.push(t);
 const tabNote = (box: CanvasNode, doc: DocView) => tabNotes.map((t) => t(box, doc)).filter(Boolean).map((s) => ` · ${s}`).join('');
 
-/** Deal ▸ 1, 2, 3, 5, 7, N… from deck `id` (or a game's own deal). */
+// ---- Deal ▸ To players: who gets cards (this screen's choice; default: everyone here, solo: 2 seats)
+const SOLO_SEAT: Seat = { id: 'solo-player-2', name: 'Player 2', color: '#4363d8' };
+/** Seat ids this screen ticked on / off in Deal ▸ To players ▸ Players (overrides the default). */
+const dealPicks = new Map<string, boolean>();
+/** Who could be dealt to, each with whether they are now: in a room, the players here; solo, me and one other seat. */
+export function dealCandidates(app: App): { seat: Seat; on: boolean }[] {
+  const all = seats(app);
+  const myId = me(app).id;
+  if (!app.presence && !all.some((p) => p.id !== myId)) all.push(SOLO_SEAT);
+  const firstOther = all.find((p) => p.id !== myId)?.id;
+  const byDefault = (p: Seat) => (app.presence ? !p.away : p.id === myId || p.id === firstOther);
+  return all.map((seat) => ({ seat, on: dealPicks.get(seat.id) ?? byDefault(seat) }));
+}
+const dealSeatsOf = (app: App): DealSeat[] => dealCandidates(app).filter((c) => c.on).map(({ seat: p }) => ({ id: p.id, label: handLabelOf(p.name), color: p.color }));
+
+/** Deal ▸ To players ▸ 1 each … 13 each, all evenly, N each; Players ▸ (ticks). */
+function dealToPlayersMenu(app: App, id: string): MenuEntry {
+  const n = cardsIn(app.doc, id).length;
+  const go = (count: number | 'even') => () => app.dispatch('cards.dealHands', { id, count, players: dealSeatsOf(app) });
+  return {
+    label: 'To players',
+    separator: true,
+    items: () => {
+      const who = dealSeatsOf(app);
+      const p = who.length;
+      const none = p ? false : 'Tick at least one player';
+      const names = dealCandidates(app)
+        .filter((c) => c.on)
+        .map((c) => c.seat.name)
+        .join(', ');
+      return [
+        {
+          label: `Players: ${names || 'none'}`,
+          items: () =>
+            dealCandidates(app).map(({ seat, on }) => ({
+              label: `${seat.name}${seat.id === me(app).id ? ' (you)' : ''}${seat.away ? ' (left)' : ''}`,
+              color: seat.color,
+              muted: seat.away,
+              checked: on,
+              run: () => void dealPicks.set(seat.id, !on),
+            })),
+        },
+        ...Array.from({ length: 13 }, (_, i): MenuEntry => {
+          const k = i + 1;
+          return { label: `${k} each`, separator: k === 1, run: go(k), disabled: none || (k * p > n ? `Needs ${k * p}, ${n} in the deck` : false) };
+        }),
+        { label: `All, evenly${p ? ` (${Math.floor(n / p)} each)` : ''}`, separator: true, run: go('even'), disabled: none || (p > n ? `Only ${n} in the deck` : false) },
+        { label: 'Each', number: { value: Math.max(1, Math.min(7, Math.floor(n / Math.max(1, p)))), min: 1, max: 52, action: 'Deal', run: (k) => go(k)() } },
+        { label: 'Into each player’s hand (a new one where they have none), private, round-robin from the top', disabled: true },
+      ];
+    },
+  };
+}
+
+/** Deal ▸ 1, 2, 3, 5, 7, N…, To players ▸ from deck `id` (or a game's own deal). */
 function dealMenu(app: App, id: string): MenuEntry {
   const own = dealOverride(app, id);
   if (own) return own.entry;
@@ -217,6 +271,7 @@ function dealMenu(app: App, id: string): MenuEntry {
       ...[1, 2, 3, 5, 7].map((k): MenuEntry => ({ label: `Deal ${k}`, hint: String(k), run: deal(k), disabled: k > n ? `Only ${n} in the deck` : false })),
       { label: 'Deal', separator: true, number: { value: Math.min(4, n), min: 1, max: Math.max(1, n), action: 'Deal', run: (k) => deal(k)() } },
       { label: 'Turned over: ⌥1–9', disabled: true },
+      dealToPlayersMenu(app, id),
     ],
   };
 }
@@ -381,17 +436,91 @@ export const cardsPlugin: Plugin = {
         return !box ? 'Add' : isSpot(box) && box.label ? `Add to ${box.label}` : isHomeDeck(box) ? 'Add to deck' : isStacked(box) ? 'Add to pile' : isHand(box) ? 'Add to hand' : 'Add to group';
       },
     };
+    /** The container a drop on `t` goes into: `t` itself, or the one the card `t` is shown in. */
+    const hostOf = (t: CanvasNode): CanvasNode | undefined => (isDeck(t) ? t : app.node(app.doc.parentOf(t.id) ?? ''));
+    const fromHand = (nodes: CanvasNode[]) => nodes.some((n) => isCard(n) && !!handOf(app.doc, n));
+    /**
+     * A play: cards leaving a hand for anywhere but a hand land face up (playing implies face up), ⌥ =
+     * face down. A zone's facing on entry still wins (the drop command leaves those alone). Undefined = not a play.
+     */
+    const playFacing = (t: CanvasNode | undefined, nodes: CanvasNode[]) => {
+      if (!fromHand(nodes)) return undefined;
+      const box = t && hostOf(t);
+      if (box && isHand(box)) return undefined;
+      return !app.view.altKey;
+    };
+    /** The last table spot (a mat zone, a discard) I played hand cards to on this screen: P plays there again. */
+    let lastPlayed: string | undefined;
+    const notePlayed = (t: CanvasNode | undefined) => {
+      const box = t && hostOf(t);
+      if (box && isSpot(box) && !isHand(box)) lastPlayed = box.id;
+    };
+    /** A drop label for a play: "Add to Trick" → "Play to Trick", plus "· face down" when they'd land face down. */
+    const playLabel = (label: string, t: CanvasNode, dropped: CanvasNode[]) => {
+      if (playFacing(t, dropped) === undefined) return label;
+      const enter = (() => {
+        const box = hostOf(t);
+        return box ? enterOf(box) : undefined;
+      })();
+      const up = enter ? enter === 'up' : !app.view.altKey;
+      const base = label.startsWith('Add to ') && !['Add to deck', 'Add to pile', 'Add to group'].includes(label) ? `Play to ${label.slice(7)}` : label;
+      return up ? base : `${base} · face down`;
+    };
+    /** Cards in the order of the container they're in (hand order), else as given. */
+    const inOrder = (ids: string[]) => {
+      const pos = (id: string) => {
+        const p = app.doc.parentOf(id);
+        return p ? cardsIn(app.doc, p).findIndex((c) => c.id === id) : 0;
+      };
+      return ids.slice().sort((a, b) => pos(a) - pos(b));
+    };
+
+    // ---- insertion marker: where a drop into a hand, row or fan would go
+    const marker = document.createElement('div');
+    marker.className = 'pc-insert';
+    const dragOver = (t: CanvasNode, dropped: CanvasNode[], a: App, at: { x: number; y: number } | undefined) => {
+      const box = at && hostOf(t);
+      const layout = box && layoutOf(box);
+      if (!at || !box || (layout !== 'fan' && layout !== 'row')) return void marker.remove();
+      const moving = new Set(dropped.flatMap((n) => (isDeck(n) ? cardsIn(a.doc, n.id) : [n])).map((c) => c.id));
+      const staying = cardsIn(a.doc, box.id).filter((c) => !moving.has(c.id));
+      let part = staying;
+      let k: number;
+      let top: number;
+      if (isHand(box)) {
+        const lead = dropped.find(isCard);
+        const own = !!lead && a.doc.parentOf(lead.id) === box.id;
+        const db = lead && (a.view.dragBox(lead.id) ?? lead);
+        const toStrip = allowsShowing(box) && (own ? !!db && liftedDrop(box, db.y) : !!lead && card(lead).faceUp);
+        part = staying.filter((c) => shownIn(box, c) === toStrip);
+        k = handSlotIndex(box, part.length, at.x);
+        top = toStrip ? box.y + 14 : box.y + rowTop(box);
+      } else {
+        k = slotIndex(box, staying.length, at);
+        top = box.y + 14;
+      }
+      const ref = part[k] ?? part.at(-1);
+      const x = !ref ? box.x + 10 : part[k] ? ref.x - 6 : ref.x + CARD_W + 2;
+      const y = ref ? ref.y : top;
+      marker.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
+      marker.style.height = `${CARD_H}px`;
+      if (marker.parentElement !== a.view.world) a.view.world.append(marker);
+    };
+
     /** A drag of one card from my own hand back into it (a rearrange, or a drag up / down to show / hide). */
     const ownMove = (t: CanvasNode, dropped: CanvasNode[], app: App) =>
       dropped.length === 1 && isHand(t) && t.owner === app.viewer && app.doc.parentOf(dropped[0].id) === t.id ? t : undefined;
     const canDrop = (t: CanvasNode, dropped: CanvasNode[], app: App, overlap: number) => {
       // a table spot (a formation, a mat's zone) is never dropped into anything: it stays a spot
       if (!dropped.some(isCardish) || dropped.some(isSpot)) return false;
+      // the pointer is over a table spot (a mat zone): it goes there, however little the card overlaps it
+      const spot = hostOf(t);
+      if (spot && isSpot(spot) && !isHand(spot) && overlap > 0) overlap = Math.max(overlap, DROP_ADD);
       const route = overlap >= DROP_ADD ? routeFor(t, dropped, app) : undefined;
       if (route) {
         const box = app.node(route.to);
         if (!box || incomingCount(app.doc, box, dropped) > roomIn(app.doc, box)) return false;
-        if (route.label) return route.label;
+        if (route.label) return playLabel(route.label, t, dropped);
       }
       const mode = dropMode(app.doc, t, overlap);
       if (!mode) return false;
@@ -404,20 +533,24 @@ export const cardsPlugin: Plugin = {
         const was = shownIn(h, app.node(dropped[0].id)!);
         return liftedDrop(h, dropped[0].y) ? (was ? 'Shown to table' : 'Show to table') : was ? 'Hide from table' : 'Rearrange';
       }
-      return LABEL[mode](t, app);
+      return playLabel(LABEL[mode](t, app), t, dropped);
     };
     const onDrop = (target: CanvasNode, dropped: string[], app: App, at: { x: number; y: number }, mode?: string) => {
       const nodes = dropped.map((id) => app.node(id)).filter((n): n is CanvasNode => !!n);
       const route = routeFor(target, nodes, app);
+      const faceUp = playFacing(target, nodes);
+      const ids = inOrder(dropped);
       if (route && route.to !== target.id && route.to !== app.doc.parentOf(target.id)) {
-        app.dispatch('cards.drop', { target: route.to, ids: dropped });
+        app.dispatch('cards.drop', { target: route.to, ids, faceUp });
         route.after?.();
         return;
       }
       const h = ownMove(target, nodes, app);
       const box = h && (app.view.dragBox(nodes[0].id) ?? nodes[0]);
       const shown = h && box && allowsShowing(h) ? liftedDrop(h, box.y) : undefined;
-      app.dispatch('cards.drop', { target: target.id, ids: dropped, at, as: mode === 'Stack' ? 'stack' : mode === 'Fan' ? 'fan' : undefined, shown });
+      const as = mode === 'Stack' ? 'stack' : mode === 'Fan' ? 'fan' : undefined;
+      const r = app.dispatch('cards.drop', { target: target.id, ids, at, as, shown, faceUp });
+      if (faceUp !== undefined && r.changes.length) notePlayed(target);
       route?.after?.();
     };
     const flipOne = (node: CanvasNode, app: App) => {
@@ -429,7 +562,7 @@ export const cardsPlugin: Plugin = {
     const look = (node: CanvasNode, { doc, viewer }: { doc: typeof app.doc; viewer: string }) => {
       const h = handOf(doc, node);
       const up = h ? !hiddenFrom(doc, node, viewer, ux.asOthers()) : card(node).faceUp;
-      return { up, shown: !!h && shownIn(h, node), color: h ? showColor(h) : '', inHand: !!h };
+      return { up, shown: !!h && shownIn(h, node), color: h ? showColor(h) : '', inHand: !!h, mine: !!h && h.owner === viewer };
     };
     /** Briefly outline a card that just landed on the table, so you notice it's not in a hand. */
     const flashLanded = (id: string) =>
@@ -486,10 +619,11 @@ export const cardsPlugin: Plugin = {
           el.style.setProperty('--pc-owner', l.color);
         } else el.style.removeProperty('--pc-owner');
         el.toggleAttribute('data-inhand', l.inHand);
+        el.toggleAttribute('data-mine', l.mine);
       },
       renderKey(node, ctx) {
         const l = look(node, ctx);
-        return `${card(node).face}:${l.up}:${l.shown}:${l.color}:${l.inHand}`;
+        return `${card(node).face}:${l.up}:${l.shown}:${l.color}:${l.inHand}:${l.mine}`;
       },
       concealed: (node, { doc, viewer }) => concealedFrom(doc, node, viewer, ux.asOthers()),
       onDoubleClick: flipOne,
@@ -498,10 +632,22 @@ export const cardsPlugin: Plugin = {
       onLocalDrag(node, phase) {
         homeBox(node)?.classList.toggle('pc-drag-home', phase === 'start');
       },
-      onLocalDrop(node, at, app) {
-        app.dispatch('cards.pullOut', { id: node.id, x: at.x, y: at.y });
-        flashLanded(node.id);
+      // dropped beside every container: a play onto the table (several cards: overlapping, in hand order)
+      onLocalDrop(node, at, app, dragged) {
+        const ids = inOrder(dragged.length ? dragged : [node.id]);
+        const i = Math.max(0, ids.indexOf(node.id));
+        app.dispatch('cards.putDown', { ids, x: at.x - i * PUT_DOWN_STEP, y: at.y, faceUp: playFacing(undefined, ids.map((id) => app.node(id)!).filter(Boolean)) });
+        for (const id of ids) flashLanded(id);
       },
+      // Shift-click in the same hand or group as the last clicked card: the run between them
+      selectRun(anchor, node, app) {
+        const p = app.doc.parentOf(node.id);
+        if (!p || app.doc.parentOf(anchor.id) !== p) return;
+        const cs = cardsIn(app.doc, p);
+        const [i, j] = [cs.findIndex((c) => c.id === anchor.id), cs.findIndex((c) => c.id === node.id)];
+        return cs.slice(Math.min(i, j), Math.max(i, j) + 1).filter((c) => !app.isConcealed(c)).map((c) => c.id);
+      },
+      dragOver,
       // over a card in a hand, the drop goes to the hand (the frame lights up "Add to hand")
       dropProxy: (node, app) => handOf(app.doc, node)?.id,
       // a card shown in a group: dragging pulls it out (dropping it back reorders)
@@ -591,6 +737,7 @@ export const cardsPlugin: Plugin = {
       },
       canDrop,
       onDrop,
+      dragOver,
     });
 
     const flipSel = (a: App) => {
@@ -652,6 +799,50 @@ export const cardsPlugin: Plugin = {
       app.registerKey({ key: `alt+${k}`, label: `Deal ${k} flipped`, run: dealN(k, true) });
     }
 
+    // ←/→ (⇧: to the end): move the selected cards within their hand or group
+    const reorderable = (a: App) => {
+      const sel = a.selected();
+      const p = sel[0] && a.doc.parentOf(sel[0].id);
+      const box = p ? a.node(p) : undefined;
+      if (!box || !isSpreadOut(box) || !sel.every((n) => isCard(n) && a.doc.parentOf(n.id) === p) || handLock(a, box)) return undefined;
+      return sel;
+    };
+    const moveKey = (key: string, args: { by?: number; to?: 'start' | 'end' }) =>
+      app.registerKey({ key, label: 'Move within the hand', when: (a) => !!reorderable(a), run: (a) => a.dispatch('cards.reorder', { ids: ids(reorderable(a)!), ...args }) });
+    moveKey('arrowleft', { by: -1 });
+    moveKey('arrowright', { by: 1 });
+    moveKey('shift+arrowleft', { to: 'start' });
+    moveKey('shift+arrowright', { to: 'end' });
+
+    // P (⇧P face down): play the selected cards of my hand to the zone under the pointer, else the last one played to
+    const playable = (a: App) => inOrder(ids(selectedCards(a).filter((n) => isCard(n) && !!handOf(a.doc, n) && !handLock(a, n))));
+    const spots = (a: App) =>
+      a.doc.nodes
+        .filter((n) => isSpot(n) && !isHand(n))
+        .sort((p, q) => (p.id === lastPlayed ? -1 : q.id === lastPlayed ? 1 : p.y - q.y || p.x - q.x));
+    const playTo = (a: App, target: CanvasNode, cardIds: string[], faceUp: boolean) => {
+      const r = a.dispatch('cards.drop', { target: target.id, ids: cardIds, faceUp });
+      if (!r.changes.length) return a.notify(`${kindName(target)} can’t take ${cardIds.length > 1 ? 'them' : 'it'}`);
+      lastPlayed = target.id;
+    };
+    const playSel = (faceDown: boolean) => (a: App) => {
+      const cs = playable(a);
+      if (!cs.length) return a.notify('Select cards in your hand first (click, ⇧click a run, ⌘click more)');
+      const h = a.view.hovered ? a.node(a.view.hovered) : undefined;
+      const under = h && hostOf(h);
+      const target = under && isSpot(under) && !isHand(under) ? under : lastPlayed ? a.node(lastPlayed) : undefined;
+      if (!target) return a.notify('Point at a zone, then P (after that P plays to the same zone)');
+      playTo(a, target, cs, !faceDown);
+    };
+    app.registerKey({ key: 'p', label: 'Play selected', run: playSel(false) });
+    app.registerKey({ key: 'shift+p', label: 'Play selected face down', run: playSel(true) });
+    const playMenu = (a: App, faceDown: boolean): MenuEntry => ({
+      label: faceDown ? 'Play face down to' : 'Play to',
+      hint: faceDown ? '⇧P' : 'P',
+      disabled: spots(a).length ? false : 'No zone or spot on the table (Add… › Mat)',
+      items: () => spots(a).map((t) => ({ label: `${kindName(t)}${t.id === lastPlayed ? ' (last)' : ''}`, run: () => playTo(a, t, playable(a), !faceDown) })),
+    });
+
     app.registerMenu((a, sel) => {
       // empty table
       if (!sel.length) {
@@ -674,6 +865,7 @@ export const cardsPlugin: Plugin = {
       const entries: MenuEntry[] = [];
       if (handCards.length < cards.length) entries.push(facingMenu(a, () => ids(selectedCards(a).filter((n) => !inHand(n)))));
       if (handCards.length) entries.push(...showEntries(a, handCards));
+      if (playable(a).length) entries.push({ ...playMenu(a, false), separator: true }, playMenu(a, true));
       if (cards.length > 1) {
         const make = (layout?: 'stack', faceUp?: boolean) => () => a.dispatch('cards.gather', { ids: ids(selectedCards(a)), layout, faceUp });
         entries.push({

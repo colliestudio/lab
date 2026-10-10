@@ -266,6 +266,7 @@ export const matsPlugin: Plugin = {
       },
       canDrop: (target, dropped, a, ov) => (isEditing(target) || isFreeZone(target) ? false : (deck.canDrop?.(target, dropped, a, ov) ?? false)),
       onDrop: (target, ids, a, at, mode) => deck.onDrop?.(target, ids, a, at, mode),
+      dragOver: (target, dropped, a, at) => deck.dragOver?.(target, dropped, a, at),
     };
     app.types.unshift(zoneType);
 
