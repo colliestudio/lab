@@ -307,22 +307,44 @@ describe('chess commands', () => {
     expect(s.doc.riders(b).every((p) => !piece(p).square)).toBe(true);
   });
 
-  it('duplicate copies pieces offset, keeping board and set but not the square; boards refuse', () => {
+  it('duplicate: a piece alone keeps board and set but not the square; with its board it keeps its square on the copy', () => {
     const { s, b } = withSet();
     const k = at(s, b, 'e1')!;
-    const r = s.dispatch('core.duplicate', { ids: [k.id, b] });
+    const r = s.dispatch('core.duplicate', { ids: [k.id] });
     expect(r.select).toHaveLength(1);
     const c = s.doc.get(r.select![0])!;
     expect(piece(c)).toEqual({ piece: 'K', color: 'w', board: b, home: b });
     expect([c.x, c.y]).toEqual([k.x + 24, k.y + 24]);
     expect(at(s, b, 'e1')!.id).toBe(k.id);
-    expect(s.doc.nodes.filter(isBoard)).toHaveLength(1);
     // dropping the copy snaps it like any piece
     drag(s, c.id, sqCenter(s, b, 'e4'));
     expect(piece(s.doc.get(c.id)!).square).toBe('e4');
     // delete removes pieces
     s.dispatch('core.delete', { ids: [c.id] });
     expect(s.doc.get(c.id)).toBeUndefined();
+
+    // ⌘D of the whole set (board + pieces): a second set, every piece on its square of the new board
+    s.dispatch('chess.setup', { id: b });
+    const all = s.doc.nodes.map((n) => n.id);
+    const before = s.doc.nodes.length;
+    const r2 = s.dispatch('core.duplicate', { ids: all });
+    expect(r2.select).toHaveLength(33);
+    const b2 = s.doc.nodes.filter(isBoard).find((n) => n.id !== b)!;
+    expect([b2.x, b2.y]).toEqual([s.doc.get(b)!.x + 24, s.doc.get(b)!.y + 24]);
+    expect(board(b2).from).toBeUndefined();
+    expect(s.doc.riders(b2.id)).toHaveLength(32);
+    for (const [k2, c2, sq] of START) {
+      const p = at(s, b2.id, sq)!;
+      expect(label(p)).toBe(c2 + k2);
+      expect({ x: p.x, y: p.y }).toEqual(squarePos(b2, sq));
+      expect(piece(p).home).toBe(b2.id);
+    }
+    expect(s.doc.riders(b)).toHaveLength(32);
+    s.undo(); // one step
+    expect(s.doc.nodes).toHaveLength(before);
+    // a board alone copies as an empty board (Set up pieces fills it)
+    const r3 = s.dispatch('core.duplicate', { ids: [b] });
+    expect(s.doc.riders(r3.select![0])).toHaveLength(0);
   });
 
   it('deleting a board deletes its riding pieces in one undo step', () => {

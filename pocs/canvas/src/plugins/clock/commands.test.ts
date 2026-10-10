@@ -3,6 +3,7 @@ import * as Y from 'yjs';
 import { Store, parse, serialize, type CommandCtx } from '../../core';
 import { registerCoreCommands } from '../../core/commands';
 import { parseControl, registerClockLogic } from './index';
+import { clockHtml } from './render';
 import { FIELD, clock, fmt, remaining, type ClockField } from './model';
 
 function ctx(prefix = 'id'): CommandCtx {
@@ -92,6 +93,20 @@ describe('clock time math', () => {
     expect(c(t).left0).toBe(5 * MIN);
   });
 
+  it('undoing a table reset leaves a reset clock reset (no running clock with a stale start time)', () => {
+    const s = withClock();
+    s.dispatch('clock.create', { x: 400, y: 0 });
+    tap(s, 1, 0);
+    tap(s, 0, 2000);
+    s.dispatch('clock.rotate', { id: 'id2' });
+    s.dispatch('core.reset', {}); // only clocks to reset: not an undo step at all
+    s.undo(); // undoes the rotate; the clocks stay as reset
+    expect(clock(s.doc.get('id2')!).rot).toBeUndefined();
+    expect(c(s).run).toBeUndefined();
+    expect(c(s).since).toBeUndefined();
+    expect(c(s).left0).toBe(5 * MIN);
+  });
+
   it('concurrent taps on two peers converge to one state', () => {
     const a = withClock();
     const b = store(new Y.Doc(), 'p');
@@ -178,6 +193,33 @@ describe('clock time math', () => {
     t.load(parse(serialize(s.exportDoc())));
     expect(clock(t.doc.get('id1')!).rot).toBe(90);
     expect(t.doc.get('id1')!.height).toBeGreaterThan(t.doc.get('id1')!.width);
+  });
+
+  it('text stays upright at every rotation; the far-facing top half is an option for tall clocks', () => {
+    const s = withClock();
+    const away = () => {
+      const html = clockHtml(c(s), 0);
+      return [0, 1].filter((side) => new RegExp(`data-action="tap${side}"[^>]*><span class="ck-face ck-away"`).test(html));
+    };
+    for (let i = 0; i < 4; i++) {
+      s.dispatch('clock.rotate', { id: 'id1' });
+      expect(away()).toEqual([]);
+    }
+    s.dispatch('clock.rotate', { id: 'id1' }); // 90: side 0 on top
+    s.dispatch('clock.facing', { id: 'id1', on: true });
+    expect(away()).toEqual([0]);
+    s.dispatch('clock.rotate', { id: 'id1' }); // 180: wide, nothing turned
+    expect(away()).toEqual([]);
+    s.dispatch('clock.rotate', { id: 'id1' }); // 270: side 1 on top
+    expect(away()).toEqual([1]);
+    const t = store();
+    t.load(parse(serialize(s.exportDoc())));
+    expect(clock(t.doc.get('id1')!).facing).toBe(true);
+    s.undo();
+    s.undo();
+    s.undo(); // the facing option was its own step
+    expect(c(s).facing).toBeUndefined();
+    expect(s.dispatch('clock.facing', { id: 'id1', on: 'yes' }).changes).toEqual([]);
   });
 
   it('log: start, pause, resume, flag fall (by nobody), reset, time control; plain taps are not logged', () => {

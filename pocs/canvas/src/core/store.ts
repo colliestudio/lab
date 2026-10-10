@@ -16,6 +16,11 @@ export interface CommandResult {
   select?: string[];
   /** What to log (see log.ts). Appended after the changes, never an undo step of its own. */
   events?: Events;
+  /**
+   * Changes that go with this command but stay when it is undone (time: a game clock that a table
+   * reset put back must not come back running with a stale start time). Applied first, not undoable.
+   */
+  untracked?: Change[];
 }
 
 /**
@@ -48,6 +53,8 @@ const LOAD = Symbol('load');
 const UNDOABLE_NOT = Symbol('not-undoable');
 /** Origin of log appends (not tracked by undo: the log is outside the undo scope anyway). */
 const LOG = Symbol('log');
+/** Origin of repairs after an undo/redo or a remote change (see `repairs`): not undoable, never repaired again. */
+const REPAIR = Symbol('repair');
 /** Undo stack item meta: the public texts / targets of the events logged in that step. */
 const STEP_EVENTS = 'events';
 type StepEvent = { text: string; targets?: string[] };
@@ -90,6 +97,16 @@ export class Store {
   readonly duplicateRules: DuplicateRule[] = [];
   /** Per-plugin "back to the starting state" commands, run together by `core.reset` (one undo step). */
   readonly resets: Command[] = [];
+  /**
+   * Per-plugin fixes for states no command makes but a merge can: an undo/redo that could only
+   * partly restore its step (Yjs never overwrites what another player, or a not-undoable command,
+   * changed since: a piece gets its square back but stays where the other player moved the board),
+   * or two players' concurrent changes (two pieces dropped on one square). Run after every undo/redo
+   * and remote change with the ids of the nodes it touched; changes apply not undoable. `undo` says
+   * which: after a remote change every peer runs them, so they must depend on the doc only
+   * (deterministic, idempotent) and leave alone what another player is in the middle of (a drag).
+   */
+  readonly repairs: Command<{ ids: string[]; undo: boolean }>[] = [];
   /** Commands that upgrade older docs in place; run (not undoable) after every load. Must be idempotent. */
   readonly migrations: Command[] = [];
   selection: ReadonlySet<string> = new Set();
@@ -99,6 +116,8 @@ export class Store {
   /** Plain copies of nodes, kept until that node changes (a drag rewrites one node, not all of them). */
   private json = new Map<string, CanvasNode>();
   private mergeAll = false;
+  /** Ids of the nodes the current transaction touched (for `repairs`). */
+  private touched = new Set<string>();
 
   ctx: CommandCtx;
 
@@ -117,12 +136,19 @@ export class Store {
     // observers run before afterTransaction: drop the plain copies of nodes that changed
     this.nodes.observeDeep((events) => {
       for (const e of events) {
-        if (e.target === this.nodes) for (const id of e.changes.keys.keys()) this.json.delete(id);
-        else this.json.delete(e.path[0] as string);
+        const ids = e.target === this.nodes ? [...e.changes.keys.keys()] : [e.path[0] as string];
+        for (const id of ids) {
+          this.json.delete(id);
+          this.touched.add(id);
+        }
       }
     });
-    this.ydoc.on('afterTransaction', () => {
+    this.ydoc.on('afterTransaction', (tr: Y.Transaction) => {
       this.view = null;
+      const ids = [...this.touched];
+      this.touched.clear();
+      // a remote change: every peer repairs (a transaction made here runs right after this one)
+      if (ids.length && !tr.local) this.apply(this.repair(ids, false), REPAIR);
       this.pruneSelection();
       this.emit();
     });
@@ -196,6 +222,7 @@ export class Store {
     }
     const merge = !!opts.merge || this.mergeAll;
     const top = this.undoManager.undoStack.at(-1);
+    if (res.untracked?.length) this.apply(res.untracked, UNDOABLE_NOT);
     if (opts.undoable === false) this.apply(res.changes, UNDOABLE_NOT);
     else {
       if (!merge) this.undoManager.stopCapturing();
@@ -307,6 +334,35 @@ export class Store {
     this.emit();
   }
 
+  /** The changes `repairs` want for nodes `ids` (against the current doc). */
+  private repair(ids: string[], undo: boolean): Change[] {
+    return this.repairs.flatMap((cmd) => {
+      try {
+        const r = cmd(this.doc, { ids, undo }, this.ctx);
+        return Array.isArray(r) ? r : r.changes;
+      } catch (e) {
+        console.warn(`repair: ${(e as Error).message}`);
+        return [];
+      }
+    });
+  }
+
+  /** Ids of the nodes a transaction (still open) changed so far. */
+  private changedIds(tr: Y.Transaction): string[] {
+    const ids = new Set<string>();
+    for (const [type, keys] of tr.changed) {
+      if (type === (this.nodes as unknown)) {
+        for (const k of keys) if (k !== null) ids.add(k);
+        continue;
+      }
+      // a node's own map, or a plugin namespace map inside it: walk up to the node
+      let t: Y.AbstractType<unknown> | null = type as Y.AbstractType<unknown>;
+      while (t && t._item && t._item.parent !== this.nodes) t = t._item.parent as Y.AbstractType<unknown>;
+      if (t?._item?.parentSub) ids.add(t._item.parentSub);
+    }
+    return [...ids];
+  }
+
   /** Run migrations on the current doc (after loading from a file or local storage). */
   migrate() {
     for (const m of this.migrations) {
@@ -344,8 +400,27 @@ export class Store {
     const um = this.undoManager;
     const [from, to] = kind === 'undo' ? [um.undoStack, um.redoStack] : [um.redoStack, um.undoStack];
     const events = from.at(-1)?.meta.get(STEP_EVENTS) as StepEvent[] | undefined;
-    if (!(kind === 'undo' ? um.undo() : um.redo())) return;
-    if (!events?.length) return;
+    let done = false;
+    // The undo and its repairs in one transaction: one update for the other players (they never see
+    // the half-restored state and repair it their own way) and one step on the redo (undo) stack.
+    try {
+      this.ydoc.transact((tr) => {
+        done = !!(kind === 'undo' ? um.undo() : um.redo());
+        if (!done) return;
+        // the undo manager files this transaction when it ends: as the undo (redo) of the step it just popped
+        um.undoing = kind === 'undo';
+        um.redoing = kind === 'redo';
+        if (!this.repairs.length) return;
+        const ids = this.changedIds(tr);
+        for (const id of ids) this.json.delete(id);
+        this.view = null; // read the restored state
+        for (const c of this.repair(ids, true)) this.applyOne(c);
+      }, um);
+    } finally {
+      um.undoing = false;
+      um.redoing = false;
+    }
+    if (!done || !events?.length) return;
     to.at(-1)?.meta.set(STEP_EVENTS, events);
     const targets = [...new Set(events.flatMap((e) => e.targets ?? []))];
     this.appendLog([{ type: `core.${kind}`, text: `${kind === 'undo' ? 'undid' : 'redid'}: ${events.map((e) => e.text).join('; ')}`, targets }]);

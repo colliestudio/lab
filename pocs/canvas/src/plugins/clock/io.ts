@@ -27,6 +27,7 @@ export const repairImport: DocFilter = (doc) => ({
       c.inc1 = f.inc1 as number;
     }
     if (isRot(f.rot)) c.rot = f.rot;
+    if (f.facing === true) c.facing = true;
     if (isSide(f.run)) c.run = f.run;
     if (c.run !== undefined && num(f.since, 0, Number.MAX_SAFE_INTEGER)) c.since = f.since as number;
     if (f.paused === true) c.paused = true;

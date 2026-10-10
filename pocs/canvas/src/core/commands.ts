@@ -84,24 +84,38 @@ export function registerCoreCommands(store: Store) {
     const changes: Change[] = [];
     const ids: string[] = [];
     let z = doc.topZ;
-    for (const n of pick(doc, a?.ids)) {
-      if (doc.parentOf(n.id)) continue;
+    const nodes = pick(doc, a?.ids).filter((n) => !doc.parentOf(n.id));
+    const copying = new Set(nodes.map((n) => n.id));
+    const copyIds = new Map<string, string>();
+    const copyOf = (id: string) => {
+      if (!copying.has(id)) return undefined;
+      let c = copyIds.get(id);
+      if (!c) copyIds.set(id, (c = ctx.newId()));
+      return c;
+    };
+    for (const n of nodes) {
       let copy: CanvasNode | null | undefined;
-      for (const rule of store.duplicateRules) if ((copy = rule(n, doc)) !== undefined) break;
+      for (const rule of store.duplicateRules) if ((copy = rule(n, doc, copyOf)) !== undefined) break;
       if (copy === null) continue;
-      const id = ctx.newId();
+      const id = copyOf(n.id)!;
       ids.push(id);
       changes.push({ op: 'add', node: { ...structuredClone(copy ?? n), id, x: Math.round(n.x + dx), y: Math.round(n.y + dy), z: ++z } });
     }
     return { changes, select: ids.length ? ids : undefined };
   });
-  /** Every plugin puts its objects back in their starting state (kits stay; what they hold resets). */
+  /** Every plugin puts its objects back in their starting state (kits stay; what they hold resets). A reset's `untracked` part stays when it is undone. */
   store.register('core.reset', (doc, _a, ctx) => {
-    const changes = store.resets.flatMap((cmd) => {
+    const changes: Change[] = [];
+    const untracked: Change[] = [];
+    for (const cmd of store.resets) {
       const r = cmd(doc, {}, ctx);
-      return Array.isArray(r) ? r : r.changes;
-    });
-    return { changes, events: changes.length ? [{ type: 'core.reset', text: 'reset the table' }] : [] };
+      if (Array.isArray(r)) changes.push(...r);
+      else {
+        changes.push(...r.changes);
+        untracked.push(...(r.untracked ?? []));
+      }
+    }
+    return { changes, untracked, events: changes.length || untracked.length ? [{ type: 'core.reset', text: 'reset the table' }] : [] };
   });
   store.register('core.add', (doc, a: { nodes: CanvasNode[] }) => {
     if (!Array.isArray(a?.nodes)) return [];

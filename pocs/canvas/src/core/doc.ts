@@ -97,8 +97,10 @@ export type CarrierOf = ParentOf;
 /**
  * Duplicate rule supplied by plugins: return the copy's content (id/position/z are set by core),
  * `null` to refuse copying this node, `undefined` for no opinion (next rule; default: a verbatim copy).
+ * `copyOf(id)`: the id the copy of another node in the same duplicate gets (undefined if that node
+ * isn't being duplicated), so a copy can point at its copied board instead of the original.
  */
-export type DuplicateRule = (node: CanvasNode, doc: DocView) => CanvasNode | null | undefined;
+export type DuplicateRule = (node: CanvasNode, doc: DocView, copyOf: (id: string) => string | undefined) => CanvasNode | null | undefined;
 
 /** Where a layout puts a node: position/size/stacking override, plus display-only rotation. */
 export type Placement = Partial<Pick<CanvasNode, 'x' | 'y' | 'z' | 'width' | 'height'>> & { angle?: number };

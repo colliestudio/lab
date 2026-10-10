@@ -14,6 +14,7 @@ export function registerChessLogic(store: Store) {
   store.addRiderRule(boardIdOf);
   store.duplicateRules.push(duplicatePiece);
   store.resets.push(commands.resetAll as Command);
+  store.repairs.push(commands.repair as Command);
   store.importFilters.push(repairImport);
   store.exportFilters.push(shapeExport);
 }
@@ -77,10 +78,15 @@ export const chessPlugin: Plugin = {
       if (sel.length === 1 && isBoard(sel[0])) return { title: 'Chessboard', entries: boardMenu(a, sel[0], openPalette) };
       const pieces = sel.filter(isPiece);
       const entries: MenuEntry[] = [
-        { label: pieces.length > 1 ? `Duplicate ${pieces.length} pieces` : 'Duplicate', hint: '⌘D', run: () => a.dispatch('core.duplicate', { ids: pieces.map((n) => n.id) }) },
+        {
+          label: sel.some(isBoard) ? 'Duplicate (board and pieces)' : pieces.length > 1 ? `Duplicate ${pieces.length} pieces` : 'Duplicate',
+          hint: '⌘D',
+          run: () => a.dispatch('core.duplicate', { ids: sel.map((n) => n.id) }),
+        },
       ];
       if (b) entries.push({ label: 'Board', items: () => boardMenu(a, b, openPalette) });
-      return { title: pieces.length > 1 ? `${pieces.length} chess pieces` : pieceName(piece(pieces[0])).replace(/^./, (c) => c.toUpperCase()), entries };
+      const title = !pieces.length ? 'Chessboards' : pieces.length > 1 ? `${pieces.length} chess pieces` : pieceName(piece(pieces[0])).replace(/^./, (c) => c.toUpperCase());
+      return { title, entries };
     });
   },
 };
