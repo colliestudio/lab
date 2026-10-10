@@ -1,4 +1,4 @@
-import { isNum, pick, set, type CanvasNode, type Change, type Command, type DocView } from '../../core';
+import { isNum, pick, set, type CanvasNode, type Change, type Command, type DocView, type EventSpec } from '../../core';
 import {
   BOARD,
   FIELD,
@@ -18,6 +18,7 @@ import {
   pieceNode,
   squareAt,
   squarePos,
+  pieceName,
   pieceText,
   zone,
   type Color,
@@ -36,6 +37,29 @@ const boardArg = (doc: DocView, id: unknown) => {
 };
 
 type Spot = { board?: string; square?: string; x: number; y: number };
+
+/**
+ * Log entry for one piece put on a square of a board (free play: it says what happened, it doesn't
+ * judge it): "White Nf3", "White exd5 (takes black pawn)". Nothing for nudges, several pieces, or
+ * a piece put back where it was.
+ */
+export function moveEvent(before: DocView, after: DocView, ids: string[]): EventSpec[] {
+  if (ids.length !== 1) return [];
+  const p0 = before.get(ids[0]);
+  const p1 = after.get(ids[0]);
+  if (!p0 || !p1 || !isPiece(p1)) return [];
+  const was = piece(p0);
+  const now = piece(p1);
+  if (!now.square || !now.board || (was.board === now.board && was.square === now.square)) return [];
+  const victim = before.riders(now.board).find((v) => v.id !== p1.id && isPiece(v) && piece(v).square === now.square && !piece(after.get(v.id) ?? v).square);
+  const from = was.board === now.board ? was.square : undefined;
+  const letter = now.piece === 'P' ? (victim && from ? from[0] : '') : now.piece;
+  const san = `${letter}${victim ? 'x' : ''}${now.square}`;
+  const color = now.color === 'w' ? 'White' : 'Black';
+  const text = `played ${color} ${san}${victim ? ` (takes ${pieceName(piece(victim))})` : ''}`;
+  return [{ type: victim ? 'chess.capture' : 'chess.move', text, targets: [p1.id], cue: 'pulse' }];
+}
+const boardEvent = (b: CanvasNode, text: string): EventSpec[] => [{ type: 'chess.board', text, targets: [b.id] }];
 
 /** Changes that bring a piece from where it is to `to` (only fields that differ). */
 function moveTo(p: CanvasNode, to: Spot): Change[] {
@@ -131,7 +155,7 @@ function arrange(doc: DocView, b: CanvasNode, ctx: { newId(): string }, z: numbe
 export const setup: Command<{ id: string }> = (doc, a, ctx) => {
   const b = boardArg(doc, a?.id);
   if (!b) return [];
-  return { changes: arrange(doc, b, ctx, doc.topZ).changes, select: [] };
+  return { changes: arrange(doc, b, ctx, doc.topZ).changes, select: [], events: boardEvent(b, 'set up the chess pieces') };
 };
 
 /**
@@ -178,7 +202,7 @@ export const clear: Command<{ id: string }> = (doc, a) => {
   const slot = slots(doc, b, new Set(on.map((p) => p.id)));
   const changes = on.flatMap((p) => moveTo(p, { board: b.id, ...slot(piece(p).color) }));
   changes.push(set(b.id, F('from'), undefined), set(b.id, F('to'), undefined));
-  return changes;
+  return { changes, events: on.length ? boardEvent(b, 'cleared the chessboard') : [] };
 };
 
 /** Lock (default) or unlock a board: unlocked, dragging its surface moves it. */
@@ -256,8 +280,11 @@ function settle(doc: DocView, moved: CanvasNode[], soft = false) {
 export const place: Command<{ ids: string[]; soft?: boolean }> = (doc, a) => {
   const moved = pick(doc, a?.ids).filter((n) => isPiece(n) && !doc.parentOf(n.id));
   if (!moved.length) return [];
-  const { state, boardChanges } = settle(doc, moved, a.soft === true);
-  return [...[...state].flatMap(([id, to]) => moveTo(doc.get(id)!, to)), ...boardChanges];
+  const soft = a.soft === true;
+  const { state, boardChanges } = settle(doc, moved, soft);
+  const changes = [...[...state].flatMap(([id, to]) => moveTo(doc.get(id)!, to)), ...boardChanges];
+  const ids = moved.map((n) => n.id);
+  return { changes, events: soft || !changes.length ? [] : (after) => moveEvent(doc, after, ids) };
 };
 
 /**

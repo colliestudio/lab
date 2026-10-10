@@ -379,4 +379,22 @@ describe('chess commands', () => {
     expect(piece(s.doc.get(pawn)!).board).toBeUndefined();
     expect(board(s.doc.get(b)!).to).toBeUndefined();
   });
+
+  it('log: a move in SAN-ish text, captures name the piece taken; set up and clear; nudges and moving the board are not logged', () => {
+    const { s, b } = withSet();
+    s.actor = () => ({ id: 'w', name: 'Walt', color: '#000' });
+    const text = () => s.log.toArray().map((e) => e.text);
+    s.dispatch('core.move', { ids: [b], dx: 40, dy: 0 });
+    s.dispatch('chess.place', { ids: [at(s, b, 'a2')!.id], soft: true });
+    expect(text()).toEqual([]);
+    drag(s, at(s, b, 'g1')!.id, sqCenter(s, b, 'f3'));
+    drag(s, at(s, b, 'e2')!.id, sqCenter(s, b, 'e4'));
+    drag(s, at(s, b, 'd7')!.id, sqCenter(s, b, 'd5'));
+    drag(s, at(s, b, 'e4')!.id, sqCenter(s, b, 'd5'));
+    drag(s, at(s, b, 'f3')!.id, sqCenter(s, b, 'f3')); // put back where it was
+    expect(text()).toEqual(['played White Nf3', 'played White e4', 'played Black d5', 'played White exd5 (takes black pawn)']);
+    s.dispatch('chess.clear', { id: b });
+    s.dispatch('chess.setup', { id: b });
+    expect(text().slice(-2)).toEqual(['cleared the chessboard', 'set up the chess pieces']);
+  });
 });
