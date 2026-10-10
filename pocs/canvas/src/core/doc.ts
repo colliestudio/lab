@@ -53,6 +53,10 @@ export interface DocView extends CanvasDoc {
   parentOf(id: string): string | undefined;
   /** Highest z in the doc (0 if empty). */
   topZ: number;
+  /** Nodes that ride on `id` (move and come to front with it), in z order. */
+  riders(id: string): CanvasNode[];
+  /** Id of the node `id` rides on, if it exists. */
+  carrierOf(id: string): string | undefined;
 }
 
 /**
@@ -75,24 +79,43 @@ export const byZ = (a: CanvasNode, b: CanvasNode) => (a.z ?? 0) - (b.z ?? 0) || 
 /** Containment rule supplied by plugins: return the id of the node that contains `node`, if any. */
 export type ParentOf = (node: CanvasNode, get: (id: string) => CanvasNode | undefined) => string | undefined;
 
-export function makeView(doc: CanvasDoc, parentRules: readonly ParentOf[] = []): DocView {
-  const nodes = doc.nodes.slice().sort(byZ);
-  const map = new Map(nodes.map((n) => [n.id, n]));
-  const get = (id: string) => map.get(id);
-  const parent = new Map<string, string>();
-  const kids = new Map<string, CanvasNode[]>();
+/**
+ * Rider rule supplied by plugins: return the id of the node that carries `node` (e.g. a board its
+ * pieces). Riders stay separate, selectable objects; they move and come to front with their carrier.
+ */
+export type CarrierOf = ParentOf;
+
+/** Index nodes by the first rule that names an existing other node for them. */
+function link(nodes: CanvasNode[], get: (id: string) => CanvasNode | undefined, rules: readonly ParentOf[]) {
+  const up = new Map<string, string>();
+  const down = new Map<string, CanvasNode[]>();
+  if (!rules.length) return { up, down };
   for (const n of nodes) {
-    for (const rule of parentRules) {
+    for (const rule of rules) {
       const p = rule(n, get);
-      if (p && p !== n.id && map.has(p)) {
-        parent.set(n.id, p);
-        let list = kids.get(p);
-        if (!list) kids.set(p, (list = []));
+      if (p && p !== n.id && get(p)) {
+        up.set(n.id, p);
+        let list = down.get(p);
+        if (!list) down.set(p, (list = []));
         list.push(n);
         break;
       }
     }
   }
+  return { up, down };
+}
+
+export function makeView(doc: CanvasDoc, parentRules: readonly ParentOf[] = [], riderRules: readonly CarrierOf[] = []): DocView {
+  const nodes = doc.nodes.slice().sort(byZ);
+  const map = new Map(nodes.map((n) => [n.id, n]));
+  const get = (id: string) => map.get(id);
+  const { up: parent, down: kids } = link(nodes, get, parentRules);
+  // contained nodes don't ride (their container already carries them)
+  const { up: carrier, down: riders } = link(
+    nodes.filter((n) => !parent.has(n.id)),
+    get,
+    riderRules,
+  );
   return {
     nodes,
     edges: doc.edges,
@@ -102,5 +125,7 @@ export function makeView(doc: CanvasDoc, parentRules: readonly ParentOf[] = []):
     children: (id) => kids.get(id) ?? [],
     parentOf: (id) => parent.get(id),
     topZ: nodes.length ? (nodes[nodes.length - 1].z ?? 0) : 0,
+    riders: (id) => riders.get(id) ?? [],
+    carrierOf: (id) => carrier.get(id),
   };
 }

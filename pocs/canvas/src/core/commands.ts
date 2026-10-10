@@ -13,21 +13,44 @@ export function pick(doc: DocView, ids: unknown): CanvasNode[] {
   return doc.nodes.filter((n) => want.has(n.id));
 }
 
-/** Changes that put `nodes` on top (keeping their relative order), or none if they already are. */
+/** `nodes` plus everything riding on them (transitively), each carrier directly followed by its riders. */
+export function withRiders(doc: DocView, nodes: CanvasNode[]): CanvasNode[] {
+  const out: CanvasNode[] = [];
+  const seen = new Set<string>();
+  const ids = new Set(nodes.map((n) => n.id));
+  const add = (n: CanvasNode) => {
+    if (seen.has(n.id)) return;
+    seen.add(n.id);
+    out.push(n);
+    for (const r of doc.riders(n.id)) add(r);
+  };
+  // a rider that is itself in `nodes` is placed after its carrier, not on its own
+  for (const n of nodes) {
+    const c = doc.carrierOf(n.id);
+    if (!c || !ids.has(c)) add(n);
+  }
+  for (const n of nodes) add(n);
+  return out;
+}
+
+/**
+ * Changes that put `nodes` on top (keeping their relative order), or none if they already are.
+ * Riders come along, just above their carrier (a board stays under its pieces).
+ */
 export function toFront(doc: DocView, nodes: CanvasNode[]): Change[] {
   if (!nodes.length) return [];
-  const ids = new Set(nodes.map((n) => n.id));
+  const sorted = withRiders(doc, nodes.slice().sort((a, b) => (a.z ?? 0) - (b.z ?? 0)));
   const vis = doc.visible;
-  const top = vis.slice(vis.length - nodes.length);
-  if (top.length === nodes.length && top.every((n) => ids.has(n.id))) return [];
-  const sorted = nodes.slice().sort((a, b) => (a.z ?? 0) - (b.z ?? 0));
+  const top = vis.slice(vis.length - sorted.length);
+  if (top.length === sorted.length && top.every((n, i) => n.id === sorted[i].id)) return [];
   return sorted.map((n, i) => set(n.id, 'z', doc.topZ + 1 + i));
 }
 
 export function registerCoreCommands(store: Store) {
   store.register('core.move', (doc, a: { ids: string[]; dx: number; dy: number }) => {
     if (!isNum(a?.dx) || !isNum(a?.dy)) return [];
-    return pick(doc, a.ids).flatMap((n) => [set(n.id, 'x', Math.round(n.x + a.dx)), set(n.id, 'y', Math.round(n.y + a.dy))]);
+    // riders (a board's pieces) move with their carrier
+    return withRiders(doc, pick(doc, a.ids)).flatMap((n) => [set(n.id, 'x', Math.round(n.x + a.dx)), set(n.id, 'y', Math.round(n.y + a.dy))]);
   });
   store.register('core.front', (doc, a: { ids: string[] }) => toFront(doc, pick(doc, a?.ids)));
   /** Deletes nodes and everything they contain. */

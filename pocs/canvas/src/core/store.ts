@@ -1,5 +1,5 @@
 import * as Y from 'yjs';
-import { makeView, type CanvasDoc, type CanvasEdge, type CanvasNode, type Change, type DocView, type ParentOf } from './doc';
+import { makeView, type CanvasDoc, type CanvasEdge, type CanvasNode, type Change, type CarrierOf, type DocView, type ParentOf } from './doc';
 
 /** Everything non-deterministic a command may use; injectable for tests / replay. */
 export interface CommandCtx {
@@ -66,6 +66,7 @@ export class Store {
   readonly meta: Y.Map<unknown>;
   readonly undoManager: Y.UndoManager;
   private parentRules: ParentOf[] = [];
+  private riderRules: CarrierOf[] = [];
   readonly importFilters: DocFilter[] = [];
   readonly exportFilters: DocFilter[] = [];
   /** Commands that upgrade older docs in place; run (not undoable) after every load. Must be idempotent. */
@@ -102,7 +103,7 @@ export class Store {
   get doc(): DocView {
     if (!this.view) {
       const nodes = [...this.nodes.values()].map((m) => m.toJSON() as CanvasNode);
-      this.view = makeView({ nodes, edges: [...this.edges.values()], extra: this.meta.toJSON() }, this.parentRules);
+      this.view = makeView({ nodes, edges: [...this.edges.values()], extra: this.meta.toJSON() }, this.parentRules, this.riderRules);
     }
     return this.view;
   }
@@ -117,6 +118,11 @@ export class Store {
 
   addParentRule(rule: ParentOf) {
     this.parentRules.push(rule);
+    this.view = null;
+  }
+
+  addRiderRule(rule: CarrierOf) {
+    this.riderRules.push(rule);
     this.view = null;
   }
 

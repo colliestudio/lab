@@ -86,3 +86,35 @@ describe('store', () => {
     expect([...s.selection]).toEqual(['b']);
   });
 });
+
+describe('riders', () => {
+  const n = (id: string, z: number, extra: Record<string, unknown> = {}) => ({ id, type: 'text', x: 0, y: 0, width: 10, height: 10, z, ...extra });
+  function boardStore() {
+    const s = store();
+    s.addRiderRule((node, get) => {
+      const on = (node as any)['x-on'];
+      return typeof on === 'string' && get(on) ? on : undefined;
+    });
+    s.load({ nodes: [n('board', 1), n('p1', 2, { 'x-on': 'board' }), n('p2', 3, { 'x-on': 'board' }), n('other', 4), n('ghost', 5, { 'x-on': 'gone' })], edges: [] });
+    return s;
+  }
+  it('move carries riders with their carrier (per-field sets), not the other way round', () => {
+    const s = boardStore();
+    expect(s.doc.riders('board').map((r) => r.id)).toEqual(['p1', 'p2']);
+    expect(s.doc.carrierOf('ghost')).toBeUndefined();
+    s.dispatch('core.move', { ids: ['board'], dx: 5, dy: 7 });
+    expect(['board', 'p1', 'p2'].map((id) => [s.doc.get(id)!.x, s.doc.get(id)!.y])).toEqual([[5, 7], [5, 7], [5, 7]]);
+    expect(s.doc.get('other')!.x).toBe(0);
+    // moving board + rider together moves the rider once
+    s.dispatch('core.move', { ids: ['p1', 'board'], dx: 1, dy: 0 });
+    expect(s.doc.get('p1')!.x).toBe(6);
+    s.dispatch('core.move', { ids: ['p2'], dx: 10, dy: 0 });
+    expect(s.doc.get('board')!.x).toBe(6);
+  });
+  it('front brings riders along just above their carrier', () => {
+    const s = boardStore();
+    s.dispatch('core.front', { ids: ['board'] });
+    expect(s.doc.visible.map((v) => v.id)).toEqual(['other', 'ghost', 'board', 'p1', 'p2']);
+    expect(s.dispatch('core.front', { ids: ['board'] }).changes).toEqual([]);
+  });
+});

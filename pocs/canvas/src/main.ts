@@ -16,7 +16,7 @@ app.store.migrations.push(removeHelpNote);
 function newTable() {
   resetFileHandle();
   app.store.load({ nodes: [], edges: [] });
-  app.dispatch('cards.setup', { x: 0, y: 0 });
+  app.kits[0]?.create(app, { x: 0, y: 0 });
   app.store.undoManager.clear();
   app.store.select([]);
   app.view.fit();
@@ -43,6 +43,7 @@ const button = (label: string, title: string, run: () => void) => {
   b.title = title;
   b.addEventListener('click', run);
   bar.append(b);
+  return b;
 };
 
 async function doSave(saveAs = false) {
@@ -63,9 +64,15 @@ async function doOpen() {
   }
 }
 
-button('New table', ROOM ? 'Reset to a fresh deck (for everyone in the room)' : 'Reset to a fresh deck', () => {
+button('New table', ROOM ? 'Clear the table and deal a fresh deck (for everyone in the room)' : 'Clear the table and deal a fresh deck', () => {
   if (confirm(ROOM ? 'Start a new table for everyone in this room?' : 'Start a new table? Unsaved changes are lost.')) newTable();
 });
+const addBtn = button('Add…', 'Put something on the table: a deck of cards, a chess set…', () =>
+  app.view.openMenu(
+    app.kits.map((k) => ({ label: k.label, run: () => k.create(app, app.viewCenter()) })),
+    addBtn,
+  ),
+);
 button('Open…', 'Open a .canvas file (⌘O)', doOpen);
 button('Save', 'Save as .canvas (⌘S)', () => doSave());
 button('Undo', 'Undo (⌘Z)', () => app.store.undo());

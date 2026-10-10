@@ -1,6 +1,6 @@
 import type { App } from './app';
 import type { CanvasNode } from './doc';
-import type { RenderCtx } from './plugin';
+import type { ObjectType, RenderCtx } from './plugin';
 import { Viewport, wheelZoomFactor } from './viewport';
 
 type Pt = { x: number; y: number };
@@ -230,6 +230,12 @@ export class View {
     const id = nodeEl.dataset.nodeId!;
     const node = this.app.node(id);
     if (!node) return;
+    if (this.app.typeOf(node)?.grabbable?.(node, e, this.app) === false) {
+      // the press falls through to the table under the object
+      this.gesture = { kind: 'marquee', start: this.world_(p), base: new Set(e.shiftKey ? this.app.store.selection : []) };
+      if (!e.shiftKey) this.app.store.select([]);
+      return;
+    }
     // another player is dragging it: hands off
     const holder = this.app.presence?.heldBy(id);
     if (holder) {
@@ -345,6 +351,7 @@ export class View {
       this.setDropTarget(g, undefined);
       const target = targetId && this.app.node(targetId);
       if (target) this.app.store.merged(() => this.app.typeOf(target)?.onDrop?.(target, g.ids, this.app));
+      this.endDrag(g.ids, target ? target.id : undefined);
       return;
     }
     // plain click
@@ -443,6 +450,20 @@ export class View {
       e.preventDefault();
       binding.run(this.app);
     }
+  }
+
+  /** Tell each dragged type its drag ended (state after any drop). */
+  private endDrag(ids: string[], target: string | undefined) {
+    const byType = new Map<ObjectType, CanvasNode[]>();
+    for (const id of ids) {
+      const n = this.app.node(id);
+      const t = n && this.app.typeOf(n);
+      if (!n || !t?.onDragEnd) continue;
+      let l = byType.get(t);
+      if (!l) byType.set(t, (l = []));
+      l.push(n);
+    }
+    for (const [t, nodes] of byType) this.app.store.merged(() => t.onDragEnd!(nodes, this.app, target));
   }
 
   /** A single object being dragged may hand the drag to another node (a deck gives its top card). */

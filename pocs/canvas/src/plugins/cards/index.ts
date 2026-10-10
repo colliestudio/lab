@@ -52,6 +52,8 @@ export const cardsPlugin: Plugin = {
   id: 'cards',
   setup(app) {
     registerCardsLogic(app.store);
+    // setup lays out about 940 x 400 from its anchor, which sits near the top left of that
+    app.registerKit({ id: 'cards.deck', label: 'Deck of cards', create: (a, at) => a.dispatch('cards.setup', { x: at.x - 470, y: at.y - 120 }) });
 
     const canDrop = (_t: CanvasNode, dropped: CanvasNode[]) => dropped.some(isCardish);
     const onDrop = (target: CanvasNode, dropped: string[], app: App) => app.dispatch('cards.drop', { target: target.id, ids: dropped });

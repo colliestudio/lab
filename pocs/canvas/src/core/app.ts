@@ -1,7 +1,7 @@
 import './core.css';
 import { registerCoreCommands } from './commands';
-import type { CanvasNode, ParentOf } from './doc';
-import type { KeyBinding, MenuItem, ObjectType, Plugin } from './plugin';
+import type { CanvasNode, CarrierOf, ParentOf } from './doc';
+import type { KeyBinding, Kit, MenuItem, ObjectType, Plugin } from './plugin';
 import { Store, type Command, type DispatchResult, type DocFilter } from './store';
 import { View } from './view';
 import { Viewport } from './viewport';
@@ -17,6 +17,8 @@ export class App {
   readonly types: ObjectType[] = [];
   readonly keys = new Map<string, KeyBinding>();
   readonly menu: MenuItem[] = [];
+  /** Kits for the Add menu, in registration order (the first one is the default for a new table). */
+  readonly kits: Kit[] = [];
   readonly view: View;
   viewer = LOCAL_PLAYER;
   /** Set when the table is shared (multiplayer); null when playing solo. */
@@ -60,6 +62,13 @@ export class App {
   registerParentRule(rule: ParentOf) {
     this.store.addParentRule(rule);
   }
+  /** Riders: nodes that move and come to front with their carrier, but stay separate objects. */
+  registerRiderRule(rule: CarrierOf) {
+    this.store.addRiderRule(rule);
+  }
+  registerKit(kit: Kit) {
+    this.kits.push(kit);
+  }
   registerImportFilter(f: DocFilter) {
     this.store.importFilters.push(f);
   }
@@ -93,5 +102,11 @@ export class App {
   }
   typeOf(node: CanvasNode): ObjectType | undefined {
     return this.types.find((t) => t.match(node));
+  }
+  /** World point at the middle of the visible table. */
+  viewCenter(): { x: number; y: number } {
+    const r = this.view.root;
+    const [x, y] = this.viewport.toWorld(r.clientWidth / 2, r.clientHeight / 2);
+    return { x: Math.round(x), y: Math.round(y) };
   }
 }

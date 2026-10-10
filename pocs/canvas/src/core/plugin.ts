@@ -19,6 +19,11 @@ export interface ObjectType {
    */
   renderKey?(node: CanvasNode, ctx: RenderCtx): string;
   onDoubleClick?(node: CanvasNode, app: App): void;
+  /**
+   * Does this press grab the object? Return false to let it fall through to the table (box select,
+   * click-to-deselect), e.g. on a locked board's surface. Default: true.
+   */
+  grabbable?(node: CanvasNode, down: PointerEvent, app: App): boolean;
   /** Plain click (no drag, no Shift). `down` = the pointerdown. Return true if handled (skips double-click). */
   onClick?(node: CanvasNode, down: PointerEvent, app: App): boolean | void;
   /** A control inside the rendered object (`data-action="name"`) was pressed. Never starts a drag. */
@@ -34,6 +39,12 @@ export interface ObjectType {
   canDrop?(target: CanvasNode, dropped: CanvasNode[], app: App): boolean;
   /** Objects were deliberately dropped onto this one. */
   onDrop?(target: CanvasNode, droppedIds: string[], app: App): void;
+  /**
+   * A drag that moved objects of this type just ended (after any `onDrop`). Called once per type with
+   * that type's dragged nodes (current state). `target` = the node they were dropped on, if any.
+   * Dispatches made here join the gesture's undo step.
+   */
+  onDragEnd?(dragged: CanvasNode[], app: App, target?: string): void;
 }
 
 export interface KeyBinding {
@@ -48,6 +59,14 @@ export interface MenuItem {
   hint?: string;
   when(app: App, selected: CanvasNode[]): boolean;
   run(app: App, selected: CanvasNode[]): void;
+}
+
+/** Something a player can put on the table from the Add menu (a deck of cards, a chess set). */
+export interface Kit {
+  id: string;
+  label: string;
+  /** Put the kit on the table around world point `at` (the middle of the view). One dispatch = one undo step. */
+  create(app: App, at: { x: number; y: number }): void;
 }
 
 export interface Plugin {
