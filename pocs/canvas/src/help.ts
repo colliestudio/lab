@@ -40,6 +40,26 @@ const GROUPS: [string, [string, string][]][] = [
     ],
   ],
   [
+    'Groups',
+    [
+      ['Drop a card squarely on a card', 'Make a group: every card shown, each keeps its facing'],
+      ['G', 'Group the selection (into a selected deck or group, if there is one)'],
+      ['Drag a card in a group', 'Take it out; drop it back to put it at that spot'],
+      ['Drag the group’s ⠿ tab', 'Move the whole group'],
+      ['Click the ⠿ tab', 'Layout (fan, row, grid, stack), all face up/down, sort, ungroup'],
+      ['', 'A group set to Stack is a deck: dragging it takes the top card'],
+      ['', 'A group of one card is just a card'],
+    ],
+  ],
+  [
+    'Hands',
+    [
+      ['Hand (toolbar)', 'Your hand, near the bottom of the view (one per player)'],
+      ['Drop cards on it', 'Hold them; drag within to reorder; Sort in its ⠿ menu'],
+      ['', 'Other players see the cards in your hand face down (and you theirs)'],
+    ],
+  ],
+  [
     'Decks',
     [
       ['Drag a deck', 'Take its top card'],

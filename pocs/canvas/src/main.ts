@@ -10,6 +10,8 @@ const DB_NAME = ROOM ? roomDbName(ROOM) : 'canvas-poc';
 const VIEW_KEY = 'canvas-poc:view';
 
 const app = new App(document.getElementById('table')!);
+// this browser's player id (also in solo play) = who "my hand" belongs to and who views the table
+app.viewer = loadPlayer().id;
 app.use(cardsPlugin);
 app.store.migrations.push(removeHelpNote);
 
@@ -107,7 +109,28 @@ if (!ROOM) {
   });
   bar.append(share);
 }
-bar.append(helpBtn, status);
+// my hand: create it near the bottom of the view, or bring it into view
+const handLabelOf = (name: string) => `${name}'s hand`;
+const handBtn = document.createElement('button');
+handBtn.textContent = 'Hand';
+handBtn.title = 'Your hand: cards you hold (others see them face down)';
+handBtn.addEventListener('click', () => {
+  const me = app.presence?.me ?? loadPlayer();
+  const vp = app.viewport;
+  const root = app.view.root;
+  const [x, y] = vp.toWorld(root.clientWidth / 2 - 200, root.clientHeight - 260 * vp.zoom - 30);
+  const res = app.dispatch('cards.hand', { owner: me.id, label: handLabelOf(me.name), color: me.color, x, y });
+  const id = res.select?.[0];
+  const h = id && app.node(id);
+  if (h) {
+    // make sure it's on screen
+    const sx = h.x * vp.zoom + vp.x;
+    const sy = h.y * vp.zoom + vp.y;
+    const offscreen = sx < 0 || sy < 0 || sx + h.width * vp.zoom > root.clientWidth || sy + h.height * vp.zoom > root.clientHeight;
+    if (offscreen) vp.set(root.clientWidth / 2 - (h.x + h.width / 2) * vp.zoom, root.clientHeight - (h.y + h.height) * vp.zoom - 40, vp.zoom);
+  }
+});
+bar.append(handBtn, helpBtn, status);
 app.onNotify(flash);
 mountHelp(app, helpBtn);
 mountZoomControl(app);
@@ -148,7 +171,9 @@ persistLocally(app, DB_NAME).then(({ empty }) => {
   const rename = async (first = false) => {
     const choice = await askName(room.presence.me, first ? { title: 'Join the table', action: 'Join' } : { title: 'Your name and color', action: 'Save' });
     if (!choice) return;
-    room.presence.setMe(info(savePlayer(choice)));
+    const me = info(savePlayer(choice));
+    room.presence.setMe(me);
+    app.dispatch('cards.handLabel', { owner: me.id, label: handLabelOf(me.name), color: me.color });
   };
   mountRoomStatus(
     app,
