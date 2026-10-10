@@ -51,7 +51,7 @@ export interface ObjectType {
    */
   canDrop?(target: CanvasNode, dropped: CanvasNode[], app: App, overlap: number): boolean | string;
   /** Objects were deliberately dropped onto this one. */
-  /** `at` = the drop point in world coordinates (e.g. to insert at a position in a layout). */
+  /** `at` = the drop point in world coordinates (e.g. to insert at a position in a layout). `app.view.altKey` = ⌥ held at the drop. */
   onDrop?(target: CanvasNode, droppedIds: string[], app: App, at: { x: number; y: number }, mode?: string): void;
   /**
    * A move of objects of this type just ended (after any `onDrop`): a drag (`via: 'drag'`) or an
@@ -71,8 +71,22 @@ export interface ObjectType {
    * the target as usual (`app.view.dragBox(id)` gives the dragged spot); drop on nothing = `onLocalDrop`.
    */
   dragsLocally?(node: CanvasNode, app: App): boolean;
-  /** A local drag ended on no target, with the object's top-left at `at` (world). */
-  onLocalDrop?(node: CanvasNode, at: { x: number; y: number }, app: App): void;
+  /**
+   * A local drag ended on no target, with the grabbed object's top-left at `at` (world). `ids` = all
+   * that were dragged (the grabbed one included), in selection order (bottom first).
+   */
+  onLocalDrop?(node: CanvasNode, at: { x: number; y: number }, app: App, ids: string[]): void;
+  /**
+   * While a drag hovers this object as its drop target: `at` = the pointer (world), e.g. to show where
+   * the drop would insert. Called once with `at` undefined when the drag leaves it or ends.
+   */
+  dragOver?(target: CanvasNode, dropped: CanvasNode[], app: App, at: { x: number; y: number } | undefined): void;
+  /**
+   * Shift-click on this object while `anchor` (the last plainly clicked object) is selected: the
+   * objects from the anchor to here (a run of cards in a hand), added to the selection. Undefined =
+   * plain Shift toggling.
+   */
+  selectRun?(anchor: CanvasNode, node: CanvasNode, app: App): string[] | undefined;
   /** A local drag of this object starts / ends (e.g. to show drop zones). */
   onLocalDrag?(node: CanvasNode, phase: 'start' | 'end', app: App): void;
   /** A drop over this object goes to another one instead (its id), e.g. a card in a hand → the hand. */
