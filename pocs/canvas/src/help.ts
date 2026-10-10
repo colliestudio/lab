@@ -15,7 +15,7 @@ const GROUPS: [string, [string, string][]][] = [
       ['⇧2', 'Zoom to selection'],
       ['⌘Z / ⇧⌘Z', 'Undo / redo'],
       ['Right-click', 'Actions for what is under the pointer'],
-      ['Add…', 'Put a deck of cards, a chess set or a game clock in the view (or open the chess piece palette)'],
+      ['Add…', 'Put a deck of cards, a chess set, a game clock or a Battle Line table in the view (or open the chess piece palette)'],
       ['Reset', 'Everything back to its starting state, keeping what is on the table (one undo): decks get all their cards back face down and shuffled, boards their 32 pieces, clocks their time'],
       ['?', 'This help'],
     ],
@@ -81,6 +81,17 @@ const GROUPS: [string, [string, string][]][] = [
       ['Pieces… (tab, right-click, Add…)', 'Piece palette: drag a piece onto a square or the table; click one to put it beside the selected board'],
       ['⌘D', 'Duplicate the selected pieces (copies lie offset until you drop them on a square)'],
       ['', 'Clear, Set up extras and clicked pieces are set aside on their owner’s side'],
+    ],
+  ],
+  [
+    'Battle Line',
+    [
+      ['Add… › Battle Line', 'Reiner Knizia’s two-player card game, for free play (no rules enforced): 9 flags, a formation per flag and side, the troop and tactics decks (shuffled), a discard pile'],
+      ['Right-click the table or a flag › Deal Battle Line', '7 troops to each side’s hand: yours, the other player’s in a room (solo: an open hand for side B)'],
+      ['Drop a card on a formation', 'It goes in the next free slot (3 outlined; a 4th fits for Mud)'],
+      ['Drag a flag toward a side', 'Claims it for that side (it snaps there); drag it back to the line to unclaim'],
+      ['Right-click a flag › Claim for ▸', 'Claim for the bottom (A) or top (B) player, or unclaim'],
+      ['Reset', 'Flags back on the line, every card back in its deck, shuffled (hands stay, empty)'],
     ],
   ],
   [

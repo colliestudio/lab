@@ -46,6 +46,7 @@ export const handLabelOf = (name: string) => `${name}'s hand`;
 export function kindName(box: CanvasNode): string {
   const k = kindOf(box);
   if (k === 'hand') return box.label ?? 'Hand';
+  if (isFixed(box) && box.label) return box.label; // a game's named spot ("Discard", "Flag 3 · A")
   return k === 'deck' ? 'Deck' : 'Group';
 }
 /** What a pile's tab says: a fixed pile its label ("Discard"), a home deck its pack's deck name ("Troops"). */

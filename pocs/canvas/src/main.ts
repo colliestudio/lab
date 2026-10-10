@@ -5,6 +5,7 @@ import { askName } from './nameDialog';
 import { cardsPlugin, handLabelOf } from './plugins/cards';
 import { chessPlugin } from './plugins/chess';
 import { clockPlugin } from './plugins/clock';
+import { battleLinePlugin } from './plugins/battleline';
 import { mountHelp, removeHelpNote } from './help';
 
 const ROOM = roomFromUrl();
@@ -17,6 +18,7 @@ app.viewer = loadPlayer().id;
 app.use(cardsPlugin);
 app.use(chessPlugin);
 app.use(clockPlugin);
+app.use(battleLinePlugin);
 app.store.migrations.push(removeHelpNote);
 
 
