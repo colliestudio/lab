@@ -7,7 +7,7 @@ import { DROP_FAN, DROP_STACK, SORT_MODES, dropMode, freeSpot, sortKeys, sortPre
 import { CARD_W, FIELD, card, concealedFrom, hasFixedFrame, isShown, cardNode, cardsIn, deckNode, hiddenFrom, isBlind, isCard, isDeck, isHomeDeck, layoutOf, standardDeck } from './deck';
 import { HAND_W, PAD, RAISE, emptyHandSize, handSlots, liftedDrop, rowTop, slots, thresholdY } from './layout';
 import { handHtml, tabText } from './render';
-import { parkedCursor, revealText } from './handUx';
+import { parkedCursor } from './handUx';
 import { canGive, containerMenu, handLock, ownerAway, showLabel } from './index';
 
 function ctx(prefix = 'id', seed = 1): CommandCtx {
@@ -1015,11 +1015,6 @@ describe('hands: fixed frame, shown strip, hidden count', () => {
     expect(parkedCursor(fake, { x: hb.x + 100, y: hb.y + 20 })).toBeUndefined(); // the shown strip is public
     expect(parkedCursor(fake, { x: hb.x - 50, y: hb.y + 150 })).toBeUndefined(); // off the hand
     expect(parkedCursor({ doc: s.doc, viewer: 'bob' } as any, { x: hb.x + 100, y: hb.y + rowTop(hb) + 40 })).toBeUndefined(); // not bob's
-  });
-
-  it('E: only showing is announced', () => {
-    expect(revealText('Alex', ['K♠'])).toBe('Alex showed K♠');
-    expect(revealText('Alex', ['K♠', '2♥', '3♣', '4♦'])).toBe('Alex showed 4 cards');
   });
 });
 

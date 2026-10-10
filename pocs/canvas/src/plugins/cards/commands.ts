@@ -1,4 +1,5 @@
-import { isIds, isNum, pick, set, toFront, type CanvasNode, type Change, type Command, type CommandResult, type DocView } from '../../core';
+import { isIds, isNum, pick, set, toFront, type CanvasNode, type Change, type Command, type CommandResult, type DocView, type Events } from '../../core';
+import { dealEvent, drawEvent, facingEvents, giveEvent, moveEvents, putOnTableEvent, recallEvent, showEvents, showdownEvent, shuffleEvents } from './events';
 import { PACK, CARD_H, CARD_W, FIELD, RANKS, areaOf, enterOf, pileAt, allowsShowing, card, hidesCount, isBlind, shownIn, cardNode, cardsHomedAt, cardsIn, deckNode, groupNode, isCard, isCardish, isDeck, isHand, isHomeDeck, isSpreadOut, isStacked, isSpot, layoutOf, packOf, parseFace, roomIn, standardDeck, type DeckField, type Layout } from './deck';
 import { HAND_MAX_W, HAND_MIN_W, PAD, RAISE, emptyHandSize, handSlotIndex, laneOf, slotIndex, slots } from './layout';
 import { getPack, packOrder } from './packs';
@@ -26,6 +27,11 @@ export function dropMode(doc: DocView, target: CanvasNode, overlap: number): Dro
 // between decks/table only rewrites that card's own fields, so concurrent draws can't duplicate it.
 
 const F = (k: string) => `${FIELD}.${k}`;
+/** A result with events (logged only if something changed). */
+const logged = (r: CommandResult | Change[], events: Events): CommandResult => {
+  const res = Array.isArray(r) ? { changes: r } : r;
+  return res.changes.length ? { ...res, events } : res;
+};
 const isBool = (v: unknown): v is boolean => typeof v === 'boolean';
 
 export function shuffled<T>(xs: readonly T[], random: () => number): T[] {
@@ -134,6 +140,8 @@ const handOfCard = (doc: DocView, c: CanvasNode) => {
  * card of a blind hand between "face up for me" and "face down for me" (nobody else sees it either way).
  */
 export const flip: Command<{ ids: string[]; by?: string }> = (doc, a) =>
+  logged(flipChanges(doc, a), (after) => facingEvents(doc, after, a.ids));
+const flipChanges = (doc: DocView, a: { ids: string[]; by?: string }): Change[] =>
   pick(doc, a?.ids).flatMap((n) => {
     if (isHand(n)) return [];
     if (isCard(n)) {
@@ -157,10 +165,11 @@ export const show: Command<{ ids: string[]; shown: boolean; by?: string }> = (do
   if (!isBool(a?.shown)) return [];
   const seen = new Set<string>();
   const ok = (h: CanvasNode | undefined): h is CanvasNode => !!h && isHand(h) && allowsShowing(h) && (!a.by || h.owner === a.by);
-  return pick(doc, a.ids).flatMap((n) => {
+  const changes = pick(doc, a.ids).flatMap((n) => {
     const cards = isHand(n) ? (ok(n) ? cardsIn(doc, n.id) : []) : isCard(n) && ok(handOfCard(doc, n)) ? [n] : [];
     return cards.filter((c) => !seen.has(c.id) && !!seen.add(c.id)).flatMap((c) => conform(c, a.shown));
   });
+  return logged(changes, (after) => showEvents(doc, after));
 };
 
 /**
@@ -209,11 +218,12 @@ export const seeMine: Command<{ id: string; on: boolean }> = (doc, a) => {
 /** Turn cards (and every card in the given decks) face up or face down, whatever they are now. */
 export const face: Command<{ ids: string[]; faceUp: boolean }> = (doc, a) => {
   if (!isBool(a?.faceUp)) return [];
-  return pick(doc, a.ids).flatMap((n) => {
+  const changes = pick(doc, a.ids).flatMap((n) => {
     if (isCard(n) && doc.isVisible(n.id)) return conform(n, a.faceUp);
     if (isDeck(n)) return cardsIn(doc, n.id).flatMap((c) => conform(c, a.faceUp));
     return [];
   });
+  return logged(changes, (after) => facingEvents(doc, after, a.ids));
 };
 
 /** Move to an absolute position (x, y) or by (dx, dy). Decks move as one node. */
@@ -225,10 +235,13 @@ export const move: Command<{ ids: string[]; x?: number; y?: number; dx?: number;
       set(n.id, 'y', Math.round(isNum(a.y) ? a.y : n.y + (isNum(a.dy) ? a.dy : 0))),
     ]);
 
-export const shuffle: Command<{ ids: string[] }> = (doc, a, ctx) =>
-  pick(doc, a?.ids)
-    .filter(isDeck)
-    .flatMap((d) => shuffled(cardsIn(doc, d.id), ctx.random).map((c, i) => set(c.id, F('order'), i + 1)));
+export const shuffle: Command<{ ids: string[] }> = (doc, a, ctx) => {
+  const decks = pick(doc, a?.ids).filter((d) => isDeck(d) && cardsIn(doc, d.id).length > 1);
+  return logged(
+    decks.flatMap((d) => shuffled(cardsIn(doc, d.id), ctx.random).map((c, i) => set(c.id, F('order'), i + 1))),
+    shuffleEvents(decks),
+  );
+};
 
 /**
  * Take the top card off a deck. Lands at (x, y) or in the first free slot right of the deck.
@@ -253,7 +266,7 @@ export const draw: Command<{ id: string; faceUp?: boolean; x?: number; y?: numbe
   const rest = cards.slice(0, -1);
   changes.push(...shrunk(deck, rest));
   const deckLeft = rest.length > 1 || (rest.length === 1 && persists(deck));
-  return { changes, select: a.select === 'deck' && deckLeft ? [deck.id] : [top.id] };
+  return { changes, select: a.select === 'deck' && deckLeft ? [deck.id] : [top.id], events: (after) => [drawEvent(deck, top, after)] };
 };
 
 /**
@@ -285,7 +298,8 @@ export const deal: Command<{ id: string; count: number; faceUp?: boolean }> = (d
   const rest = cards.slice(0, cards.length - n);
   changes.push(...shrunk(deck, rest));
   const deckLeft = rest.length > 1 || (rest.length === 1 && persists(deck));
-  return { changes, select: deckLeft ? [deck.id] : dealt.map((c) => c.id) };
+  const from = deck;
+  return { changes, select: deckLeft ? [deck.id] : dealt.map((c) => c.id), events: (after) => [dealEvent(from, dealt, after)] };
 };
 
 /**
@@ -337,7 +351,7 @@ export const pullOut: Command<{ id: string; x?: number; y?: number }> = (doc, a)
   const box = doc.get(from)!;
   const changes = release(c, Math.round(isNum(a.x) ? a.x : c.x), Math.round(isNum(a.y) ? a.y : c.y), Math.floor(doc.topZ) + 1);
   changes.push(...shrunk(box, cardsIn(doc, from).filter((x) => x.id !== c.id)));
-  return { changes, select: [c.id] };
+  return { changes, select: [c.id], events: (after) => moveEvents(doc, after, [c.id]) };
 };
 
 /** Changes that switch `box` to `layout`, keeping the top-left of its cards where it is. No checks. */
@@ -414,7 +428,7 @@ export const putOnTable: Command<{ id: string }> = (doc, a) => {
   const p = rowStart(box);
   const changes = layRow(cards, p.x, p.y, Math.floor(doc.topZ));
   if (!isHomeDeck(box) && !isSpot(box)) changes.push({ op: 'del', id: box.id });
-  return { changes, select: cards.map((c) => c.id) };
+  return logged({ changes, select: cards.map((c) => c.id) }, (after) => [putOnTableEvent(doc, after, box, cards)]);
 };
 
 /**
@@ -429,8 +443,10 @@ export const showdown: Command<Record<string, never>> = (doc) => {
   let z = Math.floor(doc.topZ);
   const changes: Change[] = [];
   const select: string[] = [];
+  const cardsBy = new Map<string, CanvasNode[]>();
   for (const h of hands) {
     const cards = cardsIn(doc, h.id);
+    cardsBy.set(h.id, cards);
     const p = rowStart(h);
     const w = rowWidth(cards.length);
     while (cards.length && hits(p.x, p.y, w)) p.x += CARD_W + ROW_GAP;
@@ -440,7 +456,7 @@ export const showdown: Command<Record<string, never>> = (doc) => {
     z += cards.length;
     select.push(...cards.map((c) => c.id));
   }
-  return { changes, select };
+  return logged({ changes, select }, (after) => [showdownEvent(after, hands, cardsBy)]);
 };
 
 /** Put every card of a group on the table where it's shown, and remove the group. Not the home deck. */
@@ -538,7 +554,7 @@ export const newHand: Command<{ owner: string; label?: string; color?: string; x
   const s = emptyHandSize();
   const at = freeSpot(doc, isNum(a.x) ? a.x : 0, isNum(a.y) ? a.y : 0, s.w, s.h);
   const node = groupNode(ctx.newId(), at.x, at.y, Math.floor(doc.topZ) + 1, { layout: 'fan', owner: a.owner, label, color: okColor(a.color) });
-  return { changes: [{ op: 'add', node }], select: [node.id] };
+  return { changes: [{ op: 'add', node }], select: [node.id], events: [{ type: 'cards.newHand', text: `added ${label}`, targets: [node.id], cue: 'pulse' }] };
 };
 
 /**
@@ -569,9 +585,9 @@ export const give: Command<{ id: string; to: string | null; label?: string; colo
   const box = typeof a?.id === 'string' ? doc.get(a.id) : undefined;
   if (!box || !isDeck(box) || isHomeDeck(box)) return [];
   if (box.owner && a.by !== undefined && box.owner !== a.by && a.ownerAway !== true) return [];
-  if (a.to === null) return own(doc, { id: box.id, owner: null }, ctx);
+  if (a.to === null) return logged(own(doc, { id: box.id, owner: null }, ctx), [giveEvent(box, null)]);
   if (typeof a.to !== 'string' || !a.to) return [];
-  return own(doc, { id: box.id, owner: a.to, label: a.label, color: a.color }, ctx);
+  return logged(own(doc, { id: box.id, owner: a.to, label: a.label, color: a.color }, ctx), [giveEvent(box, a.to, a.label)]);
 };
 
 /** L: a deck becomes a fan group, a group becomes a deck (home deck too). A hand stays spread. */
@@ -618,7 +634,7 @@ export const recall: Command<{ id: string }> = (doc, a) => {
     if (isDeck(other)) changes.push(...shrunk(other, cardsIn(doc, from).filter((c) => !out.includes(c))));
   }
   changes.push(...toFront(doc, [deck]));
-  return { changes, select: [deck.id] };
+  return { changes, select: [deck.id], events: out.length ? [recallEvent(doc, deck, out)] : [] };
 };
 
 /** How many of a deck's own cards are elsewhere. */
@@ -677,6 +693,11 @@ export const repairHomes: Command<Record<string, never>> = (doc, _a, ctx) => {
  * (a pile: on top; a group or hand: at the drop point `at`). Onto a loose card: a new group.
  */
 export const drop: Command<{ target: string; ids: string[]; at?: { x: number; y: number }; as?: 'stack' | 'fan'; shown?: boolean }> = (doc, a, ctx) => {
+  const r = dropChanges(doc, a, ctx);
+  const ids = isIds(a?.ids) ? a.ids : [];
+  return logged(r, (after) => moveEvents(doc, after, ids));
+};
+const dropChanges: Command<{ target: string; ids: string[]; at?: { x: number; y: number }; as?: 'stack' | 'fan'; shown?: boolean }> = (doc, a, ctx) => {
   const target = typeof a?.target === 'string' ? doc.get(a.target) : undefined;
   if (!target || !isCardish(target) || !isIds(a.ids)) return [];
   const dropped = pick(doc, a.ids).filter((n) => isCardish(n) && n.id !== target.id && doc.isVisible(n.id));

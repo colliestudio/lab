@@ -354,22 +354,6 @@
   border-radius: 8px;
   animation: pc-landed 1.2s ease-out;
 }
-.pc-toast {
-  position: absolute;
-  transform: translateY(-100%);
-  z-index: 100000;
-  padding: 3px 8px;
-  border-radius: 6px;
-  background: rgba(20, 22, 28, 0.8);
-  color: #fff;
-  font: 600 11px/1.2 system-ui, sans-serif;
-  white-space: nowrap;
-  pointer-events: none;
-  transition: opacity 0.35s;
-}
-.pc-toast.pc-toast-out {
-  opacity: 0;
-}
 .pc-viewas {
   position: absolute;
   bottom: 18px;
