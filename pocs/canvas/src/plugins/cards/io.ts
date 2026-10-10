@@ -7,7 +7,7 @@ const obj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'o
 
 /**
  * Make imported card data safe: drop invalid `x-cards`, convert stage-1 decks (card array inside the
- * deck node) into card nodes, unhook cards from missing decks, drop empty decks.
+ * deck node) into card nodes, unhook cards from missing decks, drop empty decks (empty hands stay).
  */
 export const repairImport: DocFilter = (doc, ctx) => {
   const out: CanvasNode[] = [];
@@ -69,7 +69,9 @@ export const repairImport: DocFilter = (doc, ctx) => {
       delete f.order;
     }
   }
-  return { ...doc, nodes: out.filter((n) => !decks.has(n.id) || used.has(n.id)) };
+  // an empty hand (a group with an owner) is a player's seat: keep it (Reset empties hands)
+  const hand = (n: CanvasNode) => typeof n.owner === 'string' && !!n.owner;
+  return { ...doc, nodes: out.filter((n) => !decks.has(n.id) || used.has(n.id) || hand(n)) };
 };
 
 function strip(n: CanvasNode): CanvasNode {

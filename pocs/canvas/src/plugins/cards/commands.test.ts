@@ -699,6 +699,10 @@ describe('facing is kept unless asked', () => {
     expect(cardsIn(s.doc, h)).toHaveLength(0);
     expect(cardsIn(s.doc, home.id)).toHaveLength(52);
     expect((s.doc.get(home.id)![FIELD] as any).layout).toBeUndefined();
+    // the emptied hand survives Save → Open
+    const t = store();
+    t.load(parse(serialize(s.exportDoc())));
+    expect(t.doc.get(h)).toMatchObject({ owner: 'p1' });
   });
 });
 
