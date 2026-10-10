@@ -6,6 +6,7 @@ import { cardsPlugin, handLabelOf, newHandEntries, newHandFor } from './plugins/
 import { chessPlugin } from './plugins/chess';
 import { clockPlugin } from './plugins/clock';
 import { battleLinePlugin } from './plugins/battleline';
+import { matsPlugin } from './plugins/mats';
 import { mountHelp, removeHelpNote } from './help';
 
 const ROOM = roomFromUrl();
@@ -19,6 +20,7 @@ app.use(cardsPlugin);
 app.use(chessPlugin);
 app.use(clockPlugin);
 app.use(battleLinePlugin);
+app.use(matsPlugin);
 app.store.migrations.push(removeHelpNote);
 
 

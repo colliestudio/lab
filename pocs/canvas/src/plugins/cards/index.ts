@@ -120,7 +120,8 @@ const deckName = (box: CanvasNode) => (isSpot(box) && box.label) || (isHomeDeck(
  */
 function slotOutlines(box: CanvasNode, count: number): { dx: number; dy: number; faint?: boolean }[] | undefined {
   const f = box[FIELD] as DeckField;
-  if (!isSpot(box) || !f.slots) return;
+  if (!isSpot(box)) return;
+  if (!f.slots) return []; // a spot without outlined slots: just its quiet frame
   const cap = Math.max(f.slots, f.max ?? 0);
   if (count >= cap) return [];
   return [{ ...slots(layoutOf(box), count + 1, cap).at[count], faint: count >= f.slots }];
@@ -316,7 +317,8 @@ export const cardsPlugin: Plugin = {
     const ownMove = (t: CanvasNode, dropped: CanvasNode[], app: App) =>
       dropped.length === 1 && isHand(t) && t.owner === app.viewer && app.doc.parentOf(dropped[0].id) === t.id ? t : undefined;
     const canDrop = (t: CanvasNode, dropped: CanvasNode[], app: App, overlap: number) => {
-      if (!dropped.some(isCardish)) return false;
+      // a table spot (a formation, a mat's zone) is never dropped into anything: it stays a spot
+      if (!dropped.some(isCardish) || dropped.some(isSpot)) return false;
       const mode = dropMode(app.doc, t, overlap);
       if (!mode) return false;
       // a container with a `max` (a table spot) refuses more than it has room for

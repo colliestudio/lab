@@ -1,0 +1,131 @@
+/* a mat: a felt surface under what lies on it */
+.mt-mat {
+  position: absolute;
+  inset: 0;
+  border-radius: 22px;
+  background:
+    radial-gradient(ellipse at center, color-mix(in srgb, var(--mt) 88%, white) 0%, var(--mt) 70%, color-mix(in srgb, var(--mt) 80%, black) 100%);
+  box-shadow:
+    inset 0 0 0 6px color-mix(in srgb, var(--mt) 70%, black),
+    inset 0 0 40px rgba(0, 0, 0, 0.35),
+    0 10px 30px rgba(0, 0, 0, 0.35);
+}
+.mt-mat.mt-editing {
+  box-shadow:
+    inset 0 0 0 6px color-mix(in srgb, var(--mt) 70%, black),
+    inset 0 0 40px rgba(0, 0, 0, 0.35),
+    0 0 0 3px #ffd54a,
+    0 10px 30px rgba(0, 0, 0, 0.35);
+}
+.mt-grip {
+  position: absolute;
+  left: 50%;
+  top: -26px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 12px 0 8px;
+  box-sizing: border-box;
+  border-radius: 8px 8px 0 0;
+  background: color-mix(in srgb, var(--mt) 60%, black);
+  color: #f3efe2;
+  font: 600 12px/26px system-ui, sans-serif;
+  white-space: nowrap;
+  cursor: move;
+}
+.mt-grip:hover {
+  background: color-mix(in srgb, var(--mt) 45%, black);
+}
+.mt-grip-dots {
+  font-size: 14px;
+  opacity: 0.7;
+}
+.mt-lock {
+  font-size: 11px;
+  opacity: 0.7;
+}
+.mt-banner {
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 10px);
+  transform: translateX(-50%);
+  padding: 5px 6px 5px 12px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #ffe9a3;
+  font: 600 12px system-ui, sans-serif;
+  white-space: nowrap;
+  z-index: 1;
+}
+.mt-banner button {
+  margin-left: 8px;
+  padding: 3px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: #ffd54a;
+  color: #222;
+  font: 700 12px system-ui, sans-serif;
+  cursor: pointer;
+}
+.mt-resize {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 22px;
+  height: 22px;
+  cursor: nwse-resize;
+  opacity: 0;
+  background: linear-gradient(135deg, transparent 50%, rgba(255, 255, 255, 0.55) 50% 60%, transparent 60% 70%, rgba(255, 255, 255, 0.55) 70% 80%, transparent 80%);
+  border-bottom-right-radius: 20px;
+  pointer-events: auto;
+}
+.mt-mat:hover > .mt-resize,
+.mt-editing > .mt-resize,
+.mt-zone-edit .mt-resize {
+  opacity: 1;
+}
+/* a free area (a pot): a dashed, labelled spot */
+.mt-area {
+  position: absolute;
+  inset: 0;
+  border: 2px dashed rgba(255, 255, 255, 0.35);
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.08);
+}
+.mt-area-label {
+  position: absolute;
+  left: 12px;
+  top: 8px;
+  color: rgba(255, 255, 255, 0.6);
+  font: 600 12px system-ui, sans-serif;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+/* a zone in edit mode */
+.mt-zone-edit {
+  position: absolute;
+  inset: -4px;
+  border: 2px dashed #ffd54a;
+  border-radius: 14px;
+  pointer-events: none;
+  cursor: move;
+}
+.cv-node[data-kind='mat-zone'][data-editing] {
+  cursor: move;
+}
+.mt-zone-chip {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  padding: 2px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: #ffd54a;
+  color: #222;
+  font: 700 11px/18px system-ui, sans-serif;
+  cursor: pointer;
+  pointer-events: auto;
+  z-index: 2;
+}
