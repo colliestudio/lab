@@ -76,8 +76,12 @@ export const handHeight = (h: CanvasNode) => 2 * PAD + laneOf(h) + 6 + HAND_ARC 
 export const rowTop = (h: CanvasNode) => PAD + laneOf(h) + 6;
 
 const handStep = (h: CanvasNode) => (layoutOf(h) === 'fan' ? HAND_STEP : CARD_W + GAP);
-/** A growing frame's step for `n` cards: as groups (fan: up to 40, squeezing past MAX_FAN). */
-const growStep = (h: CanvasNode, n: number) => (layoutOf(h) === 'fan' ? fanStep(n) : CARD_W + GAP);
+/** A growing hand's fan: roomier than a group's (every corner readable with 13+ cards), squeezing past this width. */
+const HAND_FAN_STEP = 50;
+const MAX_HAND_FAN = 900;
+const handFanStep = (n: number) => (n > 1 ? Math.min(HAND_FAN_STEP, (MAX_HAND_FAN - CARD_W) / (n - 1)) : HAND_FAN_STEP);
+/** A growing frame's step for `n` cards (fan: up to HAND_FAN_STEP, squeezing past MAX_HAND_FAN). */
+const growStep = (h: CanvasNode, n: number) => (layoutOf(h) === 'fan' ? handFanStep(n) : CARD_W + GAP);
 const span = (n: number, step: number) => (n ? (n - 1) * step + CARD_W : 0);
 /** x offsets of `n` cards spread centered in the frame, at most `max` apart (closer when they don't fit). */
 function spreadX(n: number, width: number, max: number): number[] {
@@ -105,7 +109,8 @@ export function handSlots(h: CanvasNode, shown: boolean[]): Slots {
   partX(h, s.length, w).forEach((dx, k) => (at[s[k]] = { dx, dy: PAD }));
   const fan = layoutOf(h) === 'fan';
   const mid = (p.length - 1) / 2;
-  const tilt = p.length > 1 ? Math.min(3, 24 / (p.length - 1)) : 0;
+  // a gentle tilt: with many cards a steep fan hides the corners of the outer ones
+  const tilt = p.length > 1 ? Math.min(2, 12 / (p.length - 1)) : 0;
   partX(h, p.length, w).forEach((dx, k) => {
     const t = mid ? (k - mid) / mid : 0;
     at[p[k]] = fan ? { dx, dy: rowTop(h) + Math.round(t * t * HAND_ARC), angle: +((k - mid) * tilt).toFixed(2) || undefined } : { dx, dy: rowTop(h) + HAND_ARC / 2 };
@@ -128,6 +133,9 @@ export const thresholdY = (h: CanvasNode) => h.y + PAD + Math.round((laneOf(h) +
 
 /** Drag-up classification: shown when the hand allows showing and the card's top is above the threshold. */
 export const liftedDrop = (hand: CanvasNode, topY: number): boolean => laneOf(hand) > 0 && topY < thresholdY(hand);
+
+/** Size of a new (growing, fan) hand holding `n` private cards. */
+export const handSizeFor = (n: number) => ({ w: 2 * PAD + Math.max(3 * CARD_W + 2 * GAP, n ? (n - 1) * handFanStep(n) + CARD_W : 0), h: 2 * PAD + 6 + HAND_ARC + CARD_H });
 
 /** Size of a new empty hand. */
 export const emptyHandSize = () => ({ w: 2 * PAD + 3 * CARD_W + 2 * GAP, h: 2 * PAD + 6 + HAND_ARC + CARD_H });

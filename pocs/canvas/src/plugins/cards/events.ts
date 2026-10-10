@@ -159,6 +159,15 @@ export function dealEvent(deck: CanvasNode, dealt: CanvasNode[], after: DocView)
   return ev('deal', `dealt ${count(cs.length, 'card')}${names} from ${boxName(deck)}`, [deck.id, ...cs.map((c) => c.id)], { cue: 'deal' });
 }
 
+/** Dealt to players' hands: "dealt 13 to each of 2 players" (uneven: "dealt 25 cards to 2 players"). */
+export function dealHandsEvent(deck: CanvasNode, hands: CanvasNode[], counts: number[]): EventSpec {
+  const total = counts.reduce((a, b) => a + b, 0);
+  const n = hands.length;
+  const text =
+    n === 1 ? `dealt ${count(total, 'card')} to ${hands[0].label ?? 'a hand'}` : counts.every((k) => k === counts[0]) ? `dealt ${counts[0]} to each of ${n} players` : `dealt ${total} cards to ${n} players`;
+  return ev('dealHands', text, [deck.id, ...hands.map((h) => h.id)], { cue: 'deal' });
+}
+
 /** Cards (not in hands) turned face up or down; piles turned over. Private flips in a blind hand aren't logged. */
 export function facingEvents(before: DocView, after: DocView, ids: string[]): EventSpec[] {
   const out: EventSpec[] = [];

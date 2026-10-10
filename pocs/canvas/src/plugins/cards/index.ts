@@ -314,7 +314,13 @@ function handMenu(app: App, box: CanvasNode, ux: HandUx): MenuEntry[] {
   return out;
 }
 
-const SORT_NAMES: Record<SortMode, string> = { suit: 'By suit, then rank', rank: 'By rank, then suit', rankOnly: 'By rank only', reverse: 'Reverse current order' };
+const SORT_NAMES: Record<SortMode, string> = {
+  suit: 'By suit, then rank',
+  rank: 'By rank, then suit',
+  rankOnly: 'By rank only',
+  tienlen: 'Tiến Lên (3 low … A, 2 high; ♠ ♣ ♦ ♥)',
+  reverse: 'Reverse current order',
+};
 /** Sort ▸ modes (the remembered one checked) + Ace high; "Sort again" repeats the remembered mode. */
 function sortMenu(app: App, box: CanvasNode): MenuEntry {
   const pref = sortPrefOf(box);
