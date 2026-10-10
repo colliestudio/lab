@@ -33,7 +33,9 @@ function tabMenu(app: App, deck: CanvasNode) {
   const id = deck.id;
   const home = homeFor(app.doc, deck);
   const items: { label: string; hint?: string; run: () => void }[] = [];
-  if (home) items.push({ label: `Gather all cards (${outCount(app.doc, home)} out)`, hint: '⇧G', run: () => app.dispatch('cards.recall', { id: home }) });
+  // on a pile, say where the cards go: back to the home deck, not into this pile
+  const gatherLabel = home === id ? `Gather all cards (${outCount(app.doc, home!)} out)` : 'Return all cards to the deck';
+  if (home) items.push({ label: gatherLabel, hint: '⇧G', run: () => app.dispatch('cards.recall', { id: home }) });
   items.push(
     { label: 'Shuffle', hint: 'S', run: () => app.dispatch('cards.shuffle', { ids: [id] }) },
     { label: 'Deal 3', hint: '3', run: () => app.dispatch('cards.deal', { id, count: 3, faceUp: true }) },
@@ -143,7 +145,8 @@ export const cardsPlugin: Plugin = {
     app.registerMenuItem({
       get label() {
         const h = homeFor(app.doc, selectedCards(app).at(-1));
-        return `Gather all cards (${h ? outCount(app.doc, h) : 0} out)`;
+        const onHome = app.store.selection.has(h ?? '');
+        return onHome ? `Gather all cards (${h ? outCount(app.doc, h) : 0} out)` : 'Return all cards to the deck';
       },
       hint: '⇧G',
       when: (a, sel) => sel.length >= 1 && !!homeFor(a.doc, sel.filter(isCardish).at(-1)),
