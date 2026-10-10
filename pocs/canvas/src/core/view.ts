@@ -1,6 +1,7 @@
 import type { App } from './app';
 import type { CanvasNode } from './doc';
-import type { RenderCtx } from './plugin';
+import { Menu } from './menu';
+import type { MenuEntry, RenderCtx } from './plugin';
 import { Viewport, wheelZoomFactor } from './viewport';
 
 type Pt = { x: number; y: number };
@@ -34,7 +35,7 @@ export class View {
   private els = new Map<string, HTMLElement>();
   private contentKeys = new Map<string, string>();
   private marquee: HTMLElement;
-  private menuEl: HTMLElement | null = null;
+  readonly menu: Menu;
   private gesture: Gesture | null = null;
   private pointers = new Map<number, Pt>();
   private spaceDown = false;
@@ -54,6 +55,7 @@ export class View {
     this.world = el('div', 'cv-world');
     this.marquee = el('div', 'cv-marquee');
     root.append(this.world, this.marquee);
+    this.menu = new Menu(root);
 
     app.viewport.onChange(() => this.applyViewport());
     app.store.subscribe(() => this.render());
@@ -510,46 +512,29 @@ export class View {
     if (nodeEl && !store.selection.has(nodeEl.dataset.nodeId!)) store.select([nodeEl.dataset.nodeId!]);
     if (!nodeEl) store.select([]);
     const selected = this.app.selected();
-    const items = this.app.menu.filter((i) => i.when(this.app, selected));
-    const p = this.local(e);
-    this.openMenu(
-      items.map((i) => ({ label: i.label, hint: i.hint, run: () => i.run(this.app, this.app.selected()) })),
-      p,
-    );
+    const groups: MenuEntry[][] = [];
+    let title: string | undefined;
+    const plain = this.app.menu
+      .filter((i) => i.when(this.app, selected))
+      .map((i): MenuEntry => ({ label: i.label, hint: i.hint, run: () => i.run(this.app, this.app.selected()) }));
+    if (plain.length) groups.push(plain);
+    for (const provide of this.app.menuProviders) {
+      const out = provide(this.app, selected);
+      if (!out?.entries.length) continue;
+      title ??= out.title;
+      groups.push(out.entries);
+    }
+    const entries = groups.flatMap((g, k) => g.map((x, i) => (k > 0 && i === 0 ? { ...x, separator: true } : x)));
+    this.openMenu(entries, this.local(e), title);
   }
 
   /** Show a menu at a table point, or anchored below an element (e.g. an object's tab). */
-  openMenu(items: { label: string; hint?: string; run: () => void }[], at: { x: number; y: number } | Element) {
-    this.closeMenu();
-    if (!items.length) return;
-    const menu = el('div', 'cv-menu');
-    for (const item of items) {
-      const b = el('button', 'cv-menu-item');
-      b.innerHTML = `<span></span><kbd></kbd>`;
-      b.children[0].textContent = item.label;
-      b.children[1].textContent = item.hint ?? '';
-      b.addEventListener('click', () => {
-        this.closeMenu();
-        item.run();
-      });
-      menu.append(b);
-    }
-    let p: Pt;
-    if (at instanceof Element) {
-      const r = at.getBoundingClientRect();
-      const root = this.root.getBoundingClientRect();
-      p = { x: r.left - root.left, y: r.bottom - root.top + 4 };
-    } else p = at;
-    menu.style.left = `${p.x}px`;
-    menu.style.top = `${p.y}px`;
-    menu.addEventListener('pointerdown', (ev) => ev.stopPropagation());
-    this.root.append(menu);
-    this.menuEl = menu;
+  openMenu(entries: MenuEntry[], at: { x: number; y: number } | Element, title?: string) {
+    this.menu.open(entries, at, title);
   }
 
   closeMenu() {
-    this.menuEl?.remove();
-    this.menuEl = null;
+    this.menu.close();
   }
 }
 

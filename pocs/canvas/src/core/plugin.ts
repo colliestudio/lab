@@ -50,12 +50,36 @@ export interface KeyBinding {
   run(app: App): void;
 }
 
+/** One row of a (context or tab) menu. */
+export interface MenuEntry {
+  label: string;
+  /** Keyboard shortcut, shown on the right (e.g. "F", "⇧G"). */
+  hint?: string;
+  run?: () => void;
+  /** A submenu ("Label ▸"); a function is built when it opens. */
+  items?: MenuEntry[] | (() => MenuEntry[]);
+  /** Checkmark state (omit for plain items). */
+  checked?: boolean;
+  /** Greyed out; a string is the reason, shown under the label. */
+  disabled?: boolean | string;
+  /** Draw a separator line above this row. */
+  separator?: boolean;
+  /** A number field with a button (e.g. "Deal N"): runs with the typed number. */
+  number?: { value?: number; min?: number; max?: number; action?: string; run(n: number): void };
+}
+
 export interface MenuItem {
   label: string;
   hint?: string;
   when(app: App, selected: CanvasNode[]): boolean;
   run(app: App, selected: CanvasNode[]): void;
 }
+
+/**
+ * Builds the right-click menu for the selection (empty = the table). Providers' entries are joined
+ * with separators; `title` (first one given wins) heads the menu, e.g. the kind of object.
+ */
+export type MenuProvider = (app: App, selected: CanvasNode[]) => { title?: string; entries: MenuEntry[] } | undefined;
 
 export interface Plugin {
   id: string;
