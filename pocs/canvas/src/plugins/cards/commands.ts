@@ -37,6 +37,16 @@ const stackInto = (c: CanvasNode, deck: CanvasNode, order: number): Change[] => 
 /** A stack that just lost its last card: a pile disappears, a home deck stays as an empty slot. */
 const emptied = (deck: CanvasNode): Change[] => (isHomeDeck(deck) ? [] : [{ op: 'del', id: deck.id }]);
 
+/**
+ * After cards leave a stack: empty → `emptied`; a pile down to one card dissolves into that loose card
+ * (a home deck stays a deck at any size). `left` = the cards still in it.
+ */
+const shrunk = (deck: CanvasNode, left: CanvasNode[]): Change[] => {
+  if (!left.length) return emptied(deck);
+  if (left.length === 1 && !isHomeDeck(deck)) return [...release(left[0], deck.x, deck.y, deck.z ?? 0), { op: 'del', id: deck.id }];
+  return [];
+};
+
 /** Card entering a stack takes its facing. Its home never changes here. */
 const conform = (c: CanvasNode, faceUp: boolean): Change[] => (card(c).faceUp !== faceUp ? [set(c.id, F('faceUp'), faceUp)] : []);
 
@@ -87,8 +97,9 @@ export const draw: Command<{ id: string; faceUp?: boolean; x?: number; y?: numbe
   }
   const changes = release(top, Math.round(x), Math.round(y), doc.topZ + 1);
   if (isBool(a.faceUp)) changes.push(set(top.id, F('faceUp'), a.faceUp));
-  const deckLeft = cards.length > 1;
-  if (!deckLeft) changes.push(...emptied(deck));
+  const rest = cards.slice(0, -1);
+  changes.push(...shrunk(deck, rest));
+  const deckLeft = rest.length > 1 || (rest.length === 1 && isHomeDeck(deck));
   return { changes, select: a.select === 'deck' && deckLeft ? [deck.id] : [top.id] };
 };
 
@@ -115,8 +126,9 @@ export const deal: Command<{ id: string; count: number; faceUp?: boolean }> = (d
     ...release(c, x0 + i * step, deck.y + Math.round(((i - mid) / Math.max(mid, 1)) ** 2 * Math.min(24, n * 3)), doc.topZ + 1 + i),
     ...(card(c).faceUp !== faceUp ? [set(c.id, F('faceUp'), faceUp)] : []),
   ]);
-  const deckLeft = cards.length > n;
-  if (!deckLeft) changes.push(...emptied(deck));
+  const rest = cards.slice(0, cards.length - n);
+  changes.push(...shrunk(deck, rest));
+  const deckLeft = rest.length > 1 || (rest.length === 1 && isHomeDeck(deck));
   return { changes, select: deckLeft ? [deck.id] : dealt.map((c) => c.id) };
 };
 
@@ -183,9 +195,9 @@ export const recall: Command<{ id: string }> = (doc, a) => {
     changes.push(...stackInto(c, deck, ++order));
     if (card(c).faceUp) changes.push(set(c.id, F('faceUp'), false));
   }
-  for (const [from, k] of drained) {
+  for (const from of drained.keys()) {
     const other = doc.get(from)!;
-    if (isDeck(other) && cardsIn(doc, from).length === k) changes.push(...emptied(other));
+    if (isDeck(other)) changes.push(...shrunk(other, cardsIn(doc, from).filter((c) => !out.includes(c))));
   }
   changes.push(...toFront(doc, [deck]));
   return { changes, select: [deck.id] };
@@ -198,7 +210,7 @@ export const outCount = (doc: DocView, deckId: string) => cardsHomedAt(doc, deck
  * Repair/migration (runs after every load, idempotent). Per pack: pick one home deck — a stack
  * already flagged home, else the stack most cards name as home, else the fullest stack, else a new
  * one left of the leftmost card — flag it, unflag every other stack (they become piles), point every
- * card of the pack at it, delete empty piles, and make every stack's facing uniform (top card's).
+ * card of the pack at it, delete empty piles, dissolve one-card piles, and make every stack's facing uniform.
  */
 export const repairHomes: Command<Record<string, never>> = (doc, _a, ctx) => {
   const changes: Change[] = [];
@@ -233,6 +245,7 @@ export const repairHomes: Command<Record<string, never>> = (doc, _a, ctx) => {
       if (st.id === home.id) continue;
       if (isHomeDeck(st)) changes.push(set(st.id, F('home'), undefined), set(st.id, 'text', 'Pile'));
       if (!size(st)) changes.push({ op: 'del', id: st.id });
+      else if (size(st) === 1) changes.push(...shrunk(st, cardsIn(doc, st.id))); // a pile of one is just a card
     }
     for (const c of cards) if (card(c).home !== home.id) changes.push(set(c.id, F('home'), home.id));
     // no stack may hold mixed facing: conform to the top card

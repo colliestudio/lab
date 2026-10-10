@@ -400,3 +400,23 @@ describe('concurrent edits (two Y.Docs)', () => {
     expect(b.doc.get(id)!.x).toBe(a.doc.get(id)!.x);
   });
 });
+
+describe('one-card piles', () => {
+  it('a pile down to one card dissolves into that card; a home deck stays a deck', () => {
+    const s = withDeck(3);
+    // draw two cards out, stack them into a pile of 2
+    const a = s.dispatch('cards.draw', { id: 'd', x: 400, y: 0 }).select![0];
+    const b = s.dispatch('cards.draw', { id: 'd', x: 600, y: 0 }).select![0];
+    const pile = s.dispatch('cards.drop', { target: b, ids: [a] }).select![0];
+    expect(cardsIn(s.doc, pile)).toHaveLength(2);
+    // take one out: the pile is gone, the other card lies loose where the pile was
+    const out = s.dispatch('cards.draw', { id: pile, x: 900, y: 0 }).select![0];
+    expect(s.doc.get(pile)).toBeUndefined();
+    const rest = [a, b].find((id) => id !== out)!;
+    expect(s.doc.parentOf(rest)).toBeUndefined();
+    expect(s.doc.get(rest)!.x).toBe(600);
+    // the home deck with one card left is still a deck
+    expect(cardsIn(s.doc, 'd')).toHaveLength(1);
+    expect(s.doc.get('d')).toBeDefined();
+  });
+});
