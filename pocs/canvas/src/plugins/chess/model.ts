@@ -101,11 +101,14 @@ export const inZone = (b: CanvasNode, x: number, y: number) => {
 export const center = (n: CanvasNode) => ({ x: n.x + n.width / 2, y: n.y + n.height / 2 });
 
 /**
- * Capture slots for `color` beside board `b`, nearest first: on its owner's side (below the board for
- * white unless the board is flipped), 8 per row, rows going outwards.
+ * Slots beside board `b` for a piece of `color`, nearest first, 8 per row, rows going outwards.
+ * `capturer`: a captured piece goes to the side of the player who took it (players keep what they
+ * took: a black piece below the board, white's side, unless flipped). `owner`: pieces set aside
+ * (Clear, Set up extras, spawned beside the board) go to their own player's side.
  */
-export function captureSlots(b: CanvasNode, color: Color): { x: number; y: number }[] {
-  const below = (color === 'w') !== !!board(b).flipped;
+export function captureSlots(b: CanvasNode, color: Color, side: 'owner' | 'capturer' = 'capturer'): { x: number; y: number }[] {
+  const white = side === 'owner' ? color === 'w' : color === 'b';
+  const below = white !== !!board(b).flipped;
   const out: { x: number; y: number }[] = [];
   for (let r = 0; r < CAP_ROWS; r++)
     for (let c = 0; c < 8; c++)

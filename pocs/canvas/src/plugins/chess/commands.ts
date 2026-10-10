@@ -27,7 +27,7 @@ import {
 
 // Pure commands: (read-only doc, args, ctx) -> per-field changes. No DOM. Bad args = no-op.
 // Free play: no rules. Pieces snap to squares, a piece dropped on an occupied square sends the
-// occupant to the capture rows beside the board, all in one undo step.
+// occupant beside the board on the capturer's side, all in one undo step.
 
 const F = (k: string) => `${FIELD}.${k}`;
 const boardArg = (doc: DocView, id: unknown) => {
@@ -57,8 +57,8 @@ function slots(doc: DocView, b: CanvasNode, moving: ReadonlySet<string>) {
   const busy = doc.visible.filter((n) => isPiece(n) && !moving.has(n.id)).map(center);
   const free = (s: { x: number; y: number }) =>
     !taken.has(`${s.x},${s.y}`) && !busy.some((c) => c.x >= s.x && c.x < s.x + SQ && c.y >= s.y && c.y < s.y + SQ);
-  return (color: Color) => {
-    const all = captureSlots(b, color);
+  return (color: Color, side: 'owner' | 'capturer' = 'owner') => {
+    const all = captureSlots(b, color, side);
     const s = all.find(free) ?? all[all.length - 1];
     taken.add(`${s.x},${s.y}`);
     return s;
@@ -88,7 +88,7 @@ export const create: Command<{ x: number; y: number }> = (doc, a, ctx) => {
 /**
  * Reset to the starting position: the set's own pieces come back from anywhere (a piece already on
  * its start square stays), missing ones are replaced. Extras (spawned/copied beyond the 32) and
- * strangers on the board go to its capture rows, or with `removeExtras` are deleted (strangers that
+ * strangers on the board are set aside beside it (owner's side), or with `removeExtras` are deleted (strangers that
  * belong to another live board are left for that board).
  */
 function arrange(doc: DocView, b: CanvasNode, ctx: { newId(): string }, z: number, removeExtras = false) {
@@ -170,7 +170,7 @@ export const flip: Command<{ id: string }> = (doc, a) => {
   return changes;
 };
 
-/** Take every piece off the squares into the capture rows (each on its owner's side). */
+/** Take every piece off the squares, set aside beside the board on its owner's side. */
 export const clear: Command<{ id: string }> = (doc, a) => {
   const b = boardArg(doc, a?.id);
   if (!b) return [];
@@ -190,7 +190,7 @@ export const lock: Command<{ id: string; locked: boolean }> = (doc, a) => {
 
 /**
  * Where pieces put down at their current position end up. On a board's grid: the square under the
- * piece's center; an occupant goes to the capture rows (free-play capture). Off the grid but beside a
+ * piece's center; an occupant goes beside the board on the capturer's side (free-play capture). Off the grid but beside a
  * board: stays with that board. Elsewhere: lies free. `moved` may include nodes not yet in the doc
  * (a spawn). A single piece changing squares marks the last move.
  */
@@ -212,7 +212,7 @@ function settle(doc: DocView, moved: CanvasNode[]) {
   const slot = (b: CanvasNode, c: Color) => {
     let f = finders.get(b.id);
     if (!f) finders.set(b.id, (f = slots(doc, b, moving)));
-    return f(c);
+    return f(c, 'capturer');
   };
   const boardChanges: Change[] = [];
   for (const p of moved) {
@@ -250,7 +250,7 @@ export const place: Command<{ ids: string[] }> = (doc, a) => {
 /**
  * A new piece. With (x, y): put down centered there (snaps / captures like a drop; on or beside a
  * board it joins that board's set). With `board` instead: in the first free capture slot beside that
- * board (its owner's side), part of its set. Selects the new piece unless `keepSelection`.
+ * board (set aside on its owner's side), part of its set. Selects the new piece unless `keepSelection`.
  */
 export const spawn: Command<{ piece: Kind; color: Color; x?: number; y?: number; board?: string; keepSelection?: boolean }> = (doc, a, ctx) => {
   if (!isKind(a?.piece) || !isColor(a.color)) return [];

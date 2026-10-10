@@ -68,7 +68,7 @@ describe('chess commands', () => {
     expect(board(s.doc.get(b)!).to).toBeUndefined();
   });
 
-  it('dropping on an occupied square captures: the occupant goes beside the board on its side', () => {
+  it('dropping on an occupied square captures: the occupant goes beside the board on the capturer’s side', () => {
     const { s, b } = withSet();
     const knight = at(s, b, 'g1')!.id;
     const victim = at(s, b, 'd7')!.id;
@@ -78,7 +78,7 @@ describe('chess commands', () => {
     expect(piece(v).board).toBe(b); // still with the board
     expect(piece(v).square).toBeUndefined();
     expect({ x: v.x, y: v.y }).toEqual(captureSlots(s.doc.get(b)!, 'b')[0]);
-    expect(v.y).toBeLessThan(s.doc.get(b)!.y); // black's side: above an unflipped board
+    expect(v.y).toBeGreaterThan(s.doc.get(b)!.y + BOARD); // white took it: below an unflipped board
     // the next capture of a black piece takes the next slot
     drag(s, knight, sqCenter(s, b, 'c7'));
     const v2 = s.doc.nodes.find((n) => isPiece(n) && piece(n).color === 'b' && piece(n).piece === 'P' && n.id !== victim && !piece(n).square)!;
@@ -125,7 +125,7 @@ describe('chess commands', () => {
     expect(label(k)).toBe('wK');
     expect(k.y).toBe(bd.y + 28); // white's back rank is now at the top
     const captured = s.doc.riders(b).find((p) => !piece(p).square)!;
-    expect(captured.y).toBeGreaterThan(bd.y + BOARD); // black's captures now below
+    expect(captured.y).toBeLessThan(bd.y); // white's takings follow white to the top
     // a drop on the flipped board resolves squares the flipped way
     const pawn = at(s, b, 'e2')!.id;
     drag(s, pawn, sqCenter(s, b, 'e4'));
@@ -291,7 +291,7 @@ describe('chess commands', () => {
     const r2 = s.dispatch('chess.spawn', { piece: 'Q', color: 'w', board: b, keepSelection: true });
     expect(r1.select).toBeUndefined();
     const [q1, q2] = [r1, r2].map((r) => s.doc.get((r.changes[0] as any).node.id)!);
-    const slots = captureSlots(s.doc.get(b)!, 'w');
+    const slots = captureSlots(s.doc.get(b)!, 'w', 'owner');
     expect([{ x: q1.x, y: q1.y }, { x: q2.x, y: q2.y }]).toEqual([slots[0], slots[1]]);
     expect(piece(q1)).toEqual({ piece: 'Q', color: 'w', board: b, home: b });
     // set up: 32 on squares, the two extra queens stay beside the board
