@@ -28,6 +28,11 @@ export interface CardField {
   order?: number;
   /** The home deck this card belongs to: "gather all" on it pulls the card back from anywhere. Always a home deck. */
   home?: string;
+  /**
+   * Only meaningful for a private (face-down) card in a blind hand: `false` = the owner sees its back
+   * too ("face down for me"); absent/true = the owner sees its face. Kept when the card moves.
+   */
+  mine?: boolean;
 }
 /** How a container shows its cards: a face-down-able pile, or every card visible. */
 export type Layout = 'stack' | 'fan' | 'row' | 'grid';
@@ -49,6 +54,8 @@ export interface DeckField {
   home?: true;
   layout?: Layout;
   color?: string;
+  /** A hand with "See my cards" unchecked: each private card's `mine` says whether the owner sees it. */
+  blind?: true;
 }
 
 export function parseFace(face: string): { rank: Rank; suit: Suit } {
@@ -87,17 +94,22 @@ export function handOf(doc: DocView, c: CanvasNode): CanvasNode | undefined {
   const h = p ? doc.get(p) : undefined;
   return h && isHand(h) && h.owner ? h : undefined;
 }
+/** Hand with "See my cards" unchecked. */
+export const isBlind = (h: CanvasNode): boolean => (h[FIELD] as DeckField | undefined)?.blind === true;
+/** A card in a hand that is shown to the table (raised): in a hand, face up = shown to everyone. */
+export const isShown = (doc: DocView, c: CanvasNode): boolean => !!handOf(doc, c) && card(c).faceUp;
+/** Does the owner see this private hand card's face? Always, unless the hand is blind and the card is "face down for me". */
+export const ownerSees = (h: CanvasNode, c: CanvasNode): boolean => !isBlind(h) || card(c).mine !== false;
 /**
- * In a hand, facing means "shown to the table": the owner always sees the face (as when holding
- * cards), others see it only if the card is face up. A face-down card in someone else's hand is
- * hidden from `viewer`.
+ * In a hand, facing means "shown to the table": a face-up card shows to everyone. A private
+ * (face-down) card shows its face only to the owner (unless blind and marked face down for them, or
+ * the owner is viewing as others).
  */
-export function hiddenFrom(doc: DocView, c: CanvasNode, viewer: string): boolean {
+export function hiddenFrom(doc: DocView, c: CanvasNode, viewer: string, asOthers = false): boolean {
   const h = handOf(doc, c);
-  return !!h && h.owner !== viewer && !card(c).faceUp;
+  if (!h || card(c).faceUp) return false;
+  return h.owner !== viewer || asOthers || !ownerSees(h, c);
 }
-/** Is `viewer` holding this card (in their own hand)? */
-export const heldBy = (doc: DocView, c: CanvasNode, viewer: string): boolean => handOf(doc, c)?.owner === viewer;
 export const card = (n: CanvasNode) => n[FIELD] as CardField;
 export const packOf = (n: CanvasNode) => (field(n)?.pack as string | undefined) ?? PACK;
 
@@ -172,6 +184,7 @@ export function cardNode(id: string, x: number, y: number, c: Omit<CardField, 'p
   if (c.stack !== undefined) f.stack = c.stack;
   if (c.order !== undefined) f.order = c.order;
   if (c.home !== undefined) f.home = c.home;
+  if (c.mine !== undefined) f.mine = c.mine;
   return { id, type: 'text', x, y, width: CARD_W, height: CARD_H, text: label(c.face), z, [FIELD]: f };
 }
 

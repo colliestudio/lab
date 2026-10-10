@@ -73,20 +73,32 @@ export function deckHtml(top: CardData | undefined, count: number, home = false)
 
 const esc = (t: string) => t.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 
-/** A spread-out group or a hand: a frame under its cards, with a tab "Group · 4" (drag = move all, click = menu). */
-export function groupHtml(count: number, o: { hand: boolean; home?: boolean; label: string; color?: string; mine?: boolean }): string {
+/** A tab's text: "Group · 4", "Alex's hand · 5 · 2 shown". */
+export function tabText(label: string, count: number, shown = 0): string {
+  return `${label} · ${count}${shown ? ` · ${shown} shown` : ''}`;
+}
+
+/**
+ * A spread-out group or a hand: a frame under its cards, with a tab "Group · 4" (drag = move all,
+ * click = menu). A hand also marks the lane above its row where cards shown to the table sit.
+ */
+export function groupHtml(
+  count: number,
+  o: { hand: boolean; home?: boolean; label: string; color?: string; mine?: boolean; shown?: number; blind?: boolean; lane?: number },
+): string {
   const color = o.color ?? (o.hand ? '#2f4b7c' : o.home ? '#233257' : '#555');
-  const name = `${esc(o.label)}${o.hand && !o.mine ? ' 👁︎' : ''}`;
   const tip = o.hand
     ? o.mine
-      ? 'Your hand: others see these cards face down • click for actions • drag to move'
-      : `${esc(o.label)}: shown face down to you • click for actions • drag to move`
+      ? `Your hand: cards in the row are private, raised cards are shown to everyone${o.blind ? ' (See my cards is off: you see only the cards you flipped up for yourself)' : ''} • drag a card up to show it, down to hide it • click for actions • drag to move`
+      : `${esc(o.label)}: raised cards are shown to the table, the rest you see face down • click for actions • drag to move`
     : o.home
       ? 'The home deck, spread out as a group • click for actions (L stacks it again) • drag here to move'
       : 'Group: every card shown • click for actions (turn into a deck or hand, layout, put on table) • drag here to move';
+  const lane = o.hand && o.lane ? `<div class="pc-lane" style="height:${o.lane}px">shown to table</div>` : '';
   return (
     `<div class="pc-group${o.hand ? ' pc-hand' : ''}" style="--pc-group:${color}">` +
+    lane +
     `<div class="pc-grip pc-group-tab" data-grip title="${tip}" style="background:${color}">` +
-    `<span class="pc-grip-dots">⠿</span>${name} · ${count}</div></div>`
+    `<span class="pc-grip-dots">⠿</span>${esc(tabText(o.label, count, o.shown))}${o.hand && o.mine && o.blind ? ' <span class="pc-blind" title="See my cards is off">◐</span>' : ''}</div></div>`
   );
 }

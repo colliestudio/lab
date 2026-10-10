@@ -1,6 +1,6 @@
 import { isIds, isNum, pick, set, toFront, type CanvasNode, type Change, type Command, type DocView } from '../../core';
-import { CARD_H, CARD_W, FIELD, RANKS, card, cardNode, cardsHomedAt, cardsIn, deckNode, groupNode, isCard, isCardish, isDeck, isHand, isHomeDeck, isSpreadOut, isStacked, layoutOf, packOf, parseFace, standardDeck, type DeckField, type Layout } from './deck';
-import { PAD, slotIndex, slots } from './layout';
+import { CARD_H, CARD_W, FIELD, RANKS, card, isBlind, cardNode, cardsHomedAt, cardsIn, deckNode, groupNode, isCard, isCardish, isDeck, isHand, isHomeDeck, isSpreadOut, isStacked, layoutOf, packOf, parseFace, standardDeck, type DeckField, type Layout } from './deck';
+import { PAD, RAISE, emptyHandSize, slotIndex, slots } from './layout';
 
 /**
  * How a drop would land (shown while hovering, then passed to `drop`). Onto a container, or a card
@@ -115,17 +115,54 @@ const topOrder = (doc: DocView, deckId: string) => {
   return cs.length ? (card(cs[cs.length - 1]).order ?? 0) : 0;
 };
 
-/** Flip cards; flipping a deck turns the whole pile over (order reverses). */
-export const flip: Command<{ ids: string[] }> = (doc, a) =>
+/** In a hand: a card shown to the table can't be flipped; private cards only via `by` in a blind hand. */
+const handOfCard = (doc: DocView, c: CanvasNode) => {
+  const p = doc.parentOf(c.id);
+  const h = p ? doc.get(p) : undefined;
+  return h && isHand(h) ? h : undefined;
+};
+
+/**
+ * Flip cards; flipping a deck turns the whole pile over (order reverses). Never reveals a hand card:
+ * cards in a hand are skipped (showing is `show`), except that the hand's owner (`by`) flips a private
+ * card of a blind hand between "face up for me" and "face down for me" (nobody else sees it either way).
+ */
+export const flip: Command<{ ids: string[]; by?: string }> = (doc, a) =>
   pick(doc, a?.ids).flatMap((n) => {
-    if (isCard(n) && !doc.parentOf(n.id)) return [set(n.id, F('faceUp'), !card(n).faceUp)];
+    if (isHand(n)) return [];
+    if (isCard(n)) {
+      const h = handOfCard(doc, n);
+      if (!h) return [set(n.id, F('faceUp'), !card(n).faceUp)];
+      if (!a.by || h.owner !== a.by || !isBlind(h) || card(n).faceUp) return [];
+      return [set(n.id, F('mine'), card(n).mine === false ? undefined : false)];
+    }
     // turning a pile over reverses it; a spread-out group just flips each card in place
     if (isStacked(n))
       return cardsIn(doc, n.id).flatMap((c) => [set(c.id, F('faceUp'), !card(c).faceUp), set(c.id, F('order'), -(card(c).order ?? 0))]);
     if (isDeck(n)) return cardsIn(doc, n.id).map((c) => set(c.id, F('faceUp'), !card(c).faceUp));
-    if (isCard(n)) return [set(n.id, F('faceUp'), !card(n).faceUp)]; // a card shown in a group
     return [];
   });
+
+/**
+ * Show hand cards to the table (`shown: true`: face up, drawn raised) or hide them again. `ids`: cards
+ * in hands and/or whole hands. `by`: only hands this player owns. Cards outside hands are untouched.
+ */
+export const show: Command<{ ids: string[]; shown: boolean; by?: string }> = (doc, a) => {
+  if (!isBool(a?.shown)) return [];
+  const seen = new Set<string>();
+  const ok = (h: CanvasNode | undefined): h is CanvasNode => !!h && isHand(h) && (!a.by || h.owner === a.by);
+  return pick(doc, a.ids).flatMap((n) => {
+    const cards = isHand(n) ? (ok(n) ? cardsIn(doc, n.id) : []) : isCard(n) && ok(handOfCard(doc, n)) ? [n] : [];
+    return cards.filter((c) => !seen.has(c.id) && !!seen.add(c.id)).flatMap((c) => conform(c, a.shown));
+  });
+};
+
+/** "See my cards" on a hand: on (default) = the owner sees every private card; off = a blind hand. */
+export const seeMine: Command<{ id: string; on: boolean }> = (doc, a) => {
+  const box = typeof a?.id === 'string' ? doc.get(a.id) : undefined;
+  if (!box || !isHand(box) || !isBool(a.on) || isBlind(box) === !a.on) return [];
+  return [set(box.id, F('blind'), a.on ? undefined : true)];
+};
 
 /** Turn cards (and every card in the given decks) face up or face down, whatever they are now. */
 export const face: Command<{ ids: string[]; faceUp: boolean }> = (doc, a) => {
@@ -289,8 +326,10 @@ const unown = (box: CanvasNode, text: string): Change[] =>
 export const turnInto: Command<{ id: string; kind: Kind; owner?: string; label?: string; color?: string }> = (doc, a, ctx) => {
   const box = typeof a?.id === 'string' ? doc.get(a.id) : undefined;
   if (!box || !isDeck(box) || kindOf(box) === a.kind) return [];
-  if (a.kind === 'deck') return [...unown(box, 'Pile'), ...relayout(box, 'stack')];
-  if (a.kind === 'group') return [...unown(box, 'Group'), ...relayout(box, 'fan')];
+  // a hand keeps a lane for raised cards above its row: going public drops it, cards stay put
+  const shifted = isHand(box) ? { ...box, y: box.y + RAISE } : box;
+  if (a.kind === 'deck') return [...unown(box, 'Pile'), ...relayout(shifted, 'stack')];
+  if (a.kind === 'group') return [...unown(box, 'Group'), ...(shifted !== box ? [set(box.id, 'y', shifted.y)] : []), ...relayout(shifted, 'fan')];
   if (a.kind === 'hand') return own(doc, { id: box.id, owner: a.owner ?? '', label: a.label, color: a.color }, ctx);
   return [];
 };
@@ -396,7 +435,7 @@ export function freeSpot(doc: DocView, x: number, y: number, w: number, h: numbe
 export const newHand: Command<{ owner: string; label?: string; color?: string; x?: number; y?: number }> = (doc, a, ctx) => {
   if (typeof a?.owner !== 'string' || !a.owner) return [];
   const label = typeof a.label === 'string' ? a.label.slice(0, 40) : 'Hand';
-  const s = slots('fan', 0, 3);
+  const s = emptyHandSize();
   const at = freeSpot(doc, isNum(a.x) ? a.x : 0, isNum(a.y) ? a.y : 0, s.w, s.h);
   const node = groupNode(ctx.newId(), at.x, at.y, Math.floor(doc.topZ) + 1, { layout: 'fan', owner: a.owner, label, color: okColor(a.color) });
   return { changes: [{ op: 'add', node }], select: [node.id] };
@@ -406,18 +445,20 @@ export const newHand: Command<{ owner: string; label?: string; color?: string; x
  * Make a group private (`owner` = a player id; others see its cards face down) or public
  * (`owner` = null). A private group is never a stack, so a stacked group is spread out as a fan.
  */
-export const own: Command<{ id: string; owner: string | null; label?: string; color?: string }> = (doc, a, ctx) => {
+export const own: Command<{ id: string; owner: string | null; label?: string; color?: string }> = (doc, a) => {
   const box = typeof a?.id === 'string' ? doc.get(a.id) : undefined;
   if (!box || !isDeck(box) || isHomeDeck(box)) return [];
   if (a.owner === null) {
     if (!box.owner) return [];
-    return [set(box.id, 'owner', undefined), set(box.id, 'label', undefined), set(box.id, 'text', 'Group'), set(box.id, F('color'), undefined)];
+    return [...unown(box, 'Group'), set(box.id, 'y', box.y + RAISE)];
   }
   if (typeof a.owner !== 'string' || !a.owner) return [];
   const changes = [set(box.id, 'owner', a.owner)];
   if (typeof a.label === 'string') changes.push(set(box.id, 'label', a.label.slice(0, 40)), set(box.id, 'text', a.label.slice(0, 40)));
   if (okColor(a.color)) changes.push(set(box.id, F('color'), okColor(a.color)));
-  if (isStacked(box)) changes.push(...(setLayout(doc, { id: box.id, layout: 'fan' }, ctx) as Change[]));
+  // becoming a hand: the frame grows a lane for raised cards upward, so the cards stay put
+  if (isStacked(box)) changes.push(...relayout({ ...box, y: box.y - RAISE }, 'fan'));
+  else if (!box.owner) changes.push(set(box.id, 'y', box.y - RAISE));
   return changes;
 };
 
@@ -600,4 +641,4 @@ export const resetAll: Command<Record<string, never>> = (doc, _a, ctx) => {
   return changes;
 };
 
-export const commands = { flip, face, move, shuffle, draw, deal, gather, recall, drop, spread, setup, repairHomes, pullOut, setLayout, ungroup, sort, newHand, own, toggleStack, handLabel, migrateHands, turnInto, putOnTable, showdown, resetAll };
+export const commands = { flip, show, seeMine, face, move, shuffle, draw, deal, gather, recall, drop, spread, setup, repairHomes, pullOut, setLayout, ungroup, sort, newHand, own, toggleStack, handLabel, migrateHands, turnInto, putOnTable, showdown, resetAll };

@@ -41,6 +41,7 @@ export const repairImport: DocFilter = (doc, ctx) => {
         if (f.hand === true && typeof n.owner === 'string') d.layout ??= 'fan';
       }
       if (typeof f.color === 'string' && /^#[0-9a-f]{6}$/i.test(f.color)) d.color = f.color;
+      if (f.blind === true && !d.home) d.blind = true;
       out.push({ ...n, [FIELD]: d });
       continue;
     }
@@ -51,6 +52,7 @@ export const repairImport: DocFilter = (doc, ctx) => {
         c.order = typeof f.order === 'number' && Number.isFinite(f.order) ? f.order : 0;
       }
       if (typeof f.home === 'string') c.home = f.home;
+      if (typeof f.mine === 'boolean') c.mine = f.mine;
       out.push({ ...n, text: n.text ?? label(f.face), [FIELD]: c });
       continue;
     }

@@ -1,9 +1,10 @@
 import './cards.css';
 import { loadPlayer, type App, type CanvasNode, type Command, type MenuEntry, type Plugin, type Store } from '../../core';
 import { commands, dropMode, kindOf, outCount, type DropMode, type Kind } from './commands';
-import { CARD_W, FIELD, card, cardsIn, deckFacing, deckIdOf, heldBy, hiddenFrom, homeFor, isCard, isCardish, isDeck, isHand, isHomeDeck, isSpreadOut, isStacked, layoutOf, type Layout } from './deck';
+import { CARD_W, FIELD, card, cardsIn, deckFacing, deckIdOf, handOf, hiddenFrom, homeFor, isBlind, isCard, isCardish, isDeck, isHand, isHomeDeck, isSpreadOut, isStacked, layoutOf, ownerSees, type Layout } from './deck';
+import { mountHandUx, VIEW_AS_KEY, type HandUx } from './handUx';
 import { repairImport, shapeExport } from './io';
-import { cardLayouts } from './layout';
+import { RAISE, cardLayouts, liftedDrop, slotIndex } from './layout';
 import { cardHtml, deckHtml, groupHtml } from './render';
 
 const LAYOUT_NAMES: Record<Exclude<Layout, 'stack'>, string> = { fan: 'Fan', row: 'Row', grid: 'Grid' };
@@ -112,8 +113,45 @@ function layoutMenu(app: App, box: CanvasNode): MenuEntry {
   };
 }
 
+const HAND_FLIP_HINT = 'In a hand, flipping doesn’t reveal: drag the card up, or right-click ▸ Show to table';
+const showColor = (h: CanvasNode) => (h[FIELD] as { color?: string }).color ?? '#2f4b7c';
+const ownerOnly = (h: CanvasNode) => `Only ${h.label?.replace(/’s hand$|'s hand$/, '') || 'its owner'} can show these cards`;
+
+/** Show to table / Hide for cards in hands (multi-select: counts), plus "Flip for me" in a blind hand. */
+function showEntries(app: App, cards: CanvasNode[]): MenuEntry[] {
+  const mine = cards.filter((c) => handOf(app.doc, c)?.owner === app.viewer);
+  if (!mine.length) {
+    const h = handOf(app.doc, cards[0])!;
+    return [{ label: 'Show to table', disabled: ownerOnly(h) }];
+  }
+  const hidden = mine.filter((c) => !card(c).faceUp);
+  const shown = mine.filter((c) => card(c).faceUp);
+  const n = (k: number) => (k > 1 ? ` ${k}` : '');
+  const out: MenuEntry[] = [
+    { label: `Show${n(hidden.length)} to table`, disabled: hidden.length ? false : 'Already shown (raised)', run: () => app.dispatch('cards.show', { ids: ids(hidden), shown: true, by: app.viewer }) },
+    { label: `Hide${n(shown.length)}`, disabled: shown.length ? false : 'Not shown: only you see it', run: () => app.dispatch('cards.show', { ids: ids(shown), shown: false, by: app.viewer }) },
+  ];
+  const blindPrivate = hidden.filter((c) => isBlind(handOf(app.doc, c)!));
+  if (blindPrivate.length) out.push({ label: 'Flip for me (others still see the back)', hint: 'F', run: () => app.dispatch('cards.flip', { ids: ids(blindPrivate), by: app.viewer }) });
+  return out;
+}
+
+/** A hand's own entries: show/hide all, See my cards, View as others. */
+function handMenu(app: App, box: CanvasNode, ux: HandUx): MenuEntry[] {
+  const cards = cardsIn(app.doc, box.id);
+  if (box.owner !== app.viewer) return [{ label: 'Show all to table', disabled: ownerOnly(box) }];
+  const hidden = cards.filter((c) => !card(c).faceUp).length;
+  const shown = cards.length - hidden;
+  return [
+    { label: 'Show all to table', disabled: hidden ? false : 'Nothing private', run: () => app.dispatch('cards.show', { ids: [box.id], shown: true, by: app.viewer }) },
+    { label: 'Hide all', disabled: shown ? false : 'Nothing shown', run: () => app.dispatch('cards.show', { ids: [box.id], shown: false, by: app.viewer }) },
+    { label: 'See my cards', separator: true, checked: !isBlind(box), run: () => app.dispatch('cards.seeMine', { id: box.id, on: isBlind(box) }) },
+    { label: 'View as others', hint: `hold ${VIEW_AS_KEY}`, checked: ux.sticky(), run: () => ux.toggle() },
+  ];
+}
+
 /** Everything you can do to one container: its tab menu, and its right-click menu. */
-function containerMenu(app: App, box: CanvasNode): MenuEntry[] {
+function containerMenu(app: App, box: CanvasNode, ux: HandUx): MenuEntry[] {
   const id = box.id;
   const kind = kindOf(box);
   const out: MenuEntry[] = [...gatherEntry(app, box)];
@@ -126,7 +164,8 @@ function containerMenu(app: App, box: CanvasNode): MenuEntry[] {
       { label: 'Shuffle', hint: 'S', run: () => app.dispatch('cards.shuffle', { ids: [id] }) },
     );
   } else out.push({ label: 'Sort by suit and rank', run: () => app.dispatch('cards.sort', { id }) });
-  out.push(facingMenu(app, () => [id]));
+  if (kind === 'hand') out.push(...handMenu(app, box, ux));
+  else out.push(facingMenu(app, () => [id]));
   out.push({ ...turnIntoMenu(app, box), separator: true });
   if (kind !== 'deck') out.push(layoutMenu(app, box));
   out.push({
@@ -142,6 +181,7 @@ export const cardsPlugin: Plugin = {
   id: 'cards',
   setup(app) {
     registerCardsLogic(app.store);
+    const ux = mountHandUx(app);
     // setup lays out about 940 x 400 from its anchor, which sits near the top left of that
     app.registerKit({ id: 'cards.deck', label: 'Deck of cards', create: (a, at) => a.dispatch('cards.setup', { x: at.x - 470, y: at.y - 120 }) });
 
@@ -154,34 +194,81 @@ export const cardsPlugin: Plugin = {
         return !box ? 'Add' : isHomeDeck(box) ? 'Add to deck' : isStacked(box) ? 'Add to pile' : isHand(box) ? 'Add to hand' : 'Add to group';
       },
     };
+    /** The hand a drop lands in, if it's the hand the (single) dragged card came out of. */
+    const homeHand = (t: CanvasNode, dropped: CanvasNode[], app: App) => {
+      if (dropped.length !== 1) return;
+      const host = isDeck(t) ? t : app.node(app.doc.parentOf(t.id) ?? '');
+      return host && ux.drag.get(dropped[0].id)?.hand === host.id ? host : undefined;
+    };
     const canDrop = (t: CanvasNode, dropped: CanvasNode[], app: App, overlap: number) => {
       if (!dropped.some(isCardish)) return false;
       const mode = dropMode(app.doc, t, overlap);
-      return mode ? LABEL[mode](t, app) : false;
+      if (!mode) return false;
+      // back into its own hand: up = shown, down in the row = private
+      const h = mode === 'add' && homeHand(t, dropped, app);
+      if (h) {
+        const c = dropped[0];
+        const n = cardsIn(app.doc, h.id).length;
+        const lifted = liftedDrop(h, n + 1, slotIndex(h, n, { x: c.x + CARD_W / 2, y: c.y }), c.y);
+        return lifted ? (card(c).faceUp ? 'Shown' : 'Show to table') : card(c).faceUp ? 'Hide' : 'Private';
+      }
+      return LABEL[mode](t, app);
     };
-    const onDrop = (target: CanvasNode, dropped: string[], app: App, at: { x: number; y: number }, mode?: string) =>
+    const onDrop = (target: CanvasNode, dropped: string[], app: App, at: { x: number; y: number }, mode?: string) => {
+      const before = dropped.map((id) => app.node(id)).filter((n): n is CanvasNode => !!n);
+      const h = homeHand(target, before, app);
       app.dispatch('cards.drop', { target: target.id, ids: dropped, at, as: mode === 'Stack' ? 'stack' : mode === 'Fan' ? 'fan' : undefined });
-    const flipOne = (node: CanvasNode, app: App) => app.dispatch('cards.flip', { ids: [node.id] });
+      if (!h) return;
+      const c = before[0];
+      const list = cardsIn(app.doc, h.id);
+      const i = list.findIndex((x) => x.id === c.id);
+      if (i < 0) return;
+      const lifted = liftedDrop(app.node(h.id)!, list.length, i, c.y);
+      if (lifted !== card(c).faceUp) app.dispatch('cards.show', { ids: [c.id], shown: lifted, by: app.viewer });
+    };
+    const flipOne = (node: CanvasNode, app: App) => {
+      if (isHand(node)) return app.notify(HAND_FLIP_HINT);
+      const r = app.dispatch('cards.flip', { ids: [node.id], by: app.viewer });
+      if (!r.changes.length && handOf(app.doc, node)) app.notify(HAND_FLIP_HINT);
+    };
+    /** How a card looks to this viewer: face or back, raised (shown to the table) in whose color. */
+    const look = (node: CanvasNode, { doc, viewer }: { doc: typeof app.doc; viewer: string }) => {
+      const c = card(node);
+      const h = handOf(doc, node);
+      const asOthers = ux.asOthers();
+      const up = h ? !hiddenFrom(doc, node, viewer, asOthers) : c.faceUp || (!asOthers && !!ux.drag.get(node.id)?.saw);
+      return { up, raised: !!h && c.faceUp, color: h ? showColor(h) : '' };
+    };
 
     app.registerType({
       id: 'card',
       match: isCard,
-      // In a hand, facing = shown to the table. The owner always sees the face, marked "only you" or
-      // "shown"; others see a face-down hand card as its back (trust mode; stage 3 makes it real).
-      render(node, el, { doc, viewer }) {
-        const c = card(node);
-        if (heldBy(doc, node, viewer)) {
-          el.innerHTML = cardHtml({ ...c, faceUp: true }) + (c.faceUp ? '<div class="pc-vis pc-shown" title="Shown to everyone">👁</div>' : '<div class="pc-vis pc-private" title="Only you can see this card">only you</div>');
-          return;
-        }
-        el.innerHTML = cardHtml(hiddenFrom(doc, node, viewer) ? { ...c, faceUp: false } : c);
+      // In a hand, face up = shown to the table: drawn raised with a glow in the owner's color, for
+      // everyone. Private cards stay in the row: the owner sees their faces (per See my cards), others backs.
+      render(node, el, ctx) {
+        const l = look(node, ctx);
+        el.innerHTML = cardHtml({ ...card(node), faceUp: l.up });
+        if (l.raised) {
+          el.firstElementChild?.classList.add('pc-raised');
+          el.style.setProperty('--pc-owner', l.color);
+        } else el.style.removeProperty('--pc-owner');
       },
-      renderKey: (node, { doc, viewer }) => `${card(node).face}${card(node).faceUp}${hiddenFrom(doc, node, viewer)}${heldBy(doc, node, viewer)}`,
+      renderKey(node, ctx) {
+        const l = look(node, ctx);
+        return `${card(node).face}:${l.up}:${l.raised}:${l.color}`;
+      },
       onDoubleClick: flipOne,
-      // a card shown in a group or hand: dragging pulls it out (dropping it back reorders)
+      // a card shown in a group or hand: dragging pulls it out (dropping it back reorders). Out of my
+      // own hand I keep seeing what I saw; the table sees its real facing (a private card = a back).
       onDragStart(node, _down, app) {
         if (!app.doc.parentOf(node.id)) return;
+        const h = handOf(app.doc, node);
+        if (h && h.owner === app.viewer) ux.drag.set(node.id, { hand: h.id, saw: card(node).faceUp || ownerSees(h, node) });
         return app.dispatch('cards.pullOut', { id: node.id }).select?.[0];
+      },
+      onDragEnd(nodes) {
+        if (!nodes.some((n) => ux.drag.delete(n.id))) return;
+        queueMicrotask(() => app.view.render());
       },
       canDrop,
       onDrop,
@@ -194,7 +281,9 @@ export const cardsPlugin: Plugin = {
         const cards = cardsIn(doc, node.id);
         if (isSpreadOut(node)) {
           const f = node[FIELD] as { color?: string };
-          el.innerHTML = groupHtml(cards.length, { hand: isHand(node), home: isHomeDeck(node), label: kindName(node), color: f.color, mine: node.owner === viewer });
+          const hand = isHand(node);
+          const shown = hand ? cards.filter((c) => card(c).faceUp).length : 0;
+          el.innerHTML = groupHtml(cards.length, { hand, home: isHomeDeck(node), label: kindName(node), color: f.color, mine: node.owner === viewer, shown, blind: isBlind(node), lane: hand ? RAISE : 0 });
           return;
         }
         const top = cards.at(-1);
@@ -204,14 +293,15 @@ export const cardsPlugin: Plugin = {
         const cards = cardsIn(doc, node.id);
         const top = cards.at(-1);
         const f = node[FIELD] as { color?: string };
-        return `${cards.length}:${isHomeDeck(node)}:${layoutOf(node)}:${node.label}:${f.color}:${node.owner === viewer}:${top ? card(top).face + card(top).faceUp : ''}`;
+        const shown = isHand(node) ? cards.filter((c) => card(c).faceUp).length : 0;
+        return `${cards.length}:${shown}:${isBlind(node)}:${isHomeDeck(node)}:${layoutOf(node)}:${node.label}:${f.color}:${node.owner === viewer}:${top ? card(top).face + card(top).faceUp : ''}`;
       },
       onDoubleClick: flipOne,
       // Click on the tab (no drag): a small menu of deck actions anchored to it.
       onClick(node, down, app) {
         const tab = (down.target as Element | null)?.closest?.('[data-grip]');
         if (!tab) return false;
-        app.view.openMenu(containerMenu(app, node), tab, titleOf(node));
+        app.view.openMenu(containerMenu(app, node, ux), tab, titleOf(node));
         return true;
       },
       // Dragging a deck takes its top card (orientation kept). The grip tab or Alt+drag moves the deck.
@@ -223,7 +313,11 @@ export const cardsPlugin: Plugin = {
       onDrop,
     });
 
-    const flipSel = (a: App) => a.dispatch('cards.flip', { ids: ids(selectedCards(a)) });
+    const flipSel = (a: App) => {
+      const sel = selectedCards(a);
+      const r = a.dispatch('cards.flip', { ids: ids(sel), by: a.viewer });
+      if (!r.changes.length && sel.some((n) => isHand(n) || !!handOf(a.doc, n))) a.notify(HAND_FLIP_HINT);
+    };
     const shuffleSel = (a: App) => a.dispatch('cards.shuffle', { ids: ids(selectedCards(a).filter(isStacked)) });
     // `flipped`: the card comes out the other way up from how it lies in the deck
     const drawSel = (flipped = false) => (a: App) => {
@@ -280,10 +374,14 @@ export const cardsPlugin: Plugin = {
       }
       const cards = sel.filter(isCardish);
       if (!cards.length) return;
-      if (sel.length === 1 && isDeck(sel[0])) return { title: titleOf(sel[0]), entries: containerMenu(a, sel[0]) };
+      if (sel.length === 1 && isDeck(sel[0])) return { title: titleOf(sel[0]), entries: containerMenu(a, sel[0], ux) };
       const loose = cards.filter(isCard);
       const decks = cards.filter(isStacked);
-      const entries: MenuEntry[] = [facingMenu(a, () => ids(selectedCards(a)))];
+      const inHand = (n: CanvasNode) => isCard(n) && !!handOf(a.doc, n);
+      const handCards = cards.filter(inHand);
+      const entries: MenuEntry[] = [];
+      if (handCards.length < cards.length) entries.push(facingMenu(a, () => ids(selectedCards(a).filter((n) => !inHand(n)))));
+      if (handCards.length) entries.push(...showEntries(a, handCards));
       if (cards.length > 1) {
         const make = (layout?: 'stack', faceUp?: boolean) => () => a.dispatch('cards.gather', { ids: ids(selectedCards(a)), layout, faceUp });
         entries.push({
@@ -316,7 +414,7 @@ export const cardsPlugin: Plugin = {
       entries.push(...gatherEntry(a, cards.at(-1)));
       // a card shown in a group or hand: that container's actions too
       const parent = sel.length === 1 ? a.node(a.doc.parentOf(sel[0].id) ?? '') : undefined;
-      if (parent && isDeck(parent)) entries.push({ label: titleOf(parent), separator: true, items: () => containerMenu(a, parent) });
+      if (parent && isDeck(parent)) entries.push({ label: titleOf(parent), separator: true, items: () => containerMenu(a, parent, ux) });
       const title = sel.length === 1 ? 'Card' : loose.length === sel.length ? `${sel.length} cards` : `${sel.length} selected`;
       return { title, entries };
     });
