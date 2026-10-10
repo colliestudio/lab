@@ -2,7 +2,7 @@ import './clock.css';
 import type { App, CanvasNode, Command, Plugin, Store } from '../../core';
 import { commands } from './commands';
 import { repairImport, shapeExport } from './io';
-import { PRESETS, clock, fmt, isClock, remaining, ticking, type Side } from './model';
+import { PRESETS, baseOf, clock, fmt, incOf, isClock, nameOf, remaining, ticking, type Side } from './model';
 import { clockHtml } from './render';
 
 // A two-sided game clock for any game. Time state syncs as plain fields; each client draws the
@@ -34,18 +34,26 @@ function settings(app: App, n: CanvasNode) {
   const id = n.id;
   const c = clock(n);
   const items: { label: string; hint?: string; run: () => void }[] = PRESETS.map(([label, m, s]) => ({
-    label: `${label}${c.base === m * 60000 && c.inc === s * 1000 ? ' ✓' : ''}`,
+    label: `${label}${c.base === m * 60000 && c.inc === s * 1000 && c.base1 === undefined ? ' ✓' : ''}`,
     run: () => app.dispatch('clock.control', { id, base: m * 60000, inc: s * 1000 }, NO_UNDO),
   }));
+  const ctl = (s: Side) => `${+(baseOf(c, s) / 60000).toFixed(2)}+${+(incOf(c, s) / 1000).toFixed(1)}`;
   items.push({
-    label: 'Custom time…',
+    label: 'Custom time (same for both)…',
     run: () => {
-      const v = prompt('Minutes + increment seconds, e.g. 25+10', `${c.base / 60000}+${c.inc / 1000}`);
-      const m = v?.match(/^\s*(\d+(?:\.\d+)?)\s*(?:\+\s*(\d+(?:\.\d+)?))?\s*$/);
-      if (!m) return;
-      app.dispatch('clock.control', { id, base: Number(m[1]) * 60000, inc: Number(m[2] ?? 0) * 1000 }, NO_UNDO);
+      const m = parseControl(prompt('Minutes + increment seconds for both sides, e.g. 25+10', ctl(0)));
+      if (m) app.dispatch('clock.control', { id, base: m.base, inc: m.inc }, NO_UNDO);
     },
   });
+  items.push({
+    label: 'Custom time per side…',
+    run: () => {
+      const v = prompt(`Handicap: ${nameOf(c, 0)} / ${nameOf(c, 1)}, minutes + increment seconds each, e.g. 5+0 / 3+2`, `${ctl(0)} / ${ctl(1)}`);
+      const [a, b] = (v ?? '').split('/').map(parseControl);
+      if (a && b) app.dispatch('clock.control', { id, base: a.base, inc: a.inc, base1: b.base, inc1: b.inc }, NO_UNDO);
+    },
+  });
+  items.push({ label: `Rotate 90° (now ${c.rot ?? 0}°)`, hint: 'R', run: () => app.dispatch('clock.rotate', { id }) });
   if (c.flag === undefined && c.run !== undefined) items.push({ label: c.paused ? 'Resume' : 'Pause', hint: 'Space', run: () => toggle(app, n) });
   items.push({ label: 'Reset clock', run: () => app.dispatch('clock.reset', { id }, NO_UNDO) });
   items.push({
@@ -58,6 +66,12 @@ function settings(app: App, n: CanvasNode) {
     },
   });
   return items;
+}
+
+/** "5+3" / "25" / "0.5+2" → ms, or undefined. */
+export function parseControl(v: string | null | undefined) {
+  const m = v?.match(/^\s*(\d+(?:\.\d+)?)\s*(?:\+\s*(\d+(?:\.\d+)?))?\s*$/);
+  return m ? { base: Number(m[1]) * 60000, inc: Number(m[2] ?? 0) * 1000 } : undefined;
 }
 
 /** The clock a key aims at: under the mouse, else the selected one. */
@@ -102,6 +116,16 @@ export const clockPlugin: Plugin = {
         const c = clock(n);
         if (c.run === undefined || c.paused) toggle(a, n);
         else tapSide(a, n, c.run);
+      },
+    });
+
+    app.registerKey({
+      key: 'r',
+      label: 'Rotate the clock',
+      when: (a) => !!targetClock(a),
+      run: (a) => {
+        const n = targetClock(a);
+        if (n) a.dispatch('clock.rotate', { id: n.id });
       },
     });
 

@@ -110,3 +110,33 @@
   font-size: 14px;
   opacity: 0.7;
 }
+
+/* rotation: 180 swaps the halves; 90/270 stack them, the top one facing the far player */
+.ck-rot-180 {
+  flex-direction: row-reverse;
+}
+.ck-rot-90 {
+  flex-direction: column;
+}
+.ck-rot-270 {
+  flex-direction: column-reverse;
+}
+.ck-rot-90 .ck-mid,
+.ck-rot-270 .ck-mid {
+  width: auto;
+  height: 34px;
+}
+.ck-face {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  max-width: 100%;
+}
+.ck-face.ck-away {
+  transform: rotate(180deg);
+}
+.ck-rot-90 .ck-time,
+.ck-rot-270 .ck-time {
+  font-size: 34px;
+}

@@ -10,11 +10,18 @@ export const W = 360;
 export const H = 150;
 
 export type Side = 0 | 1;
+export type Rot = 90 | 180 | 270;
+export const isRot = (v: unknown): v is Rot => v === 90 || v === 180 || v === 270;
 export interface ClockField {
   kind: 'clock';
-  /** Time control: starting time and increment per move, ms. */
+  /** Time control: starting time and increment per move, ms (side 0, and side 1 unless base1/inc1). */
   base: number;
   inc: number;
+  /** Side 1's own control when it differs (handicap). */
+  base1?: number;
+  inc1?: number;
+  /** Quarter turns: 90/270 stack the halves vertically, facing the players at the ends. */
+  rot?: Rot;
   /** Time left per side as of `since` (running side) or the last switch. */
   left0: number;
   left1: number;
@@ -43,6 +50,8 @@ export const clock = (n: CanvasNode) => n[FIELD] as ClockField;
 export const other = (s: Side): Side => (s === 0 ? 1 : 0);
 export const leftOf = (c: ClockField, s: Side) => (s === 0 ? c.left0 : c.left1);
 export const nameOf = (c: ClockField, s: Side) => (s === 0 ? c.name0 : c.name1) || (s === 0 ? 'White' : 'Black');
+export const baseOf = (c: ClockField, s: Side) => (s === 1 && c.base1 !== undefined ? c.base1 : c.base);
+export const incOf = (c: ClockField, s: Side) => (s === 1 && c.inc1 !== undefined ? c.inc1 : c.inc);
 export const isSide = (v: unknown): v is Side => v === 0 || v === 1;
 
 /** Is side `s`'s time running right now? */
@@ -71,8 +80,13 @@ export function clockNode(id: string, x: number, y: number, base: number, inc: n
 }
 
 /** Readable text for JSON Canvas exports. */
-/** "5+3", "0.5+0" */
-export const controlText = (c: ClockField) => `${+(c.base / 60000).toFixed(2)}+${+(c.inc / 1000).toFixed(1)}`;
+const one = (base: number, inc: number) => `${+(base / 60000).toFixed(2)}+${+(inc / 1000).toFixed(1)}`;
+/** "5+3", "0.5+0", per side when they differ: "5+0 / 3+2" */
+export function controlText(c: ClockField) {
+  const a = one(baseOf(c, 0), incOf(c, 0));
+  const b = one(baseOf(c, 1), incOf(c, 1));
+  return a === b ? a : `${a} / ${b}`;
+}
 
 export const clockText = (c: ClockField) =>
   `Game clock ${controlText(c)}: ${nameOf(c, 0)} ${fmt(c.left0)} / ${nameOf(c, 1)} ${fmt(c.left1)}`;

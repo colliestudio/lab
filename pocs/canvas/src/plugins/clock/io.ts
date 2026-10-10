@@ -1,5 +1,5 @@
 import type { CanvasNode, DocFilter } from '../../core';
-import { FIELD, clockText, isSide, type ClockField } from './model';
+import { FIELD, clockText, isRot, isSide, type ClockField } from './model';
 
 const num = (v: unknown, min: number, max: number) => typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max;
 
@@ -20,8 +20,13 @@ export const repairImport: DocFilter = (doc) => ({
       base: f.base as number,
       inc: f.inc as number,
       left0: num(f.left0, 0, day) ? (f.left0 as number) : (f.base as number),
-      left1: num(f.left1, 0, day) ? (f.left1 as number) : (f.base as number),
+      left1: num(f.left1, 0, day) ? (f.left1 as number) : num(f.base1, 1, day) ? (f.base1 as number) : (f.base as number),
     };
+    if (num(f.base1, 1, day) && num(f.inc1, 0, 3600_000)) {
+      c.base1 = f.base1 as number;
+      c.inc1 = f.inc1 as number;
+    }
+    if (isRot(f.rot)) c.rot = f.rot;
     if (isSide(f.run)) c.run = f.run;
     if (c.run !== undefined && num(f.since, 0, Number.MAX_SAFE_INTEGER)) c.since = f.since as number;
     if (f.paused === true) c.paused = true;

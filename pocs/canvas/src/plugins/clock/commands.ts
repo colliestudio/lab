@@ -1,5 +1,5 @@
 import { isNum, set, type CanvasNode, type Change, type Command, type DocView } from '../../core';
-import { FIELD, H, W, clock, clockNode, isClock, isSide, other, remaining, ticking, type ClockField, type Side } from './model';
+import { FIELD, H, W, baseOf, clock, clockNode, incOf, isClock, isSide, other, remaining, ticking, type ClockField, type Rot, type Side } from './model';
 
 // Pure commands. Time comes in as `now` (the caller's clock), so they stay replayable and testable.
 // The app dispatches tap/pause/resume/flag/reset/control as not undoable: time doesn't go back.
@@ -40,7 +40,7 @@ export const tap: Command<{ id: string; side: Side; now: number }> = (doc, a) =>
   if (c.run !== a.side) return [];
   const left = remaining(c, a.side, a.now);
   if (left <= 0) return diff(n, { [a.side === 0 ? 'left0' : 'left1']: 0, flag: a.side, since: undefined });
-  return [set(n.id, leftKey(a.side), left + c.inc), ...diff(n, { run: other(a.side), since: a.now })];
+  return [set(n.id, leftKey(a.side), left + incOf(c, a.side)), ...diff(n, { run: other(a.side), since: a.now })];
 };
 
 /** Stop the running side's time (keeps whose turn it is). */
@@ -72,7 +72,8 @@ export const flag: Command<{ id: string; now: number }> = (doc, a) => {
   return [set(n.id, leftKey(c.run), 0), set(n.id, F('flag'), c.run), set(n.id, F('since'), undefined)];
 };
 
-const fresh = (c: Pick<ClockField, 'base'>): Partial<ClockField> => ({ left0: c.base, left1: c.base, run: undefined, since: undefined, paused: undefined, flag: undefined });
+/** Each side back to its own starting time, nobody running. */
+const fresh = (c: ClockField): Partial<ClockField> => ({ left0: baseOf(c, 0), left1: baseOf(c, 1), run: undefined, since: undefined, paused: undefined, flag: undefined });
 
 /** Both sides back to the time control, nobody running. */
 export const reset: Command<{ id: string }> = (doc, a) => {
@@ -80,11 +81,42 @@ export const reset: Command<{ id: string }> = (doc, a) => {
   return n ? diff(n, fresh(clock(n))) : [];
 };
 
-/** New time control (minutes + increment seconds, as ms), and reset. */
-export const control: Command<{ id: string; base: number; inc: number }> = (doc, a) => {
+const okBase = (v: unknown): v is number => isNum(v) && v > 0 && v <= 24 * 3600_000;
+const okInc = (v: unknown): v is number => isNum(v) && v >= 0 && v <= 3600_000;
+
+/**
+ * New time control (ms), then reset. `base`/`inc` for both sides, or with `base1`/`inc1` a different
+ * control for side 1 (handicap). Without them both sides share `base`/`inc`.
+ */
+export const control: Command<{ id: string; base: number; inc: number; base1?: number; inc1?: number }> = (doc, a) => {
   const n = clockArg(doc, a?.id);
-  if (!n || !isNum(a.base) || a.base <= 0 || a.base > 24 * 3600_000 || !isNum(a.inc) || a.inc < 0 || a.inc > 3600_000) return [];
-  return diff(n, { base: Math.round(a.base), inc: Math.round(a.inc), ...fresh({ base: Math.round(a.base) }) });
+  if (!n || !okBase(a.base) || !okInc(a.inc)) return [];
+  const split = a.base1 !== undefined || a.inc1 !== undefined;
+  if (split && (!okBase(a.base1) || !okInc(a.inc1))) return [];
+  const next: ClockField = { ...clock(n), base: Math.round(a.base), inc: Math.round(a.inc), base1: undefined, inc1: undefined };
+  if (split && (Math.round(a.base1!) !== next.base || Math.round(a.inc1!) !== next.inc)) {
+    next.base1 = Math.round(a.base1!);
+    next.inc1 = Math.round(a.inc1!);
+  }
+  return diff(n, { base: next.base, inc: next.inc, base1: next.base1, inc1: next.inc1, ...fresh(next) });
+};
+
+/**
+ * Turn the clock a quarter (clockwise): 0 → 90 → 180 → 270. At 90/270 the box turns tall (keeping
+ * its center) and the halves stack, each facing its player.
+ */
+export const rotate: Command<{ id: string }> = (doc, a) => {
+  const n = clockArg(doc, a?.id);
+  if (!n) return [];
+  const rot = (((clock(n).rot ?? 0) + 90) % 360) as 0 | Rot;
+  const tall = rot === 90 || rot === 270;
+  const [w, h] = tall ? [H, W] : [W, H];
+  const changes = [set(n.id, F('rot'), rot || undefined)];
+  if (w !== n.width) {
+    changes.push(set(n.id, 'width', w), set(n.id, 'height', h));
+    changes.push(set(n.id, 'x', Math.round(n.x + (n.width - w) / 2)), set(n.id, 'y', Math.round(n.y + (n.height - h) / 2)));
+  }
+  return changes;
 };
 
 /** Side names ("" = default White/Black). */
@@ -98,4 +130,4 @@ export const names: Command<{ id: string; name0?: string; name1?: string }> = (d
 /** Reset table (core `registerReset`): every clock back to its time control. */
 export const resetAll: Command<Record<string, never>> = (doc) => doc.nodes.filter(isClock).flatMap((n) => diff(n, fresh(clock(n))));
 
-export const commands = { create, tap, pause, resume, flag, reset, control, names, resetAll };
+export const commands = { create, tap, pause, resume, flag, reset, control, rotate, names, resetAll };

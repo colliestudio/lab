@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 import { Store, parse, serialize, type CommandCtx } from '../../core';
 import { registerCoreCommands } from '../../core/commands';
-import { registerClockLogic } from './index';
+import { parseControl, registerClockLogic } from './index';
 import { FIELD, clock, fmt, remaining, type ClockField } from './model';
 
 function ctx(prefix = 'id'): CommandCtx {
@@ -132,5 +132,51 @@ describe('clock time math', () => {
     );
     expect(t.doc.get('a')![FIELD]).toBeUndefined();
     expect(t.doc.get('b')![FIELD] as ClockField).toEqual({ kind: 'clock', base: 60000, inc: 0, left0: 60000, left1: 60000, run: 0, paused: true });
+  });
+
+  it('per-side controls: each side starts from and gains its own; reset and export follow', () => {
+    const s = withClock();
+    s.dispatch('clock.control', { id: 'id1', base: 5 * MIN, inc: 0, base1: 3 * MIN, inc1: 2000 });
+    expect(c(s)).toMatchObject({ base: 5 * MIN, inc: 0, base1: 3 * MIN, inc1: 2000, left0: 5 * MIN, left1: 3 * MIN });
+    tap(s, 1, 0);
+    tap(s, 0, 10_000); // white: no increment
+    expect(c(s).left0).toBe(5 * MIN - 10_000);
+    tap(s, 1, 15_000); // black: +2 s
+    expect(c(s).left1).toBe(3 * MIN - 5000 + 2000);
+    expect(JSON.parse(serialize(s.exportDoc())).nodes[0].text).toMatch(/^Game clock 5\+0 \/ 3\+2:/);
+    s.dispatch('clock.reset', { id: 'id1' });
+    expect([c(s).left0, c(s).left1]).toEqual([5 * MIN, 3 * MIN]);
+    // a round trip keeps the handicap
+    const t = store();
+    t.load(parse(serialize(s.exportDoc())));
+    expect(clock(t.doc.get('id1')!)).toEqual(c(s));
+    // presets / same-for-both drop it; a "split" equal to the shared control isn't stored
+    s.dispatch('clock.control', { id: 'id1', base: MIN, inc: 0 });
+    expect(c(s).base1).toBeUndefined();
+    s.dispatch('clock.control', { id: 'id1', base: MIN, inc: 0, base1: MIN, inc1: 0 });
+    expect(c(s).base1).toBeUndefined();
+    expect(s.dispatch('clock.control', { id: 'id1', base: MIN, inc: 0, base1: -1, inc1: 0 }).changes).toEqual([]);
+    expect(parseControl('5+0')).toEqual({ base: 5 * MIN, inc: 0 });
+    expect(parseControl(' 0.5 + 2 ')).toEqual({ base: 30_000, inc: 2000 });
+    expect(parseControl('x')).toBeUndefined();
+  });
+
+  it('rotate cycles 0/90/180/270 around the center, tall at 90/270, and round-trips', () => {
+    const s = withClock();
+    const n0 = s.doc.get('id1')!;
+    const mid = (n: typeof n0) => [n.x + n.width / 2, n.y + n.height / 2];
+    const seen: unknown[] = [];
+    for (let i = 0; i < 4; i++) {
+      s.dispatch('clock.rotate', { id: 'id1' });
+      const n = s.doc.get('id1')!;
+      seen.push([c(s).rot, n.width > n.height ? 'wide' : 'tall']);
+      expect(mid(n)).toEqual(mid(n0));
+    }
+    expect(seen).toEqual([[90, 'tall'], [180, 'wide'], [270, 'tall'], [undefined, 'wide']]);
+    s.dispatch('clock.rotate', { id: 'id1' });
+    const t = store();
+    t.load(parse(serialize(s.exportDoc())));
+    expect(clock(t.doc.get('id1')!).rot).toBe(90);
+    expect(t.doc.get('id1')!.height).toBeGreaterThan(t.doc.get('id1')!.width);
   });
 });
