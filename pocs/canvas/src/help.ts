@@ -15,8 +15,8 @@ const GROUPS: [string, [string, string][]][] = [
       ['⇧2', 'Zoom to selection'],
       ['⌘Z / ⇧⌘Z', 'Undo / redo'],
       ['Right-click', 'Actions for what is under the pointer'],
-      ['Add…', 'Put a deck of cards, a chess set or the chess piece palette in the view'],
-      ['Reset', 'Everything back to its starting state, keeping what is on the table (one undo): decks get all their cards back face down and shuffled, boards their 32 pieces'],
+      ['Add…', 'Put a deck of cards, a chess set or a game clock in the view (or open the chess piece palette)'],
+      ['Reset', 'Everything back to its starting state, keeping what is on the table (one undo): decks get all their cards back face down and shuffled, boards their 32 pieces, clocks their time'],
       ['?', 'This help'],
     ],
   ],
@@ -66,6 +66,17 @@ const GROUPS: [string, [string, string][]][] = [
       ['Pieces… (tab, right-click, Add…)', 'Piece palette: drag a piece onto a square or the table; click one to put it beside the selected board'],
       ['⌘D', 'Duplicate the selected pieces (copies lie offset until you drop them on a square)'],
       ['', 'Set up keeps extra pieces beside the board'],
+    ],
+  ],
+  [
+    'Game clock',
+    [
+      ['Add… › Game clock', 'A two-sided clock for any game (starts at 5+0)'],
+      ['Tap your side', 'Ends your turn: your time stops (+ increment), the other side’s runs'],
+      ['Space over the clock', 'Tap for the side that is running (or start / resume)'],
+      ['▶ / ❚❚', 'Start (left side first) / pause / resume'],
+      ['Click its ⠿ tab', 'Time control (1+0 … 15+10, custom), pause, reset, side names'],
+      ['', 'Red = out of time (the clock stops). Taps can’t be undone; Reset table resets clocks'],
     ],
   ],
   [

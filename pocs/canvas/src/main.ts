@@ -3,6 +3,7 @@ import { App, joinRoom, localPlayer, mountZoomControl, openFile, parse, persistL
 import { copyText, createRoomFrom, mountRoomStatus, roomFromUrl, roomLink } from './share';
 import { cardsPlugin } from './plugins/cards';
 import { chessPlugin } from './plugins/chess';
+import { clockPlugin } from './plugins/clock';
 import { mountHelp, removeHelpNote } from './help';
 
 const ROOM = roomFromUrl();
@@ -12,6 +13,7 @@ const VIEW_KEY = 'canvas-poc:view';
 const app = new App(document.getElementById('table')!);
 app.use(cardsPlugin);
 app.use(chessPlugin);
+app.use(clockPlugin);
 app.store.migrations.push(removeHelpNote);
 
 

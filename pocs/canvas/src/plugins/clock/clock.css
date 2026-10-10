@@ -1,0 +1,112 @@
+.ck-clock {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+  box-sizing: border-box;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #3a3f46, #23272c);
+  box-shadow: 0 2px 3px rgba(0, 0, 0, 0.4), 0 10px 24px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  font-family: system-ui, sans-serif;
+}
+.ck-side {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border: 0;
+  border-radius: 9px;
+  cursor: pointer;
+  box-shadow: inset 0 -4px 0 rgba(0, 0, 0, 0.25);
+  transition: background 120ms, box-shadow 120ms;
+}
+.ck-s0 {
+  background: #e9e4d8;
+  color: #1d1a17;
+}
+.ck-s1 {
+  background: #2b2723;
+  color: #f1ece2;
+}
+.ck-side.ck-run {
+  box-shadow: inset 0 0 0 4px #4cc46b, inset 0 -4px 0 rgba(0, 0, 0, 0.25);
+}
+.ck-s0.ck-run {
+  background: #f7f3ea;
+}
+.ck-s1.ck-run {
+  background: #36312c;
+}
+.ck-side.ck-flag {
+  background: #c62828;
+  color: #fff;
+}
+.ck-paused .ck-side.ck-run {
+  box-shadow: inset 0 0 0 4px #e0b43c, inset 0 -4px 0 rgba(0, 0, 0, 0.25);
+}
+.ck-name {
+  font: 600 13px/1.2 system-ui, sans-serif;
+  opacity: 0.75;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ck-time {
+  font: 700 40px/1 ui-monospace, 'SF Mono', Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+.ck-low .ck-time,
+.ck-time.ck-low {
+  color: #e53935;
+}
+.ck-flag .ck-time {
+  color: #fff;
+}
+.ck-mid {
+  width: 34px;
+  display: grid;
+  place-items: center;
+}
+.ck-toggle {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+  color: #f1ece2;
+  font: 13px/1 system-ui, sans-serif;
+  cursor: pointer;
+}
+.ck-toggle:hover {
+  background: rgba(255, 255, 255, 0.26);
+}
+.ck-grip {
+  position: absolute;
+  left: 50%;
+  top: -24px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 12px 0 8px;
+  box-sizing: border-box;
+  border-radius: 8px 8px 0 0;
+  background: #23272c;
+  color: #e8ecef;
+  font: 600 12px/24px system-ui, sans-serif;
+  white-space: nowrap;
+  cursor: move;
+}
+.ck-grip:hover {
+  background: #353b42;
+}
+.ck-grip-dots {
+  font-size: 14px;
+  opacity: 0.7;
+}
