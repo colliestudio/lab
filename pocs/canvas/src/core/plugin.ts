@@ -19,6 +19,8 @@ export interface ObjectType {
    */
   renderKey?(node: CanvasNode, ctx: RenderCtx): string;
   onDoubleClick?(node: CanvasNode, app: App): void;
+  /** A control inside the rendered object (`data-action="name"`) was pressed. Never starts a drag. */
+  onAction?(node: CanvasNode, action: string, app: App): void;
   /**
    * A drag of this object alone is starting (pointer moved past the threshold; a plain click never
    * gets here). Return another node id to drag that instead, e.g. a deck hands out its top card.

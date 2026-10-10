@@ -180,6 +180,14 @@ export class View {
     if (this.pointers.size > 2) return;
 
     const nodeEl = (e.target as Element).closest<HTMLElement>('[data-node-id]');
+    const actionEl = nodeEl && !this.spaceDown && e.button === 0 ? (e.target as Element).closest<HTMLElement>('[data-action]') : null;
+    if (nodeEl && actionEl && nodeEl.contains(actionEl)) {
+      const node = this.app.node(nodeEl.dataset.nodeId!);
+      const type = node && this.app.typeOf(node);
+      this.app.store.newUndoStep();
+      if (node) type?.onAction?.(node, actionEl.dataset.action!, this.app);
+      return;
+    }
     if (this.spaceDown || e.button === 1 || (!nodeEl && !e.shiftKey)) {
       this.gesture = { kind: 'pan', last: p, start: p, moved: false, onEmpty: !nodeEl };
       return;

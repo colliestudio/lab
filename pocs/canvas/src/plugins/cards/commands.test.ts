@@ -3,7 +3,7 @@ import * as Y from 'yjs';
 import { Store, parse, serialize, type CanvasNode, type CommandCtx } from '../../core';
 import { registerCoreCommands } from '../../core/commands';
 import { registerCardsLogic } from './index';
-import { FIELD, card, cardNode, cardsIn, deckNode, isCard, isDeck, standardDeck } from './deck';
+import { FIELD, card, cardNode, cardsIn, deckNode, isCard, isDeck, isHomeDeck, standardDeck } from './deck';
 
 function ctx(prefix = 'id', seed = 1): CommandCtx {
   let n = 0;
@@ -183,25 +183,6 @@ describe('home decks, gather all, uniform facing', () => {
     expect(s.doc.get(pile)).toBeDefined();
   });
 
-  it('a merged deck keeps both homes; each recall pulls its own', () => {
-    const s = withDeck(3, deckNode('e', 500, 0, 40), cardNode('k1', 500, 0, { face: 'KH', faceUp: false, stack: 'e', order: 1 }, 41), cardNode('k2', 500, 0, { face: 'KD', faceUp: false, stack: 'e', order: 2 }, 42));
-    s.dispatch('cards.drop', { target: 'd', ids: ['e'] });
-    expect(cardsIn(s.doc, 'd')).toHaveLength(5);
-    expect(homeOf(s, 'k1')).toBe('e');
-    s.dispatch('cards.recall', { id: 'e' });
-    expect(faces(s, 'e')).toEqual(['KH', 'KD']);
-    expect(faces(s)).toEqual(['AS', '2S', '3S']);
-  });
-
-  it('cards whose home was deleted adopt the deck they are gathered into', () => {
-    const s = withDeck(2, deckNode('e', 500, 0, 40), cardNode('k1', 500, 0, { face: 'KH', faceUp: false, stack: 'e', order: 1 }, 41));
-    s.dispatch('cards.spread', { id: 'e' }); // e stays as an empty home slot
-    s.dispatch('core.delete', { ids: ['e'] });
-    expect(s.dispatch('cards.recall', { id: 'e' }).changes).toEqual([]);
-    s.dispatch('cards.drop', { target: 'd', ids: ['k1'] });
-    expect(homeOf(s, 'k1')).toBe('d');
-  });
-
   it('everything entering a deck takes its facing: gather, drop, recall; new deck = face down', () => {
     const up = (c: string) => card(s.doc.get(c)!).faceUp;
     const s = withDeck(2, cardNode('u1', 300, 0, { face: 'KH', faceUp: true }, 50), cardNode('u2', 500, 0, { face: 'QH', faceUp: true }, 51), cardNode('u3', 700, 0, { face: 'JH', faceUp: false }, 52));
@@ -222,24 +203,88 @@ describe('home decks, gather all, uniform facing', () => {
     expect(cardsIn(s.doc, 'd').every((c) => !card(c).faceUp)).toBe(true);
   });
 
-  it('migration: deck cards get their deck, loose cards the only deck of their pack', () => {
+});
+
+describe('home deck vs piles', () => {
+  const homeOf = (s: Store, id: string) => card(s.doc.get(id)!).home;
+
+  it('piles never become homes; gathering keeps homes; an emptied pile disappears', () => {
+    const s = withDeck(4);
+    expect(isHomeDeck(s.doc.get('d'))).toBe(true); // migration made the only stack the home
+    s.dispatch('cards.deal', { id: 'd', count: 3 });
+    const r = s.dispatch('cards.drop', { target: 'c3', ids: ['c2'] });
+    const pile = r.select![0];
+    expect(isHomeDeck(s.doc.get(pile))).toBe(false);
+    expect(homeOf(s, 'c2')).toBe('d');
+    expect(homeOf(s, 'c3')).toBe('d');
+    s.dispatch('cards.draw', { id: pile });
+    s.dispatch('cards.draw', { id: pile });
+    expect(s.doc.get(pile)).toBeUndefined();
+    s.dispatch('cards.deal', { id: 'd', count: 1 });
+    expect(s.doc.get('d')).toBeDefined(); // home deck stays as the empty slot
+    expect(s.dispatch('cards.recall', { id: pile }).changes).toEqual([]); // piles can't be recalled to
+  });
+
+  it("repairs a table like Alex's: one home, piles unflagged, empty piles gone, recall gets all 52", () => {
+    // what the old model could produce: several stacks that are homes, empty dashed ones, split homes
+    const s = store();
+    s.dispatch('cards.setup', {});
+    const initial = s.doc.nodes.find(isDeck)!.id;
+    const exp = JSON.parse(serialize(s.exportDoc()));
+    const faces52 = exp.nodes.filter((n: any) => n[FIELD]?.face);
+    const mk = (id: string, x: number) => ({ id, type: 'text', x, y: 400, width: 120, height: 168, [FIELD]: { pack: 'standard-52', deck: true } });
+    const nodes: any[] = [{ ...exp.nodes.find((n: any) => n.id === initial), [FIELD]: { pack: 'standard-52', deck: true } }];
+    nodes.push(mk('e1', 600), mk('e2', 800), mk('e3', 1000), mk('p2', 1200), mk('p11', 1400));
+    faces52.forEach((c: any, i: number) => {
+      const f = { ...c[FIELD] };
+      delete f.stack;
+      delete f.order;
+      if (i < 2) Object.assign(f, { stack: 'p2', order: i, home: 'p2' });
+      else if (i < 13) Object.assign(f, { stack: 'p11', order: i, home: i < 8 ? 'p11' : 'e1', faceUp: i % 2 === 0 });
+      else if (i < 20) Object.assign(f, { stack: initial, order: i, home: initial });
+      else Object.assign(f, { faceUp: i % 2 === 0, home: i % 3 ? initial : 'e2' });
+      nodes.push({ ...c, x: 100 + i * 10, [FIELD]: f });
+    });
+    const t = store(ctx('t'));
+    t.load(parse(JSON.stringify({ nodes, edges: [] })));
+    const stacks = t.doc.nodes.filter(isDeck);
+    const homes = stacks.filter(isHomeDeck);
+    expect(homes.map((h) => h.id)).toEqual([initial]); // most cards claimed it
+    expect(stacks.map((st) => st.id).sort()).toEqual([initial, 'p11', 'p2'].sort()); // empty e1-e3 deleted
+    expect(t.doc.nodes.filter(isCard).every((c) => card(c).home === initial)).toBe(true);
+    for (const st of stacks) expect(new Set(cardsIn(t.doc, st.id).map((c) => card(c).faceUp)).size).toBe(1);
+    // idempotent
+    const before = JSON.stringify(t.ydoc.getMap('nodes').toJSON());
+    t.migrate();
+    expect(JSON.stringify(t.ydoc.getMap('nodes').toJSON())).toBe(before);
+    // one gather brings everything back face down; the piles go
+    t.dispatch('cards.recall', { id: initial });
+    expect(cardsIn(t.doc, initial)).toHaveLength(52);
+    expect(cardsIn(t.doc, initial).every((c) => !card(c).faceUp)).toBe(true);
+    expect(t.doc.visible.map((n) => n.id)).toEqual([initial]);
+  });
+
+  it('repair without any stack creates a home deck left of the cards; with only loose legacy cards', () => {
     const t = store();
-    const legacy = { pack: 'standard-52', face: 'AS', faceUp: true };
     t.load({
       nodes: [
-        deckNode('d', 0, 0, 1),
-        { ...cardNode('in', 0, 0, { face: '2S', faceUp: false, stack: 'd', order: 1 }, 2) },
-        { id: 'loose', type: 'text', x: 0, y: 0, width: 1, height: 1, [FIELD]: legacy },
+        { id: 'a', type: 'text', x: 300, y: 50, width: 120, height: 168, [FIELD]: { pack: 'standard-52', face: 'AS', faceUp: true } },
+        { id: 'b', type: 'text', x: 500, y: 50, width: 120, height: 168, [FIELD]: { pack: 'standard-52', face: 'KS', faceUp: true } },
       ],
       edges: [],
     });
-    expect(homeOf(t, 'in')).toBe('d');
-    expect(homeOf(t, 'loose')).toBe('d');
-    // two decks: a loose card's home is ambiguous, left unset
-    const u = store();
-    u.load({ nodes: [deckNode('d', 0, 0, 1), deckNode('e', 0, 0, 2), cardNode('x', 0, 0, { face: '2S', faceUp: false, stack: 'e', order: 1 }, 3), cardNode('y', 0, 0, { face: '3S', faceUp: false, stack: 'd', order: 1 }, 4), { id: 'l', type: 'text', x: 0, y: 0, width: 1, height: 1, [FIELD]: legacy }], edges: [] });
-    expect(homeOf(u, 'l')).toBeUndefined();
-    expect(homeOf(u, 'x')).toBe('e');
+    const home = t.doc.nodes.find(isHomeDeck)!;
+    expect(home.x).toBeLessThan(300);
+    expect(homeOf(t, 'a')).toBe(home.id);
+    t.dispatch('cards.recall', { id: home.id });
+    expect(cardsIn(t.doc, home.id)).toHaveLength(2);
+  });
+
+  it('a stage-1 deck (cards inside the deck node) becomes the home on import', () => {
+    const t = store();
+    t.load(parse(JSON.stringify({ nodes: [{ id: 'old', type: 'text', x: 0, y: 0, width: 120, height: 168, [FIELD]: { stack: [{ face: 'AS' }, { face: 'KD' }] } }] })));
+    expect(isHomeDeck(t.doc.get('old'))).toBe(true);
+    expect(faces(t, 'old')).toEqual(['AS', 'KD']);
   });
 });
 

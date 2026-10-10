@@ -26,13 +26,18 @@ export interface CardField {
   faceUp: boolean;
   stack?: string;
   order?: number;
-  /** The deck this card belongs to: "gather all" on that deck pulls it back from anywhere. */
+  /** The home deck this card belongs to: "gather all" on it pulls the card back from anywhere. Always a home deck. */
   home?: string;
 }
-/** A deck node's `x-cards` field. Its cards are the card nodes pointing at it. */
+/**
+ * A stack node's `x-cards` field; its cards are the card nodes pointing at it. Two kinds:
+ * a home deck (`home: true`, one per pack, made by New table; stays as an empty slot when emptied)
+ * and a pile (made by stacking/gathering; disappears when emptied, never a home).
+ */
 export interface DeckField {
   pack: string;
   deck: true;
+  home?: true;
 }
 
 export function parseFace(face: string): { rank: Rank; suit: Suit } {
@@ -53,6 +58,7 @@ export function standardDeck(): string[] {
 const field = (n: CanvasNode) => n[FIELD] as Record<string, unknown> | undefined;
 export const isCard = (n: CanvasNode | undefined): boolean => !!n && typeof field(n)?.face === 'string';
 export const isDeck = (n: CanvasNode | undefined): boolean => !!n && field(n)?.deck === true;
+export const isHomeDeck = (n: CanvasNode | undefined): boolean => isDeck(n) && field(n!)?.home === true;
 export const isCardish = (n: CanvasNode | undefined) => isCard(n) || isDeck(n);
 export const card = (n: CanvasNode) => n[FIELD] as CardField;
 export const packOf = (n: CanvasNode) => (field(n)?.pack as string | undefined) ?? PACK;
@@ -98,10 +104,23 @@ export function cardsHomedAt(doc: DocView, deckId: string): CanvasNode[] {
   return m.get(deckId) ?? [];
 }
 
-/** Home deck id if that deck still exists. */
+/** Home deck id if that home deck still exists. */
 export function liveHome(doc: DocView, c: CanvasNode): string | undefined {
   const h = card(c).home;
-  return h && isDeck(doc.get(h)) ? h : undefined;
+  return h && isHomeDeck(doc.get(h)) ? h : undefined;
+}
+
+/** The home deck a node leads to: itself if a home deck, a card's home, a pile's top card's home. */
+export function homeFor(doc: DocView, n: CanvasNode | undefined): string | undefined {
+  if (!n) return;
+  if (isHomeDeck(n)) return n.id;
+  if (isCard(n)) return liveHome(doc, n);
+  if (isDeck(n)) {
+    for (const c of cardsIn(doc, n.id).slice().reverse()) {
+      const h = liveHome(doc, c);
+      if (h) return h;
+    }
+  }
 }
 
 /** Facing of a deck = its top card's; an empty deck counts as face down. */
@@ -118,6 +137,9 @@ export function cardNode(id: string, x: number, y: number, c: Omit<CardField, 'p
   return { id, type: 'text', x, y, width: CARD_W, height: CARD_H, text: label(c.face), z, [FIELD]: f };
 }
 
-export function deckNode(id: string, x: number, y: number, z?: number, pack = PACK): CanvasNode {
-  return { id, type: 'text', x, y, width: CARD_W, height: CARD_H, text: 'Deck', z, [FIELD]: { pack, deck: true } };
+/** A pile (default) or, with `home`, a pack's home deck. */
+export function deckNode(id: string, x: number, y: number, z?: number, pack = PACK, home = false): CanvasNode {
+  const f: DeckField = { pack, deck: true };
+  if (home) f.home = true;
+  return { id, type: 'text', x, y, width: CARD_W, height: CARD_H, text: home ? 'Deck' : 'Pile', z, [FIELD]: f };
 }

@@ -1,13 +1,18 @@
 import './cards.css';
 import type { App, CanvasNode, Command, Plugin, Store } from '../../core';
 import { commands, outCount } from './commands';
-import { CARD_W, card, cardsIn, deckIdOf, isCard, isCardish, isDeck } from './deck';
+import { CARD_W, card, cardsIn, deckIdOf, homeFor, isCard, isCardish, isDeck, isHomeDeck } from './deck';
 import { repairImport, shapeExport } from './io';
 import { cardHtml, deckHtml } from './render';
 
 const selectedCards = (app: App) => app.selected().filter(isCardish);
 const ids = (ns: CanvasNode[]) => ns.map((n) => n.id);
 const lastDeck = (app: App) => selectedCards(app).filter(isDeck).at(-1);
+/** Home deck of what's under the mouse (card, pile or deck), else of the selection. */
+const targetHome = (app: App) => {
+  const h = app.view.hovered && app.node(app.view.hovered);
+  return homeFor(app.doc, h || undefined) ?? homeFor(app.doc, selectedCards(app).at(-1));
+};
 /** Deck under the mouse, else the selected one. */
 const targetDeck = (app: App) => {
   const h = app.view.hovered && app.node(app.view.hovered);
@@ -20,7 +25,7 @@ export function registerCardsLogic(store: Store) {
   store.addParentRule(deckIdOf);
   store.importFilters.push(repairImport);
   store.exportFilters.push(shapeExport);
-  store.migrations.push(commands.migrateHomes as Command);
+  store.migrations.push(commands.repairHomes as Command);
 }
 
 export const cardsPlugin: Plugin = {
@@ -50,14 +55,18 @@ export const cardsPlugin: Plugin = {
       render(node, el, { doc }) {
         const cards = cardsIn(doc, node.id);
         const top = cards.at(-1);
-        el.innerHTML = deckHtml(top && card(top), cards.length);
+        el.innerHTML = deckHtml(top && card(top), cards.length, isHomeDeck(node), isHomeDeck(node) ? outCount(doc, node.id) : 0);
       },
       renderKey(node, { doc }) {
         const cards = cardsIn(doc, node.id);
         const top = cards.at(-1);
-        return `${cards.length}:${top ? card(top).face + card(top).faceUp : ''}`;
+        const out = isHomeDeck(node) ? outCount(doc, node.id) : -1;
+        return `${cards.length}:${out}:${top ? card(top).face + card(top).faceUp : ''}`;
       },
       onDoubleClick: flipOne,
+      onAction: (node, action, app) => {
+        if (action === 'recall') app.dispatch('cards.recall', { id: node.id });
+      },
       // Dragging a deck takes its top card (orientation kept). The grip tab or Alt+drag moves the deck.
       onDragStart(node, down, app) {
         if (down.altKey || (down.target as Element | null)?.closest?.('[data-grip]')) return;
@@ -77,9 +86,9 @@ export const cardsPlugin: Plugin = {
       const d = lastDeck(a);
       if (d) a.dispatch('cards.spread', { id: d.id, step: Math.round(CARD_W / 4) });
     };
-    const recallDeck = (a: App) => {
-      const d = targetDeck(a);
-      if (d) a.dispatch('cards.recall', { id: d.id });
+    const recallHome = (a: App) => {
+      const h = targetHome(a);
+      if (h) a.dispatch('cards.recall', { id: h });
     };
     const gatherSel = (faceUp?: boolean) => (a: App) => a.dispatch('cards.gather', { ids: ids(selectedCards(a)), faceUp });
 
@@ -88,7 +97,7 @@ export const cardsPlugin: Plugin = {
     app.registerKey({ key: 'd', label: 'Draw face up', run: drawSel(true) });
     app.registerKey({ key: 'shift+d', label: 'Draw face down', run: drawSel(false) });
     app.registerKey({ key: 'g', label: 'Gather into a deck', run: gatherSel() });
-    app.registerKey({ key: 'shift+g', label: "Gather all of a deck's cards", run: recallDeck });
+    app.registerKey({ key: 'shift+g', label: 'Gather all cards back to their deck', run: recallHome });
     app.registerKey({ key: 'e', label: 'Spread deck', run: spreadSel });
     const dealN = (count: number, faceUp: boolean) => (a: App) => {
       const d = targetDeck(a);
@@ -114,14 +123,14 @@ export const cardsPlugin: Plugin = {
     // label shows how many are out; built when the menu opens
     app.registerMenuItem({
       get label() {
-        const d = lastDeck(app);
-        return `Gather all cards (${d ? outCount(app.doc, d.id) : 0} out)`;
+        const h = homeFor(app.doc, selectedCards(app).at(-1));
+        return `Gather all cards (${h ? outCount(app.doc, h) : 0} out)`;
       },
       hint: '⇧G',
-      when: (a, sel) => sel.filter(isCardish).length === 1 && hasDeck(a, sel),
+      when: (a, sel) => sel.length >= 1 && !!homeFor(a.doc, sel.filter(isCardish).at(-1)),
       run: (a) => {
-        const d = lastDeck(a);
-        if (d) a.dispatch('cards.recall', { id: d.id });
+        const h = homeFor(a.doc, selectedCards(a).at(-1));
+        if (h) a.dispatch('cards.recall', { id: h });
       },
     });
     app.registerMenuItem({ label: 'Gather face down', when: several, run: gatherSel(false) });

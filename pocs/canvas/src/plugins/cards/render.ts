@@ -55,7 +55,7 @@ export function cardHtml(c: CardData): string {
 }
 
 /** A deck: its top card plus a visible edge whose thickness follows the card count. */
-export function deckHtml(top: CardData | undefined, count: number): string {
+export function deckHtml(top: CardData | undefined, count: number, home = false, out = 0): string {
   const layers = Math.min(10, Math.ceil(count / 4));
   const shadow = Array.from({ length: layers }, (_, i) => {
     const o = (i + 1) * 1.1;
@@ -65,7 +65,9 @@ export function deckHtml(top: CardData | undefined, count: number): string {
   return (
     `<div class="pc-stack" style="--pc-stack-shadow:${shadow.join(',')}">` +
     (top ? cardHtml(top) : '<div class="pc-card pc-empty"></div>') +
-    `<div class="pc-grip" data-grip title="Drag here (or Alt+drag the deck) to move the whole deck">` +
-    `<span class="pc-grip-dots">⠿</span>${count}</div></div>`
+    `<div class="pc-grip${home ? ' pc-home' : ''}" data-grip title="Drag here (or Alt+drag) to move the whole ${home ? 'deck' : 'pile'}">` +
+    `<span class="pc-grip-dots">⠿</span>${home ? 'Deck ' : ''}${count}` +
+    (home && out ? `<button class="pc-gather" data-action="recall" title="Gather all of this deck's cards back, face down (⇧G)">Gather ${out}</button>` : '') +
+    `</div></div>`
   );
 }

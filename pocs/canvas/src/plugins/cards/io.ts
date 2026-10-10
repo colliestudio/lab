@@ -33,7 +33,7 @@ export const repairImport: DocFilter = (doc, ctx) => {
       continue;
     }
     if (f.deck === true) {
-      out.push({ ...n, [FIELD]: { pack, deck: true } });
+      out.push({ ...n, [FIELD]: f.home === true ? { pack, deck: true, home: true } : { pack, deck: true } });
       continue;
     }
     if (isFace(f.face)) {

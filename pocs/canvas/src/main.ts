@@ -18,8 +18,8 @@ Drop a card squarely onto a card or deck to stack it (it lights up)
 Drag a deck to take its top card • drag its ⠿ tab (or Alt+drag) to move the deck
 Deck: S shuffle • D draw (⇧D face down) • 1–9 deal N face up (⇧ face down) • E spread
 Number keys and D act on the deck under the mouse, else the selected one
-G gather selection into a deck • ⇧G gather all of a deck's cards back (from anywhere)
-Cards entering a deck take its facing (new deck, gather all: face down) • right-click: more
+Gather everything back: click "Gather N" on the blue deck tab, or ⇧G over any card
+G stacks the selection into a pile • stacked cards take the pile's facing • right-click: more
 ⌘Z undo • ⇧⌘Z redo • ⌘S save .canvas • ⌘O open`;
 
 function newTable() {
