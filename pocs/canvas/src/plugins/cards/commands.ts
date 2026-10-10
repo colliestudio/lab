@@ -257,18 +257,94 @@ export const pullOut: Command<{ id: string; x?: number; y?: number }> = (doc, a)
   return { changes, select: [c.id] };
 };
 
-/** Switch a group or hand between fan / row / grid / stack (stack = acts like a deck). Not the home deck; hands never stack. */
+/** Changes that switch `box` to `layout`, keeping the top-left of its cards where it is. No checks. */
+function relayout(box: CanvasNode, layout: Layout): Change[] {
+  if (layoutOf(box) === layout) return [];
+  const changes = [set(box.id, F('layout'), layout === 'stack' ? undefined : layout)];
+  if (layout === 'stack' && isSpreadOut(box)) changes.push(set(box.id, 'x', box.x + PAD), set(box.id, 'y', box.y + PAD + 6));
+  if (layout !== 'stack' && isStacked(box)) changes.push(set(box.id, 'x', box.x - PAD), set(box.id, 'y', box.y - PAD - 6));
+  return changes;
+}
+
+/** Switch any container (home deck too) between stack / fan / row / grid. A hand never stacks. */
 export const setLayout: Command<{ id: string; layout: Layout }> = (doc, a) => {
   const box = typeof a?.id === 'string' ? doc.get(a.id) : undefined;
-  if (!box || !isDeck(box) || isHomeDeck(box) || !['stack', 'fan', 'row', 'grid'].includes(a.layout)) return [];
+  if (!box || !isDeck(box) || !['stack', 'fan', 'row', 'grid'].includes(a.layout)) return [];
   if (isHand(box) && a.layout === 'stack') return [];
-  if (layoutOf(box) === a.layout) return [];
-  const changes = [set(box.id, F('layout'), a.layout === 'stack' ? undefined : a.layout)];
-  // keep the top-left corner of the cards where it is when switching to/from a pile
-  if (a.layout === 'stack' && isSpreadOut(box)) changes.push(set(box.id, 'x', box.x + PAD), set(box.id, 'y', box.y + PAD + 6));
-  if (a.layout !== 'stack' && isStacked(box)) changes.push(set(box.id, 'x', box.x - PAD), set(box.id, 'y', box.y - PAD - 6));
-  // a group made into a pile: its cards sit at its position (for exports)
-  return changes;
+  return relayout(box, a.layout);
+};
+
+/** The three kinds of collection, all one container type: a deck (stacked), a group (spread, public), a hand (spread, owned). */
+export type Kind = 'deck' | 'group' | 'hand';
+export const kindOf = (box: CanvasNode): Kind => (isStacked(box) ? 'deck' : isHand(box) ? 'hand' : 'group');
+
+const unown = (box: CanvasNode, text: string): Change[] =>
+  box.owner ? [set(box.id, 'owner', undefined), set(box.id, 'label', undefined), set(box.id, 'text', text), set(box.id, F('color'), undefined)] : [];
+
+/**
+ * Turn a container into a deck, group or hand. Hand → deck or group makes it public first. Into a
+ * hand: owned by `owner` (labelled `label`, colored `color`), spread as a fan if it was a deck. The
+ * home deck can be a deck or a group, never a hand.
+ */
+export const turnInto: Command<{ id: string; kind: Kind; owner?: string; label?: string; color?: string }> = (doc, a, ctx) => {
+  const box = typeof a?.id === 'string' ? doc.get(a.id) : undefined;
+  if (!box || !isDeck(box) || kindOf(box) === a.kind) return [];
+  if (a.kind === 'deck') return [...unown(box, 'Pile'), ...relayout(box, 'stack')];
+  if (a.kind === 'group') return [...unown(box, 'Group'), ...relayout(box, 'fan')];
+  if (a.kind === 'hand') return own(doc, { id: box.id, owner: a.owner ?? '', label: a.label, color: a.color }, ctx);
+  return [];
+};
+
+const ROW_GAP = 12;
+const rowWidth = (n: number) => n * (CARD_W + ROW_GAP) - ROW_GAP;
+
+/** Where a container's cards start when laid out in a row: where its first card shows (home deck: beside it). */
+function rowStart(box: CanvasNode) {
+  if (isHomeDeck(box)) return { x: box.x + box.width + 24, y: isSpreadOut(box) ? box.y + PAD : box.y };
+  return isSpreadOut(box) ? { x: box.x + PAD, y: box.y + PAD } : { x: box.x, y: box.y };
+}
+
+/** Lay `cards` out in a row from (x, y), each keeping its facing unless `faceUp` is given. */
+const layRow = (cards: CanvasNode[], x: number, y: number, z: number, faceUp?: boolean): Change[] =>
+  cards.flatMap((c, i) => [...release(c, Math.round(x + i * (CARD_W + ROW_GAP)), Math.round(y), z + 1 + i), ...(faceUp === undefined ? [] : conform(c, faceUp))]);
+
+/**
+ * Put cards on table: the container's cards in a row where it was (bottom card left), each keeping
+ * its facing, and the container goes. The home deck stays as an empty slot; its row starts beside it.
+ */
+export const putOnTable: Command<{ id: string }> = (doc, a) => {
+  const box = typeof a?.id === 'string' ? doc.get(a.id) : undefined;
+  if (!box || !isDeck(box)) return [];
+  const cards = cardsIn(doc, box.id);
+  const p = rowStart(box);
+  const changes = layRow(cards, p.x, p.y, Math.floor(doc.topZ));
+  if (!isHomeDeck(box)) changes.push({ op: 'del', id: box.id });
+  return { changes, select: cards.map((c) => c.id) };
+};
+
+/**
+ * Showdown: every hand is put on the table as a face-up row where it was (left to right, a row slides
+ * right past rows already laid so they don't overlap), and the hands go.
+ */
+export const showdown: Command<Record<string, never>> = (doc) => {
+  const hands = doc.nodes.filter(isHand).sort((p, q) => p.x - q.x || p.y - q.y);
+  if (!hands.length) return [];
+  const laid: { x: number; y: number; w: number }[] = [];
+  const hits = (x: number, y: number, w: number) => laid.some((r) => r.x < x + w + 20 && r.x + r.w + 20 > x && r.y < y + CARD_H && r.y + CARD_H > y);
+  let z = Math.floor(doc.topZ);
+  const changes: Change[] = [];
+  const select: string[] = [];
+  for (const h of hands) {
+    const cards = cardsIn(doc, h.id);
+    const p = rowStart(h);
+    const w = rowWidth(cards.length);
+    while (cards.length && hits(p.x, p.y, w)) p.x += CARD_W + ROW_GAP;
+    if (cards.length) laid.push({ x: p.x, y: p.y, w });
+    changes.push(...layRow(cards, p.x, p.y, z, true), { op: 'del', id: h.id });
+    z += cards.length;
+    select.push(...cards.map((c) => c.id));
+  }
+  return { changes, select };
 };
 
 /** Put every card of a group on the table where it's shown, and remove the group. Not the home deck. */
@@ -345,10 +421,10 @@ export const own: Command<{ id: string; owner: string | null; label?: string; co
   return changes;
 };
 
-/** L: a pile becomes a fan group, any spread-out group becomes a pile (a subdeck). Not the home deck or a private group. */
+/** L: a deck becomes a fan group, a group becomes a deck (home deck too). A hand stays spread. */
 export const toggleStack: Command<{ id: string }> = (doc, a, ctx) => {
   const box = typeof a?.id === 'string' ? doc.get(a.id) : undefined;
-  if (!box || !isDeck(box) || isHomeDeck(box)) return [];
+  if (!box || !isDeck(box)) return [];
   return setLayout(doc, { id: box.id, layout: isStacked(box) ? 'fan' : 'stack' }, ctx);
 };
 
@@ -509,4 +585,4 @@ export const setup: Command<{ x?: number; y?: number }> = (doc, a, ctx) => {
   return changes;
 };
 
-export const commands = { flip, face, move, shuffle, draw, deal, gather, recall, drop, spread, setup, repairHomes, pullOut, setLayout, ungroup, sort, newHand, own, toggleStack, handLabel, migrateHands };
+export const commands = { flip, face, move, shuffle, draw, deal, gather, recall, drop, spread, setup, repairHomes, pullOut, setLayout, ungroup, sort, newHand, own, toggleStack, handLabel, migrateHands, turnInto, putOnTable, showdown };
