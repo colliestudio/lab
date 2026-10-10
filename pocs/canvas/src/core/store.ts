@@ -82,6 +82,8 @@ export class Store {
   private commands = new Map<string, Command>();
   private listeners = new Set<() => void>();
   private view: DocView | null = null;
+  /** Plain copies of nodes, kept until that node changes (a drag rewrites one node, not all of them). */
+  private json = new Map<string, CanvasNode>();
   private mergeAll = false;
 
   ctx: CommandCtx;
@@ -97,6 +99,13 @@ export class Store {
       trackedOrigins: new Set([LOCAL]),
       captureTimeout: Number.MAX_SAFE_INTEGER,
     });
+    // observers run before afterTransaction: drop the plain copies of nodes that changed
+    this.nodes.observeDeep((events) => {
+      for (const e of events) {
+        if (e.target === this.nodes) for (const id of e.changes.keys.keys()) this.json.delete(id);
+        else this.json.delete(e.path[0] as string);
+      }
+    });
     this.ydoc.on('afterTransaction', () => {
       this.view = null;
       this.pruneSelection();
@@ -109,7 +118,12 @@ export class Store {
   /** Current read-only snapshot (cached until the next transaction). */
   get doc(): DocView {
     if (!this.view) {
-      const nodes = [...this.nodes.values()].map((m) => m.toJSON() as CanvasNode);
+      const nodes: CanvasNode[] = [];
+      for (const [id, m] of this.nodes) {
+        let n = this.json.get(id);
+        if (!n) this.json.set(id, (n = m.toJSON() as CanvasNode));
+        nodes.push(n);
+      }
       this.view = makeView({ nodes, edges: [...this.edges.values()], extra: this.meta.toJSON() }, this.parentRules, this.layouts, this.riderRules);
     }
     return this.view;

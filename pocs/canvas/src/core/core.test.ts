@@ -133,3 +133,29 @@ describe('duplicate', () => {
     expect(s.dispatch('core.duplicate', { ids: ['b'] }).changes).toEqual([]);
   });
 });
+
+describe('snapshot cache', () => {
+  it('reuses unchanged nodes and refreshes changed ones (own, nested, remote, undo)', async () => {
+    const Y = await import('yjs');
+    const s = store(parse(JSON.stringify(file)));
+    const a0 = s.doc.get('a');
+    const b0 = s.doc.get('b');
+    s.dispatch('core.move', { ids: ['a'], dx: 3, dy: 0 });
+    expect(s.doc.get('b')).toBe(b0); // untouched node: same object
+    expect(s.doc.get('a')).not.toBe(a0);
+    expect(s.doc.get('a')!.x).toBe(3);
+    s.newUndoStep();
+    s.apply([{ op: 'set', id: 'b', key: 'x-other.k', value: 7 }]);
+    expect(s.doc.get('b')!['x-other']).toEqual({ k: 7 });
+    s.undo();
+    expect(s.doc.get('b')!['x-other']).toEqual({ k: [1, 2] });
+    const t = new Store({ ydoc: new Y.Doc() });
+    Y.applyUpdate(t.ydoc, Y.encodeStateAsUpdate(s.ydoc));
+    expect(t.doc.get('a')!.x).toBe(3);
+    s.dispatch('core.move', { ids: ['a'], dx: 1, dy: 0 });
+    Y.applyUpdate(t.ydoc, Y.encodeStateAsUpdate(s.ydoc, Y.encodeStateVector(t.ydoc)));
+    expect(t.doc.get('a')!.x).toBe(4);
+    s.dispatch('core.delete', { ids: ['a'] });
+    expect(s.doc.get('a')).toBeUndefined();
+  });
+});
