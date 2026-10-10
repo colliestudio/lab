@@ -1,5 +1,5 @@
 import type { CanvasDoc, CanvasNode, DocFilter } from '../../core';
-import { FIELD, PACK, cardNode, deckNode, isFace, label, type CardField } from './deck';
+import { FIELD, LAYOUTS, PACK, cardNode, deckNode, isFace, label, type CardField, type DeckField } from './deck';
 
 // JSON Canvas import repair and export shaping for card nodes.
 
@@ -33,7 +33,17 @@ export const repairImport: DocFilter = (doc, ctx) => {
       continue;
     }
     if (f.deck === true) {
-      out.push({ ...n, [FIELD]: f.home === true ? { pack, deck: true, home: true } : { pack, deck: true } });
+      const d: DeckField = { pack, deck: true };
+      if (f.home === true) d.home = true;
+      else {
+        if (typeof f.layout === 'string' && (LAYOUTS as string[]).includes(f.layout) && f.layout !== 'stack') d.layout = f.layout as DeckField['layout'];
+        if (f.hand === true && typeof n.owner === 'string') {
+          d.hand = true;
+          d.layout ??= 'fan';
+        }
+      }
+      if (typeof f.color === 'string' && /^#[0-9a-f]{6}$/i.test(f.color)) d.color = f.color;
+      out.push({ ...n, [FIELD]: d });
       continue;
     }
     if (isFace(f.face)) {
@@ -71,8 +81,10 @@ function strip(n: CanvasNode): CanvasNode {
 }
 
 /**
- * Export: every card stays a node. Cards in a deck sit at the deck's position, just below it in the
- * array, and the deck's text says how many it holds — readable in Obsidian, lossless on re-import.
+ * Export: every card stays a node and every container becomes a JSON Canvas `group` (with a label)
+ * sized to its layout. Cards in a pile sit at the pile's position, just below it in the array; cards
+ * in a group or hand are already at their laid-out spots, listed after it so Obsidian shows them on
+ * top. Lossless on re-import.
  */
 export const shapeExport: DocFilter = (doc: CanvasDoc) => {
   const byDeck = new Map<string, CanvasNode[]>();
@@ -87,10 +99,15 @@ export const shapeExport: DocFilter = (doc: CanvasDoc) => {
     } else rest.push(n);
   }
   const nodes = rest.flatMap((n) => {
-    const cards = byDeck.get(n.id);
-    if (!cards) return [n];
+    if (!deckIds.has(n.id)) return [n];
+    const cards = byDeck.get(n.id) ?? [];
     cards.sort((a, b) => ((a[FIELD] as CardField).order ?? 0) - ((b[FIELD] as CardField).order ?? 0));
-    return [...cards.map((c) => ({ ...c, x: n.x, y: n.y })), { ...n, text: `Deck: ${cards.length} cards` }];
+    const f = n[FIELD] as DeckField;
+    const spread = f.layout && f.layout !== 'stack';
+    const name = f.home ? 'Deck' : f.hand ? (n.label ?? 'Hand') : spread ? 'Group' : 'Pile';
+    const { text: _t, ...rest } = n;
+    const group = { ...rest, type: 'group', label: f.hand ? name : `${name}: ${cards.length} card${cards.length === 1 ? '' : 's'}` };
+    return spread ? [group, ...cards] : [...cards.map((c) => ({ ...c, x: n.x, y: n.y })), group];
   });
   return { ...doc, nodes };
 };

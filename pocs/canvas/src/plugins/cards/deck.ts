@@ -29,15 +29,26 @@ export interface CardField {
   /** The home deck this card belongs to: "gather all" on it pulls the card back from anywhere. Always a home deck. */
   home?: string;
 }
+/** How a container shows its cards: a face-down-able pile, or every card visible. */
+export type Layout = 'stack' | 'fan' | 'row' | 'grid';
+export const LAYOUTS: Layout[] = ['fan', 'row', 'grid', 'stack'];
+
 /**
- * A stack node's `x-cards` field; its cards are the card nodes pointing at it. Two kinds:
- * a home deck (`home: true`, one per pack, made by New table; stays as an empty slot when emptied)
- * and a pile (made by stacking/gathering; disappears when emptied, never a home).
+ * A container node's `x-cards` field; its cards are the card nodes pointing at it (`stack`), each
+ * keeping its own facing. Kinds:
+ * - home deck (`home: true`, one per pack, made by New table): a stack; stays as an empty slot;
+ * - group (made by stacking/gathering): any layout; dissolves when down to one card;
+ * - hand (`hand: true`, node `owner` = player id): fan/row/grid, persists even when empty;
+ *   other players see its cards face down (UI only for now; real secrecy is stage 3).
+ * `deck: true` marks every container (name kept from when stacks were the only kind).
  */
 export interface DeckField {
   pack: string;
   deck: true;
   home?: true;
+  layout?: Layout;
+  hand?: true;
+  color?: string;
 }
 
 export function parseFace(face: string): { rank: Rank; suit: Suit } {
@@ -60,6 +71,21 @@ export const isCard = (n: CanvasNode | undefined): boolean => !!n && typeof fiel
 export const isDeck = (n: CanvasNode | undefined): boolean => !!n && field(n)?.deck === true;
 export const isHomeDeck = (n: CanvasNode | undefined): boolean => isDeck(n) && field(n!)?.home === true;
 export const isCardish = (n: CanvasNode | undefined) => isCard(n) || isDeck(n);
+export const isHand = (n: CanvasNode | undefined): boolean => isDeck(n) && field(n!)?.hand === true;
+export const layoutOf = (n: CanvasNode): Layout => {
+  const l = field(n)?.layout;
+  return l === 'fan' || l === 'row' || l === 'grid' ? l : 'stack';
+};
+/** A container drawn as one pile (cards hidden, top card shown): home deck or a group set to stack. */
+export const isStacked = (n: CanvasNode | undefined): boolean => isDeck(n) && layoutOf(n!) === 'stack';
+/** A container that lays its cards out visibly (group or hand). */
+export const isSpreadOut = (n: CanvasNode | undefined): boolean => isDeck(n) && layoutOf(n!) !== 'stack';
+/** A card sitting in someone else's hand: shown face down to `viewer`. */
+export function hiddenFrom(doc: DocView, c: CanvasNode, viewer: string): boolean {
+  const p = doc.parentOf(c.id);
+  const h = p ? doc.get(p) : undefined;
+  return !!h && isHand(h) && !!h.owner && h.owner !== viewer;
+}
 export const card = (n: CanvasNode) => n[FIELD] as CardField;
 export const packOf = (n: CanvasNode) => (field(n)?.pack as string | undefined) ?? PACK;
 
@@ -137,9 +163,26 @@ export function cardNode(id: string, x: number, y: number, c: Omit<CardField, 'p
   return { id, type: 'text', x, y, width: CARD_W, height: CARD_H, text: label(c.face), z, [FIELD]: f };
 }
 
-/** A pile (default) or, with `home`, a pack's home deck. */
+/** A stack group (default) or, with `home`, a pack's home deck. */
 export function deckNode(id: string, x: number, y: number, z?: number, pack = PACK, home = false): CanvasNode {
   const f: DeckField = { pack, deck: true };
   if (home) f.home = true;
   return { id, type: 'text', x, y, width: CARD_W, height: CARD_H, text: home ? 'Deck' : 'Pile', z, [FIELD]: f };
+}
+
+/** A group with a layout, or (with `owner`) a player's hand. */
+export function groupNode(
+  id: string,
+  x: number,
+  y: number,
+  z: number,
+  o: { layout?: Layout; pack?: string; owner?: string; label?: string; color?: string } = {},
+): CanvasNode {
+  const f: DeckField = { pack: o.pack ?? PACK, deck: true, layout: o.layout ?? 'fan' };
+  if (o.owner) f.hand = true;
+  if (o.color) f.color = o.color;
+  const n: CanvasNode = { id, type: 'text', x, y, width: CARD_W, height: CARD_H, z, text: o.label ?? (o.owner ? 'Hand' : 'Group'), [FIELD]: f };
+  if (o.owner) n.owner = o.owner;
+  if (o.label) n.label = o.label;
+  return n;
 }

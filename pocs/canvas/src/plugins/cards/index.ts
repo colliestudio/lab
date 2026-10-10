@@ -1,13 +1,17 @@
 import './cards.css';
 import type { App, CanvasNode, Command, Plugin, Store } from '../../core';
 import { commands, outCount } from './commands';
-import { CARD_W, card, cardsIn, deckFacing, deckIdOf, homeFor, isCard, isCardish, isDeck, isHomeDeck } from './deck';
+import { CARD_W, FIELD, card, cardsIn, deckFacing, deckIdOf, hiddenFrom, homeFor, isCard, isCardish, isDeck, isHand, isHomeDeck, isSpreadOut, isStacked, layoutOf, type Layout } from './deck';
 import { repairImport, shapeExport } from './io';
-import { cardHtml, deckHtml } from './render';
+import { cardLayouts } from './layout';
+import { cardHtml, deckHtml, groupHtml } from './render';
+
+type Item = { label: string; hint?: string; run: () => void };
+const LAYOUT_NAMES: Record<Layout, string> = { fan: 'Fan', row: 'Row', grid: 'Grid', stack: 'Stack (deck)' };
 
 const selectedCards = (app: App) => app.selected().filter(isCardish);
 const ids = (ns: CanvasNode[]) => ns.map((n) => n.id);
-const lastDeck = (app: App) => selectedCards(app).filter(isDeck).at(-1);
+const lastDeck = (app: App) => selectedCards(app).filter(isStacked).at(-1);
 /** Home deck of what's under the mouse (card, pile or deck), else of the selection. */
 const targetHome = (app: App) => {
   const h = app.view.hovered && app.node(app.view.hovered);
@@ -16,23 +20,43 @@ const targetHome = (app: App) => {
 /** Deck under the mouse, else the selected one. */
 const targetDeck = (app: App) => {
   const h = app.view.hovered && app.node(app.view.hovered);
-  return h && isDeck(h) ? h : lastDeck(app);
+  return h && isStacked(h) ? h : lastDeck(app);
 };
 
 /** The data side of the plugin (commands, containment, import/export). No DOM; used by tests too. */
 export function registerCardsLogic(store: Store) {
   for (const [name, cmd] of Object.entries(commands)) store.register(`cards.${name}`, cmd as Command);
   store.addParentRule(deckIdOf);
+  store.addLayout(cardLayouts);
   store.importFilters.push(repairImport);
   store.exportFilters.push(shapeExport);
   store.migrations.push(commands.repairHomes as Command);
 }
 
+/** Tab menu of a group or hand: layout, facing, sort, gather/return, ungroup. */
+function groupMenu(app: App, box: CanvasNode): Item[] {
+  const id = box.id;
+  const items: Item[] = [];
+  const cur = layoutOf(box);
+  for (const l of isHand(box) ? (['fan', 'row', 'grid'] as Layout[]) : (['fan', 'row', 'grid', 'stack'] as Layout[]))
+    items.push({ label: `${l === cur ? '✓ ' : '   '}${LAYOUT_NAMES[l]}`, run: () => app.dispatch('cards.setLayout', { id, layout: l }) });
+  items.push(
+    { label: 'All face up', run: () => app.dispatch('cards.face', { ids: [id], faceUp: true }) },
+    { label: 'All face down', run: () => app.dispatch('cards.face', { ids: [id], faceUp: false }) },
+    { label: 'Sort by suit and rank', run: () => app.dispatch('cards.sort', { id }) },
+  );
+  const home = homeFor(app.doc, cardsIn(app.doc, id).at(-1));
+  if (home) items.push({ label: 'Return all cards to the deck', hint: '⇧G', run: () => app.dispatch('cards.recall', { id: home }) });
+  items.push({ label: isHand(box) ? 'Put the cards on the table' : 'Ungroup', run: () => app.dispatch('cards.ungroup', { id }) });
+  return items;
+}
+
 /** Actions offered by a deck's tab, all aimed at that deck. */
-function tabMenu(app: App, deck: CanvasNode) {
+function tabMenu(app: App, deck: CanvasNode): Item[] {
+  if (!isHomeDeck(deck) && (isSpreadOut(deck) || isHand(deck))) return groupMenu(app, deck);
   const id = deck.id;
   const home = homeFor(app.doc, deck);
-  const items: { label: string; hint?: string; run: () => void }[] = [];
+  const items: Item[] = [];
   // on a pile, say where the cards go: back to the home deck, not into this pile
   const gatherLabel = home === id ? `Gather all cards (${outCount(app.doc, home!)} out)` : 'Return all cards to the deck';
   if (home) items.push({ label: gatherLabel, hint: '⇧G', run: () => app.dispatch('cards.recall', { id: home }) });
@@ -45,6 +69,10 @@ function tabMenu(app: App, deck: CanvasNode) {
     { label: 'All face down', run: () => app.dispatch('cards.face', { ids: [id], faceUp: false }) },
     { label: 'Spread', hint: 'E', run: () => app.dispatch('cards.spread', { id, step: Math.round(CARD_W / 4) }) },
   );
+  if (!isHomeDeck(deck)) {
+    for (const l of ['fan', 'row', 'grid'] as Layout[]) items.push({ label: `Lay out: ${LAYOUT_NAMES[l]}`, run: () => app.dispatch('cards.setLayout', { id, layout: l }) });
+    items.push({ label: 'Ungroup', run: () => app.dispatch('cards.ungroup', { id }) });
+  }
   return items;
 }
 
@@ -54,17 +82,24 @@ export const cardsPlugin: Plugin = {
     registerCardsLogic(app.store);
 
     const canDrop = (_t: CanvasNode, dropped: CanvasNode[]) => dropped.some(isCardish);
-    const onDrop = (target: CanvasNode, dropped: string[], app: App) => app.dispatch('cards.drop', { target: target.id, ids: dropped });
+    const onDrop = (target: CanvasNode, dropped: string[], app: App, at: { x: number; y: number }) => app.dispatch('cards.drop', { target: target.id, ids: dropped, at });
     const flipOne = (node: CanvasNode, app: App) => app.dispatch('cards.flip', { ids: [node.id] });
 
     app.registerType({
       id: 'card',
       match: isCard,
-      render(node, el) {
-        el.innerHTML = cardHtml(card(node));
+      // in someone else's hand a card shows its back to you (trust mode; stage 3 makes it real)
+      render(node, el, { doc, viewer }) {
+        const c = card(node);
+        el.innerHTML = cardHtml(hiddenFrom(doc, node, viewer) ? { ...c, faceUp: false } : c);
       },
-      renderKey: (node) => `${card(node).face}${card(node).faceUp}`,
+      renderKey: (node, { doc, viewer }) => `${card(node).face}${card(node).faceUp}${hiddenFrom(doc, node, viewer)}`,
       onDoubleClick: flipOne,
+      // a card shown in a group or hand: dragging pulls it out (dropping it back reorders)
+      onDragStart(node, _down, app) {
+        if (!app.doc.parentOf(node.id)) return;
+        return app.dispatch('cards.pullOut', { id: node.id }).select?.[0];
+      },
       canDrop,
       onDrop,
     });
@@ -72,15 +107,21 @@ export const cardsPlugin: Plugin = {
     app.registerType({
       id: 'deck',
       match: isDeck,
-      render(node, el, { doc }) {
+      render(node, el, { doc, viewer }) {
         const cards = cardsIn(doc, node.id);
+        if (isSpreadOut(node)) {
+          const f = node[FIELD] as { color?: string };
+          el.innerHTML = groupHtml(cards.length, { hand: isHand(node), label: node.label ?? node.text, color: f.color, mine: node.owner === viewer });
+          return;
+        }
         const top = cards.at(-1);
         el.innerHTML = deckHtml(top && card(top), cards.length, isHomeDeck(node));
       },
-      renderKey(node, { doc }) {
+      renderKey(node, { doc, viewer }) {
         const cards = cardsIn(doc, node.id);
         const top = cards.at(-1);
-        return `${cards.length}:${isHomeDeck(node)}:${top ? card(top).face + card(top).faceUp : ''}`;
+        const f = node[FIELD] as { color?: string };
+        return `${cards.length}:${isHomeDeck(node)}:${layoutOf(node)}:${node.label}:${f.color}:${node.owner === viewer}:${top ? card(top).face + card(top).faceUp : ''}`;
       },
       onDoubleClick: flipOne,
       // Click on the tab (no drag): a small menu of deck actions anchored to it.
@@ -92,7 +133,7 @@ export const cardsPlugin: Plugin = {
       },
       // Dragging a deck takes its top card (orientation kept). The grip tab or Alt+drag moves the deck.
       onDragStart(node, down, app) {
-        if (down.altKey || (down.target as Element | null)?.closest?.('[data-grip]')) return;
+        if (!isStacked(node) || down.altKey || (down.target as Element | null)?.closest?.('[data-grip]')) return;
         return app.dispatch('cards.draw', { id: node.id, x: node.x, y: node.y }).select?.[0];
       },
       canDrop,
@@ -100,7 +141,7 @@ export const cardsPlugin: Plugin = {
     });
 
     const flipSel = (a: App) => a.dispatch('cards.flip', { ids: ids(selectedCards(a)) });
-    const shuffleSel = (a: App) => a.dispatch('cards.shuffle', { ids: ids(selectedCards(a).filter(isDeck)) });
+    const shuffleSel = (a: App) => a.dispatch('cards.shuffle', { ids: ids(selectedCards(a).filter(isStacked)) });
     // `flipped`: the card comes out the other way up from how it lies in the deck
     const drawSel = (flipped = false) => (a: App) => {
       const d = targetDeck(a);
@@ -124,7 +165,7 @@ export const cardsPlugin: Plugin = {
     app.registerKey({ key: 's', label: 'Shuffle', run: shuffleSel });
     app.registerKey({ key: 'd', label: 'Draw', run: drawSel() });
     app.registerKey({ key: 'shift+d', label: 'Draw flipped', run: drawSel(true) });
-    app.registerKey({ key: 'g', label: 'Gather into a deck', run: gatherSel() });
+    app.registerKey({ key: 'g', label: 'Group the selection', run: gatherSel() });
     app.registerKey({ key: 'shift+g', label: 'Gather all cards back to their deck', run: recallHome });
     app.registerKey({ key: 'e', label: 'Spread deck', run: spreadSel });
     const dealN = (count: number, flipped = false) => (a: App) => {
@@ -137,7 +178,7 @@ export const cardsPlugin: Plugin = {
     }
 
     const any = (_: App, sel: CanvasNode[]) => sel.some(isCardish);
-    const hasDeck = (_: App, sel: CanvasNode[]) => sel.some(isDeck);
+    const hasDeck = (_: App, sel: CanvasNode[]) => sel.some(isStacked);
     const several = (_: App, sel: CanvasNode[]) => sel.filter(isCardish).length > 1;
     app.registerMenuItem({ label: 'Flip', hint: 'F', when: any, run: flipSel });
     app.registerMenuItem({ label: 'Shuffle', hint: 'S', when: hasDeck, run: shuffleSel });
@@ -157,7 +198,16 @@ export const cardsPlugin: Plugin = {
     app.registerMenuItem({ label: 'Deal 3', hint: '3', when: hasDeck, run: dealN(3) });
     app.registerMenuItem({ label: 'Deal 5', hint: '5', when: hasDeck, run: dealN(5) });
     app.registerMenuItem({ label: 'Spread out', hint: 'E', when: hasDeck, run: spreadSel });
-    app.registerMenuItem({ label: 'Gather into deck', hint: 'G', when: several, run: gatherSel() });
+    app.registerMenuItem({ label: 'Group', hint: 'G', when: several, run: gatherSel() });
+    app.registerMenuItem({ label: 'Make a deck (stack)', when: several, run: (a) => a.dispatch('cards.gather', { ids: ids(selectedCards(a)), layout: 'stack' }) });
+    app.registerMenuItem({
+      label: 'Group actions…',
+      when: (_, sel) => sel.length === 1 && isDeck(sel[0]) && !isHomeDeck(sel[0]),
+      run: (a, sel) => {
+        const tab = a.view.boxOf(sel[0].id)?.querySelector('[data-grip]');
+        if (tab) a.view.openMenu(tabMenu(a, sel[0]), tab);
+      },
+    });
     // label shows how many are out; built when the menu opens
     app.registerMenuItem({
       get label() {
@@ -172,7 +222,7 @@ export const cardsPlugin: Plugin = {
         if (h) a.dispatch('cards.recall', { id: h });
       },
     });
-    app.registerMenuItem({ label: 'Gather face down', when: several, run: gatherSel(false) });
+    app.registerMenuItem({ label: 'Group face down', when: several, run: gatherSel(false) });
   },
 };
 
