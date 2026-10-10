@@ -104,6 +104,14 @@ export class Menu {
     check.textContent = entry.checked ? '✓' : '';
     const label = el('span', 'cv-menu-label');
     label.textContent = entry.label;
+    if (entry.color) {
+      const dot = el('i', 'cv-menu-dot');
+      dot.style.background = entry.color;
+      const line = el('span', '');
+      line.append(dot, entry.label);
+      label.replaceChildren(line);
+    }
+    if (entry.muted) b.classList.add('cv-muted');
     const reason = typeof entry.disabled === 'string' ? entry.disabled : '';
     if (reason) {
       const why = el('small', 'cv-menu-why');

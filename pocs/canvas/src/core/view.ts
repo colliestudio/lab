@@ -45,6 +45,8 @@ export class View {
   tool: 'select' | 'hand' = 'select';
   private toolListeners = new Set<(t: 'select' | 'hand') => void>();
   private lastClick = { id: '', t: 0 };
+  /** Where the last right-click menu opened, in world coordinates (e.g. "new … here"). */
+  menuPoint: Pt | undefined;
   /** Node under the mouse when no button is pressed (for "hovered" keyboard targets). */
   hovered: string | undefined;
   /** The local drag in progress: what moves and by how much (world units). */
@@ -580,6 +582,7 @@ export class View {
 
   private onContextMenu(e: MouseEvent) {
     e.preventDefault();
+    this.menuPoint = this.world_(this.local(e));
     const nodeEl = (e.target as Element).closest<HTMLElement>('[data-node-id]');
     const store = this.app.store;
     if (nodeEl && !store.selection.has(nodeEl.dataset.nodeId!)) store.select([nodeEl.dataset.nodeId!]);

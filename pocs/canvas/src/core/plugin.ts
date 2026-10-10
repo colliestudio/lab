@@ -96,6 +96,10 @@ export interface MenuEntry {
   checked?: boolean;
   /** Greyed out; a string is the reason, shown under the label. */
   disabled?: boolean | string;
+  /** A color dot before the label (e.g. a player's color). */
+  color?: string;
+  /** Greyed text that still runs (e.g. a player who left). */
+  muted?: boolean;
   /** Draw a separator line above this row. */
   separator?: boolean;
   /** A number field with a button (e.g. "Deal N"): runs with the typed number. */
