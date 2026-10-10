@@ -95,7 +95,7 @@ export class App {
   }
 
   // --- helpers ---
-  dispatch<A>(name: string, args: A, opts?: { merge?: boolean }): DispatchResult {
+  dispatch<A>(name: string, args: A, opts?: { merge?: boolean; undoable?: boolean }): DispatchResult {
     return this.store.dispatch(name, args, opts);
   }
   get doc() {

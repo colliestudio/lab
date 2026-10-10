@@ -403,6 +403,11 @@ export class View {
     if (t instanceof Element && t.closest('input, textarea, select, [contenteditable="true"]')) return;
     if (e.key === ' ') {
       e.preventDefault();
+      const sb = this.app.keys.get('space');
+      if (sb && !this.spaceDown && !this.pointers.size && (!sb.when || sb.when(this.app))) {
+        if (!e.repeat) sb.run(this.app);
+        return;
+      }
       this.spaceDown = true;
       this.root.classList.add('cv-space');
       return;
@@ -446,7 +451,7 @@ export class View {
     const key = e.code.startsWith('Digit') ? e.code.slice(5) : e.key.toLowerCase();
     const combo = `${mod ? 'mod+' : ''}${e.altKey ? 'alt+' : ''}${e.shiftKey ? 'shift+' : ''}${key}`;
     const binding = this.app.keys.get(combo);
-    if (binding) {
+    if (binding && (!binding.when || binding.when(this.app))) {
       e.preventDefault();
       binding.run(this.app);
     }

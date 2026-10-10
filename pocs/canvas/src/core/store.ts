@@ -39,6 +39,8 @@ export const defaultCtx: CommandCtx = { newId, random: Math.random };
 const LOCAL = Symbol('local');
 /** Origin of whole-document loads (file open, new table): not undoable. */
 const LOAD = Symbol('load');
+/** Origin of local commands that can't be undone (a game clock: time doesn't go back). */
+const UNDOABLE_NOT = Symbol('not-undoable');
 
 type YNode = Y.Map<unknown>;
 
@@ -144,8 +146,9 @@ export class Store {
   /**
    * Run a command and apply its changes in one transaction (one undo step).
    * `merge: true` folds this into the previous undo step (e.g. the moves of one drag).
+   * `undoable: false` keeps it out of undo history (it syncs like any change).
    */
-  dispatch<A>(name: string, args: A, opts: { merge?: boolean } = {}): DispatchResult {
+  dispatch<A>(name: string, args: A, opts: { merge?: boolean; undoable?: boolean } = {}): DispatchResult {
     const cmd = this.commands.get(name);
     if (!cmd) return fail(`unknown command: ${name}`);
     let res: CommandResult;
@@ -155,8 +158,11 @@ export class Store {
     } catch (e) {
       return fail(`${name}: ${(e as Error).message}`);
     }
-    if (!opts.merge && !this.mergeAll) this.undoManager.stopCapturing();
-    this.apply(res.changes);
+    if (opts.undoable === false) this.apply(res.changes, UNDOABLE_NOT);
+    else {
+      if (!opts.merge && !this.mergeAll) this.undoManager.stopCapturing();
+      this.apply(res.changes);
+    }
     if (res.select) this.select(res.select);
     return { ...res, ok: true };
   }

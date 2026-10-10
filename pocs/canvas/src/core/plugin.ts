@@ -48,9 +48,14 @@ export interface ObjectType {
 }
 
 export interface KeyBinding {
-  /** e.g. "f", "shift+d", "mod+s" (mod = Cmd on Mac, Ctrl elsewhere). */
+  /** e.g. "f", "shift+d", "mod+s" (mod = Cmd on Mac, Ctrl elsewhere), "space". */
   key: string;
   label?: string;
+  /**
+   * Only when this says so (else the key does what it would without the binding). Lets "space" act
+   * on a hovered object instead of starting a pan.
+   */
+  when?(app: App): boolean;
   run(app: App): void;
 }
 
