@@ -36,14 +36,14 @@ const GROUPS: [string, [string, string][]][] = [
     'Cards',
     [
       ['Drag', 'Move'],
-      ['Double-click, F', 'Flip'],
+      ['Double-click, F', 'Flip (never reveals a card in a hand)'],
       ['⇧G over any card', 'Gather all cards back into their home deck (each keeps its facing)'],
     ],
   ],
   [
     'Decks, groups, hands',
     [
-      ['', 'Three kinds of card collection. Deck: stacked, top card shows (the home deck from New table is one). Group: spread out (fan, row or grid), everyone sees it. Hand: a group that’s yours: others see its cards face down.'],
+      ['', 'Three kinds of card collection. Deck: stacked, top card shows (the home deck from New table is one). Group: spread out (fan, row or grid), everyone sees it. Hand: a group that’s yours: others see its private cards face down.'],
       ['Drop a card right on top of a card', 'Makes a deck (the target shows “Stack”)'],
       ['Drop it partly over a card', 'Makes a group (the target shows “Fan”)'],
       ['G', 'Group the selection (into a selected deck or group, if there is one)'],
@@ -56,6 +56,18 @@ const GROUPS: [string, [string, string][]][] = [
       ['Drag the ⠿ tab', 'Move the whole thing'],
       ['New hand (toolbar)', 'A new empty hand in free space near the bottom of the view'],
       ['', 'A group of one card is just a card'],
+    ],
+  ],
+  [
+    'Your hand',
+    [
+      ['', 'Cards in the row are private. Raised cards (lifted out, glowing in your color) are shown to everyone; the others see your hand the same way. The tab counts them: “Alex’s hand · 5 · 2 shown”.'],
+      ['Drag a card up / back down', 'Show it to the table / hide it again (the drop label says which)'],
+      ['Right-click ▸ Show to table / Hide', 'Same, for every selected card; the tab menu has Show all / Hide all'],
+      ['Double-click, F', 'Never shows a card: showing is always deliberate'],
+      ['Hold \\, or tab ▸ View as others', 'See your hand as the others do (private cards as backs)'],
+      ['Tab ▸ See my cards', 'On (default): you see all your private cards. Off: a blind hand: F or double-click flips a private card face up or down for you only'],
+      ['', 'Others get a short note (“Alex showed K♠”) and the card pulses. A private card you drag out stays a back for them until it lands'],
     ],
   ],
   [
