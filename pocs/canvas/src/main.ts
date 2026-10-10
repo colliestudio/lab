@@ -1,9 +1,11 @@
 import './style.css';
-import { App, mountZoomControl, openFile, parse, persistLocally, persistViewport, resetFileHandle, saveFile, type CanvasDoc } from './core';
+import { App, joinRoom, localPlayer, mountZoomControl, openFile, parse, persistLocally, persistViewport, resetFileHandle, roomDbName, saveFile, type CanvasDoc } from './core';
+import { copyText, createRoomFrom, mountRoomStatus, roomFromUrl, roomLink } from './share';
 import { cardsPlugin } from './plugins/cards';
 import { mountHelp, removeHelpNote } from './help';
 
-const DB_NAME = 'canvas-poc';
+const ROOM = roomFromUrl();
+const DB_NAME = ROOM ? roomDbName(ROOM) : 'canvas-poc';
 const VIEW_KEY = 'canvas-poc:view';
 
 const app = new App(document.getElementById('table')!);
@@ -61,8 +63,8 @@ async function doOpen() {
   }
 }
 
-button('New table', 'Reset to a fresh deck', () => {
-  if (confirm('Start a new table? Unsaved changes are lost.')) newTable();
+button('New table', ROOM ? 'Reset to a fresh deck (for everyone in the room)' : 'Reset to a fresh deck', () => {
+  if (confirm(ROOM ? 'Start a new table for everyone in this room?' : 'Start a new table? Unsaved changes are lost.')) newTable();
 });
 button('Open…', 'Open a .canvas file (⌘O)', doOpen);
 button('Save', 'Save as .canvas (⌘S)', () => doSave());
@@ -90,7 +92,22 @@ const helpBtn = document.createElement('button');
 helpBtn.textContent = '?';
 helpBtn.title = 'Controls (?)';
 helpBtn.className = 'help-btn';
+if (!ROOM) {
+  const share = document.createElement('button');
+  share.textContent = 'Share';
+  share.title = 'Play together: copy this table into a new room and copy its link';
+  share.className = 'share-btn';
+  share.addEventListener('click', async () => {
+    const id = await createRoomFrom(app);
+    const link = roomLink(id);
+    const copied = await copyText(link);
+    sessionStorage.setItem('canvas-poc:shared', copied ? 'copied' : 'show');
+    location.href = link;
+  });
+  bar.append(share);
+}
 bar.append(helpBtn, status);
+app.onNotify(flash);
 mountHelp(app, helpBtn);
 mountZoomControl(app);
 
@@ -115,9 +132,37 @@ window.addEventListener('drop', async (e) => {
 
 const view = persistViewport(app, VIEW_KEY);
 persistLocally(app, DB_NAME).then(({ empty }) => {
-  if (empty) newTable();
-  else if (view) app.viewport.set(view.x, view.y, view.zoom);
-  else app.view.fit();
+  if (!ROOM) {
+    if (empty) newTable();
+    else if (view) app.viewport.set(view.x, view.y, view.zoom);
+    else app.view.fit();
+    return;
+  }
+  // Room: the table comes from this device (if it was here before) and from the other players.
+  const me = localPlayer();
+  const room = joinRoom(app, ROOM, me);
+  (window as any).room = room;
+  mountRoomStatus(app, room, bar, () => {
+    room.leave();
+    location.href = location.pathname;
+  });
+  const shared = sessionStorage.getItem('canvas-poc:shared');
+  sessionStorage.removeItem('canvas-poc:shared');
+  if (shared === 'copied') flash('Room created, link copied: send it to the other players');
+  else if (shared === 'show') flash(`Room created: send this link: ${roomLink(ROOM)}`);
+  if (!empty) {
+    if (view) app.viewport.set(view.x, view.y, view.zoom);
+    else app.view.fit();
+    return;
+  }
+  // joined late with nothing local: wait for the table from the others, then fit it
+  flash('Joining… waiting for the table from the other players');
+  const off = app.store.subscribe(() => {
+    if (!app.store.doc.nodes.length) return;
+    off();
+    app.view.fit();
+    flash('Joined the table');
+  });
 });
 
 // for poking at it from the console

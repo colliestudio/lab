@@ -115,3 +115,41 @@ body {
 #toolbar .tools button.active {
   background: rgba(255, 255, 255, 0.28);
 }
+#toolbar .room {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 8px;
+  margin-left: 2px;
+  border-left: 1px solid rgba(255, 255, 255, 0.15);
+}
+#toolbar .players {
+  display: flex;
+  gap: 6px;
+}
+#toolbar .player {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+#toolbar .player i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.6);
+}
+#toolbar .room-state {
+  opacity: 0.75;
+  white-space: nowrap;
+}
+#toolbar .room-state[data-ok='false'] {
+  color: #ffb3a7;
+  opacity: 1;
+}
+#toolbar .share-btn {
+  background: #2f7d55;
+}
+#toolbar .share-btn:hover {
+  background: #3a9668;
+}
