@@ -37,6 +37,9 @@
   transform-origin: 50% 100%; /* layouts rotate around the bottom middle (fanned hands) */
   cursor: pointer;
 }
+.cv-node.cv-moving {
+  will-change: transform;
+}
 .cv-node.cv-dragging {
   cursor: grabbing;
   filter: drop-shadow(0 14px 14px rgba(0, 0, 0, 0.35));

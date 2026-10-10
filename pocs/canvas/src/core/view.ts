@@ -34,6 +34,10 @@ export class View {
   readonly world: HTMLElement;
   private els = new Map<string, HTMLElement>();
   private contentKeys = new Map<string, string>();
+  /** Box geometry last written per node: unchanged boxes get no style writes. */
+  private boxKeys = new Map<string, string>();
+  /** Nodes moving with the current drag (promoted to their own layers: moving them repaints nothing). */
+  private moving: string[] = [];
   private marquee: HTMLElement;
   readonly menu: Menu;
   private gesture: Gesture | null = null;
@@ -113,11 +117,15 @@ export class View {
         this.els.set(n.id, box);
       }
       const angle = doc.styleOf(n.id)?.angle;
-      box.style.transform = `translate(${n.x}px, ${n.y}px)` + (angle ? ` rotate(${angle}deg)` : '');
-      box.style.zIndex = String(i + 1);
-      box.style.width = `${n.width}px`;
-      box.style.height = `${n.height}px`;
-      box.classList.toggle('cv-selected', sel.has(n.id));
+      const geo = `${n.x},${n.y},${angle ?? 0},${i},${n.width},${n.height},${sel.has(n.id)}`;
+      if (this.boxKeys.get(n.id) !== geo) {
+        this.boxKeys.set(n.id, geo);
+        box.style.transform = `translate(${n.x}px, ${n.y}px)` + (angle ? ` rotate(${angle}deg)` : '');
+        box.style.zIndex = String(i + 1);
+        box.style.width = `${n.width}px`;
+        box.style.height = `${n.height}px`;
+        box.classList.toggle('cv-selected', sel.has(n.id));
+      }
       const type = this.app.typeOf(n);
       const key = (type?.id ?? '') + '\n' + (type?.renderKey?.(n, ctx) ?? contentKey(n));
       if (this.contentKeys.get(n.id) !== key) {
@@ -133,6 +141,7 @@ export class View {
         box.remove();
         this.els.delete(id);
         this.contentKeys.delete(id);
+        this.boxKeys.delete(id);
       }
     }
   }
@@ -299,6 +308,7 @@ export class View {
           g.moved = true;
           this.maybeSwapDragged(g);
           for (const id of g.ids) this.els.get(id)?.classList.add('cv-dragging');
+          this.promote(g.ids);
         }
         const dx = tx - g.applied.x;
         const dy = ty - g.applied.y;
@@ -354,6 +364,7 @@ export class View {
     if (g.kind !== 'drag') return;
 
     for (const id of g.ids) this.els.get(id)?.classList.remove('cv-dragging');
+    this.promote([]);
     if (g.moved) {
       const found = this.findDropTarget(g, e);
       this.setDropTarget(g, undefined);
@@ -482,6 +493,25 @@ export class View {
     for (const [t, nodes] of byType) this.app.store.merged(() => t.onDragEnd!(nodes, this.app, target, via));
   }
 
+  /**
+   * Give what a drag moves (the dragged nodes, the cards a container lays out, riders) its own
+   * compositor layer for the drag, so each move is a transform change only: no repaint of 52 cards.
+   */
+  private promote(ids: string[]) {
+    for (const id of this.moving) this.els.get(id)?.classList.remove('cv-moving');
+    const doc = this.app.store.doc;
+    const out = new Set<string>();
+    const add = (id: string) => {
+      if (out.has(id)) return;
+      out.add(id);
+      for (const c of doc.children(id)) if (doc.isVisible(c.id)) add(c.id);
+      for (const r of doc.riders(id)) add(r.id);
+    };
+    ids.forEach(add);
+    this.moving = [...out];
+    for (const id of this.moving) this.els.get(id)?.classList.add('cv-moving');
+  }
+
   /** A single object being dragged may hand the drag to another node (a deck gives its top card). */
   private maybeSwapDragged(g: Extract<Gesture, { kind: 'drag' }>) {
     if (g.shift || g.ids.length !== 1 || g.ids[0] !== g.clickId) return;
@@ -499,9 +529,17 @@ export class View {
 
   /** The object a drag would land on: topmost under the pointer, overlapping enough, and willing. */
   private findDropTarget(g: Extract<Gesture, { kind: 'drag' }>, e: PointerEvent): { id: string; mode?: string } | undefined {
-    const dragged = new Set(g.ids);
+    // what moves with the drag (a container's laid-out cards too) is never a target
+    const dragged = new Set([...g.ids, ...this.moving]);
     const primary = this.app.node(g.clickId);
     if (!primary) return;
+    // cheap geometric pre-check: over empty table, skip the DOM hit test (it forces a style recalc)
+    const w = this.world_(this.local(e));
+    const M = 32; // tabs and grips stick out of a node's box
+    const near = this.app.store.doc.visible.some(
+      (n) => !dragged.has(n.id) && w.x >= n.x - M && w.x <= n.x + n.width + M && w.y >= n.y - M && w.y <= n.y + n.height + M,
+    );
+    if (!near) return;
     const under = document
       .elementsFromPoint(e.clientX, e.clientY)
       .map((x) => x.closest<HTMLElement>('[data-node-id]'))
