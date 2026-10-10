@@ -38,9 +38,11 @@ function tabMenu(app: App, deck: CanvasNode) {
   if (home) items.push({ label: gatherLabel, hint: '⇧G', run: () => app.dispatch('cards.recall', { id: home }) });
   items.push(
     { label: 'Shuffle', hint: 'S', run: () => app.dispatch('cards.shuffle', { ids: [id] }) },
-    { label: 'Deal 3', hint: '3', run: () => app.dispatch('cards.deal', { id, count: 3, faceUp: true }) },
-    { label: 'Deal 5', hint: '5', run: () => app.dispatch('cards.deal', { id, count: 5, faceUp: true }) },
+    { label: 'Deal 3', hint: '3', run: () => app.dispatch('cards.deal', { id, count: 3 }) },
+    { label: 'Deal 5', hint: '5', run: () => app.dispatch('cards.deal', { id, count: 5 }) },
     { label: 'Flip', hint: 'F', run: () => app.dispatch('cards.flip', { ids: [id] }) },
+    { label: 'All face up', run: () => app.dispatch('cards.face', { ids: [id], faceUp: true }) },
+    { label: 'All face down', run: () => app.dispatch('cards.face', { ids: [id], faceUp: false }) },
     { label: 'Spread', hint: 'E', run: () => app.dispatch('cards.spread', { id, step: Math.round(CARD_W / 4) }) },
   );
   return items;
@@ -99,7 +101,7 @@ export const cardsPlugin: Plugin = {
 
     const flipSel = (a: App) => a.dispatch('cards.flip', { ids: ids(selectedCards(a)) });
     const shuffleSel = (a: App) => a.dispatch('cards.shuffle', { ids: ids(selectedCards(a).filter(isDeck)) });
-    const drawSel = (faceUp: boolean) => (a: App) => {
+    const drawSel = (faceUp?: boolean) => (a: App) => {
       const d = targetDeck(a);
       if (d) a.dispatch('cards.draw', { id: d.id, faceUp, select: 'deck' });
     };
@@ -115,17 +117,17 @@ export const cardsPlugin: Plugin = {
 
     app.registerKey({ key: 'f', label: 'Flip', run: flipSel });
     app.registerKey({ key: 's', label: 'Shuffle', run: shuffleSel });
-    app.registerKey({ key: 'd', label: 'Draw face up', run: drawSel(true) });
+    app.registerKey({ key: 'd', label: 'Draw', run: drawSel() });
     app.registerKey({ key: 'shift+d', label: 'Draw face down', run: drawSel(false) });
     app.registerKey({ key: 'g', label: 'Gather into a deck', run: gatherSel() });
     app.registerKey({ key: 'shift+g', label: 'Gather all cards back to their deck', run: recallHome });
     app.registerKey({ key: 'e', label: 'Spread deck', run: spreadSel });
-    const dealN = (count: number, faceUp: boolean) => (a: App) => {
+    const dealN = (count: number, faceUp?: boolean) => (a: App) => {
       const d = targetDeck(a);
       if (d) a.dispatch('cards.deal', { id: d.id, count, faceUp });
     };
     for (let k = 1; k <= 9; k++) {
-      app.registerKey({ key: `${k}`, label: `Deal ${k} face up`, run: dealN(k, true) });
+      app.registerKey({ key: `${k}`, label: `Deal ${k}`, run: dealN(k) });
       app.registerKey({ key: `alt+${k}`, label: `Deal ${k} face down`, run: dealN(k, false) });
     }
 
@@ -134,11 +136,13 @@ export const cardsPlugin: Plugin = {
     const several = (_: App, sel: CanvasNode[]) => sel.filter(isCardish).length > 1;
     app.registerMenuItem({ label: 'Flip', hint: 'F', when: any, run: flipSel });
     app.registerMenuItem({ label: 'Shuffle', hint: 'S', when: hasDeck, run: shuffleSel });
-    app.registerMenuItem({ label: 'Draw face up', hint: 'D', when: hasDeck, run: drawSel(true) });
+    const faceSel = (faceUp: boolean) => (a: App) => a.dispatch('cards.face', { ids: ids(selectedCards(a)), faceUp });
+    app.registerMenuItem({ label: 'All face up', when: any, run: faceSel(true) });
+    app.registerMenuItem({ label: 'All face down', when: any, run: faceSel(false) });
+    app.registerMenuItem({ label: 'Draw', hint: 'D', when: hasDeck, run: drawSel() });
     app.registerMenuItem({ label: 'Draw face down', hint: '⇧D', when: hasDeck, run: drawSel(false) });
-    app.registerMenuItem({ label: 'Deal 3 face up', hint: '3', when: hasDeck, run: dealN(3, true) });
-    app.registerMenuItem({ label: 'Deal 5 face up', hint: '5', when: hasDeck, run: dealN(5, true) });
-    app.registerMenuItem({ label: 'Deal 5 face down', hint: '⌥5', when: hasDeck, run: dealN(5, false) });
+    app.registerMenuItem({ label: 'Deal 3', hint: '3', when: hasDeck, run: dealN(3) });
+    app.registerMenuItem({ label: 'Deal 5', hint: '5', when: hasDeck, run: dealN(5) });
     app.registerMenuItem({ label: 'Spread out', hint: 'E', when: hasDeck, run: spreadSel });
     app.registerMenuItem({ label: 'Gather into deck', hint: 'G', when: several, run: gatherSel() });
     // label shows how many are out; built when the menu opens

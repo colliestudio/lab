@@ -36,7 +36,7 @@ const GROUPS: [string, [string, string][]][] = [
       ['Double-click, F', 'Flip'],
       ['Drop squarely on a card or deck', 'Stack it (the target lights up); it takes that pile’s facing'],
       ['G', 'Stack the selection into a pile'],
-      ['⇧G over any card', 'Gather all cards back into their home deck, face down'],
+      ['⇧G over any card', 'Gather all cards back into their home deck (they take the deck\'s facing)'],
     ],
   ],
   [
@@ -44,10 +44,10 @@ const GROUPS: [string, [string, string][]][] = [
     [
       ['Drag a deck', 'Take its top card'],
       ['Drag its ⠿ tab, ⌥drag', 'Move the whole deck'],
-      ['Click its ⠿ tab', 'Deck menu: gather all, shuffle, deal, flip, spread'],
+      ['Click its ⠿ tab', 'Deck menu: gather all, shuffle, deal, flip, all face up/down, spread'],
       ['S / E', 'Shuffle / spread'],
-      ['D (⇧D)', 'Draw one face up (face down)'],
-      ['1–9 (⌥1–9)', 'Deal N face up (face down)'],
+      ['D (⇧D)', 'Draw one as it lies (face down)'],
+      ['1–9 (⌥1–9)', 'Deal N as they lie (face down)'],
       ['', 'Deck keys act on the deck under the mouse, else the selected one'],
     ],
   ],

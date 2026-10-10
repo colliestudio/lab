@@ -83,7 +83,7 @@ describe('cards commands', () => {
 
   it('deal puts the top N cards in a fanned row beside the deck, top card leftmost', () => {
     const s = withDeck(6);
-    const r = s.dispatch('cards.deal', { id: 'd', count: 3 });
+    const r = s.dispatch('cards.deal', { id: 'd', count: 3, faceUp: true });
     expect(r.select).toEqual(['d']);
     expect(faces(s)).toEqual(['AS', '2S', '3S']);
     const dealt = s.doc.visible.filter((n) => n.id !== 'd').sort((a, b) => a.x - b.x);
@@ -420,3 +420,18 @@ describe('one-card piles', () => {
     expect(s.doc.get('d')).toBeDefined();
   });
 });
+
+describe('facing is kept unless asked', () => {
+  it('deal keeps the deck facing; recall takes the deck facing; face sets all', () => {
+    const s = withDeck(4);
+    s.dispatch('cards.deal', { id: 'd', count: 2 });
+    const loose = s.doc.visible.filter((n) => n.id !== 'd');
+    expect(loose.every((c) => !card(c).faceUp)).toBe(true); // deck was face down
+    s.dispatch('cards.flip', { ids: ['d'] }); // deck now face up
+    s.dispatch('cards.recall', { id: 'd' });
+    expect(cardsIn(s.doc, 'd').every((c) => card(c).faceUp)).toBe(true);
+    s.dispatch('cards.face', { ids: ['d'], faceUp: false });
+    expect(cardsIn(s.doc, 'd').every((c) => !card(c).faceUp)).toBe(true);
+  });
+});
+

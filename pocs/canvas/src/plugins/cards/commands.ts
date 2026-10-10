@@ -64,6 +64,16 @@ export const flip: Command<{ ids: string[] }> = (doc, a) =>
     return [];
   });
 
+/** Turn cards (and every card in the given decks) face up or face down, whatever they are now. */
+export const face: Command<{ ids: string[]; faceUp: boolean }> = (doc, a) => {
+  if (!isBool(a?.faceUp)) return [];
+  return pick(doc, a.ids).flatMap((n) => {
+    if (isCard(n) && !doc.parentOf(n.id)) return conform(n, a.faceUp);
+    if (isDeck(n)) return cardsIn(doc, n.id).flatMap((c) => conform(c, a.faceUp));
+    return [];
+  });
+};
+
 /** Move to an absolute position (x, y) or by (dx, dy). Decks move as one node. */
 export const move: Command<{ ids: string[]; x?: number; y?: number; dx?: number; dy?: number }> = (doc, a) =>
   pick(doc, a?.ids)
@@ -105,7 +115,7 @@ export const draw: Command<{ id: string; faceUp?: boolean; x?: number; y?: numbe
 
 /**
  * Deal the top `count` cards (1-52) into a small fanned row next to the deck, in the first free spot
- * to its right. `faceUp` overrides orientation (default: face up). Keeps the deck selected.
+ * to its right. `faceUp` overrides orientation (default: as they lie in the deck). Keeps the deck selected.
  */
 export const deal: Command<{ id: string; count: number; faceUp?: boolean }> = (doc, a) => {
   const deck = typeof a?.id === 'string' ? doc.get(a.id) : undefined;
@@ -119,12 +129,12 @@ export const deal: Command<{ id: string; count: number; faceUp?: boolean }> = (d
   const hits = (x: number) => others.some((v) => v.x < x + span && v.x + v.width > x && v.y < deck.y + CARD_H && v.y + v.height > deck.y);
   let x0 = deck.x + CARD_W + 24;
   for (let i = 0; i < 40 && hits(x0); i++) x0 += 40;
-  const faceUp = isBool(a.faceUp) ? a.faceUp : true;
+  const faceUp = isBool(a.faceUp) ? a.faceUp : undefined;
   const mid = (n - 1) / 2;
   const dealt = cards.slice(-n).reverse(); // top card first, leftmost
   const changes = dealt.flatMap((c, i) => [
     ...release(c, x0 + i * step, deck.y + Math.round(((i - mid) / Math.max(mid, 1)) ** 2 * Math.min(24, n * 3)), doc.topZ + 1 + i),
-    ...(card(c).faceUp !== faceUp ? [set(c.id, F('faceUp'), faceUp)] : []),
+    ...(faceUp !== undefined ? conform(c, faceUp) : []),
   ]);
   const rest = cards.slice(0, cards.length - n);
   changes.push(...shrunk(deck, rest));
@@ -177,8 +187,8 @@ export const gather: Command<{ ids: string[]; faceUp?: boolean }> = (doc, a, ctx
 
 /**
  * Gather all: every card whose home is this deck, wherever it is (table, other decks), goes back on
- * top, face down, in table order. Cards already inside are turned face down too. Decks left empty
- * by this are removed unless they are a home themselves.
+ * top in table order, taking the deck's facing (face down if the deck is empty). Cards already inside
+ * are untouched. Piles left empty or with one card are cleaned up (see `shrunk`).
  */
 export const recall: Command<{ id: string }> = (doc, a) => {
   const deck = typeof a?.id === 'string' ? doc.get(a.id) : undefined;
@@ -186,14 +196,13 @@ export const recall: Command<{ id: string }> = (doc, a) => {
   const homed = cardsHomedAt(doc, deck.id);
   const out = homed.filter((c) => doc.parentOf(c.id) !== deck.id);
   const changes: Change[] = [];
-  for (const c of cardsIn(doc, deck.id)) if (card(c).faceUp) changes.push(set(c.id, F('faceUp'), false));
+  const faceUp = deckFacing(doc, deck.id);
   let order = topOrder(doc, deck.id);
   const drained = new Map<string, number>();
   for (const c of out) {
     const from = doc.parentOf(c.id);
     if (from) drained.set(from, (drained.get(from) ?? 0) + 1);
-    changes.push(...stackInto(c, deck, ++order));
-    if (card(c).faceUp) changes.push(set(c.id, F('faceUp'), false));
+    changes.push(...stackInto(c, deck, ++order), ...conform(c, faceUp));
   }
   for (const from of drained.keys()) {
     const other = doc.get(from)!;
@@ -313,4 +322,4 @@ export const setup: Command<{ x?: number; y?: number }> = (doc, a, ctx) => {
   return changes;
 };
 
-export const commands = { flip, move, shuffle, draw, deal, gather, recall, drop, spread, setup, repairHomes };
+export const commands = { flip, face, move, shuffle, draw, deal, gather, recall, drop, spread, setup, repairHomes };
