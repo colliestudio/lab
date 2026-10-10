@@ -1,0 +1,91 @@
+.cv-root {
+  position: relative;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  outline: none;
+  cursor: default;
+  /* felt with a faint grid that follows the viewport */
+  background-color: #1f5f3f;
+  background-image:
+    radial-gradient(circle, rgba(255, 255, 255, 0.07) 1.2px, transparent 1.6px),
+    radial-gradient(ellipse at center, rgba(255, 255, 255, 0.06), rgba(0, 0, 0, 0.35));
+}
+.cv-root.cv-space,
+.cv-root.cv-space * {
+  cursor: grab !important;
+}
+.cv-world {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  width: 0;
+  height: 0;
+}
+.cv-node {
+  position: absolute;
+  left: 0;
+  top: 0;
+  cursor: grab;
+}
+.cv-node.cv-dragging {
+  cursor: grabbing;
+  filter: drop-shadow(0 14px 14px rgba(0, 0, 0, 0.35));
+}
+.cv-node.cv-selected {
+  outline: 3px solid #ffd54a;
+  outline-offset: 3px;
+  border-radius: 8px;
+}
+.cv-text {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #222;
+  font: 14px/1.45 system-ui, sans-serif;
+  white-space: pre-wrap;
+  overflow: hidden;
+}
+.cv-marquee {
+  display: none;
+  position: absolute;
+  border: 1px solid #ffd54a;
+  background: rgba(255, 213, 74, 0.12);
+  pointer-events: none;
+  z-index: 1000000;
+}
+.cv-menu {
+  position: absolute;
+  z-index: 1000001;
+  min-width: 190px;
+  padding: 4px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+  font: 14px system-ui, sans-serif;
+}
+.cv-menu-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.cv-menu-item:hover {
+  background: #eef2ff;
+}
+.cv-menu-item kbd {
+  color: #888;
+  font: 12px ui-monospace, monospace;
+}
