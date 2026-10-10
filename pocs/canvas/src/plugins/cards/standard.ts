@@ -11,6 +11,7 @@ registerPack({
   cards: SUIT_ORDER.flatMap((s) => RANKS.map((r) => ({ face: r + s, label: label(r + s) }))),
   face: standardFaceHtml,
   back: STANDARD_BACK,
+  cols: 13,
 });
 
 

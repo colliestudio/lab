@@ -2,7 +2,7 @@ import './cards.css';
 import './standard';
 import { loadPlayer, type App, type CanvasNode, type Command, type MenuEntry, type Plugin, type Store } from '../../core';
 import { commands, dropMode, incomingCount, kindOf, outCount, type DropMode, type Kind } from './commands';
-import { CARD_W, FIELD, card, cardsIn, deckFacing, deckIdOf, hiddenFrom, homeFor, isCard, isCardish, isDeck, isHand, isHomeDeck, isSpreadOut, isStacked, isFixed, layoutOf, packOf, roomIn, type DeckField, type Layout } from './deck';
+import { CARD_W, FIELD, PACK, card, cardsIn, deckFacing, deckIdOf, hiddenFrom, homeFor, isCard, isCardish, isDeck, isHand, isHomeDeck, isSpreadOut, isStacked, isFixed, layoutOf, packOf, roomIn, type DeckField, type Layout } from './deck';
 import { repairImport, shapeExport } from './io';
 import { cardLayouts, slots } from './layout';
 import { getPack } from './packs';
@@ -159,8 +159,8 @@ export const cardsPlugin: Plugin = {
   id: 'cards',
   setup(app) {
     registerCardsLogic(app.store);
-    // setup lays out about 940 x 400 from its anchor, which sits near the top left of that
-    app.registerKit({ id: 'cards.deck', label: 'Deck of cards', create: (a, at) => a.dispatch('cards.setup', { x: at.x - 470, y: at.y - 120 }) });
+    // a whole pack, face up in pack order, laid out as a grid (the grid is the home deck)
+    app.registerKit({ id: 'cards.deck', label: 'Deck of cards', create: (a, at) => a.dispatch('cards.addPack', { pack: PACK, ...at }) });
 
     // drop classification, shown on the target while hovering: Stack / Fan / Add to …
     const LABEL: Record<DropMode, (t: CanvasNode, app: App) => string> = {

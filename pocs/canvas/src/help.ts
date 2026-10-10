@@ -15,7 +15,7 @@ const GROUPS: [string, [string, string][]][] = [
       ['⇧2', 'Zoom to selection'],
       ['⌘Z / ⇧⌘Z', 'Undo / redo'],
       ['Right-click', 'Actions for what is under the pointer'],
-      ['Add…', 'Put a deck of cards, a chess set, a game clock or a Battle Line table in the view (or open the chess piece palette)'],
+      ['Add…', 'Put a deck of cards (face up, sorted, spread out; L stacks it), a chess set, a game clock or a Battle Line table in the view (or open the chess piece palette)'],
       ['Reset', 'Everything back to its starting state, keeping what is on the table (one undo): decks get all their cards back face down and shuffled, boards their 32 pieces, clocks their time'],
       ['?', 'This help'],
     ],

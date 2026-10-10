@@ -20,6 +20,8 @@ export interface Pack {
   back?: string;
   /** What its home deck's tab says (default "Deck"), e.g. "Troops". */
   deckName?: string;
+  /** Columns when the whole pack is laid out as a grid (Add menu), e.g. 13 for standard-52. */
+  cols?: number;
 }
 
 const packs = new Map<string, Pack>();

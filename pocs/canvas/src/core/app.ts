@@ -18,7 +18,7 @@ export class App {
   readonly keys = new Map<string, KeyBinding>();
   readonly menu: MenuItem[] = [];
   readonly menuProviders: MenuProvider[] = [];
-  /** Kits for the Add menu, in registration order (the first one is the default for a new table). */
+  /** Kits for the Add menu, in registration order. */
   readonly kits: Kit[] = [];
   readonly view: View;
   viewer = LOCAL_PLAYER;

@@ -1,7 +1,7 @@
 import { isIds, isNum, pick, set, toFront, type CanvasNode, type Change, type Command, type DocView } from '../../core';
-import { CARD_H, CARD_W, FIELD, card, cardNode, cardsHomedAt, cardsIn, deckNode, groupNode, isCard, isCardish, isDeck, isHand, isHomeDeck, isSpreadOut, isStacked, isFixed, layoutOf, packOf, roomIn, standardDeck, type DeckField, type Layout } from './deck';
+import { PACK, CARD_H, CARD_W, FIELD, card, cardNode, cardsHomedAt, cardsIn, deckNode, groupNode, isCard, isCardish, isDeck, isHand, isHomeDeck, isSpreadOut, isStacked, isFixed, layoutOf, packOf, roomIn, standardDeck, type DeckField, type Layout } from './deck';
 import { PAD, slotIndex, slots } from './layout';
-import { packOrder } from './packs';
+import { getPack, packOrder } from './packs';
 
 /**
  * How a drop would land (shown while hovering, then passed to `drop`). Onto a container, or a card
@@ -589,6 +589,26 @@ export const setup: Command<{ x?: number; y?: number }> = (doc, a, ctx) => {
 };
 
 /**
+ * Add a whole pack (Add menu): its home deck spread out as a face-up grid in pack order (standard-52:
+ * a suit per row, A..K), centered on (x, y). The grid *is* the home deck, so Gather all, L (stack it)
+ * and Reset (shuffled face-down deck) work as for any home deck.
+ */
+export const addPack: Command<{ pack?: string; x?: number; y?: number }> = (doc, a, ctx) => {
+  const pack = getPack(typeof a?.pack === 'string' ? a.pack : PACK);
+  if (!pack) return [];
+  const cols = pack.cols ?? Math.ceil(Math.sqrt(pack.cards.length));
+  const s = slots('grid', pack.cards.length, 1, cols);
+  const x = Math.round((isNum(a?.x) ? a.x : 0) - s.w / 2);
+  const y = Math.round((isNum(a?.y) ? a.y : 0) - s.h / 2);
+  let z = Math.floor(doc.topZ);
+  const home = deckNode(ctx.newId(), x, y, ++z, pack.id, true);
+  home[FIELD] = { ...(home[FIELD] as DeckField), layout: 'grid', cols };
+  const changes: Change[] = [{ op: 'add', node: home }];
+  pack.cards.forEach((c, i) => changes.push({ op: 'add', node: cardNode(ctx.newId(), x, y, { face: c.face, faceUp: true, stack: home.id, order: i + 1, home: home.id }, ++z, pack.id) }));
+  return { changes, select: [home.id] };
+};
+
+/**
  * Reset table (core `registerReset`): every home deck gets all its cards back like a new deck, face
  * down, shuffled and stacked; public groups disappear, hands stay (empty: they are players' seats).
  * Cards keep their home; decks stay where they are.
@@ -603,4 +623,4 @@ export const resetAll: Command<Record<string, never>> = (doc, _a, ctx) => {
   return changes;
 };
 
-export const commands = { flip, face, move, shuffle, draw, deal, gather, recall, drop, spread, setup, repairHomes, pullOut, setLayout, ungroup, sort, newHand, own, toggleStack, handLabel, migrateHands, turnInto, putOnTable, showdown, resetAll };
+export const commands = { addPack, flip, face, move, shuffle, draw, deal, gather, recall, drop, spread, setup, repairHomes, pullOut, setLayout, ungroup, sort, newHand, own, toggleStack, handLabel, migrateHands, turnInto, putOnTable, showdown, resetAll };

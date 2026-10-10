@@ -25,7 +25,8 @@ app.store.migrations.push(removeHelpNote);
 function newTable() {
   resetFileHandle();
   app.store.load({ nodes: [], edges: [] });
-  app.kits[0]?.create(app, { x: 0, y: 0 });
+  // the starter table: a shuffled deck, a wave of spades and three cards to flip (setup lays out about 940 x 400)
+  app.dispatch('cards.setup', { x: -470, y: -120 });
   app.store.undoManager.clear();
   app.store.select([]);
   app.view.fit();

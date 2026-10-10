@@ -63,6 +63,8 @@ export interface DeckField {
   slots?: number;
   /** Most cards it takes: drops beyond are refused (and it is sized for this many). */
   max?: number;
+  /** Grid columns (default: about square), e.g. 13 = one suit per row. */
+  cols?: number;
 }
 
 export function parseFace(face: string): { rank: Rank; suit: Suit } {

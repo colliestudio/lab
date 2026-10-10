@@ -59,3 +59,33 @@ describe('pack registry', () => {
     expect(cardsIn(t.doc, 'g').map((c) => card(c).face)).toEqual(['fe', 'thurs']);
   });
 });
+
+describe('Add menu: a whole pack', () => {
+  const s0 = () => {
+    const s = new Store();
+    registerCoreCommands(s);
+    registerCardsLogic(s);
+    return s;
+  };
+  it('adds the home deck as a face-up 13 x 4 grid in pack order, centered; gather and reset work', () => {
+    const s = s0();
+    const home = s.dispatch('cards.addPack', { pack: PACK, x: 0, y: 0 }).select![0];
+    const d = s.doc.get(home)!;
+    expect(d['x-cards']).toMatchObject({ home: true, layout: 'grid', cols: 13 });
+    const cards = cardsIn(s.doc, home);
+    expect(cards.map((c) => card(c).face)).toEqual(packFaces(PACK));
+    expect(cards.every((c) => card(c).faceUp && s.doc.isVisible(c.id))).toBe(true);
+    expect(Math.abs(d.x + d.width / 2)).toBeLessThanOrEqual(1);
+    expect(Math.abs(d.y + d.height / 2)).toBeLessThanOrEqual(1);
+    expect(new Set(cards.map((c) => c.y)).size).toBe(4); // a suit per row
+    expect(cards[13].x).toBe(cards[0].x);
+    // take two out, gather all brings them back
+    s.dispatch('cards.pullOut', { id: cards[0].id, x: 3000, y: 0 });
+    s.dispatch('cards.pullOut', { id: cards[1].id, x: 3200, y: 0 });
+    s.dispatch('cards.recall', { id: home });
+    expect(cardsIn(s.doc, home)).toHaveLength(52);
+    s.dispatch('core.reset', {});
+    expect(s.doc.get(home)!['x-cards']).not.toHaveProperty('layout');
+    expect(cardsIn(s.doc, home).every((c) => !card(c).faceUp)).toBe(true);
+  });
+});

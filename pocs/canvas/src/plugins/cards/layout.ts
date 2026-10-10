@@ -16,11 +16,13 @@ export interface Slots {
   at: { dx: number; dy: number; angle?: number }[];
 }
 
-const gridCols = (n: number) => Math.max(1, Math.ceil(Math.sqrt(n)));
+/** Grid columns: the container's own `cols` (e.g. 13 = a suit per row), else about square. */
+const gridCols = (n: number, cols?: number) => cols ?? Math.max(1, Math.ceil(Math.sqrt(n)));
+export const colsOf = (c: CanvasNode) => (c[FIELD] as DeckField).cols;
 const fanStep = (n: number) => (n > 1 ? Math.min(40, (MAX_FAN - CARD_W) / (n - 1)) : 40);
 
 /** Card offsets inside a container (relative to its top-left), and the container's size. */
-export function slots(layout: Layout, n: number, minSlots = 1): Slots {
+export function slots(layout: Layout, n: number, minSlots = 1, cols?: number): Slots {
   const at: Slots['at'] = [];
   if (layout === 'column' || layout === 'column-up') {
     const k = Math.max(n, minSlots);
@@ -34,10 +36,10 @@ export function slots(layout: Layout, n: number, minSlots = 1): Slots {
     return { w: 2 * PAD + k * CARD_W + (k - 1) * GAP, h: 2 * PAD + CARD_H, at };
   }
   if (layout === 'grid') {
-    const cols = gridCols(Math.max(n, minSlots));
-    for (let i = 0; i < n; i++) at.push({ dx: PAD + (i % cols) * (CARD_W + GAP), dy: PAD + Math.floor(i / cols) * (CARD_H + GAP) });
-    const rows = Math.max(1, Math.ceil(n / cols));
-    return { w: 2 * PAD + cols * CARD_W + (cols - 1) * GAP, h: 2 * PAD + rows * CARD_H + (rows - 1) * GAP, at };
+    const k = gridCols(Math.max(n, minSlots), cols);
+    for (let i = 0; i < n; i++) at.push({ dx: PAD + (i % k) * (CARD_W + GAP), dy: PAD + Math.floor(i / k) * (CARD_H + GAP) });
+    const rows = Math.max(1, Math.ceil(n / k));
+    return { w: 2 * PAD + k * CARD_W + (k - 1) * GAP, h: 2 * PAD + rows * CARD_H + (rows - 1) * GAP, at };
   }
   // fan: overlapping, bottom-anchored, slight arc; rotation is display-only
   const step = fanStep(n);
@@ -60,7 +62,7 @@ export function slotIndex(c: CanvasNode, n: number, at: { x: number; y: number }
   let i: number;
   if (layout === 'column' || layout === 'column-up') return n; // a column fills its next free slot
   if (layout === 'grid') {
-    const cols = gridCols(n + 1);
+    const cols = gridCols(n + 1, colsOf(c));
     const col = Math.max(0, Math.min(cols - 1, Math.floor(lx / (CARD_W + GAP))));
     const row = Math.max(0, Math.floor(ly / (CARD_H + GAP)));
     i = row * cols + col;
@@ -83,7 +85,7 @@ export const cardLayouts: LayoutRule = (doc: DocView) => {
   for (const c of doc.nodes) {
     if (!isSpreadOut(c)) continue;
     const cards = cardsIn(doc, c.id);
-    const s = slots(layoutOf(c), cards.length, minSlotsOf(c));
+    const s = slots(layoutOf(c), cards.length, minSlotsOf(c), colsOf(c));
     out.set(c.id, { width: s.w, height: s.h });
     const z = c.z ?? 0;
     cards.forEach((card, i) => {

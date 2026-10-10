@@ -43,7 +43,7 @@ export const repairImport: DocFilter = (doc, ctx) => {
       }
       if (typeof f.color === 'string' && /^#[0-9a-f]{6}$/i.test(f.color)) d.color = f.color;
       if (f.fixed === true) d.fixed = true;
-      for (const k of ['slots', 'max'] as const) if (typeof f[k] === 'number' && Number.isInteger(f[k]) && (f[k] as number) > 0 && (f[k] as number) <= 60) d[k] = f[k] as number;
+      for (const k of ['slots', 'max', 'cols'] as const) if (typeof f[k] === 'number' && Number.isInteger(f[k]) && (f[k] as number) > 0 && (f[k] as number) <= 60) d[k] = f[k] as number;
       out.push({ ...n, [FIELD]: d });
       continue;
     }
