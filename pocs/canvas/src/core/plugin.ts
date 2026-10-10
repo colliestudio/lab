@@ -20,10 +20,12 @@ export interface ObjectType {
   renderKey?(node: CanvasNode, ctx: RenderCtx): string;
   onDoubleClick?(node: CanvasNode, app: App): void;
   /**
-   * Pointer pressed on this object, before a drag starts. Return another node id to drag that
-   * instead (e.g. pull a card off a deck).
+   * A drag of this object alone is starting (pointer moved past the threshold; a plain click never
+   * gets here). Return another node id to drag that instead, e.g. a deck hands out its top card.
+   * `down` is the original pointerdown (modifiers, which part of the object was grabbed).
+   * Dispatches made here join the gesture's undo step.
    */
-  onPointerDown?(node: CanvasNode, e: PointerEvent, app: App): string | void;
+  onDragStart?(node: CanvasNode, down: PointerEvent, app: App): string | void;
   /** Would this object take `dropped` if they were released on it? (drives the hover highlight) */
   canDrop?(target: CanvasNode, dropped: CanvasNode[], app: App): boolean;
   /** Objects were deliberately dropped onto this one. */

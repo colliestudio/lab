@@ -79,6 +79,41 @@ describe('cards commands', () => {
     expect(s.dispatch('cards.draw', { id: 'c0' }).changes).toEqual([]); // a card isn't a deck
   });
 
+  it('deal puts the top N cards in a fanned row beside the deck, top card leftmost', () => {
+    const s = withDeck(6);
+    const r = s.dispatch('cards.deal', { id: 'd', count: 3 });
+    expect(r.select).toEqual(['d']);
+    expect(faces(s)).toEqual(['AS', '2S', '3S']);
+    const dealt = s.doc.visible.filter((n) => n.id !== 'd').sort((a, b) => a.x - b.x);
+    expect(dealt.map((c) => card(c).face)).toEqual(['6S', '5S', '4S']);
+    expect(dealt.every((c) => card(c).faceUp)).toBe(true);
+    expect(dealt[0].x).toBeGreaterThanOrEqual(120);
+    expect(dealt[1].x - dealt[0].x).toBe(30);
+    // dealing again finds free space instead of covering the first row
+    s.dispatch('cards.deal', { id: 'd', count: 2, faceUp: false });
+    const second = s.doc.visible.filter((n) => n.id !== 'd' && !card(n).faceUp);
+    expect(second).toHaveLength(2);
+    expect(Math.min(...second.map((c) => c.x))).toBeGreaterThan(dealt[2].x + 120 - 1);
+  });
+
+  it('deal more than the deck holds empties it; bad args are a no-op', () => {
+    const s = withDeck(2);
+    expect(s.dispatch('cards.deal', { id: 'd', count: 0 }).changes).toEqual([]);
+    expect(s.dispatch('cards.deal', { id: 'd', count: 'x' }).changes).toEqual([]);
+    const r = s.dispatch('cards.deal', { id: 'd', count: 9 });
+    expect(s.doc.get('d')).toBeUndefined();
+    expect(r.select).toHaveLength(2);
+  });
+
+  it('drawing at the deck position (deck drag) keeps orientation and removes a 1-card deck', () => {
+    const s = withDeck(1);
+    const r = s.dispatch('cards.draw', { id: 'd', x: 0, y: 0 });
+    expect(r.select).toEqual(['c0']);
+    expect(card(s.doc.get('c0')!).faceUp).toBe(false);
+    expect([s.doc.get('c0')!.x, s.doc.get('c0')!.y]).toEqual([0, 0]);
+    expect(s.doc.get('d')).toBeUndefined();
+  });
+
   it('gather stacks cards and decks at the first node, first on the bottom', () => {
     const s = withDeck(2, cardNode('a', 10, 20, { face: 'KH', faceUp: true }, 50), cardNode('b', 50, 50, { face: 'QH', faceUp: false }, 51));
     const r = s.dispatch('cards.gather', { ids: ['b', 'd', 'a'] });

@@ -14,13 +14,15 @@ Drag cards • double-click or F to flip
 Drag empty space / Space+drag to pan • wheel or pinch to zoom
 Shift+drag: box select • Shift+click: add to selection
 Drop a card squarely onto a card or deck to stack it (it lights up)
-Deck: S shuffle • D draw (⇧D face down) • E spread • Alt+drag pull top card
-G gather selection into a deck • right-click for more
+Drag a deck to take its top card • drag its ⠿ tab (or Alt+drag) to move the deck
+Deck: S shuffle • D draw (⇧D face down) • 1–9 deal N face up (⇧ face down) • E spread
+Number keys and D act on the deck under the mouse, else the selected one
+G gather selection into a deck • right-click for more • 0 fit view
 ⌘Z undo • ⇧⌘Z redo • ⌘S save .canvas • ⌘O open`;
 
 function newTable() {
   resetFileHandle();
-  const help: CanvasNode = { id: 'help', type: 'text', x: -40, y: -380, width: 560, height: 250, text: HELP, z: 1 };
+  const help: CanvasNode = { id: 'help', type: 'text', x: -40, y: -430, width: 640, height: 290, text: HELP, z: 1 };
   app.store.load({ nodes: [help], edges: [] });
   app.dispatch('cards.setup', { x: 0, y: 0 });
   app.store.undoManager.clear();
@@ -76,13 +78,13 @@ button('Open…', 'Open a .canvas file (⌘O)', doOpen);
 button('Save', 'Save as .canvas (⌘S)', () => doSave());
 button('Undo', 'Undo (⌘Z)', () => app.store.undo());
 button('Redo', 'Redo (⇧⌘Z)', () => app.store.redo());
-button('Fit', 'Show everything (1)', () => app.view.fit());
+button('Fit', 'Show everything (0)', () => app.view.fit());
 bar.append(status);
 
 app.registerKey({ key: 'mod+s', run: () => doSave() });
 app.registerKey({ key: 'mod+shift+s', run: () => doSave(true) });
 app.registerKey({ key: 'mod+o', run: doOpen });
-app.registerKey({ key: '1', run: () => app.view.fit() });
+app.registerKey({ key: '0', run: () => app.view.fit() });
 
 // drop a .canvas file anywhere to open it
 window.addEventListener('dragover', (e) => e.preventDefault());

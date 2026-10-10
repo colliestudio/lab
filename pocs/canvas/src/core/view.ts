@@ -11,6 +11,8 @@ type Gesture =
       ids: string[];
       clickId: string;
       shift: boolean;
+      /** The pointerdown that started it (types decide from it what a drag means, e.g. grip vs body). */
+      down: PointerEvent;
       start: Pt;
       applied: Pt;
       moved: boolean;
@@ -35,6 +37,8 @@ export class View {
   private pointers = new Map<number, Pt>();
   private spaceDown = false;
   private lastClick = { id: '', t: 0 };
+  /** Node under the mouse when no button is pressed (for "hovered" keyboard targets). */
+  hovered: string | undefined;
 
   constructor(
     private app: App,
@@ -51,6 +55,7 @@ export class View {
     this.applyViewport();
 
     root.addEventListener('pointerdown', (e) => this.onPointerDown(e));
+    root.addEventListener('pointerleave', () => (this.hovered = undefined));
     root.addEventListener('pointermove', (e) => this.onPointerMove(e));
     root.addEventListener('pointerup', (e) => this.onPointerUp(e));
     root.addEventListener('pointercancel', (e) => this.onPointerUp(e));
@@ -183,16 +188,12 @@ export class View {
       return;
     }
 
-    let id = nodeEl.dataset.nodeId!;
+    const id = nodeEl.dataset.nodeId!;
     const node = this.app.node(id);
     if (!node) return;
     this.app.store.newUndoStep(); // the whole press-drag-drop is one undo step
-    const swapped = this.app.typeOf(node)?.onPointerDown?.(node, e, this.app);
     const store = this.app.store;
-    if (swapped) {
-      id = swapped;
-      store.select([id]);
-    } else if (e.shiftKey) {
+    if (e.shiftKey) {
       const next = new Set(store.selection);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -204,10 +205,11 @@ export class View {
     const ids = this.app.selected().map((n) => n.id);
     this.app.dispatch('core.front', { ids }, { merge: true });
     const w = this.world_(p);
-    this.gesture = { kind: 'drag', ids, clickId: id, shift: e.shiftKey, start: w, applied: { x: 0, y: 0 }, moved: false };
+    this.gesture = { kind: 'drag', ids, clickId: id, shift: e.shiftKey, down: e, start: w, applied: { x: 0, y: 0 }, moved: false };
   }
 
   private onPointerMove(e: PointerEvent) {
+    if (!this.pointers.size) this.hovered = (e.target as Element).closest<HTMLElement>('[data-node-id]')?.dataset.nodeId;
     if (!this.pointers.has(e.pointerId)) return;
     const p = this.local(e);
     this.pointers.set(e.pointerId, p);
@@ -237,6 +239,7 @@ export class View {
         if (!g.moved && Math.hypot(tx, ty) * this.app.viewport.zoom < DRAG_THRESHOLD) return;
         if (!g.moved) {
           g.moved = true;
+          this.maybeSwapDragged(g);
           for (const id of g.ids) this.els.get(id)?.classList.add('cv-dragging');
         }
         const dx = tx - g.applied.x;
@@ -351,12 +354,28 @@ export class View {
       else store.undo();
       return;
     }
-    const combo = `${mod ? 'mod+' : ''}${e.altKey ? 'alt+' : ''}${e.shiftKey ? 'shift+' : ''}${e.key.toLowerCase()}`;
+    // digits by physical key, so Shift+1 is "shift+1" (not "!") on every layout
+    const key = e.code.startsWith('Digit') ? e.code.slice(5) : e.key.toLowerCase();
+    const combo = `${mod ? 'mod+' : ''}${e.altKey ? 'alt+' : ''}${e.shiftKey ? 'shift+' : ''}${key}`;
     const binding = this.app.keys.get(combo);
     if (binding) {
       e.preventDefault();
       binding.run(this.app);
     }
+  }
+
+  /** A single object being dragged may hand the drag to another node (a deck gives its top card). */
+  private maybeSwapDragged(g: Extract<Gesture, { kind: 'drag' }>) {
+    if (g.shift || g.ids.length !== 1 || g.ids[0] !== g.clickId) return;
+    const node = this.app.node(g.clickId);
+    const type = node && this.app.typeOf(node);
+    if (!node || !type?.onDragStart) return;
+    const out: { id?: string | void } = {};
+    this.app.store.merged(() => (out.id = type.onDragStart!(node, g.down, this.app)));
+    if (!out.id || !this.app.node(out.id)) return;
+    g.ids = [out.id];
+    g.clickId = out.id;
+    this.app.store.select([out.id]);
   }
 
   /** The object a drag would land on: topmost under the pointer, overlapping enough, and willing. */

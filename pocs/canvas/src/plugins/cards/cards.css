@@ -131,21 +131,32 @@
 }
 
 /* stack */
-.pc-count {
+.pc-grip {
   position: absolute;
-  right: -10px;
-  top: -10px;
-  min-width: 24px;
+  left: 50%;
+  top: -24px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
   height: 24px;
-  padding: 0 6px;
+  padding: 0 10px 0 7px;
   box-sizing: border-box;
-  border-radius: 12px;
+  border-radius: 8px 8px 0 0;
   background: #222;
   color: #fff;
   font: 600 12px/24px system-ui, sans-serif;
-  text-align: center;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  white-space: nowrap;
+  box-shadow: 0 -1px 4px rgba(0, 0, 0, 0.35);
+  cursor: move;
   z-index: 1;
+}
+.pc-grip:hover {
+  background: #3a3a3a;
+}
+.pc-grip-dots {
+  font-size: 14px;
+  opacity: 0.7;
 }
 .pc-empty {
   border: 2px dashed rgba(255, 255, 255, 0.4);

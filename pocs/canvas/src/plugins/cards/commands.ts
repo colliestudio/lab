@@ -87,6 +87,34 @@ export const draw: Command<{ id: string; faceUp?: boolean; x?: number; y?: numbe
 };
 
 /**
+ * Deal the top `count` cards (1-52) into a small fanned row next to the deck, in the first free spot
+ * to its right. `faceUp` overrides orientation (default: face up). Keeps the deck selected.
+ */
+export const deal: Command<{ id: string; count: number; faceUp?: boolean }> = (doc, a) => {
+  const deck = typeof a?.id === 'string' ? doc.get(a.id) : undefined;
+  if (!deck || !isDeck(deck) || !isNum(a.count) || a.count < 1) return [];
+  const cards = cardsIn(doc, deck.id);
+  const n = Math.min(Math.floor(a.count), 52, cards.length);
+  if (!n) return [];
+  const step = 30;
+  const span = (n - 1) * step + CARD_W;
+  const others = doc.visible.filter((v) => v.id !== deck.id);
+  const hits = (x: number) => others.some((v) => v.x < x + span && v.x + v.width > x && v.y < deck.y + CARD_H && v.y + v.height > deck.y);
+  let x0 = deck.x + CARD_W + 24;
+  for (let i = 0; i < 40 && hits(x0); i++) x0 += 40;
+  const faceUp = isBool(a.faceUp) ? a.faceUp : true;
+  const mid = (n - 1) / 2;
+  const dealt = cards.slice(-n).reverse(); // top card first, leftmost
+  const changes = dealt.flatMap((c, i) => [
+    ...release(c, x0 + i * step, deck.y + Math.round(Math.abs(i - mid) ** 2 * 1.5), doc.topZ + 1 + i),
+    ...(card(c).faceUp !== faceUp ? [set(c.id, F('faceUp'), faceUp)] : []),
+  ]);
+  const deckLeft = cards.length > n;
+  if (!deckLeft) changes.push({ op: 'del', id: deck.id });
+  return { changes, select: deckLeft ? [deck.id] : dealt.map((c) => c.id) };
+};
+
+/**
  * Gather cards/decks into one deck at the position of the first id. The first node's cards end up
  * at the bottom, later ones on top. A deck as first id keeps its id; otherwise a new deck is made.
  */
@@ -179,4 +207,4 @@ export const setup: Command<{ x?: number; y?: number }> = (doc, a, ctx) => {
   return changes;
 };
 
-export const commands = { flip, move, shuffle, draw, gather, drop, spread, setup };
+export const commands = { flip, move, shuffle, draw, deal, gather, drop, spread, setup };

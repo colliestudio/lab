@@ -8,6 +8,11 @@ import { cardHtml, deckHtml } from './render';
 const selectedCards = (app: App) => app.selected().filter(isCardish);
 const ids = (ns: CanvasNode[]) => ns.map((n) => n.id);
 const lastDeck = (app: App) => selectedCards(app).filter(isDeck).at(-1);
+/** Deck under the mouse, else the selected one. */
+const targetDeck = (app: App) => {
+  const h = app.view.hovered && app.node(app.view.hovered);
+  return h && isDeck(h) ? h : lastDeck(app);
+};
 
 /** The data side of the plugin (commands, containment, import/export). No DOM; used by tests too. */
 export function registerCardsLogic(store: Store) {
@@ -52,11 +57,10 @@ export const cardsPlugin: Plugin = {
         return `${cards.length}:${top ? card(top).face + card(top).faceUp : ''}`;
       },
       onDoubleClick: flipOne,
-      // Alt/Option + press pulls the top card off (offset so a plain alt-click shows it) and drags it.
-      onPointerDown(node, e, app) {
-        if (!e.altKey) return;
-        const res = app.dispatch('cards.draw', { id: node.id, x: node.x + 28, y: node.y + 28 });
-        return res.select?.[0];
+      // Dragging a deck takes its top card (orientation kept). The grip tab or Alt+drag moves the deck.
+      onDragStart(node, down, app) {
+        if (down.altKey || (down.target as Element | null)?.closest?.('[data-grip]')) return;
+        return app.dispatch('cards.draw', { id: node.id, x: node.x, y: node.y }).select?.[0];
       },
       canDrop,
       onDrop,
@@ -65,7 +69,7 @@ export const cardsPlugin: Plugin = {
     const flipSel = (a: App) => a.dispatch('cards.flip', { ids: ids(selectedCards(a)) });
     const shuffleSel = (a: App) => a.dispatch('cards.shuffle', { ids: ids(selectedCards(a).filter(isDeck)) });
     const drawSel = (faceUp: boolean) => (a: App) => {
-      const d = lastDeck(a);
+      const d = targetDeck(a);
       if (d) a.dispatch('cards.draw', { id: d.id, faceUp, select: 'deck' });
     };
     const spreadSel = (a: App) => {
@@ -80,6 +84,14 @@ export const cardsPlugin: Plugin = {
     app.registerKey({ key: 'shift+d', label: 'Draw face down', run: drawSel(false) });
     app.registerKey({ key: 'g', label: 'Gather into a deck', run: gatherSel() });
     app.registerKey({ key: 'e', label: 'Spread deck', run: spreadSel });
+    const dealN = (count: number, faceUp: boolean) => (a: App) => {
+      const d = targetDeck(a);
+      if (d) a.dispatch('cards.deal', { id: d.id, count, faceUp });
+    };
+    for (let k = 1; k <= 9; k++) {
+      app.registerKey({ key: `${k}`, label: `Deal ${k} face up`, run: dealN(k, true) });
+      app.registerKey({ key: `shift+${k}`, label: `Deal ${k} face down`, run: dealN(k, false) });
+    }
 
     const any = (_: App, sel: CanvasNode[]) => sel.some(isCardish);
     const hasDeck = (_: App, sel: CanvasNode[]) => sel.some(isDeck);
@@ -88,6 +100,9 @@ export const cardsPlugin: Plugin = {
     app.registerMenuItem({ label: 'Shuffle', hint: 'S', when: hasDeck, run: shuffleSel });
     app.registerMenuItem({ label: 'Draw face up', hint: 'D', when: hasDeck, run: drawSel(true) });
     app.registerMenuItem({ label: 'Draw face down', hint: '⇧D', when: hasDeck, run: drawSel(false) });
+    app.registerMenuItem({ label: 'Deal 3 face up', hint: '3', when: hasDeck, run: dealN(3, true) });
+    app.registerMenuItem({ label: 'Deal 5 face up', hint: '5', when: hasDeck, run: dealN(5, true) });
+    app.registerMenuItem({ label: 'Deal 5 face down', hint: '⇧5', when: hasDeck, run: dealN(5, false) });
     app.registerMenuItem({ label: 'Spread out', hint: 'E', when: hasDeck, run: spreadSel });
     app.registerMenuItem({ label: 'Gather into deck', hint: 'G', when: several, run: gatherSel() });
     app.registerMenuItem({ label: 'Gather face down', when: several, run: gatherSel(false) });

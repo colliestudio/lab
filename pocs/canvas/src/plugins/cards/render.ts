@@ -65,6 +65,7 @@ export function deckHtml(top: CardData | undefined, count: number): string {
   return (
     `<div class="pc-stack" style="--pc-stack-shadow:${shadow.join(',')}">` +
     (top ? cardHtml(top) : '<div class="pc-card pc-empty"></div>') +
-    `<div class="pc-count">${count}</div></div>`
+    `<div class="pc-grip" data-grip title="Drag here (or Alt+drag the deck) to move the whole deck">` +
+    `<span class="pc-grip-dots">⠿</span>${count}</div></div>`
   );
 }
