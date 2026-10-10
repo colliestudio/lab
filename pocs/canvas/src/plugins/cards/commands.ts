@@ -1,6 +1,7 @@
 import { isIds, isNum, pick, set, toFront, type CanvasNode, type Change, type Command, type DocView } from '../../core';
-import { CARD_H, CARD_W, FIELD, RANKS, card, cardNode, cardsHomedAt, cardsIn, deckNode, groupNode, isCard, isCardish, isDeck, isHand, isHomeDeck, isSpreadOut, isStacked, layoutOf, packOf, parseFace, standardDeck, type DeckField, type Layout } from './deck';
+import { CARD_H, CARD_W, FIELD, card, cardNode, cardsHomedAt, cardsIn, deckNode, groupNode, isCard, isCardish, isDeck, isHand, isHomeDeck, isSpreadOut, isStacked, layoutOf, packOf, standardDeck, type DeckField, type Layout } from './deck';
 import { PAD, slotIndex, slots } from './layout';
+import { packOrder } from './packs';
 
 /**
  * How a drop would land (shown while hovering, then passed to `drop`). Onto a container, or a card
@@ -358,15 +359,12 @@ export const ungroup: Command<{ id: string }> = (doc, a) => {
   return { changes, select: cards.map((c) => c.id) };
 };
 
-const SUIT_ORDER = ['S', 'H', 'C', 'D']; // alternating colors
-/** Sort a group or hand by suit, then rank (A..K). */
+/** Sort a group or hand in pack order (standard-52: by suit, then rank A..K); packs grouped by id. */
 export const sort: Command<{ id: string }> = (doc, a) => {
   const box = typeof a?.id === 'string' ? doc.get(a.id) : undefined;
   if (!box || !isDeck(box)) return [];
-  const key = (c: CanvasNode) => {
-    const { rank, suit } = parseFace(card(c).face);
-    return SUIT_ORDER.indexOf(suit) * 100 + (RANKS as readonly string[]).indexOf(rank);
-  };
+  const packs = [...new Set(cardsIn(doc, box.id).map(packOf))].sort();
+  const key = (c: CanvasNode) => packs.indexOf(packOf(c)) * 10000 + (packOrder(packOf(c), card(c).face) ?? 9999);
   const sorted = cardsIn(doc, box.id).slice().sort((x, y) => key(x) - key(y));
   return sorted.flatMap((c, i) => (card(c).order === i + 1 ? [] : [set(c.id, F('order'), i + 1)]));
 };

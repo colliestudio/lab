@@ -1,4 +1,5 @@
 import type { CanvasNode, DocView } from '../../core';
+import { packLabel } from './packs';
 
 export const PACK = 'standard-52';
 export const FIELD = 'x-cards';
@@ -61,6 +62,9 @@ export function label(face: string) {
   const { rank, suit } = parseFace(face);
   return `${rankLabel(rank)}${SUITS[suit].sym}`;
 }
+
+/** Readable text of a card of any registered pack ("10♥", "Red 7"); the face code if unknown. */
+export const faceLabel = (pack: string, face: string) => packLabel(pack, face) ?? (isFace(face) ? label(face) : face);
 
 export function standardDeck(): string[] {
   return (Object.keys(SUITS) as Suit[]).flatMap((s) => RANKS.map((r) => r + s));
@@ -161,7 +165,7 @@ export function cardNode(id: string, x: number, y: number, c: Omit<CardField, 'p
   if (c.stack !== undefined) f.stack = c.stack;
   if (c.order !== undefined) f.order = c.order;
   if (c.home !== undefined) f.home = c.home;
-  return { id, type: 'text', x, y, width: CARD_W, height: CARD_H, text: label(c.face), z, [FIELD]: f };
+  return { id, type: 'text', x, y, width: CARD_W, height: CARD_H, text: faceLabel(pack, c.face), z, [FIELD]: f };
 }
 
 /** A stack group (default) or, with `home`, a pack's home deck. */

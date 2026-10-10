@@ -1,8 +1,11 @@
-import { SUITS, parseFace, rankLabel, type Rank } from './deck';
+import { PACK, SUITS, isFace, parseFace, rankLabel, type Rank } from './deck';
+import { getPack } from './packs';
 
 export interface CardData {
   face: string;
   faceUp: boolean;
+  /** Pack id (default standard-52): its registered renderer draws the face and back. */
+  pack?: string;
 }
 
 // Card faces are built from data: corners + pip layout / court glyph. No image assets.
@@ -27,9 +30,19 @@ const COL_X = [30, 50, 70];
 // ︎ asks for the text (not emoji) presentation
 const COURT: Partial<Record<Rank, string>> = { K: '♚︎', Q: '♛︎', J: '♞︎' };
 
+export const STANDARD_BACK = `<div class="pc-card pc-back"><div class="pc-back-inner"></div></div>`;
+
+/** A card of any pack, through the pack registry. Unknown pack: a plain card showing the face code. */
 export function cardHtml(c: CardData): string {
-  if (!c.faceUp) return `<div class="pc-card pc-back"><div class="pc-back-inner"></div></div>`;
-  const { rank, suit } = parseFace(c.face);
+  const p = getPack(c.pack ?? PACK);
+  if (!c.faceUp) return p?.back ?? STANDARD_BACK;
+  if (p) return p.face(c.face);
+  return isFace(c.face) ? standardFaceHtml(c.face) : `<div class="pc-card pc-face pc-black pc-unknown">${esc(c.face)}</div>`;
+}
+
+/** The standard-52 face: corners + pip layout / court glyph. */
+export function standardFaceHtml(face: string): string {
+  const { rank, suit } = parseFace(face);
   const s = SUITS[suit];
   const sym = `${s.sym}︎`;
   const corner = (cls: string) => `<div class="pc-corner ${cls}"><b>${rankLabel(rank)}</b><i>${sym}</i></div>`;

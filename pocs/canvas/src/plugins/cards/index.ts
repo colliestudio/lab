@@ -1,4 +1,5 @@
 import './cards.css';
+import './standard';
 import { loadPlayer, type App, type CanvasNode, type Command, type MenuEntry, type Plugin, type Store } from '../../core';
 import { commands, dropMode, kindOf, outCount, type DropMode, type Kind } from './commands';
 import { CARD_W, FIELD, card, cardsIn, deckFacing, deckIdOf, hiddenFrom, homeFor, isCard, isCardish, isDeck, isHand, isHomeDeck, isSpreadOut, isStacked, layoutOf, type Layout } from './deck';

@@ -1,5 +1,6 @@
 import type { CanvasDoc, CanvasNode, DocFilter } from '../../core';
-import { FIELD, LAYOUTS, PACK, cardNode, deckNode, isFace, label, type CardField, type DeckField } from './deck';
+import { FIELD, LAYOUTS, PACK, cardNode, deckNode, faceLabel, type CardField, type DeckField } from './deck';
+import { isPackFace } from './packs';
 
 // JSON Canvas import repair and export shaping for card nodes.
 
@@ -24,7 +25,7 @@ export const repairImport: DocFilter = (doc, ctx) => {
     const pack = typeof f.pack === 'string' ? f.pack : PACK;
     if (Array.isArray(f.stack)) {
       // stage-1 format: { stack: [{face, faceUp}, ...] } bottom first
-      const entries = f.stack.filter((c): c is { face: string; faceUp?: unknown } => obj(c) && isFace(c.face));
+      const entries = f.stack.filter((c): c is { face: string; faceUp?: unknown } => obj(c) && isPackFace(pack, c.face));
       if (!entries.length) continue;
       out.push(deckNode(n.id, n.x, n.y, undefined, pack));
       entries.forEach((c, i) =>
@@ -44,14 +45,14 @@ export const repairImport: DocFilter = (doc, ctx) => {
       out.push({ ...n, [FIELD]: d });
       continue;
     }
-    if (isFace(f.face)) {
+    if (isPackFace(pack, f.face)) {
       const c: CardField = { pack, face: f.face, faceUp: f.faceUp === true };
       if (typeof f.stack === 'string') {
         c.stack = f.stack;
         c.order = typeof f.order === 'number' && Number.isFinite(f.order) ? f.order : 0;
       }
       if (typeof f.home === 'string') c.home = f.home;
-      out.push({ ...n, text: n.text ?? label(f.face), [FIELD]: c });
+      out.push({ ...n, text: n.text ?? faceLabel(pack, f.face), [FIELD]: c });
       continue;
     }
     out.push(strip(n));
