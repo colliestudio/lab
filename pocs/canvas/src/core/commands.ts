@@ -49,6 +49,14 @@ export function toFront(doc: DocView, all: CanvasNode[]): Change[] {
   return sorted.map((n, i) => set(n.id, 'z', base + 1 + i));
 }
 
+/**
+ * Bring pressed objects to the top. A press is not an edit: no undo step of its own, and the redo
+ * stack stays (a click between Undo and Redo must not eat the redo).
+ */
+export function raise(store: Store, ids: string[]) {
+  return store.dispatch('core.front', { ids }, { undoable: false });
+}
+
 export function registerCoreCommands(store: Store) {
   store.register('core.move', (doc, a: { ids: string[]; dx: number; dy: number }) => {
     if (!isNum(a?.dx) || !isNum(a?.dy)) return [];
