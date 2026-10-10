@@ -396,3 +396,10 @@
   filter: grayscale(0.85);
   opacity: 0.75;
 }
+
+/* a pile in a fixed area (a mat's zone): the area's frame, the pile in its middle */
+.pc-area-pile {
+  position: absolute;
+  width: 120px;
+  height: 168px;
+}

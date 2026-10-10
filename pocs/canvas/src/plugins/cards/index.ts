@@ -2,7 +2,7 @@ import './cards.css';
 import './standard';
 import { loadPlayer, type App, type CanvasNode, type Command, type MenuEntry, type Plugin, type Store } from '../../core';
 import { SORT_MODES, commands, dropMode, incomingCount, kindOf, outCount, sortPrefOf, type DropMode, type Kind, type SortMode } from './commands';
-import { CARD_W, FIELD, PACK, allowsShowing, card, hasFixedFrame, cardsIn, concealedFrom, deckFacing, deckIdOf, handOf, hiddenFrom, hidesCount, homeFor, isBlind, isCard, isCardish, isDeck, isHand, isHomeDeck, isShown, isSpot, isSpreadOut, isStacked, layoutOf, packOf, roomIn, shownIn, type DeckField, type Layout } from './deck';
+import { CARD_W, FIELD, PACK, allowsShowing, areaOf, card, pileAt, hasFixedFrame, cardsIn, concealedFrom, deckFacing, deckIdOf, handOf, hiddenFrom, hidesCount, homeFor, isBlind, isCard, isCardish, isDeck, isHand, isHomeDeck, isShown, isSpot, isSpreadOut, isStacked, layoutOf, packOf, roomIn, shownIn, type DeckField, type Layout } from './deck';
 import { mountHandUx, VIEW_AS_KEY, type HandUx } from './handUx';
 import { repairImport, shapeExport } from './io';
 import { cardLayouts, laneOf, liftedDrop, rowTop, slots, thresholdY } from './layout';
@@ -453,7 +453,7 @@ export const cardsPlugin: Plugin = {
             color: f.color,
             mine,
             away: ownerAway(app, node),
-            resizable: mine && hasFixedFrame(node),
+            resizable: mine && hasFixedFrame(node) && !areaOf(node),
             count: asOthers && hidesCount(node) ? undefined : cards.length,
             shown: cards.filter((c) => shownIn(node, c)).length,
             pile: asOthers && hidesCount(node),
@@ -466,7 +466,17 @@ export const cardsPlugin: Plugin = {
           return;
         }
         const top = cards.at(-1);
-        el.innerHTML = deckHtml(top && card(top), cards.length, isHomeDeck(node), deckName(node));
+        const pile = deckHtml(top && card(top), cards.length, isHomeDeck(node), deckName(node));
+        if (!areaOf(node)) {
+          el.innerHTML = pile;
+          return;
+        }
+        // a pile in a fixed area (a mat's zone): the area's frame, the pile in its middle
+        const p = pileAt(node);
+        const f = node[FIELD] as { color?: string };
+        el.innerHTML =
+          `<div class="pc-group pc-spot pc-area"${f.color ? ` style="--pc-group:${f.color}"` : ''}>` +
+          `<div class="pc-area-pile" style="left:${p.x - node.x}px;top:${p.y - node.y}px">${pile}</div></div>`;
       },
       renderKey(node, { doc, viewer }) {
         const cards = cardsIn(doc, node.id);
@@ -476,7 +486,7 @@ export const cardsPlugin: Plugin = {
           const shown = cards.filter((c) => shownIn(node, c)).length;
           return `hand:${ownerAway(app, node)}:${cards.length}:${shown}:${isBlind(node)}:${allowsShowing(node)}:${hidesCount(node)}:${hasFixedFrame(node)}:${ux.asOthers()}:${node.label}:${f.color}:${node.owner === viewer}:${layoutOf(node)}`;
         }
-        return `${cards.length}:${isHomeDeck(node)}:${layoutOf(node)}:${node.label}:${f.color}:${node.owner === viewer}:${top ? card(top).face + card(top).faceUp : ''}`;
+        return `${cards.length}:${isHomeDeck(node)}:${layoutOf(node)}:${node.label}:${f.color}:${node.owner === viewer}:${top ? card(top).face + card(top).faceUp : ''}:${node.width}x${node.height}`;
       },
       onDoubleClick: flipOne,
       // Click on the tab (no drag): a small menu of deck actions anchored to it.
@@ -489,7 +499,7 @@ export const cardsPlugin: Plugin = {
       // Dragging a deck takes its top card (orientation kept). The grip tab or Alt+drag moves the deck.
       onDragStart(node, down, app) {
         if (!isStacked(node) || down.altKey || (down.target as Element | null)?.closest?.('[data-grip]')) return;
-        return app.dispatch('cards.draw', { id: node.id, x: node.x, y: node.y }).select?.[0];
+        return app.dispatch('cards.draw', { id: node.id, ...pileAt(node) }).select?.[0];
       },
       canDrop,
       onDrop,

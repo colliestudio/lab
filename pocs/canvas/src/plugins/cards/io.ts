@@ -45,6 +45,9 @@ export const repairImport: DocFilter = (doc, ctx) => {
       if (f.spot === true) d.spot = true;
       for (const k of ['slots', 'max', 'cols'] as const) if (typeof f[k] === 'number' && Number.isInteger(f[k]) && (f[k] as number) > 0 && (f[k] as number) <= 60) d[k] = f[k] as number;
       if (obj(f.sort)) d.sort = f.sort as DeckField['sort'];
+      if (obj(f.area) && typeof f.area.w === 'number' && typeof f.area.h === 'number' && f.area.w > 0 && f.area.h > 0 && f.area.w < 20000 && f.area.h < 20000)
+        d.area = { w: Math.round(f.area.w), h: Math.round(f.area.h) };
+      if (f.enter === 'up' || f.enter === 'down') d.enter = f.enter;
       if (!d.home) {
         if (f.blind === true) d.blind = true;
         if (f.showing === true) d.showing = true;

@@ -1,5 +1,5 @@
 import { isIds, isNum, pick, set, toFront, type CanvasNode, type Change, type Command, type CommandResult, type DocView } from '../../core';
-import { PACK, CARD_H, CARD_W, FIELD, RANKS, allowsShowing, card, hidesCount, isBlind, shownIn, cardNode, cardsHomedAt, cardsIn, deckNode, groupNode, isCard, isCardish, isDeck, isHand, isHomeDeck, isSpreadOut, isStacked, isSpot, layoutOf, packOf, parseFace, roomIn, standardDeck, type DeckField, type Layout } from './deck';
+import { PACK, CARD_H, CARD_W, FIELD, RANKS, areaOf, enterOf, pileAt, allowsShowing, card, hidesCount, isBlind, shownIn, cardNode, cardsHomedAt, cardsIn, deckNode, groupNode, isCard, isCardish, isDeck, isHand, isHomeDeck, isSpreadOut, isStacked, isSpot, layoutOf, packOf, parseFace, roomIn, standardDeck, type DeckField, type Layout } from './deck';
 import { HAND_MAX_W, HAND_MIN_W, PAD, RAISE, emptyHandSize, handSlotIndex, laneOf, slotIndex, slots } from './layout';
 import { getPack, packOrder } from './packs';
 
@@ -92,6 +92,9 @@ function insertInto(doc: DocView, box: CanvasNode, moving: CanvasNode[], index?:
   const changes = incoming.flatMap((c, i) => stackInto(c, box, orders[i]));
   // a hand without a shown strip holds private cards only (so turning the strip on never reveals one)
   if (isHand(box) && !allowsShowing(box)) for (const c of incoming) changes.push(...conform(c, false));
+  // a container with a facing on entry (a mat zone, a Battle Line formation) turns what comes in
+  const enter = enterOf(box);
+  if (enter && !isHand(box)) for (const c of incoming) changes.push(...conform(c, enter === 'up'));
   // containers merged away, and groups the cards were pulled out of
   const touched = new Set<string>();
   for (const n of moving) {
@@ -238,10 +241,11 @@ export const draw: Command<{ id: string; faceUp?: boolean; x?: number; y?: numbe
   const cards = cardsIn(doc, deck.id);
   const top = cards[cards.length - 1];
   if (!top) return [];
-  const y = isNum(a.y) ? a.y : deck.y;
+  const pile = pileAt(deck);
+  const y = isNum(a.y) ? a.y : pile.y;
   let x = isNum(a.x) ? a.x : undefined;
   if (x === undefined) {
-    x = deck.x + CARD_W + 24;
+    x = pile.x + CARD_W + 24;
     while (doc.visible.some((n) => n.x === x && n.y === y)) x += 32;
   }
   const changes = release(top, Math.round(x), Math.round(y), doc.topZ + 1);
@@ -257,15 +261,18 @@ export const draw: Command<{ id: string; faceUp?: boolean; x?: number; y?: numbe
  * to its right. `faceUp` overrides orientation (default: as they lie in the deck). Keeps the deck selected.
  */
 export const deal: Command<{ id: string; count: number; faceUp?: boolean }> = (doc, a) => {
-  const deck = typeof a?.id === 'string' ? doc.get(a.id) : undefined;
+  let deck = typeof a?.id === 'string' ? doc.get(a.id) : undefined;
   if (!deck || !isDeck(deck) || !isNum(a.count) || a.count < 1) return [];
   const cards = cardsIn(doc, deck.id);
   const n = Math.min(Math.floor(a.count), 52, cards.length);
   if (!n) return [];
+  const p = pileAt(deck);
+  deck = { ...deck, x: p.x, y: p.y };
   const step = 30;
   const span = (n - 1) * step + CARD_W;
-  const others = doc.visible.filter((v) => v.id !== deck.id);
-  const hits = (x: number) => others.some((v) => v.x < x + span && v.x + v.width > x && v.y < deck.y + CARD_H && v.y + v.height > deck.y);
+  const at = deck;
+  const others = doc.visible.filter((v) => v.id !== at.id);
+  const hits = (x: number) => others.some((v) => v.x < x + span && v.x + v.width > x && v.y < at.y + CARD_H && v.y + v.height > at.y);
   let x0 = deck.x + CARD_W + 24;
   for (let i = 0; i < 40 && hits(x0); i++) x0 += 40;
   const faceUp = isBool(a.faceUp) ? a.faceUp : undefined;
@@ -337,6 +344,7 @@ export const pullOut: Command<{ id: string; x?: number; y?: number }> = (doc, a)
 function relayout(box: CanvasNode, layout: Layout): Change[] {
   if (layoutOf(box) === layout) return [];
   const changes = [set(box.id, F('layout'), layout === 'stack' ? undefined : layout)];
+  if (areaOf(box)) return changes; // a fixed area stays put: the pile is drawn in its middle
   if (layout === 'stack' && isSpreadOut(box)) changes.push(set(box.id, 'x', box.x + PAD), set(box.id, 'y', box.y + PAD + 6));
   if (layout !== 'stack' && isStacked(box)) changes.push(set(box.id, 'x', box.x - PAD), set(box.id, 'y', box.y - PAD - 6));
   return changes;
@@ -427,7 +435,8 @@ export const showdown: Command<Record<string, never>> = (doc) => {
     const w = rowWidth(cards.length);
     while (cards.length && hits(p.x, p.y, w)) p.x += CARD_W + ROW_GAP;
     if (cards.length) laid.push({ x: p.x, y: p.y, w });
-    changes.push(...layRow(cards, p.x, p.y, z, true), { op: 'del', id: h.id });
+    changes.push(...layRow(cards, p.x, p.y, z, true));
+    if (!isSpot(h)) changes.push({ op: 'del', id: h.id }); // a seat on a mat (a private zone) stays
     z += cards.length;
     select.push(...cards.map((c) => c.id));
   }

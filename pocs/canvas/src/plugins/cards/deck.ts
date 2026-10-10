@@ -82,7 +82,15 @@ export interface DeckField {
   fixed?: true;
   /** A fixed frame's width (cards compress to fit); default HAND_W. */
   width?: number;
+  /**
+   * A fixed area (a mat's zone): the container is at least this big (cards laid out from its
+   * top-left; a pile sits in its middle).
+   */
+  area?: { w: number; h: number };
+  /** Facing on entry: cards put in turn face up / face down (absent: each keeps its own). Never in a hand. */
+  enter?: Facing;
 }
+export type Facing = 'up' | 'down';
 
 export function parseFace(face: string): { rank: Rank; suit: Suit } {
   return { rank: face.slice(0, -1) as Rank, suit: face.slice(-1) as Suit };
@@ -165,6 +173,22 @@ export function concealedFrom(doc: DocView, c: CanvasNode, viewer: string, asOth
   return !!h && hidesCount(h) && !shownIn(h, c) && (h.owner !== viewer || asOthers);
 }
 export const card = (n: CanvasNode) => n[FIELD] as CardField;
+/** A container's fixed area (DeckField.area), if it has a valid one. */
+export function areaOf(n: CanvasNode | undefined): { w: number; h: number } | undefined {
+  const a = n && isDeck(n) ? (n[FIELD] as DeckField).area : undefined;
+  return a && Number.isFinite(a.w) && Number.isFinite(a.h) ? a : undefined;
+}
+/** Facing on entry (DeckField.enter). */
+export const enterOf = (n: CanvasNode): Facing | undefined => {
+  const e = (n[FIELD] as DeckField | undefined)?.enter;
+  return e === 'up' || e === 'down' ? e : undefined;
+};
+/** Top-left of a container's pile: its own top-left, or the middle of its area (laid-out size). */
+export function pileAt(n: CanvasNode): { x: number; y: number } {
+  const a = areaOf(n);
+  if (!a || !isStacked(n)) return { x: n.x, y: n.y };
+  return { x: Math.round(n.x + (n.width - CARD_W) / 2), y: Math.round(n.y + (n.height - CARD_H) / 2) };
+}
 export const packOf = (n: CanvasNode) => (field(n)?.pack as string | undefined) ?? PACK;
 
 /** The deck a card sits in (only if that deck exists). */
@@ -255,7 +279,7 @@ export function groupNode(
   x: number,
   y: number,
   z: number,
-  o: { layout?: Layout; pack?: string; owner?: string; label?: string; color?: string; spot?: boolean; slots?: number; max?: number } = {},
+  o: { layout?: Layout; pack?: string; owner?: string; label?: string; color?: string; spot?: boolean; slots?: number; max?: number; area?: { w: number; h: number }; enter?: Facing; home?: boolean } = {},
 ): CanvasNode {
   const f: DeckField = { pack: o.pack ?? PACK, deck: true };
   if (o.layout !== 'stack') f.layout = o.layout ?? 'fan';
@@ -263,6 +287,9 @@ export function groupNode(
   if (o.spot) f.spot = true;
   if (o.slots) f.slots = o.slots;
   if (o.max) f.max = o.max;
+  if (o.area) f.area = { w: Math.round(o.area.w), h: Math.round(o.area.h) };
+  if (o.enter) f.enter = o.enter;
+  if (o.home) f.home = true;
   const n: CanvasNode = { id, type: 'text', x, y, width: CARD_W, height: CARD_H, z, text: o.label ?? (o.owner ? 'Hand' : 'Group'), [FIELD]: f };
   if (o.owner) n.owner = o.owner;
   if (o.label) n.label = o.label;

@@ -1,5 +1,5 @@
 import type { CanvasNode, DocView, LayoutRule, Placement } from '../../core';
-import { CARD_H, CARD_W, FIELD, allowsShowing, cardsIn, hasFixedFrame, isHand, isSpreadOut, layoutOf, shownIn, type DeckField, type Layout } from './deck';
+import { CARD_H, CARD_W, FIELD, allowsShowing, areaOf, cardsIn, isDeck, hasFixedFrame, isHand, isSpreadOut, layoutOf, shownIn, type DeckField, type Layout } from './deck';
 
 // Where a container's cards go. Pure geometry; applied at read time through the core layout hook,
 // so the doc only stores each card's container + order (sync-friendly, nothing to rewrite).
@@ -161,12 +161,17 @@ export const minSlotsOf = (c: CanvasNode) => {
 export const cardLayouts: LayoutRule = (doc: DocView) => {
   const out = new Map<string, Placement>();
   for (const c of doc.nodes) {
-    if (!isSpreadOut(c)) continue;
+    const area = areaOf(c);
+    if (!isSpreadOut(c)) {
+      // a pile with a fixed area (a mat's zone) is as big as the area (the pile is drawn in its middle)
+      if (area && isDeck(c)) out.set(c.id, { width: area.w, height: area.h });
+      continue;
+    }
     const cards = cardsIn(doc, c.id);
     const hand = isHand(c);
     const shown = cards.map((x) => hand && shownIn(c, x));
     const s = hand ? handSlots(c, shown) : slots(layoutOf(c), cards.length, minSlotsOf(c), colsOf(c));
-    out.set(c.id, { width: s.w, height: s.h });
+    out.set(c.id, { width: Math.max(s.w, area?.w ?? 0), height: Math.max(s.h, area?.h ?? 0) });
     const z = c.z ?? 0;
     // in a hand the strip lies under the row (the row's corners stay readable)
     const rank = (i: number) => (hand ? (shown[i] ? i : cards.length + i) : i);

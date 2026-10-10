@@ -55,3 +55,55 @@ describe('table spots (generic)', () => {
     expect(f.label).toBe('Flag 1 · A');
   });
 });
+
+describe('fixed areas and facing on entry (generic)', () => {
+  it('a spread container with an area is at least that big; its cards start at its top-left', () => {
+    const s = store();
+    s.load({ nodes: [groupNode('z', 0, 0, 1, { layout: 'row', spot: true, area: { w: 900, h: 300 } }), loose('a', 'AS')], edges: [] });
+    expect([s.doc.get('z')!.width, s.doc.get('z')!.height]).toEqual([900, 300]);
+    s.dispatch('cards.drop', { target: 'z', ids: ['a'] });
+    expect([s.doc.get('a')!.x, s.doc.get('a')!.y]).toEqual([PAD, PAD]);
+  });
+
+  it('a pile with an area: the area is its box, the pile sits in the middle; drawing takes from there', () => {
+    const s = store();
+    s.load({ nodes: [groupNode('p', 0, 0, 1, { layout: 'stack', spot: true, area: { w: 400, h: 300 } }), loose('a', 'AS'), loose('b', '2S', 700)], edges: [] });
+    expect([s.doc.get('p')!.width, s.doc.get('p')!.height]).toEqual([400, 300]);
+    s.dispatch('cards.drop', { target: 'p', ids: ['a'] });
+    s.dispatch('cards.drop', { target: 'p', ids: ['b'] });
+    expect(cardsIn(s.doc, 'p')).toHaveLength(2);
+    // switching layout keeps the area where it is
+    s.dispatch('cards.setLayout', { id: 'p', layout: 'fan' });
+    expect([s.doc.get('p')!.x, s.doc.get('p')!.y]).toEqual([0, 0]);
+    s.dispatch('cards.setLayout', { id: 'p', layout: 'stack' });
+    const r = s.dispatch('cards.draw', { id: 'p' });
+    expect(s.doc.get(r.select![0])!.x).toBe((400 - 120) / 2 + 120 + 24);
+  });
+
+  it('facing on entry turns cards that come in (drop, gather); a hand ignores it', () => {
+    const s = store();
+    const down = (id: string, x: number) => cardNode(id, x, 0, { face: 'AS', faceUp: false }, 10);
+    s.load({ nodes: [groupNode('z', 0, 0, 1, { layout: 'row', spot: true, enter: 'up' }), groupNode('d', 0, 400, 1, { layout: 'stack', spot: true, enter: 'down' }), down('a', 500), loose('b', 'KS', 700)], edges: [] });
+    s.dispatch('cards.drop', { target: 'z', ids: ['a'] });
+    expect(card(s.doc.get('a')!).faceUp).toBe(true);
+    s.dispatch('cards.drop', { target: 'd', ids: ['b'] });
+    expect(card(s.doc.get('b')!).faceUp).toBe(false);
+  });
+
+  it('showdown keeps a seat (a private spot), empties it', () => {
+    const s = store();
+    s.load({ nodes: [groupNode('h', 0, 0, 1, { layout: 'fan', spot: true, owner: 'me', label: 'Seat' }), loose('a', 'AS')], edges: [] });
+    s.dispatch('cards.drop', { target: 'h', ids: ['a'] });
+    s.dispatch('cards.showdown', {});
+    expect(s.doc.get('h')).toBeDefined();
+    expect(cardsIn(s.doc, 'h')).toHaveLength(0);
+  });
+
+  it('area and facing survive a file round trip', () => {
+    const s = store();
+    s.load({ nodes: [groupNode('z', 0, 0, 1, { layout: 'row', spot: true, area: { w: 500, h: 200 }, enter: 'down' })], edges: [] });
+    const t = store();
+    t.load(parse(serialize(s.exportDoc())));
+    expect(t.doc.get('z')!['x-cards']).toMatchObject({ area: { w: 500, h: 200 }, enter: 'down' });
+  });
+});
