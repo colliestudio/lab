@@ -314,4 +314,17 @@ export const setup: Command<{ x?: number; y?: number }> = (doc, a, ctx) => {
   return changes;
 };
 
-export const commands = { flip, face, move, shuffle, draw, deal, gather, recall, drop, spread, setup, repairHomes };
+/**
+ * Reset table (core `registerReset`): every home deck gets all its cards back like a new deck, face
+ * down and shuffled; piles disappear. Cards keep their home; decks stay where they are.
+ */
+export const resetAll: Command<Record<string, never>> = (doc, _a, ctx) => {
+  const changes: Change[] = [];
+  for (const deck of doc.nodes.filter(isHomeDeck)) {
+    shuffled(cardsHomedAt(doc, deck.id), ctx.random).forEach((c, i) => changes.push(...stackInto(c, deck, i + 1), ...conform(c, false)));
+  }
+  for (const pile of doc.nodes.filter((n) => isDeck(n) && !isHomeDeck(n))) changes.push({ op: 'del', id: pile.id });
+  return changes;
+};
+
+export const commands = { flip, face, move, shuffle, draw, deal, gather, recall, drop, spread, setup, repairHomes, resetAll };

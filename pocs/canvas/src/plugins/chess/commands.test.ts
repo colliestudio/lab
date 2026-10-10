@@ -324,4 +324,35 @@ describe('chess commands', () => {
     s.dispatch('core.delete', { ids: [c.id] });
     expect(s.doc.get(c.id)).toBeUndefined();
   });
+
+  it('deleting a board deletes its riding pieces in one undo step', () => {
+    const { s, b } = withSet();
+    const free = at(s, b, 'a2')!.id;
+    drag(s, free, { x: -2000, y: 0 });
+    s.dispatch('core.delete', { ids: [b] });
+    expect(s.doc.nodes.map((n) => n.id)).toEqual([free]);
+    s.undo();
+    expect(s.doc.nodes).toHaveLength(33);
+  });
+
+  it('reset table: every board back to its 32, extras and loose pieces deleted, one undo step', () => {
+    const { s, b } = withSet();
+    const { b: b2 } = withSet(s);
+    s.dispatch('chess.flip', { id: b2 });
+    drag(s, at(s, b, 'e2')!.id, sqCenter(s, b, 'e4'));
+    drag(s, at(s, b, 'h8')!.id, sqCenter(s, b2, 'h4')); // b's rook on b2
+    s.dispatch('chess.spawn', { piece: 'Q', color: 'w', board: b }); // extra
+    s.dispatch('chess.spawn', { piece: 'N', color: 'b', x: 5000, y: 5000 }); // loose
+    s.dispatch('core.duplicate', { ids: [at(s, b2, 'e1')!.id] }); // extra on b2
+    s.dispatch('core.delete', { ids: [at(s, b, 'b1')!.id] }); // lost
+    s.dispatch('core.reset', {});
+    for (const id of [b, b2]) {
+      for (const [k, c, sq] of START) expect(label(at(s, id, sq))).toBe(c + k);
+      expect(s.doc.riders(id)).toHaveLength(32);
+    }
+    expect(s.doc.nodes.filter(isPiece)).toHaveLength(64);
+    expect(board(s.doc.get(b2)!).flipped).toBe(true); // orientation kept
+    s.undo();
+    expect(s.doc.nodes.filter(isPiece)).toHaveLength(66);
+  });
 });

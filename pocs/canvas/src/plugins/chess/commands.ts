@@ -87,13 +87,14 @@ export const create: Command<{ x: number; y: number }> = (doc, a, ctx) => {
 
 /**
  * Reset to the starting position: the set's own pieces come back from anywhere (a piece already on
- * its start square stays), missing ones are replaced, strangers on the board go to its capture rows.
+ * its start square stays), missing ones are replaced. Extras (spawned/copied beyond the 32) and
+ * strangers on the board go to its capture rows, or with `removeExtras` are deleted (strangers that
+ * belong to another live board are left for that board).
  */
-export const setup: Command<{ id: string }> = (doc, a, ctx) => {
-  const b = boardArg(doc, a?.id);
-  if (!b) return [];
+function arrange(doc: DocView, b: CanvasNode, ctx: { newId(): string }, z: number, removeExtras = false) {
   const mine = doc.visible.filter((n) => isPiece(n) && piece(n).home === b.id);
-  const strangers = doc.riders(b.id).filter((n) => isPiece(n) && piece(n).home !== b.id);
+  const liveHome = (n: CanvasNode) => !!piece(n).home && isBoard(doc.get(piece(n).home!));
+  const strangers = doc.riders(b.id).filter((n) => isPiece(n) && piece(n).home !== b.id && !(removeExtras && liveHome(n)));
   const moving = new Set([...mine, ...strangers].map((n) => n.id));
   const pool = new Set(mine.slice().sort((x, y) => (x.id < y.id ? -1 : 1)));
   const assigned = new Map<string, CanvasNode | undefined>();
@@ -106,7 +107,6 @@ export const setup: Command<{ id: string }> = (doc, a, ctx) => {
     }
   }
   const changes: Change[] = [];
-  let z = doc.topZ;
   changes.push(set(b.id, 'z', ++z), set(b.id, F('from'), undefined), set(b.id, F('to'), undefined));
   for (const [kind, color, square] of START) {
     let p = assigned.get(square);
@@ -118,9 +118,41 @@ export const setup: Command<{ id: string }> = (doc, a, ctx) => {
     if (p) changes.push(...moveTo(p, { board: b.id, square, ...pos }), set(p.id, 'z', ++z));
     else changes.push({ op: 'add', node: pieceNode(ctx.newId(), pos.x, pos.y, { piece: kind, color, board: b.id, square, home: b.id }, ++z) });
   }
-  const slot = slots(doc, b, moving);
-  for (const p of [...pool, ...strangers]) changes.push(...moveTo(p, { board: b.id, ...slot(piece(p).color) }), set(p.id, 'z', ++z));
-  return { changes, select: [] };
+  const extras = [...pool, ...strangers];
+  if (removeExtras) changes.push(...extras.map((p): Change => ({ op: 'del', id: p.id })));
+  else {
+    const slot = slots(doc, b, moving);
+    for (const p of extras) changes.push(...moveTo(p, { board: b.id, ...slot(piece(p).color) }), set(p.id, 'z', ++z));
+  }
+  return { changes, z };
+}
+
+/** Set up one board (extras kept beside it). */
+export const setup: Command<{ id: string }> = (doc, a, ctx) => {
+  const b = boardArg(doc, a?.id);
+  if (!b) return [];
+  return { changes: arrange(doc, b, ctx, doc.topZ).changes, select: [] };
+};
+
+/**
+ * Reset table (core `registerReset`): every board back to its 32 pieces on their squares, extras
+ * deleted, pieces that belong to no board deleted. Orientation (flipped) and lock are kept.
+ */
+export const resetAll: Command<Record<string, never>> = (doc, _a, ctx) => {
+  const changes: Change[] = [];
+  let z = doc.topZ;
+  const boards = doc.visible.filter(isBoard);
+  for (const b of boards) {
+    const r = arrange(doc, b, ctx, z, true);
+    changes.push(...r.changes);
+    z = r.z;
+  }
+  for (const n of doc.visible) {
+    if (!isPiece(n)) continue;
+    const home = piece(n).home;
+    if ((!home || !isBoard(doc.get(home))) && !doc.carrierOf(n.id)) changes.push({ op: 'del', id: n.id });
+  }
+  return changes;
 };
 
 /** Turn the board around (view from the other side). Its pieces stay on their squares; captured pieces swap sides. */
@@ -256,4 +288,4 @@ export function duplicatePiece(node: CanvasNode): CanvasNode | null | undefined 
   return { ...node, text: pieceText(f), [FIELD]: f };
 }
 
-export const commands = { create, setup, flip, clear, lock, place, spawn };
+export const commands = { create, setup, flip, clear, lock, place, spawn, resetAll };

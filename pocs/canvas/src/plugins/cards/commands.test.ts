@@ -430,5 +430,19 @@ describe('facing is kept unless asked', () => {
     s.dispatch('cards.face', { ids: ['d'], faceUp: false });
     expect(cardsIn(s.doc, 'd').every((c) => !card(c).faceUp)).toBe(true);
   });
+
+  it('reset table: each home deck gets all its cards back face down and shuffled; piles go', () => {
+    const s = store();
+    s.dispatch('cards.setup', {});
+    const loose = s.doc.visible.filter(isCard).map((c) => c.id);
+    s.dispatch('cards.gather', { ids: loose.slice(0, 3) }); // a pile
+    s.dispatch('core.reset', {});
+    const deck = s.doc.nodes.find(isHomeDeck)!;
+    expect(cardsIn(s.doc, deck.id)).toHaveLength(52);
+    expect(cardsIn(s.doc, deck.id).every((c) => !card(c).faceUp)).toBe(true);
+    expect(s.doc.nodes.filter(isDeck)).toHaveLength(1);
+    expect(s.doc.visible).toHaveLength(1);
+    expect(allFaces(s)).toEqual(standardDeck().sort());
+  });
 });
 

@@ -13,6 +13,7 @@ export function registerChessLogic(store: Store) {
   for (const [name, cmd] of Object.entries(commands)) store.register(`chess.${name}`, cmd as Command);
   store.addRiderRule(boardIdOf);
   store.duplicateRules.push(duplicatePiece);
+  store.resets.push(commands.resetAll as Command);
   store.importFilters.push(repairImport);
   store.exportFilters.push(shapeExport);
 }
