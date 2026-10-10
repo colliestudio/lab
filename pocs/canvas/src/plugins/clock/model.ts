@@ -71,5 +71,8 @@ export function clockNode(id: string, x: number, y: number, base: number, inc: n
 }
 
 /** Readable text for JSON Canvas exports. */
+/** "5+3", "0.5+0" */
+export const controlText = (c: ClockField) => `${+(c.base / 60000).toFixed(2)}+${+(c.inc / 1000).toFixed(1)}`;
+
 export const clockText = (c: ClockField) =>
-  `Game clock ${Math.round(c.base / 60000)}+${Math.round(c.inc / 1000)}: ${nameOf(c, 0)} ${fmt(c.left0)} / ${nameOf(c, 1)} ${fmt(c.left1)}`;
+  `Game clock ${controlText(c)}: ${nameOf(c, 0)} ${fmt(c.left0)} / ${nameOf(c, 1)} ${fmt(c.left1)}`;

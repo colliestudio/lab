@@ -1,4 +1,4 @@
-import { fmt, nameOf, remaining, ticking, type ClockField, type Side } from './model';
+import { controlText, fmt, nameOf, remaining, ticking, type ClockField, type Side } from './model';
 
 const esc = (t: string) => t.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 
@@ -18,7 +18,7 @@ export function clockHtml(c: ClockField, now: number): string {
   const running = c.run !== undefined && ticking(c, c.run);
   const mid = c.flag !== undefined ? '' : running ? '❚❚' : '▶';
   const midTitle = running ? 'Pause' : c.paused ? 'Resume' : `Start ${nameOf(c, 0)}'s time`;
-  const control = `${Math.round(c.base / 60000)}+${Math.round(c.inc / 1000)}`;
+  const control = controlText(c);
   return (
     `<div class="ck-clock${c.paused ? ' ck-paused' : ''}">` +
     side(0) +
