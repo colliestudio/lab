@@ -100,6 +100,8 @@ export function handHtml(o: {
   label: string;
   color?: string;
   mine: boolean;
+  /** The owner left the table: greyed, with their last known name. */
+  away?: boolean;
   /** Show the resize handle (the owner's fixed frame). */
   resizable?: boolean;
   count?: number;
@@ -113,14 +115,14 @@ export function handHtml(o: {
   const color = o.color ?? '#2f4b7c';
   const tip = o.mine
     ? `Your hand: only you see the cards in the row${o.lane ? '; cards in the strip above are shown to everyone (drag a card up above the line to show it, back down to hide it)' : ''}${o.blind ? ' • See my cards is off: you see only the cards you flipped up for yourself' : ''} • click for actions • drag to move${o.resizable ? ' • drag the right edge to resize' : ''}`
-    : `${esc(o.label)}${o.lane ? ': cards in the strip are shown to the table' : ''} • click for actions • drag to move`;
-  const text = o.count === undefined ? o.label : tabText(o.label, o.count, o.lane ? o.shown : 0);
+    : `${esc(o.label)}${o.away ? ' (left the table: anyone can give it to someone)' : ''}${o.lane ? ': cards in the strip are shown to the table' : ''} • click for actions • drag to move`;
+  const text = (o.count === undefined ? o.label : tabText(o.label, o.count, o.lane ? o.shown : 0)) + (o.away ? ' (left)' : '');
   const strip = o.lane
     ? `<div class="pc-lane" style="height:${o.lane}px"><span>Shown to table</span></div><div class="pc-threshold" style="top:${o.threshold}px"><span>above the line: shown</span></div>`
     : '';
   const pile = o.pile ? `<div class="pc-pile" style="top:${o.rowTop}px"><i></i><i></i><i></i></div>` : '';
   return (
-    `<div class="pc-group pc-hand" style="--pc-group:${color}">` +
+    `<div class="pc-group pc-hand${o.away ? ' pc-away' : ''}" style="--pc-group:${color}">` +
     strip +
     pile +
     `<div class="pc-grip pc-group-tab" data-grip title="${tip}" style="background:${color}">` +

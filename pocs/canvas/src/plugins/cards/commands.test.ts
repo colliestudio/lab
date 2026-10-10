@@ -8,7 +8,7 @@ import { CARD_W, FIELD, card, concealedFrom, hasFixedFrame, isShown, cardNode, c
 import { HAND_W, PAD, RAISE, emptyHandSize, handSlots, liftedDrop, rowTop, slots, thresholdY } from './layout';
 import { handHtml, tabText } from './render';
 import { parkedCursor, revealText } from './handUx';
-import { showLabel } from './index';
+import { canGive, ownerAway, showLabel } from './index';
 
 function ctx(prefix = 'id', seed = 1): CommandCtx {
   let n = 0;
@@ -1075,5 +1075,83 @@ describe('hands: See my cards (blind hand)', () => {
     expect(card(t.doc.get('l1')!).mine).toBe(false);
     expect(hiddenFrom(t.doc, t.doc.get('l1')!, 'alice')).toBe(true);
     expect(s.dispatch('cards.seeMine', { id: 'd', on: false }).changes).toEqual([]); // hands only
+  });
+});
+
+describe('showdown undo', () => {
+  it('undo restores every hand (owner, cards, order, visibility flags), also the other player’s; redo works', () => {
+    const ya = new Y.Doc();
+    const yb = new Y.Doc();
+    ya.on('update', (u: Uint8Array, o: unknown) => o !== 'net' && Y.applyUpdate(yb, u, 'net'));
+    yb.on('update', (u: Uint8Array, o: unknown) => o !== 'net' && Y.applyUpdate(ya, u, 'net'));
+    const a = store(ctx('a'), ya);
+    const b = store(ctx('b'), yb);
+    a.load({ nodes: [deckNode('d', 0, 0, 1, undefined, true), ...standardDeck().slice(0, 6).map((f, i) => cardNode(`c${i}`, 200 + i * 130, 0, { face: f, faceUp: false, home: 'd' }, 2 + i))], edges: [] });
+    const ha = a.dispatch('cards.newHand', { owner: 'A', label: "A's hand", x: 0, y: 400 }).select![0];
+    a.dispatch('cards.drop', { target: ha, ids: ['c0', 'c1', 'c2'] });
+    a.dispatch('cards.allowShowing', { id: ha, on: true });
+    a.dispatch('cards.show', { ids: ['c1'], shown: true, by: 'A' });
+    a.dispatch('cards.fixedFrame', { id: ha, on: true });
+    const hb = b.dispatch('cards.newHand', { owner: 'B', label: "B's hand", x: 800, y: 400 }).select![0];
+    b.dispatch('cards.drop', { target: hb, ids: ['c3', 'c4'] });
+    b.dispatch('cards.hideCount', { id: hb, on: true });
+    b.dispatch('cards.seeMine', { id: hb, on: false });
+    b.dispatch('cards.flip', { ids: ['c4'], by: 'B' });
+    const snap = (s: Store) => JSON.stringify(s.doc.nodes.map(({ x: _x, y: _y, ...n }) => n).sort((p, q) => (p.id < q.id ? -1 : 1)));
+    const before = snap(a);
+    a.dispatch('cards.showdown', {});
+    expect(a.doc.nodes.filter(isDeck).map((n) => n.id)).toEqual(['d']);
+    a.undo();
+    expect(snap(a)).toBe(before);
+    expect(snap(b)).toBe(before);
+    expect(faces(a, ha)).toEqual(['AS', '2S', '3S']);
+    expect(faces(b, hb)).toEqual(['4S', '5S']);
+    expect(isShown(a.doc, a.doc.get('c1')!)).toBe(true);
+    expect(card(b.doc.get('c4')!).mine).toBe(false);
+    expect(concealedFrom(b.doc, b.doc.get('c0')!, 'B')).toBe(false);
+    expect(concealedFrom(a.doc, a.doc.get('c3')!, 'A')).toBe(true);
+    a.redo();
+    expect(a.doc.nodes.filter(isDeck).map((n) => n.id)).toEqual(['d']);
+    expect(b.doc.nodes.filter(isDeck).map((n) => n.id)).toEqual(['d']);
+  });
+});
+
+describe('give a hand to someone', () => {
+  function table() {
+    const s = withDeck(1, ...['KH', 'QS'].map((f, i) => cardNode(`l${i}`, 400 + i * 200, 400, { face: f, faceUp: false }, 100 + i)));
+    const h = s.dispatch('cards.newHand', { owner: 'alice', label: "Alice's hand", color: '#e6194b', x: 0, y: 600 }).select![0];
+    s.dispatch('cards.drop', { target: h, ids: ['l0', 'l1'] });
+    return { s, h };
+  }
+  it('the owner gives it: owner, label and color follow; the giver now sees backs, the new owner faces', () => {
+    const { s, h } = table();
+    expect(hiddenFrom(s.doc, s.doc.get('l0')!, 'alice')).toBe(false);
+    s.dispatch('cards.give', { id: h, to: 'bob', label: "Bob's hand", color: '#3cb44b', by: 'alice' });
+    const box = s.doc.get(h)!;
+    expect([box.owner, box.label, (box[FIELD] as any).color]).toEqual(['bob', "Bob's hand", '#3cb44b']);
+    expect(hiddenFrom(s.doc, s.doc.get('l0')!, 'alice')).toBe(true);
+    expect(hiddenFrom(s.doc, s.doc.get('l0')!, 'bob')).toBe(false);
+    expect(cardsIn(s.doc, h)).toHaveLength(2);
+  });
+  it('only the owner gives it, unless the owner left; anyone gives an unowned group; no one = a public group', () => {
+    const { s, h } = table();
+    expect(s.dispatch('cards.give', { id: h, to: 'carol', by: 'bob' }).changes).toEqual([]);
+    expect(s.dispatch('cards.give', { id: h, to: 'carol', label: "Carol's hand", by: 'bob', ownerAway: true }).changes.length).toBeGreaterThan(0);
+    expect(s.doc.get(h)!.owner).toBe('carol');
+    s.dispatch('cards.give', { id: h, to: null, by: 'carol' });
+    expect(s.doc.get(h)!.owner).toBeUndefined();
+    expect(hiddenFrom(s.doc, s.doc.get('l0')!, 'bob')).toBe(false); // public group
+    s.dispatch('cards.give', { id: h, to: 'bob', label: "Bob's hand", by: 'dave' });
+    expect(s.doc.get(h)!.owner).toBe('bob');
+    expect(s.dispatch('cards.give', { id: 'd', to: 'bob' }).changes).toEqual([]); // never the home deck
+  });
+  it('who may give, and who counts as away', () => {
+    const { s, h } = table();
+    const app = (viewer: string, peers: string[]) => ({ viewer, doc: s.doc, presence: { peers: () => peers.map((id) => ({ id })) } }) as any;
+    const box = s.doc.get(h)!;
+    expect(canGive(app('alice', ['bob']), box)).toBe(true);
+    expect(canGive(app('bob', ['alice']), box)).toBe(false);
+    expect(ownerAway(app('bob', []), box)).toBe(true); // Alice left
+    expect(canGive(app('bob', []), box)).toBe(true);
   });
 });

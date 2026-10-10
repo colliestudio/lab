@@ -41,6 +41,67 @@ export function registerCardsLogic(store: Store) {
 const me = (app: App) => app.presence?.me ?? loadPlayer();
 export const handLabelOf = (name: string) => `${name}'s hand`;
 
+/** Someone a hand can belong to: connected players (me first), and owners of hands who left (`away`). */
+export interface Seat {
+  id: string;
+  name: string;
+  color: string;
+  away?: boolean;
+}
+const ownerNameOf = (h: CanvasNode) => h.label?.replace(/’s hand$|'s hand$/, '') || 'Someone';
+export function seats(app: App): Seat[] {
+  const out: Seat[] = [];
+  const add = (p: Seat) => !out.some((x) => x.id === p.id) && out.push(p);
+  const m = me(app);
+  add({ id: m.id, name: m.name, color: m.color });
+  for (const p of app.presence?.peers() ?? []) add({ id: p.id, name: p.name, color: p.color });
+  for (const h of app.doc.nodes) if (isHand(h)) add({ id: h.owner!, name: ownerNameOf(h), color: (h[FIELD] as { color?: string }).color ?? '#888', away: true });
+  return out;
+}
+/** The owner of `box` is not here (left the room; in solo play: anyone but me). */
+export const ownerAway = (app: App, box: CanvasNode) => !!box.owner && box.owner !== app.viewer && !app.presence?.peers().some((p) => p.id === box.owner);
+/** May I give this away? Its owner, anyone for an unowned group, anyone when the owner left. */
+export const canGive = (app: App, box: CanvasNode) => !box.owner || box.owner === app.viewer || ownerAway(app, box);
+
+/** One row per seat (color dot, "(you)", "(left)" greyed), `current` checked. */
+function seatEntries(app: App, current: string | undefined, pick: (p: Seat) => void): MenuEntry[] {
+  return seats(app).map((p) => ({
+    label: `${p.name}${p.id === app.viewer ? ' (you)' : ''}${p.away ? ' (left)' : ''}`,
+    color: p.color,
+    muted: p.away,
+    checked: current === undefined ? undefined : p.id === current,
+    run: () => pick(p),
+  }));
+}
+
+/** Give to ▸ players… / No one (public group). */
+function giveMenu(app: App, box: CanvasNode): MenuEntry {
+  const give = (to: Seat | null) => () =>
+    app.dispatch('cards.give', { id: box.id, to: to?.id ?? null, label: to && handLabelOf(to.name), color: to?.color, by: app.viewer, ownerAway: ownerAway(app, box) });
+  return {
+    label: 'Give to',
+    disabled: canGive(app, box) ? false : `Only ${ownerNameOf(box)} can give it away`,
+    items: () => [...seatEntries(app, box.owner ?? '', (p) => give(p)()), { label: 'No one (public group)', separator: true, checked: !box.owner, run: give(null) }],
+  };
+}
+
+/** New hand ▸ players (default: me). */
+export function newHandFor(app: App, p: Seat, at?: { x: number; y: number }) {
+  const vp = app.viewport;
+  const root = app.view.root;
+  // preferred spot: bottom middle of the view (or `at`); the command slides it into free space
+  const [x, y] = at ? [at.x + 210, at.y + 230] : vp.toWorld(root.clientWidth / 2, root.clientHeight - 40);
+  const res = app.dispatch('cards.newHand', { owner: p.id, label: handLabelOf(p.name), color: p.color, x: x - 210, y: y - 230 });
+  const h = res.select?.[0] && app.node(res.select[0]);
+  if (h) {
+    const sx = h.x * vp.zoom + vp.x;
+    const sy = h.y * vp.zoom + vp.y;
+    const offscreen = sx < 0 || sy < 0 || sx + h.width * vp.zoom > root.clientWidth || sy + h.height * vp.zoom > root.clientHeight;
+    if (offscreen) vp.set(root.clientWidth / 2 - (h.x + h.width / 2) * vp.zoom, root.clientHeight - (h.y + h.height) * vp.zoom - 40, vp.zoom);
+  }
+}
+export const newHandEntries = (app: App, at?: { x: number; y: number }): MenuEntry[] => seatEntries(app, undefined, (p) => newHandFor(app, p, at));
+
 /** What a container is called: "Deck", "Group", "Alice's hand" (menu titles, tabs). */
 export function kindName(box: CanvasNode): string {
   const k = kindOf(box);
@@ -87,18 +148,18 @@ function dealMenu(app: App, id: string): MenuEntry {
 function turnIntoMenu(app: App, box: CanvasNode): MenuEntry {
   const id = box.id;
   const kind = kindOf(box);
-  const mine = box.owner === app.viewer;
+  const locked = kind === 'hand' && !canGive(app, box) ? `Only ${ownerNameOf(box)} can make it public` : false;
   const to = (k: Kind) => () => app.dispatch('cards.turnInto', { id, kind: k, owner: me(app).id, label: handLabelOf(me(app).name), color: me(app).color });
   const hand: MenuEntry = isHomeDeck(box)
     ? { label: 'Hand', disabled: 'The home deck stays public (gather all fills it)' }
-    : kind === 'hand' && !mine
-      ? { label: 'Hand (make it yours)', run: () => app.dispatch('cards.own', { id, owner: me(app).id, label: handLabelOf(me(app).name), color: me(app).color }) }
-      : { label: 'Hand (others see backs)', checked: kind === 'hand', disabled: kind === 'hand', run: to('hand') };
+    : kind === 'hand'
+      ? { label: 'Hand', checked: true, disabled: true }
+      : { label: 'Hand for', items: () => seatEntries(app, undefined, (p) => app.dispatch('cards.turnInto', { id, kind: 'hand', owner: p.id, label: handLabelOf(p.name), color: p.color })) };
   return {
     label: 'Turn into',
     items: [
-      { label: kind === 'hand' ? 'Deck (makes it public)' : 'Deck', hint: kind === 'group' ? 'L' : undefined, checked: kind === 'deck', disabled: kind === 'deck', run: to('deck') },
-      { label: kind === 'hand' ? 'Group (makes it public)' : 'Group', hint: kind === 'deck' ? 'L' : undefined, checked: kind === 'group', disabled: kind === 'group', run: to('group') },
+      { label: kind === 'hand' ? 'Deck (makes it public)' : 'Deck', hint: kind === 'group' ? 'L' : undefined, checked: kind === 'deck', disabled: kind === 'deck' || locked, run: to('deck') },
+      { label: kind === 'hand' ? 'Group (makes it public)' : 'Group', hint: kind === 'deck' ? 'L' : undefined, checked: kind === 'group', disabled: kind === 'group' || locked, run: to('group') },
       hand,
     ],
   };
@@ -145,7 +206,7 @@ function showEntries(app: App, cards: CanvasNode[]): MenuEntry[] {
 
 /** A hand's own entries: show / hide all, then its options. Only the owner gets them. */
 function handMenu(app: App, box: CanvasNode, ux: HandUx): MenuEntry[] {
-  if (box.owner !== app.viewer) return [];
+  if (box.owner !== app.viewer) return canGive(app, box) ? [giveMenu(app, box)] : [];
   const cards = cardsIn(app.doc, box.id);
   const shown = cards.filter((c) => shownIn(box, c)).length;
   const out: MenuEntry[] = [];
@@ -170,6 +231,7 @@ function handMenu(app: App, box: CanvasNode, ux: HandUx): MenuEntry[] {
       ],
     },
     { label: 'View as others', hint: `hold ${VIEW_AS_KEY}`, checked: ux.sticky(), run: () => ux.toggle() },
+    giveMenu(app, box),
   );
   return out;
 }
@@ -261,6 +323,19 @@ export const cardsPlugin: Plugin = {
       });
     const nearHand = (n: CanvasNode) =>
       app.doc.nodes.some((h) => isHand(h) && n.x < h.x + h.width + 60 && n.x + n.width > h.x - 60 && n.y < h.y + h.height + 60 && n.y + n.height > h.y - 60);
+    // who's here decides which hands are "away" (greyed, reassignable): re-render when that changes
+    let peersKey = '';
+    let hooked = false;
+    const hookPresence = () => {
+      if (hooked || !app.presence) return;
+      hooked = true;
+      app.presence.onChange(() => {
+        const k = app.presence!.peers().map((p) => p.id).sort().join();
+        if (k === peersKey) return;
+        peersKey = k;
+        app.view.render();
+      });
+    };
     const homeBox = (node: CanvasNode) => app.view.boxOf(app.doc.parentOf(node.id) ?? '');
     /** Drag the hand's right edge: its width (one undo step); the cards compress or spread to fit. */
     const resizeFrom = (id: string, e: PointerEvent) => {
@@ -335,12 +410,14 @@ export const cardsPlugin: Plugin = {
             el.innerHTML = groupHtml(cards.length, { hand: false, home: isHomeDeck(node), label: kindName(node), color: f.color });
             return;
           }
+          hookPresence();
           const mine = node.owner === viewer;
           const asOthers = !mine || ux.asOthers();
           el.innerHTML = handHtml({
             label: kindName(node),
             color: f.color,
             mine,
+            away: ownerAway(app, node),
             resizable: mine && hasFixedFrame(node),
             count: asOthers && hidesCount(node) ? undefined : cards.length,
             shown: cards.filter((c) => shownIn(node, c)).length,
@@ -362,7 +439,7 @@ export const cardsPlugin: Plugin = {
         const f = node[FIELD] as { color?: string };
         if (isHand(node)) {
           const shown = cards.filter((c) => shownIn(node, c)).length;
-          return `hand:${cards.length}:${shown}:${isBlind(node)}:${allowsShowing(node)}:${hidesCount(node)}:${hasFixedFrame(node)}:${ux.asOthers()}:${node.label}:${f.color}:${node.owner === viewer}:${layoutOf(node)}`;
+          return `hand:${ownerAway(app, node)}:${cards.length}:${shown}:${isBlind(node)}:${allowsShowing(node)}:${hidesCount(node)}:${hasFixedFrame(node)}:${ux.asOthers()}:${node.label}:${f.color}:${node.owner === viewer}:${layoutOf(node)}`;
         }
         return `${cards.length}:${isHomeDeck(node)}:${layoutOf(node)}:${node.label}:${f.color}:${node.owner === viewer}:${top ? card(top).face + card(top).faceUp : ''}`;
       },
@@ -439,7 +516,10 @@ export const cardsPlugin: Plugin = {
         const hands = a.doc.nodes.filter(isHand).length;
         return {
           title: 'Table',
-          entries: [{ label: 'Put all hands on table (face up)', disabled: hands ? false : 'No hands on the table', run: () => a.dispatch('cards.showdown', {}) }],
+          entries: [
+            { label: 'New hand for', items: () => newHandEntries(a, a.view.menuPoint ?? undefined) },
+            { label: 'Put all hands on table (face up)', disabled: hands ? false : 'No hands on the table', run: () => a.dispatch('cards.showdown', {}) },
+          ],
         };
       }
       const cards = sel.filter(isCardish);
@@ -461,14 +541,15 @@ export const cardsPlugin: Plugin = {
             { label: 'Group', hint: 'G', run: make() },
             { label: 'Group, face down', run: make(undefined, false) },
             {
-              label: 'Hand (others see backs)',
-              run: () => {
-                a.store.newUndoStep();
-                a.store.merged(() => {
-                  const g = a.dispatch('cards.gather', { ids: ids(selectedCards(a)) }).select?.[0];
-                  if (g) a.dispatch('cards.turnInto', { id: g, kind: 'hand', owner: me(a).id, label: handLabelOf(me(a).name), color: me(a).color });
-                });
-              },
+              label: 'Hand for',
+              items: () =>
+                seatEntries(a, undefined, (p) => {
+                  a.store.newUndoStep();
+                  a.store.merged(() => {
+                    const g = a.dispatch('cards.gather', { ids: ids(selectedCards(a)) }).select?.[0];
+                    if (g) a.dispatch('cards.turnInto', { id: g, kind: 'hand', owner: p.id, label: handLabelOf(p.name), color: p.color });
+                  });
+                }),
             },
           ],
         });

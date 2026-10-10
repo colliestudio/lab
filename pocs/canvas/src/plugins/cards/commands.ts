@@ -507,6 +507,20 @@ export const own: Command<{ id: string; owner: string | null; label?: string; co
   return changes;
 };
 
+/**
+ * Give a hand (or a group) to player `to` (label and color follow them), or to no one (`to: null`: a
+ * public group). Allowed for the current owner (`by`), for anyone on an unowned group, and for anyone
+ * when the owner has left (`ownerAway`). Giving your hand away hides its private cards from you.
+ */
+export const give: Command<{ id: string; to: string | null; label?: string; color?: string; by?: string; ownerAway?: boolean }> = (doc, a, ctx) => {
+  const box = typeof a?.id === 'string' ? doc.get(a.id) : undefined;
+  if (!box || !isDeck(box) || isHomeDeck(box)) return [];
+  if (box.owner && a.by !== undefined && box.owner !== a.by && a.ownerAway !== true) return [];
+  if (a.to === null) return own(doc, { id: box.id, owner: null }, ctx);
+  if (typeof a.to !== 'string' || !a.to) return [];
+  return own(doc, { id: box.id, owner: a.to, label: a.label, color: a.color }, ctx);
+};
+
 /** L: a deck becomes a fan group, a group becomes a deck (home deck too). A hand stays spread. */
 export const toggleStack: Command<{ id: string }> = (doc, a, ctx) => {
   const box = typeof a?.id === 'string' ? doc.get(a.id) : undefined;
@@ -706,4 +720,4 @@ export const resetAll: Command<Record<string, never>> = (doc, _a, ctx) => {
   return changes;
 };
 
-export const commands = { flip, show, seeMine, allowShowing, hideCount, fixedFrame, resizeHand, face, move, shuffle, draw, deal, gather, recall, drop, spread, setup, repairHomes, pullOut, setLayout, ungroup, sort, newHand, own, toggleStack, handLabel, migrateHands, turnInto, putOnTable, showdown, resetAll };
+export const commands = { give, flip, show, seeMine, allowShowing, hideCount, fixedFrame, resizeHand, face, move, shuffle, draw, deal, gather, recall, drop, spread, setup, repairHomes, pullOut, setLayout, ungroup, sort, newHand, own, toggleStack, handLabel, migrateHands, turnInto, putOnTable, showdown, resetAll };
