@@ -19,6 +19,8 @@ export interface ObjectType {
    */
   renderKey?(node: CanvasNode, ctx: RenderCtx): string;
   onDoubleClick?(node: CanvasNode, app: App): void;
+  /** Plain click (no drag, no Shift). `down` = the pointerdown. Return true if handled (skips double-click). */
+  onClick?(node: CanvasNode, down: PointerEvent, app: App): boolean | void;
   /** A control inside the rendered object (`data-action="name"`) was pressed. Never starts a drag. */
   onAction?(node: CanvasNode, action: string, app: App): void;
   /**

@@ -163,23 +163,8 @@
   box-shadow: none;
 }
 .pc-grip.pc-home {
-  background: #1d3b8a;
+  background: #233257;
 }
 .pc-grip.pc-home:hover {
-  background: #28499f;
-}
-.pc-gather {
-  margin-left: 6px;
-  margin-right: -6px;
-  height: 18px;
-  padding: 0 8px;
-  border: 0;
-  border-radius: 9px;
-  background: #ffd54a;
-  color: #222;
-  font: 700 11px/18px system-ui, sans-serif;
-  cursor: pointer;
-}
-.pc-gather:hover {
-  background: #ffe27a;
+  background: #2e4170;
 }

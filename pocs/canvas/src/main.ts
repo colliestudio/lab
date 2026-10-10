@@ -1,31 +1,19 @@
 import './style.css';
-import { App, mountZoomControl, openFile, parse, persistLocally, persistViewport, resetFileHandle, saveFile, type CanvasDoc, type CanvasNode } from './core';
+import { App, mountZoomControl, openFile, parse, persistLocally, persistViewport, resetFileHandle, saveFile, type CanvasDoc } from './core';
 import { cardsPlugin } from './plugins/cards';
+import { mountHelp, removeHelpNote } from './help';
 
 const DB_NAME = 'canvas-poc';
 const VIEW_KEY = 'canvas-poc:view';
 
 const app = new App(document.getElementById('table')!);
 app.use(cardsPlugin);
+app.store.migrations.push(removeHelpNote);
 
-const HELP = `Card table
-
-Drag cards • double-click or F to flip
-Pan: drag empty space, Space+drag, wheel (⇧wheel sideways), two-finger scroll
-Zoom: ⌘wheel or pinch • ⌘+ / ⌘− • ⌘0 100% • 0 fit • controls bottom right
-Shift+drag: box select • Shift+click: add to selection
-Drop a card squarely onto a card or deck to stack it (it lights up)
-Drag a deck to take its top card • drag its ⠿ tab (or Alt+drag) to move the deck
-Deck: S shuffle • D draw (⇧D face down) • 1–9 deal N face up (⇧ face down) • E spread
-Number keys and D act on the deck under the mouse, else the selected one
-Gather everything back: click "Gather N" on the blue deck tab, or ⇧G over any card
-G stacks the selection into a pile • stacked cards take the pile's facing • right-click: more
-⌘Z undo • ⇧⌘Z redo • ⌘S save .canvas • ⌘O open`;
 
 function newTable() {
   resetFileHandle();
-  const help: CanvasNode = { id: 'help', type: 'text', x: -40, y: -480, width: 640, height: 340, text: HELP, z: 1 };
-  app.store.load({ nodes: [help], edges: [] });
+  app.store.load({ nodes: [], edges: [] });
   app.dispatch('cards.setup', { x: 0, y: 0 });
   app.store.undoManager.clear();
   app.store.select([]);
@@ -80,7 +68,12 @@ button('Open…', 'Open a .canvas file (⌘O)', doOpen);
 button('Save', 'Save as .canvas (⌘S)', () => doSave());
 button('Undo', 'Undo (⌘Z)', () => app.store.undo());
 button('Redo', 'Redo (⇧⌘Z)', () => app.store.redo());
-bar.append(status);
+const helpBtn = document.createElement('button');
+helpBtn.textContent = '?';
+helpBtn.title = 'Controls (?)';
+helpBtn.className = 'help-btn';
+bar.append(helpBtn, status);
+mountHelp(app, helpBtn);
 mountZoomControl(app);
 
 app.registerKey({ key: 'mod+s', run: () => doSave() });

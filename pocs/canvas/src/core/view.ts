@@ -188,12 +188,15 @@ export class View {
       if (node) type?.onAction?.(node, actionEl.dataset.action!, this.app);
       return;
     }
-    if (this.spaceDown || e.button === 1 || (!nodeEl && !e.shiftKey)) {
+    // Pan: Space+drag or middle button (wheel pans too). Plain drag on empty table = box select;
+    // Shift adds to the current selection.
+    if (this.spaceDown || e.button === 1) {
       this.gesture = { kind: 'pan', last: p, start: p, moved: false, onEmpty: !nodeEl };
       return;
     }
     if (!nodeEl) {
-      this.gesture = { kind: 'marquee', start: this.world_(p), base: new Set(this.app.store.selection) };
+      this.gesture = { kind: 'marquee', start: this.world_(p), base: new Set(e.shiftKey ? this.app.store.selection : []) };
+      if (!e.shiftKey) this.app.store.select([]);
       return;
     }
 
@@ -306,6 +309,11 @@ export class View {
     }
     // plain click
     if (!g.shift && this.app.store.selection.size > 1) this.app.store.select([g.clickId]);
+    const clicked = this.app.node(g.clickId);
+    if (clicked && !g.shift && this.app.typeOf(clicked)?.onClick?.(clicked, g.down, this.app)) {
+      this.lastClick = { id: '', t: 0 };
+      return;
+    }
     const now = performance.now();
     if (this.lastClick.id === g.clickId && now - this.lastClick.t < DOUBLE_CLICK_MS) {
       this.lastClick = { id: '', t: 0 };
@@ -435,6 +443,15 @@ export class View {
     if (!nodeEl) store.select([]);
     const selected = this.app.selected();
     const items = this.app.menu.filter((i) => i.when(this.app, selected));
+    const p = this.local(e);
+    this.openMenu(
+      items.map((i) => ({ label: i.label, hint: i.hint, run: () => i.run(this.app, this.app.selected()) })),
+      p,
+    );
+  }
+
+  /** Show a menu at a table point, or anchored below an element (e.g. an object's tab). */
+  openMenu(items: { label: string; hint?: string; run: () => void }[], at: { x: number; y: number } | Element) {
     this.closeMenu();
     if (!items.length) return;
     const menu = el('div', 'cv-menu');
@@ -445,11 +462,16 @@ export class View {
       b.children[1].textContent = item.hint ?? '';
       b.addEventListener('click', () => {
         this.closeMenu();
-        item.run(this.app, this.app.selected());
+        item.run();
       });
       menu.append(b);
     }
-    const p = this.local(e);
+    let p: Pt;
+    if (at instanceof Element) {
+      const r = at.getBoundingClientRect();
+      const root = this.root.getBoundingClientRect();
+      p = { x: r.left - root.left, y: r.bottom - root.top + 4 };
+    } else p = at;
     menu.style.left = `${p.x}px`;
     menu.style.top = `${p.y}px`;
     menu.addEventListener('pointerdown', (ev) => ev.stopPropagation());
@@ -457,7 +479,7 @@ export class View {
     this.menuEl = menu;
   }
 
-  private closeMenu() {
+  closeMenu() {
     this.menuEl?.remove();
     this.menuEl = null;
   }

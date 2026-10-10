@@ -28,6 +28,22 @@ export function registerCardsLogic(store: Store) {
   store.migrations.push(commands.repairHomes as Command);
 }
 
+/** Actions offered by a deck's tab, all aimed at that deck. */
+function tabMenu(app: App, deck: CanvasNode) {
+  const id = deck.id;
+  const home = homeFor(app.doc, deck);
+  const items: { label: string; hint?: string; run: () => void }[] = [];
+  if (home) items.push({ label: `Gather all cards (${outCount(app.doc, home)} out)`, hint: '⇧G', run: () => app.dispatch('cards.recall', { id: home }) });
+  items.push(
+    { label: 'Shuffle', hint: 'S', run: () => app.dispatch('cards.shuffle', { ids: [id] }) },
+    { label: 'Deal 3', hint: '3', run: () => app.dispatch('cards.deal', { id, count: 3, faceUp: true }) },
+    { label: 'Deal 5', hint: '5', run: () => app.dispatch('cards.deal', { id, count: 5, faceUp: true }) },
+    { label: 'Flip', hint: 'F', run: () => app.dispatch('cards.flip', { ids: [id] }) },
+    { label: 'Spread', hint: 'E', run: () => app.dispatch('cards.spread', { id, step: Math.round(CARD_W / 4) }) },
+  );
+  return items;
+}
+
 export const cardsPlugin: Plugin = {
   id: 'cards',
   setup(app) {
@@ -55,17 +71,20 @@ export const cardsPlugin: Plugin = {
       render(node, el, { doc }) {
         const cards = cardsIn(doc, node.id);
         const top = cards.at(-1);
-        el.innerHTML = deckHtml(top && card(top), cards.length, isHomeDeck(node), isHomeDeck(node) ? outCount(doc, node.id) : 0);
+        el.innerHTML = deckHtml(top && card(top), cards.length, isHomeDeck(node));
       },
       renderKey(node, { doc }) {
         const cards = cardsIn(doc, node.id);
         const top = cards.at(-1);
-        const out = isHomeDeck(node) ? outCount(doc, node.id) : -1;
-        return `${cards.length}:${out}:${top ? card(top).face + card(top).faceUp : ''}`;
+        return `${cards.length}:${isHomeDeck(node)}:${top ? card(top).face + card(top).faceUp : ''}`;
       },
       onDoubleClick: flipOne,
-      onAction: (node, action, app) => {
-        if (action === 'recall') app.dispatch('cards.recall', { id: node.id });
+      // Click on the tab (no drag): a small menu of deck actions anchored to it.
+      onClick(node, down, app) {
+        const tab = (down.target as Element | null)?.closest?.('[data-grip]');
+        if (!tab) return false;
+        app.view.openMenu(tabMenu(app, node), tab);
+        return true;
       },
       // Dragging a deck takes its top card (orientation kept). The grip tab or Alt+drag moves the deck.
       onDragStart(node, down, app) {
