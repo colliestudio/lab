@@ -7,7 +7,7 @@ export function serialize(doc: CanvasDoc): string {
 
 export function parse(text: string): CanvasDoc {
   const raw = JSON.parse(text) as unknown;
-  if (!raw || typeof raw !== 'object') throw new Error('not a JSON Canvas file');
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('not a JSON Canvas file');
   const { nodes = [], edges = [] } = raw as { nodes?: unknown; edges?: unknown };
   if (!Array.isArray(nodes) || !Array.isArray(edges)) throw new Error('nodes/edges must be arrays');
   for (const n of nodes) {
