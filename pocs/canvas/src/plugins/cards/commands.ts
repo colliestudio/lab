@@ -133,7 +133,7 @@ export const gather: Command<{ ids: string[]; faceUp?: boolean }> = (doc, a, ctx
   const total = nodes.reduce((k, n) => k + (isDeck(n) ? cardsIn(doc, n.id).length : 1), 0);
   if (nodes.length < 2 || total < 2) return [];
 
-  // Facing of the result: explicit arg, else an existing deck's (its top card), else face down.
+  // Facing of the result: explicit arg, else an existing deck's (its top card), else the anchor card's.
   const anchor = nodes[0];
   const changes: Change[] = [];
   let deck: CanvasNode;
@@ -147,7 +147,7 @@ export const gather: Command<{ ids: string[]; faceUp?: boolean }> = (doc, a, ctx
   } else {
     deck = deckNode(ctx.newId(), anchor.x, anchor.y, doc.topZ + 1, packOf(anchor));
     order = 0;
-    faceUp = isBool(a.faceUp) ? a.faceUp : false;
+    faceUp = isBool(a.faceUp) ? a.faceUp : !!card(anchor).faceUp;
     changes.push({ op: 'add', node: deck });
   }
   for (const n of nodes) {

@@ -183,7 +183,7 @@ describe('home decks, gather all, uniform facing', () => {
     expect(s.doc.get(pile)).toBeDefined();
   });
 
-  it('everything entering a deck takes its facing: gather, drop, recall; new deck = face down', () => {
+  it('everything entering a deck takes its facing: gather, drop, recall; new pile = the target card\'s facing', () => {
     const up = (c: string) => card(s.doc.get(c)!).faceUp;
     const s = withDeck(2, cardNode('u1', 300, 0, { face: 'KH', faceUp: true }, 50), cardNode('u2', 500, 0, { face: 'QH', faceUp: true }, 51), cardNode('u3', 700, 0, { face: 'JH', faceUp: false }, 52));
     // drop a face-up card on a face-down deck
@@ -193,10 +193,10 @@ describe('home decks, gather all, uniform facing', () => {
     s.dispatch('cards.flip', { ids: ['d'] });
     s.dispatch('cards.gather', { ids: ['d', 'u3'] });
     expect(cardsIn(s.doc, 'd').every((c) => card(c).faceUp)).toBe(true);
-    // two face-up loose cards make a new face-down deck
+    // two face-up loose cards make a face-up pile (the target's facing)
     s.dispatch('cards.spread', { id: 'd' });
     const r = s.dispatch('cards.drop', { target: 'u2', ids: ['u1'] });
-    expect(cardsIn(s.doc, r.select![0]).map((c) => card(c).faceUp)).toEqual([false, false]);
+    expect(cardsIn(s.doc, r.select![0]).map((c) => card(c).faceUp)).toEqual([true, true]);
     // recall: face down, even if the deck was face up
     s.dispatch('cards.recall', { id: 'd' });
     expect(cardsIn(s.doc, 'd').length).toBeGreaterThan(0);
