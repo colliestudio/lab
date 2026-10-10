@@ -226,6 +226,23 @@
     0 0 14px 2px color-mix(in srgb, var(--pc-owner) 55%, transparent),
     0 6px 14px rgba(0, 0, 0, 0.3);
 }
+/* my own hand: the card under the pointer lifts a little (which one a press would take) */
+.cv-node[data-mine]:hover > .pc-card {
+  transform: translateY(-10px);
+}
+/* where a drop into a hand, row or fan would go */
+.pc-insert {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 4px;
+  margin-left: -2px;
+  border-radius: 2px;
+  background: #ffd54a;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35), 0 0 10px rgba(255, 213, 74, 0.8);
+  z-index: 1000001;
+  pointer-events: none;
+}
 /* a selected card in a hand: lifted, with a strong outline on the card itself */
 .cv-node[data-inhand].cv-selected {
   outline: none;

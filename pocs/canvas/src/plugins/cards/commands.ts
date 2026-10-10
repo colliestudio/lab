@@ -1,7 +1,7 @@
 import { isIds, isNum, pick, set, toFront, type CanvasNode, type Change, type Command, type CommandResult, type DocView, type Events } from '../../core';
-import { dealEvent, drawEvent, facingEvents, giveEvent, moveEvents, putOnTableEvent, recallEvent, showEvents, showdownEvent, shuffleEvents } from './events';
+import { dealEvent, dealHandsEvent, drawEvent, facingEvents, giveEvent, moveEvents, putOnTableEvent, recallEvent, showEvents, showdownEvent, shuffleEvents } from './events';
 import { PACK, CARD_H, CARD_W, FIELD, RANKS, areaOf, enterOf, pileAt, allowsShowing, card, hidesCount, isBlind, shownIn, cardNode, cardsHomedAt, cardsIn, deckNode, groupNode, isCard, isCardish, isDeck, isHand, isHomeDeck, isSpreadOut, isStacked, isSpot, layoutOf, packOf, parseFace, roomIn, standardDeck, type DeckField, type Layout } from './deck';
-import { HAND_MAX_W, HAND_MIN_W, PAD, RAISE, emptyHandSize, handSlotIndex, laneOf, slotIndex, slots } from './layout';
+import { HAND_MAX_W, HAND_MIN_W, PAD, RAISE, emptyHandSize, handSizeFor, handSlotIndex, laneOf, slotIndex, slots } from './layout';
 import { getPack, packOrder } from './packs';
 
 /**
@@ -33,6 +33,7 @@ const logged = (r: CommandResult | Change[], events: Events): CommandResult => {
   return res.changes.length ? { ...res, events } : res;
 };
 const isBool = (v: unknown): v is boolean => typeof v === 'boolean';
+const okColor = (c: unknown) => (typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c) ? c : undefined);
 
 export function shuffled<T>(xs: readonly T[], random: () => number): T[] {
   const a = xs.slice();
@@ -302,6 +303,60 @@ export const deal: Command<{ id: string; count: number; faceUp?: boolean }> = (d
   return { changes, select: deckLeft ? [deck.id] : dealt.map((c) => c.id), events: (after) => [dealEvent(from, dealt, after)] };
 };
 
+export interface DealSeat {
+  id: string;
+  label?: string;
+  color?: string;
+}
+/**
+ * Deal to players' hands: round-robin from the top of deck `id`, `count` each (or `'even'`: as many
+ * each as the deck allows evenly), into each player's hand (the first hand they own; a new private
+ * hand where there is none, in a row below the deck). Dealt cards are private (face down). What's
+ * left stays in the deck. One undo step, one log event.
+ */
+export const dealHands: Command<{ id: string; count: number | 'even'; players: DealSeat[] }> = (doc, a, ctx) => {
+  const deck = typeof a?.id === 'string' ? doc.get(a.id) : undefined;
+  if (!deck || !isDeck(deck) || isHand(deck) || !Array.isArray(a.players)) return [];
+  const seen = new Set<string>();
+  const players = a.players.filter((p): p is DealSeat => !!p && typeof p.id === 'string' && !!p.id && !seen.has(p.id) && !!seen.add(p.id));
+  const pile = cardsIn(doc, deck.id).slice();
+  if (!players.length || !pile.length) return [];
+  const per = a.count === 'even' ? Math.floor(pile.length / players.length) : isNum(a.count) && a.count >= 1 ? Math.min(52, Math.floor(a.count)) : 0;
+  if (per < 1) return [];
+  const changes: Change[] = [];
+  // each player's hand: theirs, or a new one in a row below the deck
+  const p0 = pileAt(deck);
+  const size = handSizeFor(per);
+  const placed: { x: number; y: number; width: number; height: number }[] = [];
+  let z = Math.floor(doc.topZ);
+  const hands = players.map((p) => {
+    const own = doc.nodes.find((n) => isHand(n) && n.owner === p.id);
+    if (own) return { box: own, order: topOrder(doc, own.id), cards: [] as CanvasNode[] };
+    const want = { x: p0.x + CARD_W / 2 - size.w / 2 + placed.length * (size.w + 40), y: p0.y + CARD_H + 80 };
+    const at = freeSpot(doc, want.x, want.y, size.w, size.h, placed);
+    placed.push({ x: at.x, y: at.y, width: size.w, height: size.h });
+    const label = typeof p.label === 'string' ? p.label.slice(0, 40) : 'Hand';
+    const box = groupNode(ctx.newId(), at.x, at.y, ++z, { layout: 'fan', owner: p.id, label, color: okColor(p.color) });
+    changes.push({ op: 'add', node: box });
+    return { box, order: 0, cards: [] as CanvasNode[] };
+  });
+  for (let r = 0; r < per && pile.length; r++)
+    for (const h of hands) {
+      const c = pile.pop();
+      if (!c) break;
+      h.cards.push(c);
+      changes.push(...stackInto(c, h.box, ++h.order), ...conform(c, false));
+    }
+  changes.push(...shrunk(deck, pile));
+  const counts = hands.map((h) => h.cards.length);
+  const deckLeft = persists(deck) || pile.length > 1;
+  return {
+    changes,
+    select: deckLeft ? [deck.id] : [],
+    events: [dealHandsEvent(deck, hands.map((h) => h.box), counts)],
+  };
+};
+
 /**
  * G / stacking: put cards and containers together. If one of them is a container (deck, group, hand)
  * the rest go into it, on top; otherwise they become a new group (`layout`, default fan) where the
@@ -352,6 +407,70 @@ export const pullOut: Command<{ id: string; x?: number; y?: number }> = (doc, a)
   const changes = release(c, Math.round(isNum(a.x) ? a.x : c.x), Math.round(isNum(a.y) ? a.y : c.y), Math.floor(doc.topZ) + 1);
   changes.push(...shrunk(box, cardsIn(doc, from).filter((x) => x.id !== c.id)));
   return { changes, select: [c.id], events: (after) => moveEvents(doc, after, [c.id]) };
+};
+
+/** How far apart cards put down together on the table lie (they overlap, every corner readable). */
+export const PUT_DOWN_STEP = 44;
+
+/**
+ * Put cards down on the table together (a play from a hand dropped beside every container): in the
+ * given order, overlapping left to right from (x, y), out of whatever they were in. `faceUp`: cards
+ * that come out of a hand land this way up (playing a card implies face up); the rest keep theirs.
+ */
+export const putDown: Command<{ ids: string[]; x: number; y: number; faceUp?: boolean }> = (doc, a) => {
+  if (!isIds(a?.ids) || !isNum(a.x) || !isNum(a.y)) return [];
+  const seen = new Set<string>();
+  const cards = a.ids.map((id) => doc.get(id)).filter((c): c is CanvasNode => !!c && isCard(c) && doc.isVisible(c.id) && !seen.has(c.id) && !!seen.add(c.id));
+  if (!cards.length) return [];
+  const z = Math.floor(doc.topZ);
+  const changes: Change[] = [];
+  const from = new Map<string, CanvasNode>();
+  cards.forEach((c, i) => {
+    const h = handOfCard(doc, c);
+    changes.push(...release(c, Math.round(a.x + i * PUT_DOWN_STEP), Math.round(a.y), z + 1 + i));
+    if (h && isBool(a.faceUp)) changes.push(...conform(c, a.faceUp));
+    const p = doc.parentOf(c.id);
+    if (p) from.set(p, doc.get(p)!);
+  });
+  for (const box of from.values()) changes.push(...shrunk(box, cardsIn(doc, box.id).filter((x) => !seen.has(x.id))));
+  const ids = cards.map((c) => c.id);
+  return logged({ changes, select: ids }, (after) => moveEvents(doc, after, ids));
+};
+
+/**
+ * Move cards within the group or hand they're in: `by` steps left (-1) / right (+1), or `to` its start
+ * / end. Selected cards move as a block, keeping their order; in a hand they stay in their part (the
+ * shown strip or the private row). Only the order changes (never facing). Cards in other containers are ignored.
+ */
+export const reorder: Command<{ ids: string[]; by?: number; to?: 'start' | 'end' }> = (doc, a) => {
+  if (!isIds(a?.ids) || (!isNum(a.by) && a.to !== 'start' && a.to !== 'end')) return [];
+  const first = a.ids.map((id) => doc.get(id)).find((n) => !!n && isCard(n) && !!doc.parentOf(n.id));
+  const boxId = first && doc.parentOf(first.id);
+  const box = boxId ? doc.get(boxId) : undefined;
+  if (!first || !box || !isSpreadOut(box)) return [];
+  const all = cardsIn(doc, box.id);
+  const inPart = (c: CanvasNode) => !isHand(box) || shownIn(box, c) === shownIn(box, first);
+  const part = all.filter(inPart);
+  const picked = new Set(a.ids.filter((id) => part.some((c) => c.id === id)));
+  let next = part.slice();
+  if (a.to) {
+    const sel = next.filter((c) => picked.has(c.id));
+    const rest = next.filter((c) => !picked.has(c.id));
+    next = a.to === 'start' ? [...sel, ...rest] : [...rest, ...sel];
+  } else {
+    const steps = Math.min(Math.abs(Math.trunc(a.by!)), part.length);
+    for (let k = 0; k < steps; k++) {
+      if (a.by! < 0) {
+        for (let i = 1; i < next.length; i++) if (picked.has(next[i].id) && !picked.has(next[i - 1].id)) [next[i - 1], next[i]] = [next[i], next[i - 1]];
+      } else {
+        for (let i = next.length - 2; i >= 0; i--) if (picked.has(next[i].id) && !picked.has(next[i + 1].id)) [next[i], next[i + 1]] = [next[i + 1], next[i]];
+      }
+    }
+  }
+  // the part's cards take the part's slots in the whole list, in their new order
+  let k = 0;
+  const full = all.map((c) => (inPart(c) ? next[k++] : c));
+  return full.flatMap((c, i) => (card(c).order === i + 1 ? [] : [set(c.id, F('order'), i + 1)]));
 };
 
 /** Changes that switch `box` to `layout`, keeping the top-left of its cards where it is. No checks. */
@@ -470,8 +589,8 @@ export const ungroup: Command<{ id: string }> = (doc, a) => {
   return { changes, select: cards.map((c) => c.id) };
 };
 
-export type SortMode = 'suit' | 'rank' | 'rankOnly' | 'reverse';
-export const SORT_MODES: SortMode[] = ['suit', 'rank', 'rankOnly', 'reverse'];
+export type SortMode = 'suit' | 'rank' | 'rankOnly' | 'tienlen' | 'reverse';
+export const SORT_MODES: SortMode[] = ['suit', 'rank', 'rankOnly', 'tienlen', 'reverse'];
 /** A container's remembered sort (plain "Sort" repeats it). Default: by suit, then rank; ace high. */
 export interface SortPref {
   mode: SortMode;
@@ -496,15 +615,25 @@ export const sortKeys: Record<string, SortKeys> = {
 const byPackOrder = (pack: string): SortKeys => (face) => ({ suit: 0, rank: packOrder(pack, face) ?? 9999 });
 const keysFor = (pack: string): SortKeys => getPack(pack)?.sortKeys ?? sortKeys[pack] ?? (getPack(pack) ? byPackOrder(pack) : sortKeys['standard-52']);
 
+/** Tiến Lên order: 3 lowest … K, A, 2 highest; suits ♠ < ♣ < ♦ < ♥. */
+const TL_RANKS = ['3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A', '2'];
+const TL_SUITS = ['S', 'C', 'D', 'H'];
+export const tienLenKeys: SortKeys = (face) => {
+  const { rank, suit } = parseFace(face);
+  return { rank: TL_RANKS.indexOf(rank), suit: TL_SUITS.indexOf(suit) };
+};
+
 /** `cards` (in their current order) sorted by `mode`. Stable: equal keys keep their order. */
 export function sortedCards(cards: CanvasNode[], pref: SortPref): CanvasNode[] {
   if (pref.mode === 'reverse') return cards.slice().reverse();
-  const k = new Map(cards.map((c) => [c.id, keysFor(packOf(c))(card(c).face, pref)]));
+  // Tiến Lên is a standard-52 order; other packs sort by rank, then suit
+  const keys = (c: CanvasNode) => (pref.mode === 'tienlen' && packOf(c) === PACK ? tienLenKeys : keysFor(packOf(c)));
+  const k = new Map(cards.map((c) => [c.id, keys(c)(card(c).face, pref)]));
   const cmp = (x: CanvasNode, y: CanvasNode) => {
     const a = k.get(x.id)!;
     const b = k.get(y.id)!;
     if (pref.mode === 'suit') return a.suit - b.suit || a.rank - b.rank;
-    if (pref.mode === 'rank') return a.rank - b.rank || a.suit - b.suit;
+    if (pref.mode === 'rank' || pref.mode === 'tienlen') return a.rank - b.rank || a.suit - b.suit;
     return a.rank - b.rank; // rankOnly
   };
   return cards.slice().sort(cmp); // Array.prototype.sort is stable
@@ -526,11 +655,9 @@ export const sort: Command<{ id: string; mode?: SortMode; aceHigh?: boolean }> =
   return changes;
 };
 
-const okColor = (c: unknown) => (typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c) ? c : undefined);
-
 /** First spot near (x, y) where a w×h box overlaps nothing on the table: along the row, then rows above. */
-export function freeSpot(doc: DocView, x: number, y: number, w: number, h: number): { x: number; y: number } {
-  const boxes = doc.visible.filter((n) => !doc.parentOf(n.id));
+export function freeSpot(doc: DocView, x: number, y: number, w: number, h: number, extra: { x: number; y: number; width: number; height: number }[] = []): { x: number; y: number } {
+  const boxes = [...doc.visible.filter((n) => !doc.parentOf(n.id)), ...extra];
   const free = (px: number, py: number) =>
     !boxes.some((n) => n.x < px + w + 10 && n.x + n.width + 10 > px && n.y - 30 < py + h + 10 && n.y + n.height + 10 > py - 30);
   for (let row = 0; row < 8; row++) {
@@ -692,11 +819,26 @@ export const repairHomes: Command<Record<string, never>> = (doc, _a, ctx) => {
  * Something was dropped onto `target`. Onto a container, or a card shown in one: into that container
  * (a pile: on top; a group or hand: at the drop point `at`). Onto a loose card: a new group.
  */
-export const drop: Command<{ target: string; ids: string[]; at?: { x: number; y: number }; as?: 'stack' | 'fan'; shown?: boolean }> = (doc, a, ctx) => {
+export const drop: Command<{ target: string; ids: string[]; at?: { x: number; y: number }; as?: 'stack' | 'fan'; shown?: boolean; faceUp?: boolean }> = (doc, a, ctx) => {
   const r = dropChanges(doc, a, ctx);
+  const res = Array.isArray(r) ? { changes: r } : r;
+  if (res.changes.length && isBool(a.faceUp)) res.changes.push(...playedFacing(doc, a.target, a.ids, a.faceUp));
   const ids = isIds(a?.ids) ? a.ids : [];
-  return logged(r, (after) => moveEvents(doc, after, ids));
+  return logged(res, (after) => moveEvents(doc, after, ids));
 };
+/**
+ * A play: cards that leave a hand for the table (a zone, a pile, a group, a new group) land `faceUp`,
+ * unless the destination turns them itself (a zone's facing on entry) or is a hand (private there).
+ * Runs after the drop's own changes, so it wins over a kept facing.
+ */
+function playedFacing(doc: DocView, targetId: string, ids: string[], faceUp: boolean): Change[] {
+  const target = doc.get(targetId);
+  if (!target) return [];
+  const parent = isCard(target) ? doc.parentOf(target.id) : undefined;
+  const host = isDeck(target) ? target : parent ? doc.get(parent) : undefined;
+  if (host && (isHand(host) || enterOf(host))) return [];
+  return pick(doc, ids).flatMap((c) => (isCard(c) && handOfCard(doc, c) && card(c).faceUp !== faceUp ? [set(c.id, F('faceUp'), faceUp)] : []));
+}
 const dropChanges: Command<{ target: string; ids: string[]; at?: { x: number; y: number }; as?: 'stack' | 'fan'; shown?: boolean }> = (doc, a, ctx) => {
   const target = typeof a?.target === 'string' ? doc.get(a.target) : undefined;
   if (!target || !isCardish(target) || !isIds(a.ids)) return [];
@@ -818,4 +960,4 @@ export const resetAll: Command<Record<string, never>> = (doc, _a, ctx) => {
   return changes;
 };
 
-export const commands = { addPack, give, flip, show, seeMine, allowShowing, hideCount, fixedFrame, resizeHand, face, move, shuffle, draw, deal, gather, recall, drop, spread, setup, repairHomes, pullOut, setLayout, ungroup, sort, newHand, own, toggleStack, handLabel, migrateHands, turnInto, putOnTable, showdown, resetAll };
+export const commands = { addPack, dealHands, putDown, reorder, give, flip, show, seeMine, allowShowing, hideCount, fixedFrame, resizeHand, face, move, shuffle, draw, deal, gather, recall, drop, spread, setup, repairHomes, pullOut, setLayout, ungroup, sort, newHand, own, toggleStack, handLabel, migrateHands, turnInto, putOnTable, showdown, resetAll };

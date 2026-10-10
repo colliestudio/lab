@@ -58,6 +58,10 @@ export class View {
   hovered: string | undefined;
   /** The local drag in progress: what moves and by how much (world units). */
   private localDrag: { ids: Set<string>; dx: number; dy: number } | null = null;
+  /** ⌥ held during the current / last pointer event (a drop reads it: e.g. play face down). */
+  altKey = false;
+  /** The last object clicked without Shift: a Shift-click selects the run from it (ObjectType.selectRun). */
+  private anchor: string | undefined;
 
   constructor(
     private app: App,
@@ -97,7 +101,14 @@ export class View {
       gScale = e.scale;
     });
     window.addEventListener('keydown', (e) => this.onKeyDown(e));
+    const alt = (e: KeyboardEvent) => {
+      if (e.key !== 'Alt' || this.altKey === e.altKey) return;
+      this.altKey = e.altKey;
+      this.refreshDropTarget();
+    };
+    window.addEventListener('keydown', alt);
     window.addEventListener('keyup', (e) => {
+      alt(e);
       if (e.key === ' ') {
         this.spaceDown = false;
         root.classList.remove('cv-space');
@@ -285,23 +296,31 @@ export class View {
     }
     this.app.store.newUndoStep(); // the whole press-drag-drop is one undo step
     const store = this.app.store;
-    if (e.shiftKey) {
+    const anchor = this.anchor && this.anchor !== id && store.selection.has(this.anchor) ? this.app.node(this.anchor) : undefined;
+    const run = e.shiftKey && anchor ? this.app.typeOf(node)?.selectRun?.(anchor, node, this.app) : undefined;
+    if (run) {
+      store.select([...store.selection, ...run]);
+    } else if (e.shiftKey || e.metaKey) {
+      // Shift / ⌘: add to or remove from the selection
       const next = new Set(store.selection);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       store.select(next);
-      if (!next.has(id)) return; // shift-click deselect: no drag
-    } else if (!store.selection.has(id)) {
-      store.select([id]);
+      this.anchor = next.has(id) ? id : this.anchor;
+      if (!next.has(id)) return; // deselect: no drag
+    } else {
+      if (!store.selection.has(id)) store.select([id]);
+      this.anchor = id;
     }
     const ids = this.app.selected().map((n) => n.id);
     raise(this.app.store, ids.filter((x) => this.app.canMove(x)));
     const w = this.world_(p);
-    this.gesture = { kind: 'drag', ids, clickId: id, shift: e.shiftKey, down: e, start: w, applied: { x: 0, y: 0 }, moved: false };
+    this.gesture = { kind: 'drag', ids, clickId: id, shift: e.shiftKey || e.metaKey, down: e, start: w, applied: { x: 0, y: 0 }, moved: false };
     this.app.presence?.setHeld(this.app.publicIds(ids));
   }
 
   private onPointerMove(e: PointerEvent) {
+    this.altKey = e.altKey;
     if (this.app.presence) this.app.presence.setCursor(this.app.publicCursor(this.world_(this.local(e))));
     if (!this.pointers.size) this.hovered = (e.target as Element).closest<HTMLElement>('[data-node-id]')?.dataset.nodeId;
     if (!this.pointers.has(e.pointerId)) return;
@@ -337,7 +356,12 @@ export class View {
           const ct = clicked && this.app.typeOf(clicked);
           if (clicked && !g.shift && ct?.dragsLocally?.(clicked, this.app)) {
             g.local = true;
-            g.ids = [g.clickId];
+            // several selected cards of my hand travel together; anything else: just the grabbed one
+            const together = g.ids.every((x) => {
+              const n = this.app.node(x);
+              return !!n && !!this.app.typeOf(n)?.dragsLocally?.(n, this.app);
+            });
+            if (!together) g.ids = [g.clickId];
             this.localDrag = { ids: new Set(g.ids), dx: 0, dy: 0 };
             ct.onLocalDrag?.(clicked, 'start', this.app);
           } else this.maybeSwapDragged(g);
@@ -361,8 +385,9 @@ export class View {
             g.applied = { x: tx, y: ty };
           }
         }
+        this.lastDragEvent = e;
         const t = this.findDropTarget(g, e);
-        this.setDropTarget(g, t?.id, t?.mode);
+        this.setDropTarget(g, t?.id, t?.mode, this.world_(p));
         return;
       }
       case 'marquee': {
@@ -391,6 +416,8 @@ export class View {
   }
 
   private onPointerUp(e: PointerEvent) {
+    this.altKey = e.altKey;
+    this.lastDragEvent = undefined;
     if (!this.pointers.has(e.pointerId)) return;
     this.pointers.delete(e.pointerId);
     if (this.root.hasPointerCapture(e.pointerId)) this.root.releasePointerCapture(e.pointerId);
@@ -421,7 +448,7 @@ export class View {
         const node = this.app.node(g.clickId);
         const box = this.dragBox(g.clickId);
         const type = node && this.app.typeOf(node);
-        if (!target && node && box) this.app.store.merged(() => type?.onLocalDrop?.(node, { x: Math.round(box.x), y: Math.round(box.y) }, this.app));
+        if (!target && node && box) this.app.store.merged(() => type?.onLocalDrop?.(node, { x: Math.round(box.x), y: Math.round(box.y) }, this.app, g.ids));
         this.localDrag = null;
         if (node) type?.onLocalDrag?.(node, 'end', this.app);
         this.render();
@@ -505,6 +532,15 @@ export class View {
       return;
     }
     const arrow = ({ ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] } as Record<string, [number, number]>)[e.key];
+    // a plugin's arrow binding that applies right now (e.g. move cards within a hand) beats the nudge
+    if (arrow) {
+      const b = this.app.keys.get(`${mod ? 'mod+' : ''}${e.altKey ? 'alt+' : ''}${e.shiftKey ? 'shift+' : ''}${e.key.toLowerCase()}`);
+      if (b?.when?.(this.app)) {
+        e.preventDefault();
+        b.run(this.app);
+        return;
+      }
+    }
     if (arrow && !mod && store.selection.size) {
       // nudge 1px (Shift 10px); a held-down key's repeats form one undo step
       e.preventDefault();
@@ -615,8 +651,26 @@ export class View {
     return { id: target.id, mode: typeof verdict === 'string' ? verdict : undefined };
   }
 
-  private setDropTarget(g: Extract<Gesture, { kind: 'drag' }>, id: string | undefined, mode?: string) {
-    if (g.target === id && g.mode === mode) return;
+  /** The drag's last pointer event (to re-check the target when ⌥ goes down or up mid-drag). */
+  private lastDragEvent: PointerEvent | undefined;
+  private refreshDropTarget() {
+    const g = this.gesture;
+    const e = this.lastDragEvent;
+    if (g?.kind !== 'drag' || !g.moved || g.still || !e) return;
+    const t = this.findDropTarget(g, e);
+    this.setDropTarget(g, t?.id, t?.mode, this.world_(this.local(e)), true);
+  }
+
+  private setDropTarget(g: Extract<Gesture, { kind: 'drag' }>, id: string | undefined, mode?: string, at?: Pt, force = false) {
+    // the target hears where the drag is (e.g. an insertion marker), and once that it left
+    const was = g.target ? this.app.node(g.target) : undefined;
+    if (was && g.target !== id) this.app.typeOf(was)?.dragOver?.(was, [], this.app, undefined);
+    const now = id ? this.app.node(id) : undefined;
+    if (now && at) {
+      const dropped = g.ids.map((x) => this.app.node(x)).filter((n): n is CanvasNode => !!n);
+      this.app.typeOf(now)?.dragOver?.(now, dropped, this.app, at);
+    }
+    if (g.target === id && g.mode === mode && !force) return;
     if (g.target) {
       const old = this.els.get(g.target);
       old?.classList.remove('cv-drop-target');
@@ -628,6 +682,7 @@ export class View {
     if (box) {
       box.classList.add('cv-drop-target');
       if (mode) box.dataset.dropLabel = mode;
+      else delete box.dataset.dropLabel;
     }
   }
 
