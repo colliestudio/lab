@@ -47,11 +47,12 @@ export interface ObjectType {
   /** `at` = the drop point in world coordinates (e.g. to insert at a position in a layout). */
   onDrop?(target: CanvasNode, droppedIds: string[], app: App, at: { x: number; y: number }, mode?: string): void;
   /**
-   * A drag that moved objects of this type just ended (after any `onDrop`). Called once per type with
-   * that type's dragged nodes (current state). `target` = the node they were dropped on, if any.
-   * Dispatches made here join the gesture's undo step.
+   * A move of objects of this type just ended (after any `onDrop`): a drag (`via: 'drag'`) or an
+   * arrow-key nudge (`via: 'keys'`, after every step). Called once per type with that type's moved
+   * nodes (current state). `target` = the node they were dropped on, if any. Dispatches made here
+   * join the move's undo step.
    */
-  onDragEnd?(dragged: CanvasNode[], app: App, target?: string): void;
+  onDragEnd?(dragged: CanvasNode[], app: App, target?: string, via?: 'drag' | 'keys'): void;
 }
 
 export interface KeyBinding {

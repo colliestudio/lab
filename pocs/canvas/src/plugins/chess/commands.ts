@@ -194,7 +194,7 @@ export const lock: Command<{ id: string; locked: boolean }> = (doc, a) => {
  * board: stays with that board. Elsewhere: lies free. `moved` may include nodes not yet in the doc
  * (a spawn). A single piece changing squares marks the last move.
  */
-function settle(doc: DocView, moved: CanvasNode[]) {
+function settle(doc: DocView, moved: CanvasNode[], soft = false) {
   const moving = new Set(moved.map((n) => n.id));
   const byId = new Map(moved.map((n) => [n.id, n]));
   const state = new Map<string, Spot>();
@@ -227,6 +227,15 @@ function settle(doc: DocView, moved: CanvasNode[]) {
     const sq = squareAt(b, c.x, c.y)!;
     const o = occ(b);
     const victim = o.get(sq);
+    if (soft) {
+      // nudged: name the square it now stands on (if free), but don't snap or capture
+      if (victim && victim !== p.id) state.set(p.id, { board: b.id, x: p.x, y: p.y });
+      else {
+        o.set(sq, p.id);
+        state.set(p.id, { board: b.id, square: sq, x: p.x, y: p.y });
+      }
+      continue;
+    }
     if (victim && victim !== p.id) state.set(victim, { board: b.id, ...slot(b, piece(byId.get(victim) ?? doc.get(victim)!).color) });
     o.set(sq, p.id);
     state.set(p.id, { board: b.id, square: sq, ...squarePos(b, sq) });
@@ -239,11 +248,15 @@ function settle(doc: DocView, moved: CanvasNode[]) {
   return { state, boardChanges };
 }
 
-/** Pieces were put down where they now lie (end of a drag): snap / capture / attach / free, see `settle`. */
-export const place: Command<{ ids: string[] }> = (doc, a) => {
+/**
+ * Pieces were put down where they now lie (end of a drag): snap / capture / attach / free, see
+ * `settle`. `soft` (arrow-key nudges): only update which square/board they are on; no snapping,
+ * no capture, no last move.
+ */
+export const place: Command<{ ids: string[]; soft?: boolean }> = (doc, a) => {
   const moved = pick(doc, a?.ids).filter((n) => isPiece(n) && !doc.parentOf(n.id));
   if (!moved.length) return [];
-  const { state, boardChanges } = settle(doc, moved);
+  const { state, boardChanges } = settle(doc, moved, a.soft === true);
   return [...[...state].flatMap(([id, to]) => moveTo(doc.get(id)!, to)), ...boardChanges];
 };
 

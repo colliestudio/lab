@@ -355,4 +355,28 @@ describe('chess commands', () => {
     s.undo();
     expect(s.doc.nodes.filter(isPiece)).toHaveLength(66);
   });
+
+  it('a nudge (soft place) keeps square true to where the piece stands, without snapping or capturing', () => {
+    const { s, b } = withSet();
+    const pawn = at(s, b, 'h2')!.id;
+    const nudge = (dx: number, dy: number) => {
+      s.dispatch('core.move', { ids: [pawn], dx, dy });
+      s.dispatch('chess.place', { ids: [pawn], soft: true }, { merge: true });
+    };
+    nudge(5, -10);
+    expect(piece(s.doc.get(pawn)!).square).toBe('h2');
+    const p0 = s.doc.get(pawn)!;
+    expect(p0.x).toBe(squarePos(s.doc.get(b)!, 'h2').x + 5); // not snapped back
+    nudge(0, -64);
+    expect(piece(s.doc.get(pawn)!).square).toBe('h3');
+    nudge(0, 64 * 4); // below rank 1: off the grid, beside the board
+    expect(piece(s.doc.get(pawn)!)).toMatchObject({ board: b });
+    expect(piece(s.doc.get(pawn)!).square).toBeUndefined();
+    nudge(0, -64 * 8); // over h7 (black pawn): no capture, no square
+    expect(piece(s.doc.get(pawn)!).square).toBeUndefined();
+    expect(piece(at(s, b, 'h7')!).color).toBe('b');
+    nudge(400, 0); // far away: free
+    expect(piece(s.doc.get(pawn)!).board).toBeUndefined();
+    expect(board(s.doc.get(b)!).to).toBeUndefined();
+  });
 });

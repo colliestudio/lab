@@ -67,7 +67,8 @@ export const chessPlugin: Plugin = {
         el.innerHTML = pieceHtml(piece(node));
       },
       renderKey: (node) => piece(node).piece + piece(node).color,
-      onDragEnd: (dragged, app) => app.dispatch('chess.place', { ids: dragged.map((n) => n.id) }),
+      // dropped: snap/capture; nudged with the arrow keys: just keep `square` true to where it stands
+      onDragEnd: (dragged, app, _target, via) => app.dispatch('chess.place', { ids: dragged.map((n) => n.id), soft: via === 'keys' }),
     });
 
     app.registerMenu((a, sel) => {

@@ -21,7 +21,7 @@ type Gesture =
       target?: string;
       mode?: string;
     }
-  | { kind: 'marquee'; start: Pt; base: Set<string> }
+  | { kind: 'marquee'; start: Pt; base: Set<string>; /** the object the press fell through (never box-selected) */ skip?: string }
   | { kind: 'pinch'; dist: number; mid: Pt };
 
 const DRAG_THRESHOLD = 4; // screen px
@@ -235,8 +235,9 @@ export class View {
     const node = this.app.node(id);
     if (!node) return;
     if (this.app.typeOf(node)?.grabbable?.(node, e, this.app) === false) {
-      // the press falls through to the table under the object
-      this.gesture = { kind: 'marquee', start: this.world_(p), base: new Set(e.shiftKey ? this.app.store.selection : []) };
+      // the press falls through to the table under the object; the box never selects that object
+      // (else a box drawn on a locked board would take the board and all its pieces along)
+      this.gesture = { kind: 'marquee', start: this.world_(p), base: new Set(e.shiftKey ? this.app.store.selection : []), skip: id };
       if (!e.shiftKey) this.app.store.select([]);
       return;
     }
@@ -322,7 +323,9 @@ export class View {
         });
         // touching by default; Alt = only objects fully inside the box
         const hits = this.app.store.doc.visible.filter((n) =>
-          e.altKey
+          n.id === g.skip
+            ? false
+            : e.altKey
             ? n.x >= r.x && n.x + n.width <= r.x + r.w && n.y >= r.y && n.y + n.height <= r.y + r.h
             : n.x < r.x + r.w && n.x + n.width > r.x && n.y < r.y + r.h && n.y + n.height > r.y,
         );
@@ -440,7 +443,9 @@ export class View {
       // nudge 1px (Shift 10px); a held-down key's repeats form one undo step
       e.preventDefault();
       const step = e.shiftKey ? 10 : 1;
-      this.app.dispatch('core.move', { ids: [...store.selection], dx: arrow[0] * step, dy: arrow[1] * step }, { merge: e.repeat });
+      const ids = [...store.selection];
+      this.app.dispatch('core.move', { ids, dx: arrow[0] * step, dy: arrow[1] * step }, { merge: e.repeat });
+      this.endDrag(ids, undefined, 'keys');
       return;
     }
     if (!mod && !e.altKey && !e.shiftKey && (e.key === 'v' || e.key === 'h')) {
@@ -463,8 +468,8 @@ export class View {
     }
   }
 
-  /** Tell each dragged type its drag ended (state after any drop). */
-  private endDrag(ids: string[], target: string | undefined) {
+  /** Tell each moved type its move ended (state after any drop): a drag, or a nudge with the arrow keys. */
+  private endDrag(ids: string[], target: string | undefined, via: 'drag' | 'keys' = 'drag') {
     const byType = new Map<ObjectType, CanvasNode[]>();
     for (const id of ids) {
       const n = this.app.node(id);
@@ -474,7 +479,7 @@ export class View {
       if (!l) byType.set(t, (l = []));
       l.push(n);
     }
-    for (const [t, nodes] of byType) this.app.store.merged(() => t.onDragEnd!(nodes, this.app, target));
+    for (const [t, nodes] of byType) this.app.store.merged(() => t.onDragEnd!(nodes, this.app, target, via));
   }
 
   /** A single object being dragged may hand the drag to another node (a deck gives its top card). */
