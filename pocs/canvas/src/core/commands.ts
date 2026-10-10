@@ -96,12 +96,13 @@ export function registerCoreCommands(store: Store) {
     return { changes, select: ids.length ? ids : undefined };
   });
   /** Every plugin puts its objects back in their starting state (kits stay; what they hold resets). */
-  store.register('core.reset', (doc, _a, ctx) =>
-    store.resets.flatMap((cmd) => {
+  store.register('core.reset', (doc, _a, ctx) => {
+    const changes = store.resets.flatMap((cmd) => {
       const r = cmd(doc, {}, ctx);
       return Array.isArray(r) ? r : r.changes;
-    }),
-  );
+    });
+    return { changes, events: changes.length ? [{ type: 'core.reset', text: 'reset the table' }] : [] };
+  });
   store.register('core.add', (doc, a: { nodes: CanvasNode[] }) => {
     if (!Array.isArray(a?.nodes)) return [];
     return a.nodes

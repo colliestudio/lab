@@ -4,6 +4,8 @@ export * from './store';
 export * from './io';
 export * from './files';
 export * from './persist';
+export * from './log';
+export { mountLog } from './logView';
 export { isIds, isNum, pick, raise, toFront, withRiders } from './commands';
 export type { ObjectType, KeyBinding, MenuItem, MenuEntry, MenuProvider, Kit, Plugin, RenderCtx } from './plugin';
 export { Viewport } from './viewport';

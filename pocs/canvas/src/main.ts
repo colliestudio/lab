@@ -1,5 +1,5 @@
 import './style.css';
-import { App, joinRoom, loadPlayer, mountZoomControl, savePlayer, openFile, parse, persistLocally, persistViewport, resetFileHandle, roomDbName, saveFile, type CanvasDoc } from './core';
+import { App, joinRoom, loadPlayer, mountLog, mountZoomControl, savePlayer, openFile, parse, persistLocally, persistViewport, resetFileHandle, roomDbName, saveFile, type CanvasDoc } from './core';
 import { copyText, createRoomFrom, mountRoomStatus, roomFromUrl, roomLink } from './share';
 import { askName } from './nameDialog';
 import { cardsPlugin, handLabelOf, newHandEntries, newHandFor } from './plugins/cards';
@@ -15,7 +15,11 @@ const VIEW_KEY = 'canvas-poc:view';
 
 const app = new App(document.getElementById('table')!);
 // this browser's player id (also in solo play) = who "my hand" belongs to and who views the table
-app.viewer = loadPlayer().id;
+{
+  const p = loadPlayer();
+  app.viewer = p.id;
+  app.player = { id: p.id, name: p.name, color: p.color };
+}
 app.use(cardsPlugin);
 app.use(chessPlugin);
 app.use(clockPlugin);
@@ -143,6 +147,7 @@ bar.append(handBtn, helpBtn, status);
 app.onNotify(flash);
 mountHelp(app, helpBtn);
 mountZoomControl(app);
+mountLog(app);
 
 app.registerKey({ key: 'mod+s', run: () => doSave() });
 app.registerKey({ key: 'mod+shift+s', run: () => doSave(true) });

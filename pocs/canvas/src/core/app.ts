@@ -5,7 +5,8 @@ import type { KeyBinding, Kit, MenuItem, MenuProvider, ObjectType, Plugin } from
 import { Store, type Command, type DispatchResult, type DocFilter } from './store';
 import { View } from './view';
 import { Viewport } from './viewport';
-import type { Presence } from './presence';
+import type { PlayerInfo, Presence } from './presence';
+import type { EventSpec } from './log';
 
 /** Local player id. A constant until multiplayer gives each peer its own. */
 export const LOCAL_PLAYER = 'local';
@@ -26,6 +27,8 @@ export class App {
   viewer = LOCAL_PLAYER;
   /** Set when the table is shared (multiplayer); null when playing solo. */
   presence: Presence | null = null;
+  /** This device's player when solo (in a room: presence.me). */
+  player: PlayerInfo = { id: LOCAL_PLAYER, name: 'Me', color: '#888888' };
   private notifiers = new Set<(msg: string) => void>();
   /** Privacy rules: is `node` hidden from `viewer` (its content must not leak via presence either)? */
   readonly hiders: ((node: CanvasNode, viewer: string) => boolean)[] = [];
@@ -34,6 +37,7 @@ export class App {
 
   constructor(root: HTMLElement) {
     registerCoreCommands(this.store);
+    this.store.actor = () => this.me();
     this.view = new View(this, root);
     // zoom keys (handled before the browser's page zoom)
     const zin = { run: () => this.view.zoomCenter('in') };
@@ -98,6 +102,15 @@ export class App {
   }
   registerExportFilter(f: DocFilter) {
     this.store.exportFilters.push(f);
+  }
+
+  /** The local player: who log entries name. */
+  me(): PlayerInfo {
+    return this.presence?.me ?? this.player;
+  }
+  /** Log events that no command reports (see log.ts); not an undo step. */
+  logEvents(events: EventSpec[]) {
+    this.store.appendLog(events);
   }
 
   /** Show a short message to the local user (toolbar status). */

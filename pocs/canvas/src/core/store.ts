@@ -1,16 +1,21 @@
 import * as Y from 'yjs';
 import { makeView, type CanvasDoc, type CanvasEdge, type CanvasNode, type Change, type CarrierOf, type DocView, type DuplicateRule, type LayoutRule, type ParentOf } from './doc';
+import { KEY_WINDOW, LOG_CAP, cleanEvent, type EventSpec, type Events, type LogActor, type LogEvent } from './log';
 
 /** Everything non-deterministic a command may use; injectable for tests / replay. */
 export interface CommandCtx {
   newId(): string;
   random(): number;
+  /** Clock for log entries (ms epoch); default Date.now. */
+  now?(): number;
 }
 
 export interface CommandResult {
   changes: Change[];
   /** New selection, if the command wants to set one. */
   select?: string[];
+  /** What to log (see log.ts). Appended after the changes, never an undo step of its own. */
+  events?: Events;
 }
 
 /**
@@ -41,6 +46,11 @@ const LOCAL = Symbol('local');
 const LOAD = Symbol('load');
 /** Origin of local commands that can't be undone (a game clock: time doesn't go back). */
 const UNDOABLE_NOT = Symbol('not-undoable');
+/** Origin of log appends (not tracked by undo: the log is outside the undo scope anyway). */
+const LOG = Symbol('log');
+/** Undo stack item meta: the public texts / targets of the events logged in that step. */
+const STEP_EVENTS = 'events';
+type StepEvent = { text: string; targets?: string[] };
 
 type YNode = Y.Map<unknown>;
 
@@ -66,6 +76,10 @@ export class Store {
   readonly nodes: Y.Map<YNode>;
   readonly edges: Y.Map<CanvasEdge>;
   readonly meta: Y.Map<unknown>;
+  /** The event log, synced like the doc (newest last, capped at LOG_CAP). */
+  readonly log: Y.Array<LogEvent>;
+  /** Who is acting on this device (log entries); null = nobody known. Set by App. */
+  actor: () => LogActor | null = () => null;
   readonly undoManager: Y.UndoManager;
   private parentRules: ParentOf[] = [];
   private riderRules: CarrierOf[] = [];
@@ -94,6 +108,7 @@ export class Store {
     this.nodes = this.ydoc.getMap('nodes');
     this.edges = this.ydoc.getMap('edges');
     this.meta = this.ydoc.getMap('meta');
+    this.log = this.ydoc.getArray('log');
     // captureTimeout: we decide grouping ourselves (each dispatch = one undo step unless merged)
     this.undoManager = new Y.UndoManager([this.nodes, this.edges], {
       trackedOrigins: new Set([LOCAL]),
@@ -179,13 +194,55 @@ export class Store {
     } catch (e) {
       return fail(`${name}: ${(e as Error).message}`);
     }
+    const merge = !!opts.merge || this.mergeAll;
+    const top = this.undoManager.undoStack.at(-1);
     if (opts.undoable === false) this.apply(res.changes, UNDOABLE_NOT);
     else {
-      if (!opts.merge && !this.mergeAll) this.undoManager.stopCapturing();
+      if (!merge) this.undoManager.stopCapturing();
       this.apply(res.changes);
     }
+    // the undo step this dispatch made (or joined), if it made one
+    const item = this.undoManager.undoStack.at(-1);
+    const step = opts.undoable !== false && res.changes.length > 0 && !!item && (item !== top || merge) ? item : undefined;
+    if (res.events) this.record(res.events, step);
     if (res.select) this.select(res.select);
     return { ...res, ok: true };
+  }
+
+  /** Log a command's events (computed against the doc after its changes); `step`: remember them on the undo step. */
+  private record(events: Events, step: { meta: Map<string, unknown> } | undefined) {
+    let specs: EventSpec[];
+    try {
+      specs = typeof events === 'function' ? events(this.doc) : events;
+    } catch (e) {
+      console.warn(`event: ${(e as Error).message}`);
+      return;
+    }
+    if (!specs.length) return;
+    if (step) {
+      const prev = (step.meta.get(STEP_EVENTS) as StepEvent[] | undefined) ?? [];
+      step.meta.set(STEP_EVENTS, [...prev, ...specs.map((e) => ({ text: e.text, targets: e.targets }))]);
+    }
+    this.appendLog(specs);
+  }
+
+  /** Append entries to the log (one transaction, not undoable), dropping repeats of a recent `key` and the oldest past the cap. */
+  appendLog(specs: EventSpec[]) {
+    const me = this.actor();
+    const now = this.ctx.now?.() ?? Date.now();
+    const recent = this.log.slice(Math.max(0, this.log.length - 20));
+    const items: LogEvent[] = [];
+    for (const { actor, ...s } of specs) {
+      const who = actor === undefined ? me : actor;
+      if (s.key && [...recent, ...items].some((e) => e.key === s.key && e.actor?.id === who?.id && now - e.time < KEY_WINDOW)) continue;
+      items.push(cleanEvent({ ...s, id: this.ctx.newId(), time: now, actor: who ? { id: who.id, name: who.name, color: who.color } : null }));
+    }
+    if (!items.length) return;
+    this.ydoc.transact(() => {
+      this.log.push(items);
+      const over = this.log.length - LOG_CAP;
+      if (over > 0) this.log.delete(0, over);
+    }, LOG);
   }
 
   /** Apply changes in one local (undoable) transaction. */
@@ -242,6 +299,7 @@ export class Store {
       d.nodes.forEach((n, i) => this.nodes.set(n.id, toY({ ...n, z: n.z ?? i + 1 })));
       for (const e of d.edges) this.edges.set(e.id, e);
       for (const [k, v] of Object.entries(d.extra ?? {})) this.meta.set(k, v);
+      if (this.log.length) this.log.delete(0, this.log.length); // a new table starts a new log
     }, LOAD);
     this.migrate();
     this.undoManager.clear();
@@ -272,11 +330,25 @@ export class Store {
     }
   }
 
+  /**
+   * Undo / redo my last step. A step that logged events logs "undid: …" / "redid: …" (public texts),
+   * so the log keeps telling what happened; the original entries stay.
+   */
   undo() {
-    this.undoManager.undo();
+    this.step('undo');
   }
   redo() {
-    this.undoManager.redo();
+    this.step('redo');
+  }
+  private step(kind: 'undo' | 'redo') {
+    const um = this.undoManager;
+    const [from, to] = kind === 'undo' ? [um.undoStack, um.redoStack] : [um.redoStack, um.undoStack];
+    const events = from.at(-1)?.meta.get(STEP_EVENTS) as StepEvent[] | undefined;
+    if (!(kind === 'undo' ? um.undo() : um.redo())) return;
+    if (!events?.length) return;
+    to.at(-1)?.meta.set(STEP_EVENTS, events);
+    const targets = [...new Set(events.flatMap((e) => e.targets ?? []))];
+    this.appendLog([{ type: `core.${kind}`, text: `${kind === 'undo' ? 'undid' : 'redid'}: ${events.map((e) => e.text).join('; ')}`, targets }]);
   }
 
   // ------------------------------------------------------------ selection (local, not shared)
