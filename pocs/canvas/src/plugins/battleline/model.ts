@@ -1,5 +1,5 @@
 import type { CanvasNode } from '../../core';
-import { CARD_H, CARD_W } from '../cards/deck';
+import { CARD_H, CARD_W, card, packOf } from '../cards/deck';
 import { COLUMN_STEP, PAD } from '../cards/layout';
 
 // Battle Line (Reiner Knizia) for free play: two card packs on top of the cards plugin, nine flag
@@ -43,6 +43,14 @@ export const TACTICS_CARDS: { face: string; name: string; kind: TacticKind; text
   { face: 'traitor', name: 'Traitor', kind: 'Guile', text: 'Take a troop from your opponent’s side of an unclaimed flag and play it on yours.' },
 ];
 export const tactic = (face: string) => TACTICS_CARDS.find((t) => t.face === face);
+/** What a Battle Line card is, for where it goes: a troop, or a tactic's kind. */
+export type CardKind = 'troop' | TacticKind;
+export function kindOfCard(n: CanvasNode): CardKind | undefined {
+  const p = packOf(n);
+  if (p === TROOPS) return 'troop';
+  if (p === TACTICS) return tactic(card(n).face)?.kind;
+}
+export const isTactic = (n: CanvasNode) => packOf(n) === TACTICS;
 
 export const troopLabel = (face: string) => {
   const t = parseTroop(face);
@@ -67,12 +75,25 @@ export interface FlagField {
   hy: number;
   claim?: Side;
 }
-/** Marks the line's card containers: a formation (per flag and side), a player's hand, the discard pile. */
+/**
+ * Marks the line's parts: a formation (per flag and side), a player's hand, the discard pile, the
+ * decks, a side's played tactics row, a flag's environment spot (Fog, Mud), the tactics tally.
+ */
 export interface PartField {
-  role: 'formation' | 'hand' | 'discard' | 'troops' | 'tactics';
+  role: Role;
   flag?: number;
   side?: Side;
 }
+export type Role = 'formation' | 'hand' | 'discard' | 'troops' | 'tactics' | 'played' | 'environment' | 'tally';
+export const ROLES: Role[] = ['formation', 'hand', 'discard', 'troops', 'tactics', 'played', 'environment', 'tally'];
+/** On a tactic card lying on a flag's environment spot: the side that played it (for the tally). */
+export interface PlayedBy {
+  by: Side;
+}
+export const playedBy = (n: CanvasNode): Side | undefined => {
+  const b = (n[FIELD] as Partial<PlayedBy> | undefined)?.by;
+  return b === 'a' || b === 'b' ? b : undefined;
+};
 
 const field = (n: CanvasNode | undefined) => n?.[FIELD] as Record<string, unknown> | undefined;
 export const isFlag = (n: CanvasNode | undefined): boolean => field(n)?.kind === 'flag';
@@ -88,8 +109,18 @@ export const FLAG_H = 100;
 /** How far a claimed flag sits toward its side. */
 export const CLAIM_DY = 76;
 export const FORM_W = CARD_W + 2 * PAD;
-/** A formation is sized for four cards (Mud); three slots are outlined. */
+/** A formation's area fits four cards (Mud); three slots, a 4th only while Mud lies on its flag. */
 export const FORM_H = 2 * PAD + CARD_H + 3 * COLUMN_STEP;
+/** Cards on a flag's environment spot are drawn smaller and sideways, across the flag's pole. */
+export const ENV_CARD = { w: 72, h: 101 };
+export const ENV_PAD = 8;
+export const ENV_STEP = { x: 22, y: 14 };
+export const ENV_W = ENV_CARD.h + ENV_STEP.x + 2 * ENV_PAD;
+export const ENV_H = ENV_CARD.w + ENV_STEP.y + 2 * ENV_PAD;
+/** A side's played tactics row: three cards wide (it grows). */
+export const PLAYED_W = 2 * PAD + 3 * CARD_W + 2 * 10;
+export const PLAYED_H = 2 * PAD + CARD_H;
+export const TALLY = { w: 150, h: 50 };
 export const COL = FORM_W + 18;
 /** Gap between the line's middle and a formation's near edge (room for a claimed flag). */
 export const NEAR = FLAG_H / 2 + CLAIM_DY + 30;
@@ -104,8 +135,15 @@ export function geometry(cx: number, cy: number) {
     formation: (i: number, side: Side) => ({ x: colX(i) - FORM_W / 2, y: side === 'a' ? cy + NEAR : cy - NEAR - FORM_H }),
     troops: { x: left - 60 - CARD_W, y: cy - CARD_H - 40 },
     tactics: { x: left - 60 - CARD_W, y: cy + 40 },
-    discard: { x: right + 60, y: Math.round(cy - CARD_H / 2) },
+    discard: { x: right + 60, y: Math.round(cy - CARD_H / 2 - PAD) },
+    /** A flag's environment spot: across the lower part of the flag (its pennant stays free to drag). */
+    environment: (i: number) => ({ x: Math.round(colX(i) - ENV_W / 2), y: Math.round(cy + 24 - ENV_H / 2) }),
+    /** A side's played tactics row: beside its formations, past the discard pile. */
+    played: (side: Side) => ({ x: right + 60, y: Math.round(side === 'a' ? cy + NEAR + (FORM_H - PLAYED_H) / 2 : cy - NEAR - FORM_H + (FORM_H - PLAYED_H) / 2) }),
+    tally: { x: left - 70 - CARD_W, y: Math.round(cy - TALLY.h / 2 - 12) },
+    /** The mat under it all (Add… › Battle Line): decks to played tactics, formation to formation. */
+    mat: { x: left - 100 - CARD_W, y: cy - NEAR - FORM_H - 40, w: right + 60 + PLAYED_W + 40 - (left - 100 - CARD_W), h: 2 * (NEAR + FORM_H + 40) },
     /** A hand's top-left: below side a's formations, above side b's. */
-    hand: (side: Side, w: number, h: number) => ({ x: Math.round(cx - w / 2), y: side === 'a' ? cy + NEAR + FORM_H + 50 : cy - NEAR - FORM_H - 50 - h }),
+    hand: (side: Side, w: number, h: number) => ({ x: Math.round(cx - w / 2), y: side === 'a' ? cy + NEAR + FORM_H + 80 : cy - NEAR - FORM_H - 80 - h }),
   };
 }

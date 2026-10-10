@@ -206,3 +206,62 @@
   text-decoration-thickness: 0.07em;
   text-underline-offset: 0.08em;
 }
+
+/* a flag's environment spot (only drawn while Fog / Mud lies there) */
+.bl-env {
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  outline: 1px dashed rgba(255, 255, 255, 0.25);
+}
+.bl-env-badge {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  top: -20px;
+  padding: 1px 7px;
+  border-radius: 6px;
+  font: 700 10.5px/16px system-ui, sans-serif;
+  white-space: nowrap;
+  color: #fff;
+  pointer-events: none;
+}
+.bl-env-badge.bl-fog {
+  background: #6f7f8f;
+}
+.bl-env-badge.bl-mud {
+  background: #7a5a35;
+  top: -38px;
+}
+/* the tactics tally */
+.bl-tally {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.35);
+  color: #f3efe2;
+  font: 600 13px system-ui, sans-serif;
+}
+.bl-tally-title {
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+.bl-tally-side {
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+.bl-tally-side.bl-blocked {
+  background: #c8402e;
+  color: #fff;
+}
+.bl-tally i {
+  opacity: 0.5;
+  font-style: normal;
+}

@@ -124,7 +124,11 @@ function slotOutlines(doc: DocView, box: CanvasNode, count: number): { dx: numbe
   if (!f.slots) return []; // a spot without outlined slots: just its quiet frame
   const cap = Math.max(f.slots, f.max ?? 0);
   if (count >= cap) return [];
-  return [{ ...slots(layoutOf(box), count + 1, cap).at[count], faint: count >= f.slots }];
+  const s = slots(layoutOf(box), count + 1, cap);
+  // an upward column in a taller area (see cardLayouts) starts at the bottom
+  const lift = layoutOf(box) === 'column-up' ? Math.max(0, box.height - s.h) : 0;
+  const at = s.at[count];
+  return [{ ...at, dy: at.dy + lift, faint: count >= f.slots }];
 }
 const titleOf = (box: CanvasNode) => kindName(box) + (isHomeDeck(box) ? ' (home deck)' : '');
 

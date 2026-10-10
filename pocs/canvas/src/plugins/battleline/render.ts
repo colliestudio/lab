@@ -60,7 +60,7 @@ registerPack({
 });
 
 /** A pennant on a pole with its number; claimed = in the claiming side's color. */
-export function flagHtml(f: FlagField, color?: string, sideName?: string): string {
+export function flagHtml(f: FlagField, color?: string, sideName?: string, env: { fog?: boolean; mud?: boolean } = {}): string {
   const fill = f.claim ? (color ?? SIDE_COLOR[f.claim]) : '#e9d9a6';
   const ink = f.claim ? '#fff' : '#5a4510';
   return (
@@ -73,7 +73,21 @@ export function flagHtml(f: FlagField, color?: string, sideName?: string): strin
     `<text x="32" y="27.5" text-anchor="middle" font-size="13" font-weight="700" font-family="Georgia, serif" fill="${ink}">${f.n}</text>` +
     `</svg>` +
     (f.claim ? `<div class="bl-flag-claim" style="background:${fill}">${esc(sideName ?? f.claim.toUpperCase())}</div>` : '') +
+    (env.fog ? `<div class="bl-env-badge bl-fog" title="Fog: formations don’t count here, only the highest total wins">Fog: total only</div>` : '') +
+    (env.mud ? `<div class="bl-env-badge bl-mud" title="Mud: both sides need four cards here">Mud: 4 cards</div>` : '') +
     `</div>`
   );
 }
 
+
+/** The tactics tally: how many tactics each side has played; a side ahead may not play one now. */
+export function tallyHtml(k: Record<'a' | 'b', number>, names: Record<'a' | 'b', string>): string {
+  const side = (s: 'a' | 'b') => {
+    const o = s === 'a' ? 'b' : 'a';
+    const blocked = k[s] > k[o];
+    const tip = blocked ? `${names[s]} has played more tactics than ${names[o]}: no tactic now` : `${names[s]} may play a tactic`;
+    return `<span class="bl-tally-side${blocked ? ' bl-blocked' : ''}" title="${esc(tip)}"><b>${SIDE_LETTER[s]}</b> ${k[s]}</span>`;
+  };
+  return `<div class="bl-tally" title="Tactics played (formations, flags, played rows). By the rules you can’t play a tactic while you have played more than your opponent."><span class="bl-tally-title">Tactics</span>${side('a')}<i>·</i>${side('b')}</div>`;
+}
+const SIDE_LETTER = { a: 'A', b: 'B' } as const;

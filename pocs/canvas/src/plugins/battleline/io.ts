@@ -1,11 +1,10 @@
 import type { CanvasNode, DocFilter } from '../../core';
-import { FIELD, FLAG_H, FLAG_W, flagText, type FlagField, type PartField } from './model';
+import { FIELD, FLAG_H, FLAG_W, ROLES, flagText, type FlagField, type PartField } from './model';
 
 // JSON Canvas import repair and export text for Battle Line nodes. (Cards are the cards plugin's.)
 
 const obj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 const num = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
-const ROLES = ['formation', 'hand', 'discard', 'troops', 'tactics'];
 
 export const repairImport: DocFilter = (doc) => ({
   ...doc,
@@ -17,7 +16,9 @@ export const repairImport: DocFilter = (doc) => ({
       if (f.claim === 'a' || f.claim === 'b') g.claim = f.claim;
       return { ...n, width: FLAG_W, height: FLAG_H, text: flagText(g), [FIELD]: g };
     }
-    if (obj(f) && typeof f.role === 'string' && ROLES.includes(f.role)) {
+    // a tactic laid on a flag: who played it
+    if (obj(f) && (f.by === 'a' || f.by === 'b') && f.role === undefined) return { ...n, [FIELD]: { by: f.by } };
+    if (obj(f) && typeof f.role === 'string' && (ROLES as string[]).includes(f.role)) {
       const p: PartField = { role: f.role as PartField['role'] };
       if (num(f.flag)) p.flag = f.flag;
       if (f.side === 'a' || f.side === 'b') p.side = f.side;

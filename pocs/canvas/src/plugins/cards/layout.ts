@@ -171,13 +171,16 @@ export const cardLayouts: LayoutRule = (doc: DocView) => {
     const hand = isHand(c);
     const shown = cards.map((x) => hand && shownIn(c, x));
     const s = hand ? handSlots(c, shown) : slots(layoutOf(c), cards.length, minSlotsOf(c, doc), colsOf(c));
-    out.set(c.id, { width: Math.max(s.w, area?.w ?? 0), height: Math.max(s.h, area?.h ?? 0) });
+    const height = Math.max(s.h, area?.h ?? 0);
+    out.set(c.id, { width: Math.max(s.w, area?.w ?? 0), height });
+    // an upward column in a taller area still starts at the area's bottom
+    const lift = layoutOf(c) === 'column-up' ? height - s.h : 0;
     const z = c.z ?? 0;
     // in a hand the strip lies under the row (the row's corners stay readable)
     const rank = (i: number) => (hand ? (shown[i] ? i : cards.length + i) : i);
     cards.forEach((card, i) => {
       const a = s.at[i];
-      out.set(card.id, { x: c.x + a.dx, y: c.y + a.dy, z: z + (rank(i) + 1) / 1000, width: CARD_W, height: CARD_H, angle: a.angle });
+      out.set(card.id, { x: c.x + a.dx, y: c.y + a.dy + lift, z: z + (rank(i) + 1) / 1000, width: CARD_W, height: CARD_H, angle: a.angle });
     });
   }
   return out;
