@@ -1,5 +1,5 @@
 import type { CanvasNode, DocView, LayoutRule, Placement } from '../../core';
-import { CARD_H, CARD_W, FIELD, allowsShowing, areaOf, cardsIn, isDeck, hasFixedFrame, isHand, isSpreadOut, layoutOf, shownIn, type DeckField, type Layout } from './deck';
+import { CARD_H, CARD_W, FIELD, allowsShowing, areaOf, capacityOf, cardsIn, isDeck, hasFixedFrame, isHand, isSpreadOut, layoutOf, shownIn, type DeckField, type Layout } from './deck';
 
 // Where a container's cards go. Pure geometry; applied at read time through the core layout hook,
 // so the doc only stores each card's container + order (sync-friendly, nothing to rewrite).
@@ -152,8 +152,8 @@ export function slotIndex(c: CanvasNode, n: number, at: { x: number; y: number }
 }
 
 /** Slots a container is sized for when it holds fewer cards: its `max` or `slots`, a hand 3, else 1. */
-export const minSlotsOf = (c: CanvasNode) => {
-  const f = c[FIELD] as DeckField;
+export const minSlotsOf = (c: CanvasNode, doc?: DocView) => {
+  const f = doc ? capacityOf(doc, c) : (c[FIELD] as DeckField);
   return f.max ?? f.slots ?? (isHand(c) ? 3 : 1);
 };
 
@@ -170,7 +170,7 @@ export const cardLayouts: LayoutRule = (doc: DocView) => {
     const cards = cardsIn(doc, c.id);
     const hand = isHand(c);
     const shown = cards.map((x) => hand && shownIn(c, x));
-    const s = hand ? handSlots(c, shown) : slots(layoutOf(c), cards.length, minSlotsOf(c), colsOf(c));
+    const s = hand ? handSlots(c, shown) : slots(layoutOf(c), cards.length, minSlotsOf(c, doc), colsOf(c));
     out.set(c.id, { width: Math.max(s.w, area?.w ?? 0), height: Math.max(s.h, area?.h ?? 0) });
     const z = c.z ?? 0;
     // in a hand the strip lies under the row (the row's corners stay readable)

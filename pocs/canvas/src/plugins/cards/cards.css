@@ -403,3 +403,8 @@
   width: 120px;
   height: 168px;
 }
+/* a spot holding more than it may now (Battle Line: 4 cards after the Mud left) */
+.pc-group.pc-spot.pc-over {
+  border: 2px dashed #ff8a65;
+  background: rgba(255, 138, 101, 0.12);
+}

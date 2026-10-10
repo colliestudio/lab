@@ -95,11 +95,11 @@ export function tabText(label: string, count: number, shown = 0): string {
  * A spread-out group: a frame under its cards, with a tab "Group · 4" (drag = move all, click = menu).
  * A table spot (`slots` = outlines, relative to the frame; `faint` = extra capacity) is drawn quieter.
  */
-export function groupHtml(count: number, o: { hand?: false; home?: boolean; label: string; color?: string; slots?: { dx: number; dy: number; faint?: boolean }[] }): string {
+export function groupHtml(count: number, o: { hand?: false; home?: boolean; label: string; color?: string; slots?: { dx: number; dy: number; faint?: boolean }[]; over?: boolean }): string {
   if (o.slots) {
     const outlines = o.slots.map((p) => `<div class="pc-slot${p.faint ? ' pc-slot-faint' : ''}" style="left:${p.dx}px;top:${p.dy}px"></div>`).join('');
     return (
-      `<div class="pc-group pc-spot"${o.color ? ` style="--pc-group:${o.color}"` : ''}>${outlines}` +
+      `<div class="pc-group pc-spot${o.over ? ' pc-over' : ''}"${o.over ? ' title="More cards than it holds now"' : ''}${o.color ? ` style="--pc-group:${o.color}"` : ''}>${outlines}` +
       `<div class="pc-grip pc-group-tab" data-grip title="${esc(o.label)}: click for actions • drag here to move">` +
       `<span class="pc-grip-dots">⠿</span>${esc(tabText(o.label, count))}</div></div>`
     );

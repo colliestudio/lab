@@ -123,9 +123,27 @@ export const layoutOf = (n: CanvasNode): Layout => {
 };
 /** A table spot (see DeckField.spot). */
 export const isSpot = (n: CanvasNode | undefined): boolean => isDeck(n) && field(n!)?.spot === true;
+/**
+ * A game's say on a container's capacity (e.g. Battle Line: a formation gets a 4th slot while Mud
+ * lies on its flag). Rules are global (like packs); the first that answers wins over the stored
+ * `slots` / `max`.
+ */
+export type CapacityRule = (doc: DocView, box: CanvasNode) => { slots?: number; max?: number } | undefined;
+const capacityRules: CapacityRule[] = [];
+export const registerCapacityRule = (r: CapacityRule) => void capacityRules.push(r);
+/** Outlined slots and most cards of a container: stored, unless a capacity rule says otherwise. */
+export function capacityOf(doc: DocView, box: CanvasNode): { slots?: number; max?: number } {
+  const f = field(box) as { slots?: number; max?: number } | undefined;
+  const base = { slots: f?.slots, max: f?.max };
+  for (const r of capacityRules) {
+    const o = r(doc, box);
+    if (o) return { ...base, ...o };
+  }
+  return base;
+}
 /** Room left in a container with a `max`, else Infinity. */
 export function roomIn(doc: DocView, box: CanvasNode): number {
-  const max = field(box)?.max;
+  const max = capacityOf(doc, box).max;
   return typeof max === 'number' ? Math.max(0, max - cardsIn(doc, box.id).length) : Infinity;
 }
 /** A container drawn as one pile (cards hidden, top card shown): home deck or a group set to stack. */

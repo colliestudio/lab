@@ -1,8 +1,8 @@
 import './cards.css';
 import './standard';
-import { loadPlayer, type App, type CanvasNode, type Command, type MenuEntry, type Plugin, type Store } from '../../core';
-import { SORT_MODES, commands, dropMode, incomingCount, kindOf, outCount, sortPrefOf, type DropMode, type Kind, type SortMode } from './commands';
-import { CARD_W, FIELD, PACK, allowsShowing, areaOf, card, pileAt, hasFixedFrame, cardsIn, concealedFrom, deckFacing, deckIdOf, handOf, hiddenFrom, hidesCount, homeFor, isBlind, isCard, isCardish, isDeck, isHand, isHomeDeck, isShown, isSpot, isSpreadOut, isStacked, layoutOf, packOf, roomIn, shownIn, type DeckField, type Layout } from './deck';
+import { loadPlayer, type App, type CanvasNode, type Command, type DocView, type MenuEntry, type Plugin, type Store } from '../../core';
+import { DROP_ADD, SORT_MODES, commands, dropMode, incomingCount, kindOf, outCount, sortPrefOf, type DropMode, type Kind, type SortMode } from './commands';
+import { CARD_W, FIELD, PACK, allowsShowing, areaOf, capacityOf, card, pileAt, hasFixedFrame, cardsIn, concealedFrom, deckFacing, deckIdOf, handOf, hiddenFrom, hidesCount, homeFor, isBlind, isCard, isCardish, isDeck, isHand, isHomeDeck, isShown, isSpot, isSpreadOut, isStacked, layoutOf, packOf, roomIn, shownIn, type Layout } from './deck';
 import { mountHandUx, VIEW_AS_KEY, type HandUx } from './handUx';
 import { repairImport, shapeExport } from './io';
 import { cardLayouts, laneOf, liftedDrop, rowTop, slots, thresholdY } from './layout';
@@ -118,8 +118,8 @@ const deckName = (box: CanvasNode) => (isSpot(box) && box.label) || (isHomeDeck(
  * A table spot's outline: where the next card goes (dotted past `slots`, e.g. a 4th card for
  * Mud), none when full. Relative to its frame. (Overlapping layouts would make all outlines a tangle.)
  */
-function slotOutlines(box: CanvasNode, count: number): { dx: number; dy: number; faint?: boolean }[] | undefined {
-  const f = box[FIELD] as DeckField;
+function slotOutlines(doc: DocView, box: CanvasNode, count: number): { dx: number; dy: number; faint?: boolean }[] | undefined {
+  const f = capacityOf(doc, box);
   if (!isSpot(box)) return;
   if (!f.slots) return []; // a spot without outlined slots: just its quiet frame
   const cap = Math.max(f.slots, f.max ?? 0);
@@ -147,8 +147,52 @@ const facingMenu = (app: App, ids: () => string[]): MenuEntry => ({
   ],
 });
 
-/** Deal ▸ 1, 2, 3, 5, 7, N… from deck `id`. */
+/**
+ * A game's own deal for a deck (e.g. Battle Line's troops: Deal Battle Line deals to the players'
+ * hands): replaces Deal ▸ in the deck's menus, and the 1–9 keys on it say what to do instead.
+ */
+export type DealOverride = (deck: CanvasNode, app: App) => { entry: MenuEntry; keyHint: string } | undefined;
+const dealOverrides: DealOverride[] = [];
+export const registerDealOverride = (o: DealOverride) => void dealOverrides.push(o);
+const dealOverride = (app: App, id: string) => {
+  const d = app.node(id);
+  for (const o of dealOverrides) {
+    const r = d && o(d, app);
+    if (r) return r;
+  }
+};
+
+/**
+ * Drop routing: a game sends a card dropped on one of its spots to where it belongs (Battle Line:
+ * Fog on a formation → that flag's environment spot). `to` = the container it goes into, `label` =
+ * what the target shows while hovering, `after` runs after the drop (warnings). Single cards only.
+ */
+export interface DropRoute {
+  to: string;
+  label?: string;
+  after?: () => void;
+}
+export type DropRouter = (target: CanvasNode, dropped: CanvasNode[], app: App) => DropRoute | undefined;
+const dropRouters: DropRouter[] = [];
+export const registerDropRouter = (r: DropRouter) => void dropRouters.push(r);
+export function routeFor(target: CanvasNode, dropped: CanvasNode[], app: App): DropRoute | undefined {
+  if (dropped.length !== 1 || !isCard(dropped[0])) return;
+  for (const r of dropRouters) {
+    const out = r(target, dropped, app);
+    if (out) return out;
+  }
+}
+
+/** A short note a game adds to a container's tab (e.g. a count). Global, like packs. */
+export type TabNote = (box: CanvasNode, doc: DocView) => string | undefined;
+const tabNotes: TabNote[] = [];
+export const registerTabNote = (t: TabNote) => void tabNotes.push(t);
+const tabNote = (box: CanvasNode, doc: DocView) => tabNotes.map((t) => t(box, doc)).filter(Boolean).map((s) => ` · ${s}`).join('');
+
+/** Deal ▸ 1, 2, 3, 5, 7, N… from deck `id` (or a game's own deal). */
 function dealMenu(app: App, id: string): MenuEntry {
+  const own = dealOverride(app, id);
+  if (own) return own.entry;
   const n = cardsIn(app.doc, id).length;
   const deal = (count: number) => () => app.dispatch('cards.deal', { id, count });
   return {
@@ -319,6 +363,12 @@ export const cardsPlugin: Plugin = {
     const canDrop = (t: CanvasNode, dropped: CanvasNode[], app: App, overlap: number) => {
       // a table spot (a formation, a mat's zone) is never dropped into anything: it stays a spot
       if (!dropped.some(isCardish) || dropped.some(isSpot)) return false;
+      const route = overlap >= DROP_ADD ? routeFor(t, dropped, app) : undefined;
+      if (route) {
+        const box = app.node(route.to);
+        if (!box || incomingCount(app.doc, box, dropped) > roomIn(app.doc, box)) return false;
+        if (route.label) return route.label;
+      }
       const mode = dropMode(app.doc, t, overlap);
       if (!mode) return false;
       // a container with a `max` (a table spot) refuses more than it has room for
@@ -334,10 +384,17 @@ export const cardsPlugin: Plugin = {
     };
     const onDrop = (target: CanvasNode, dropped: string[], app: App, at: { x: number; y: number }, mode?: string) => {
       const nodes = dropped.map((id) => app.node(id)).filter((n): n is CanvasNode => !!n);
+      const route = routeFor(target, nodes, app);
+      if (route && route.to !== target.id && route.to !== app.doc.parentOf(target.id)) {
+        app.dispatch('cards.drop', { target: route.to, ids: dropped });
+        route.after?.();
+        return;
+      }
       const h = ownMove(target, nodes, app);
       const box = h && (app.view.dragBox(nodes[0].id) ?? nodes[0]);
       const shown = h && box && allowsShowing(h) ? liftedDrop(h, box.y) : undefined;
       app.dispatch('cards.drop', { target: target.id, ids: dropped, at, as: mode === 'Stack' ? 'stack' : mode === 'Fan' ? 'fan' : undefined, shown });
+      route?.after?.();
     };
     const flipOne = (node: CanvasNode, app: App) => {
       if (isHand(node)) return app.notify(HAND_FLIP_HINT);
@@ -444,7 +501,9 @@ export const cardsPlugin: Plugin = {
         if (isSpreadOut(node)) {
           const f = node[FIELD] as { color?: string };
           if (!isHand(node)) {
-            el.innerHTML = groupHtml(cards.length, { hand: false, home: isHomeDeck(node), label: kindName(node), color: f.color, slots: slotOutlines(node, cards.length) });
+            const cap = capacityOf(doc, node);
+            const over = cap.max !== undefined && cards.length > cap.max;
+            el.innerHTML = groupHtml(cards.length, { hand: false, home: isHomeDeck(node), label: kindName(node) + tabNote(node, doc), color: f.color, slots: slotOutlines(doc, node, cards.length), over });
             return;
           }
           hookPresence();
@@ -488,7 +547,8 @@ export const cardsPlugin: Plugin = {
           const shown = cards.filter((c) => shownIn(node, c)).length;
           return `hand:${ownerAway(app, node)}:${cards.length}:${shown}:${isBlind(node)}:${allowsShowing(node)}:${hidesCount(node)}:${hasFixedFrame(node)}:${ux.asOthers()}:${node.label}:${f.color}:${node.owner === viewer}:${layoutOf(node)}`;
         }
-        return `${cards.length}:${isHomeDeck(node)}:${layoutOf(node)}:${node.label}:${f.color}:${node.owner === viewer}:${top ? card(top).face + card(top).faceUp : ''}:${node.width}x${node.height}`;
+        const cap = capacityOf(doc, node);
+        return `${cards.length}:${isHomeDeck(node)}:${layoutOf(node)}:${node.label}:${f.color}:${node.owner === viewer}:${top ? card(top).face + card(top).faceUp : ''}:${node.width}x${node.height}:${cap.slots}:${cap.max}:${tabNote(node, doc)}`;
       },
       onDoubleClick: flipOne,
       // Click on the tab (no drag): a small menu of deck actions anchored to it.
@@ -550,6 +610,8 @@ export const cardsPlugin: Plugin = {
     });
     const dealN = (count: number, flipped = false) => (a: App) => {
       const d = targetDeck(a);
+      const own = d && dealOverride(a, d.id);
+      if (own) return a.notify(own.keyHint);
       if (d) a.dispatch('cards.deal', { id: d.id, count, faceUp: flipped ? !deckFacing(a.doc, d.id) : undefined });
     };
     for (let k = 1; k <= 9; k++) {
