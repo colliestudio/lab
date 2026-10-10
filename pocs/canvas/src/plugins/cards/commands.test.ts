@@ -183,24 +183,22 @@ describe('home decks, gather all, uniform facing', () => {
     expect(s.doc.get(pile)).toBeDefined();
   });
 
-  it('everything entering a deck takes its facing: gather, drop, recall; new pile = the target card\'s facing', () => {
-    const up = (c: string) => card(s.doc.get(c)!).faceUp;
-    const s = withDeck(2, cardNode('u1', 300, 0, { face: 'KH', faceUp: true }, 50), cardNode('u2', 500, 0, { face: 'QH', faceUp: true }, 51), cardNode('u3', 700, 0, { face: 'JH', faceUp: false }, 52));
-    // drop a face-up card on a face-down deck
-    s.dispatch('cards.drop', { target: 'd', ids: ['u1'] });
-    expect(up('u1')).toBe(false);
-    // flip the deck (all face up), then G-gather a face-down card into it
-    s.dispatch('cards.flip', { ids: ['d'] });
-    s.dispatch('cards.gather', { ids: ['d', 'u3'] });
-    expect(cardsIn(s.doc, 'd').every((c) => card(c).faceUp)).toBe(true);
-    // two face-up loose cards make a face-up pile (the target's facing)
-    s.dispatch('cards.spread', { id: 'd' });
-    const r = s.dispatch('cards.drop', { target: 'u2', ids: ['u1'] });
-    expect(cardsIn(s.doc, r.select![0]).map((c) => card(c).faceUp)).toEqual([true, true]);
-    // recall: face down, even if the deck was face up
+  it('every card keeps its own facing in decks and piles (Alex: draw 1, draw 2, flip 2, gather, spread)', () => {
+    const s = withDeck(5);
+    const c1 = s.dispatch('cards.draw', { id: 'd', x: 400, y: 0 }).select![0];
+    const c2 = s.dispatch('cards.draw', { id: 'd', x: 600, y: 0 }).select![0];
+    s.dispatch('cards.flip', { ids: [c2] });
     s.dispatch('cards.recall', { id: 'd' });
-    expect(cardsIn(s.doc, 'd').length).toBeGreaterThan(0);
-    expect(cardsIn(s.doc, 'd').every((c) => !card(c).faceUp)).toBe(true);
+    expect(card(s.doc.get(c2)!).faceUp).toBe(true);
+    expect(card(s.doc.get(c1)!).faceUp).toBe(false);
+    s.dispatch('cards.spread', { id: 'd' });
+    expect(card(s.doc.get(c2)!).faceUp).toBe(true);
+    // G gather and drops keep facing too; only an explicit faceUp turns them all
+    const r = s.dispatch('cards.gather', { ids: [c1, c2] });
+    expect(cardsIn(s.doc, r.select![0]).map((c) => card(c).faceUp).sort()).toEqual([false, true]);
+    s.dispatch('cards.gather', { ids: [r.select![0]], faceUp: false });
+    s.dispatch('cards.face', { ids: [r.select![0]], faceUp: false });
+    expect(cardsIn(s.doc, r.select![0]).every((c) => !card(c).faceUp)).toBe(true);
   });
 
 });
@@ -252,7 +250,6 @@ describe('home deck vs piles', () => {
     expect(homes.map((h) => h.id)).toEqual([initial]); // most cards claimed it
     expect(stacks.map((st) => st.id).sort()).toEqual([initial, 'p11', 'p2'].sort()); // empty e1-e3 deleted
     expect(t.doc.nodes.filter(isCard).every((c) => card(c).home === initial)).toBe(true);
-    for (const st of stacks) expect(new Set(cardsIn(t.doc, st.id).map((c) => card(c).faceUp)).size).toBe(1);
     // idempotent
     const before = JSON.stringify(t.ydoc.getMap('nodes').toJSON());
     t.migrate();
@@ -260,7 +257,6 @@ describe('home deck vs piles', () => {
     // one gather brings everything back face down; the piles go
     t.dispatch('cards.recall', { id: initial });
     expect(cardsIn(t.doc, initial)).toHaveLength(52);
-    expect(cardsIn(t.doc, initial).every((c) => !card(c).faceUp)).toBe(true);
     expect(t.doc.visible.map((n) => n.id)).toEqual([initial]);
   });
 
@@ -422,13 +418,14 @@ describe('one-card piles', () => {
 });
 
 describe('facing is kept unless asked', () => {
-  it('deal keeps the deck facing; recall takes the deck facing; face sets all', () => {
+  it('deal keeps facing; recall keeps facing; face sets all', () => {
     const s = withDeck(4);
     s.dispatch('cards.deal', { id: 'd', count: 2 });
     const loose = s.doc.visible.filter((n) => n.id !== 'd');
     expect(loose.every((c) => !card(c).faceUp)).toBe(true); // deck was face down
-    s.dispatch('cards.flip', { ids: ['d'] }); // deck now face up
     s.dispatch('cards.recall', { id: 'd' });
+    expect(cardsIn(s.doc, 'd').every((c) => !card(c).faceUp)).toBe(true);
+    s.dispatch('cards.face', { ids: ['d'], faceUp: true });
     expect(cardsIn(s.doc, 'd').every((c) => card(c).faceUp)).toBe(true);
     s.dispatch('cards.face', { ids: ['d'], faceUp: false });
     expect(cardsIn(s.doc, 'd').every((c) => !card(c).faceUp)).toBe(true);

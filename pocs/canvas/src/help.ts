@@ -34,9 +34,9 @@ const GROUPS: [string, [string, string][]][] = [
     [
       ['Drag', 'Move'],
       ['Double-click, F', 'Flip'],
-      ['Drop squarely on a card or deck', 'Stack it (the target lights up); it takes that pile’s facing'],
+      ['Drop squarely on a card or deck', 'Stack it (the target lights up); every card keeps its facing'],
       ['G', 'Stack the selection into a pile'],
-      ['⇧G over any card', 'Gather all cards back into their home deck (they take the deck\'s facing)'],
+      ['⇧G over any card', 'Gather all cards back into their home deck (each keeps its facing)'],
     ],
   ],
   [

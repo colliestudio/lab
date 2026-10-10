@@ -1,5 +1,5 @@
 import { isIds, isNum, pick, set, toFront, type CanvasNode, type Change, type Command, type DocView } from '../../core';
-import { CARD_H, CARD_W, FIELD, card, cardNode, cardsHomedAt, cardsIn, deckFacing, deckNode, isCard, isCardish, isDeck, isHomeDeck, packOf, standardDeck } from './deck';
+import { CARD_H, CARD_W, FIELD, card, cardNode, cardsHomedAt, cardsIn, deckNode, isCard, isCardish, isDeck, isHomeDeck, packOf, standardDeck } from './deck';
 
 // Pure commands: (read-only doc, args, ctx) -> per-field changes. No DOM. Bad args = no-op.
 // Cards live as separate nodes; "in a deck" = `x-cards.stack` points at the deck. Moving a card
@@ -155,30 +155,29 @@ export const gather: Command<{ ids: string[]; faceUp?: boolean }> = (doc, a, ctx
   const total = nodes.reduce((k, n) => k + (isDeck(n) ? cardsIn(doc, n.id).length : 1), 0);
   if (nodes.length < 2 || total < 2) return [];
 
-  // Facing of the result: explicit arg, else an existing deck's (its top card), else the anchor card's.
+  // Every card keeps its own facing; only an explicit `faceUp` turns them all one way.
   const anchor = nodes[0];
   const changes: Change[] = [];
   let deck: CanvasNode;
   let order: number;
-  let faceUp: boolean;
+  const faceUp = isBool(a.faceUp) ? a.faceUp : undefined;
+  const turn = (c: CanvasNode) => (faceUp === undefined ? [] : conform(c, faceUp));
   if (isDeck(anchor)) {
     deck = anchor;
     order = topOrder(doc, deck.id);
-    faceUp = isBool(a.faceUp) ? a.faceUp : deckFacing(doc, deck.id);
     changes.push(...toFront(doc, [deck]));
   } else {
     deck = deckNode(ctx.newId(), anchor.x, anchor.y, doc.topZ + 1, packOf(anchor));
     order = 0;
-    faceUp = isBool(a.faceUp) ? a.faceUp : !!card(anchor).faceUp;
     changes.push({ op: 'add', node: deck });
   }
   for (const n of nodes) {
     if (n.id === deck.id) {
-      for (const c of cardsIn(doc, n.id)) changes.push(...conform(c, faceUp));
+      for (const c of cardsIn(doc, n.id)) changes.push(...turn(c));
       continue;
     }
     const cards = isDeck(n) ? cardsIn(doc, n.id) : [n];
-    for (const c of cards) changes.push(...stackInto(c, deck, ++order), ...conform(c, faceUp));
+    for (const c of cards) changes.push(...stackInto(c, deck, ++order), ...turn(c));
     // a merged-away home deck stays as an empty slot; a pile goes
     if (isDeck(n)) changes.push(...emptied(n));
   }
@@ -187,8 +186,7 @@ export const gather: Command<{ ids: string[]; faceUp?: boolean }> = (doc, a, ctx
 
 /**
  * Gather all: every card whose home is this deck, wherever it is (table, other decks), goes back on
- * top in table order, taking the deck's facing (face down if the deck is empty). Cards already inside
- * are untouched. Piles left empty or with one card are cleaned up (see `shrunk`).
+ * top in table order, each keeping its own facing. Cards already inside are untouched. Piles left empty or with one card are cleaned up (see `shrunk`).
  */
 export const recall: Command<{ id: string }> = (doc, a) => {
   const deck = typeof a?.id === 'string' ? doc.get(a.id) : undefined;
@@ -196,13 +194,12 @@ export const recall: Command<{ id: string }> = (doc, a) => {
   const homed = cardsHomedAt(doc, deck.id);
   const out = homed.filter((c) => doc.parentOf(c.id) !== deck.id);
   const changes: Change[] = [];
-  const faceUp = deckFacing(doc, deck.id);
   let order = topOrder(doc, deck.id);
   const drained = new Map<string, number>();
   for (const c of out) {
     const from = doc.parentOf(c.id);
     if (from) drained.set(from, (drained.get(from) ?? 0) + 1);
-    changes.push(...stackInto(c, deck, ++order), ...conform(c, faceUp));
+    changes.push(...stackInto(c, deck, ++order));
   }
   for (const from of drained.keys()) {
     const other = doc.get(from)!;
@@ -219,7 +216,7 @@ export const outCount = (doc: DocView, deckId: string) => cardsHomedAt(doc, deck
  * Repair/migration (runs after every load, idempotent). Per pack: pick one home deck — a stack
  * already flagged home, else the stack most cards name as home, else the fullest stack, else a new
  * one left of the leftmost card — flag it, unflag every other stack (they become piles), point every
- * card of the pack at it, delete empty piles, dissolve one-card piles, and make every stack's facing uniform.
+ * card of the pack at it, delete empty piles and dissolve one-card piles. Facing is left alone.
  */
 export const repairHomes: Command<Record<string, never>> = (doc, _a, ctx) => {
   const changes: Change[] = [];
@@ -257,11 +254,6 @@ export const repairHomes: Command<Record<string, never>> = (doc, _a, ctx) => {
       else if (size(st) === 1) changes.push(...shrunk(st, cardsIn(doc, st.id))); // a pile of one is just a card
     }
     for (const c of cards) if (card(c).home !== home.id) changes.push(set(c.id, F('home'), home.id));
-    // no stack may hold mixed facing: conform to the top card
-    for (const st of stacks) {
-      const up = deckFacing(doc, st.id);
-      for (const c of cardsIn(doc, st.id)) changes.push(...conform(c, up));
-    }
   }
   return changes;
 };
