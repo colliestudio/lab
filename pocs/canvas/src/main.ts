@@ -1,5 +1,5 @@
 import './style.css';
-import { App, openFile, parse, persistLocally, persistViewport, resetFileHandle, saveFile, type CanvasDoc, type CanvasNode } from './core';
+import { App, mountZoomControl, openFile, parse, persistLocally, persistViewport, resetFileHandle, saveFile, type CanvasDoc, type CanvasNode } from './core';
 import { cardsPlugin } from './plugins/cards';
 
 const DB_NAME = 'canvas-poc';
@@ -11,18 +11,19 @@ app.use(cardsPlugin);
 const HELP = `Card table
 
 Drag cards • double-click or F to flip
-Drag empty space / Space+drag to pan • wheel or pinch to zoom
+Pan: drag empty space, Space+drag, wheel (⇧wheel sideways), two-finger scroll
+Zoom: ⌘wheel or pinch • ⌘+ / ⌘− • ⌘0 100% • 0 fit • controls bottom right
 Shift+drag: box select • Shift+click: add to selection
 Drop a card squarely onto a card or deck to stack it (it lights up)
 Drag a deck to take its top card • drag its ⠿ tab (or Alt+drag) to move the deck
 Deck: S shuffle • D draw (⇧D face down) • 1–9 deal N face up (⇧ face down) • E spread
 Number keys and D act on the deck under the mouse, else the selected one
-G gather selection into a deck • right-click for more • 0 fit view
+G gather selection into a deck • right-click for more
 ⌘Z undo • ⇧⌘Z redo • ⌘S save .canvas • ⌘O open`;
 
 function newTable() {
   resetFileHandle();
-  const help: CanvasNode = { id: 'help', type: 'text', x: -40, y: -430, width: 640, height: 290, text: HELP, z: 1 };
+  const help: CanvasNode = { id: 'help', type: 'text', x: -40, y: -450, width: 640, height: 310, text: HELP, z: 1 };
   app.store.load({ nodes: [help], edges: [] });
   app.dispatch('cards.setup', { x: 0, y: 0 });
   app.store.undoManager.clear();
@@ -78,8 +79,8 @@ button('Open…', 'Open a .canvas file (⌘O)', doOpen);
 button('Save', 'Save as .canvas (⌘S)', () => doSave());
 button('Undo', 'Undo (⌘Z)', () => app.store.undo());
 button('Redo', 'Redo (⇧⌘Z)', () => app.store.redo());
-button('Fit', 'Show everything (0)', () => app.view.fit());
 bar.append(status);
+mountZoomControl(app);
 
 app.registerKey({ key: 'mod+s', run: () => doSave() });
 app.registerKey({ key: 'mod+shift+s', run: () => doSave(true) });

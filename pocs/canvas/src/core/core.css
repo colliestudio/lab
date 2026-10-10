@@ -95,3 +95,37 @@
   border-radius: 8px;
   filter: brightness(1.08);
 }
+.cv-zoom {
+  position: fixed;
+  z-index: 10;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 6px;
+  border-radius: 10px;
+  background: rgba(15, 25, 20, 0.75);
+  backdrop-filter: blur(6px);
+  color: #e8efe9;
+  font: 13px system-ui, sans-serif;
+  user-select: none;
+}
+.cv-zoom button {
+  min-width: 30px;
+  border: 0;
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.12);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.cv-zoom button:hover {
+  background: rgba(255, 255, 255, 0.24);
+}
+.cv-zoom .cv-zoom-pct {
+  min-width: 52px;
+  background: none;
+  font-variant-numeric: tabular-nums;
+}

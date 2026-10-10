@@ -22,6 +22,11 @@ export class App {
   constructor(root: HTMLElement) {
     registerCoreCommands(this.store);
     this.view = new View(this, root);
+    // zoom keys (handled before the browser's page zoom)
+    const zin = { run: () => this.view.zoomCenter('in') };
+    for (const key of ['mod+=', 'mod++', 'mod+shift+=', 'mod+shift++']) this.registerKey({ key, label: 'Zoom in', ...zin });
+    for (const key of ['mod+-', 'mod+shift+-', 'mod+_', 'mod+shift+_']) this.registerKey({ key, label: 'Zoom out', run: () => this.view.zoomCenter('out') });
+    this.registerKey({ key: 'mod+0', label: 'Zoom to 100%', run: () => this.view.zoomCenter(1) });
   }
 
   use(plugin: Plugin) {

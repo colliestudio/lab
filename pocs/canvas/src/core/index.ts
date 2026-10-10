@@ -7,3 +7,4 @@ export * from './persist';
 export { isIds, isNum, pick, toFront } from './commands';
 export type { ObjectType, KeyBinding, MenuItem, Plugin, RenderCtx } from './plugin';
 export { Viewport } from './viewport';
+export { mountZoomControl } from './zoomControl';

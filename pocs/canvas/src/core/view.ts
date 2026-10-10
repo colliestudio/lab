@@ -1,6 +1,7 @@
 import type { App } from './app';
 import type { CanvasNode } from './doc';
 import type { RenderCtx } from './plugin';
+import { Viewport, wheelZoomFactor } from './viewport';
 
 type Pt = { x: number; y: number };
 
@@ -144,7 +145,7 @@ export class View {
     const maxY = Math.max(...nodes.map((n) => n.y + n.height));
     const w = this.root.clientWidth - padding * 2;
     const h = this.root.clientHeight - padding * 2;
-    const zoom = Math.min(1.5, Math.max(0.1, Math.min(w / (maxX - minX), h / (maxY - minY))));
+    const zoom = Math.min(1.5, Math.max(Viewport.MIN, Math.min(w / (maxX - minX), h / (maxY - minY))));
     const x = (this.root.clientWidth - (maxX - minX) * zoom) / 2 - minX * zoom;
     const y = (this.root.clientHeight - (maxY - minY) * zoom) / 2 - minY * zoom;
     this.app.viewport.set(x, y, zoom);
@@ -307,19 +308,31 @@ export class View {
     }
   }
 
+  /** Figma-style: wheel pans (Shift = horizontal), ⌘/Ctrl+wheel and trackpad pinch zoom at the pointer. */
   private onWheel(e: WheelEvent) {
     e.preventDefault();
-    const p = this.local(e);
     const vp = this.app.viewport;
-    if (e.ctrlKey) {
-      // trackpad pinch (and ctrl+wheel)
-      vp.zoomAt(p.x, p.y, Math.exp(-e.deltaY * 0.01));
+    if (e.metaKey || e.ctrlKey) {
+      // trackpad pinch arrives as ctrlKey + deltaY
+      const p = this.local(e);
+      vp.zoomAt(p.x, p.y, wheelZoomFactor(e.deltaY, e.deltaMode));
       return;
     }
-    // Mouse wheels send line deltas or big round vertical steps; trackpads send small pixel deltas.
-    const mouseWheel = e.deltaMode !== 0 || (e.deltaX === 0 && Number.isInteger(e.deltaY) && Math.abs(e.deltaY) >= 50);
-    if (mouseWheel) vp.zoomAt(p.x, p.y, e.deltaY < 0 ? 1.15 : 1 / 1.15);
-    else vp.panBy(-e.deltaX, -e.deltaY);
+    const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? this.root.clientHeight : 1;
+    let dx = e.deltaX * unit;
+    let dy = e.deltaY * unit;
+    // Shift+wheel scrolls sideways (some browsers already swap the axes for us)
+    if (e.shiftKey && dx === 0) [dx, dy] = [dy, 0];
+    vp.panBy(-dx, -dy);
+  }
+
+  /** Zoom around the middle of the table (buttons, keys). */
+  zoomCenter(how: 'in' | 'out' | number) {
+    const vp = this.app.viewport;
+    const cx = this.root.clientWidth / 2;
+    const cy = this.root.clientHeight / 2;
+    if (typeof how === 'number') vp.zoomTo(cx, cy, how);
+    else vp.zoomStep(how === 'in' ? 1 : -1, cx, cy);
   }
 
   private onKeyDown(e: KeyboardEvent) {
