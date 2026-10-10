@@ -18,6 +18,7 @@ type Gesture =
       applied: Pt;
       moved: boolean;
       target?: string;
+      mode?: string;
     }
   | { kind: 'marquee'; start: Pt; base: Set<string> }
   | { kind: 'pinch'; dist: number; mid: Pt };
@@ -296,7 +297,8 @@ export class View {
           this.app.dispatch('core.move', { ids: g.ids, dx, dy }, { merge: true });
           g.applied = { x: tx, y: ty };
         }
-        this.setDropTarget(g, this.findDropTarget(g, e));
+        const t = this.findDropTarget(g, e);
+        this.setDropTarget(g, t?.id, t?.mode);
         return;
       }
       case 'marquee': {
@@ -342,11 +344,11 @@ export class View {
 
     for (const id of g.ids) this.els.get(id)?.classList.remove('cv-dragging');
     if (g.moved) {
-      const targetId = this.findDropTarget(g, e);
+      const found = this.findDropTarget(g, e);
       this.setDropTarget(g, undefined);
-      const target = targetId && this.app.node(targetId);
+      const target = found && this.app.node(found.id);
       const at = this.world_(this.local(e));
-      if (target) this.app.store.merged(() => this.app.typeOf(target)?.onDrop?.(target, g.ids, this.app, at));
+      if (target) this.app.store.merged(() => this.app.typeOf(target)?.onDrop?.(target, g.ids, this.app, at, found.mode));
       return;
     }
     // plain click
@@ -463,7 +465,7 @@ export class View {
   }
 
   /** The object a drag would land on: topmost under the pointer, overlapping enough, and willing. */
-  private findDropTarget(g: Extract<Gesture, { kind: 'drag' }>, e: PointerEvent): string | undefined {
+  private findDropTarget(g: Extract<Gesture, { kind: 'drag' }>, e: PointerEvent): { id: string; mode?: string } | undefined {
     const dragged = new Set(g.ids);
     const primary = this.app.node(g.clickId);
     if (!primary) return;
@@ -475,17 +477,28 @@ export class View {
     if (!target) return;
     const type = this.app.typeOf(target);
     if (!type?.onDrop) return;
-    if (overlap(primary, target) < DROP_OVERLAP) return;
+    const ov = overlap(primary, target);
+    if (!type.canDrop) return ov >= DROP_OVERLAP ? { id: target.id } : undefined;
     const dropped = g.ids.map((id) => this.app.node(id)).filter((n): n is CanvasNode => !!n);
-    if (type.canDrop && !type.canDrop(target, dropped, this.app)) return;
-    return target.id;
+    const verdict = type.canDrop(target, dropped, this.app, ov);
+    if (!verdict) return;
+    return { id: target.id, mode: typeof verdict === 'string' ? verdict : undefined };
   }
 
-  private setDropTarget(g: Extract<Gesture, { kind: 'drag' }>, id: string | undefined) {
-    if (g.target === id) return;
-    if (g.target) this.els.get(g.target)?.classList.remove('cv-drop-target');
+  private setDropTarget(g: Extract<Gesture, { kind: 'drag' }>, id: string | undefined, mode?: string) {
+    if (g.target === id && g.mode === mode) return;
+    if (g.target) {
+      const old = this.els.get(g.target);
+      old?.classList.remove('cv-drop-target');
+      if (old) delete old.dataset.dropLabel;
+    }
     g.target = id;
-    if (id) this.els.get(id)?.classList.add('cv-drop-target');
+    g.mode = mode;
+    const box = id ? this.els.get(id) : undefined;
+    if (box) {
+      box.classList.add('cv-drop-target');
+      if (mode) box.dataset.dropLabel = mode;
+    }
   }
 
   // ---------------------------------------------------------------- context menu

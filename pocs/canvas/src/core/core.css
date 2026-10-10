@@ -167,3 +167,19 @@
   font: 600 11px/16px system-ui, sans-serif;
   white-space: nowrap;
 }
+.cv-node.cv-drop-target[data-drop-label]::after {
+  content: attr(data-drop-label);
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  padding: 3px 10px;
+  border-radius: 10px;
+  background: #7fe3ff;
+  color: #06303d;
+  font: 700 13px/18px system-ui, sans-serif;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 2;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}

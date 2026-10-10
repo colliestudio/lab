@@ -31,10 +31,16 @@ export interface ObjectType {
    */
   onDragStart?(node: CanvasNode, down: PointerEvent, app: App): string | void;
   /** Would this object take `dropped` if they were released on it? (drives the hover highlight) */
-  canDrop?(target: CanvasNode, dropped: CanvasNode[], app: App): boolean;
+  /**
+   * Would this object take `dropped` if released now? `overlap` = intersection over the smaller box
+   * (0..1). Return false to refuse, true to accept, or a short mode label (e.g. "Stack", "Fan") that
+   * is shown on the target while hovering and passed to `onDrop`. Without `canDrop`, core accepts at
+   * ≥50% overlap.
+   */
+  canDrop?(target: CanvasNode, dropped: CanvasNode[], app: App, overlap: number): boolean | string;
   /** Objects were deliberately dropped onto this one. */
   /** `at` = the drop point in world coordinates (e.g. to insert at a position in a layout). */
-  onDrop?(target: CanvasNode, droppedIds: string[], app: App, at: { x: number; y: number }): void;
+  onDrop?(target: CanvasNode, droppedIds: string[], app: App, at: { x: number; y: number }, mode?: string): void;
 }
 
 export interface KeyBinding {
