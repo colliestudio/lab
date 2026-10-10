@@ -1,7 +1,7 @@
 import './cards.css';
 import type { App, CanvasNode, Command, Plugin, Store } from '../../core';
 import { commands, outCount } from './commands';
-import { CARD_W, card, cardsIn, deckIdOf, homeFor, isCard, isCardish, isDeck, isHomeDeck } from './deck';
+import { CARD_W, card, cardsIn, deckFacing, deckIdOf, homeFor, isCard, isCardish, isDeck, isHomeDeck } from './deck';
 import { repairImport, shapeExport } from './io';
 import { cardHtml, deckHtml } from './render';
 
@@ -101,9 +101,14 @@ export const cardsPlugin: Plugin = {
 
     const flipSel = (a: App) => a.dispatch('cards.flip', { ids: ids(selectedCards(a)) });
     const shuffleSel = (a: App) => a.dispatch('cards.shuffle', { ids: ids(selectedCards(a).filter(isDeck)) });
-    const drawSel = (faceUp?: boolean) => (a: App) => {
+    // `flipped`: the card comes out the other way up from how it lies in the deck
+    const drawSel = (flipped = false) => (a: App) => {
       const d = targetDeck(a);
-      if (d) a.dispatch('cards.draw', { id: d.id, faceUp, select: 'deck' });
+      if (d) a.dispatch('cards.draw', { id: d.id, faceUp: flipped ? !deckFacing(a.doc, d.id) : undefined, select: 'deck' });
+    };
+    const flippedLabel = (verb: string) => () => {
+      const d = lastDeck(app);
+      return `${verb} ${d && deckFacing(app.doc, d.id) ? 'face down' : 'face up'}`;
     };
     const spreadSel = (a: App) => {
       const d = lastDeck(a);
@@ -118,17 +123,17 @@ export const cardsPlugin: Plugin = {
     app.registerKey({ key: 'f', label: 'Flip', run: flipSel });
     app.registerKey({ key: 's', label: 'Shuffle', run: shuffleSel });
     app.registerKey({ key: 'd', label: 'Draw', run: drawSel() });
-    app.registerKey({ key: 'shift+d', label: 'Draw face down', run: drawSel(false) });
+    app.registerKey({ key: 'shift+d', label: 'Draw flipped', run: drawSel(true) });
     app.registerKey({ key: 'g', label: 'Gather into a deck', run: gatherSel() });
     app.registerKey({ key: 'shift+g', label: 'Gather all cards back to their deck', run: recallHome });
     app.registerKey({ key: 'e', label: 'Spread deck', run: spreadSel });
-    const dealN = (count: number, faceUp?: boolean) => (a: App) => {
+    const dealN = (count: number, flipped = false) => (a: App) => {
       const d = targetDeck(a);
-      if (d) a.dispatch('cards.deal', { id: d.id, count, faceUp });
+      if (d) a.dispatch('cards.deal', { id: d.id, count, faceUp: flipped ? !deckFacing(a.doc, d.id) : undefined });
     };
     for (let k = 1; k <= 9; k++) {
       app.registerKey({ key: `${k}`, label: `Deal ${k}`, run: dealN(k) });
-      app.registerKey({ key: `alt+${k}`, label: `Deal ${k} face down`, run: dealN(k, false) });
+      app.registerKey({ key: `alt+${k}`, label: `Deal ${k} flipped`, run: dealN(k, true) });
     }
 
     const any = (_: App, sel: CanvasNode[]) => sel.some(isCardish);
@@ -140,7 +145,15 @@ export const cardsPlugin: Plugin = {
     app.registerMenuItem({ label: 'All face up', when: any, run: faceSel(true) });
     app.registerMenuItem({ label: 'All face down', when: any, run: faceSel(false) });
     app.registerMenuItem({ label: 'Draw', hint: 'D', when: hasDeck, run: drawSel() });
-    app.registerMenuItem({ label: 'Draw face down', hint: '⇧D', when: hasDeck, run: drawSel(false) });
+    const drawFlippedLabel = flippedLabel('Draw');
+    app.registerMenuItem({
+      get label() {
+        return drawFlippedLabel();
+      },
+      hint: '⇧D',
+      when: hasDeck,
+      run: drawSel(true),
+    });
     app.registerMenuItem({ label: 'Deal 3', hint: '3', when: hasDeck, run: dealN(3) });
     app.registerMenuItem({ label: 'Deal 5', hint: '5', when: hasDeck, run: dealN(5) });
     app.registerMenuItem({ label: 'Spread out', hint: 'E', when: hasDeck, run: spreadSel });
