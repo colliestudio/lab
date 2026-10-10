@@ -444,17 +444,58 @@ export const ungroup: Command<{ id: string }> = (doc, a) => {
   return { changes, select: cards.map((c) => c.id) };
 };
 
+export type SortMode = 'suit' | 'rank' | 'rankOnly' | 'reverse';
+export const SORT_MODES: SortMode[] = ['suit', 'rank', 'rankOnly', 'reverse'];
+/** A container's remembered sort (plain "Sort" repeats it). Default: by suit, then rank; ace high. */
+export interface SortPref {
+  mode: SortMode;
+  aceHigh: boolean;
+}
+export const sortPrefOf = (box: CanvasNode): SortPref => {
+  const p = (box[FIELD] as { sort?: Partial<SortPref> }).sort;
+  return { mode: p?.mode && SORT_MODES.includes(p.mode) ? p.mode : 'suit', aceHigh: p?.aceHigh !== false };
+};
+
+/** Sort keys of a card face: suit and rank as numbers. A pack can bring its own (registry by pack id). */
+export type SortKeys = (face: string, o: { aceHigh: boolean }) => { suit: number; rank: number };
 const SUIT_ORDER = ['S', 'H', 'C', 'D']; // alternating colors
-/** Sort a group or hand by suit, then rank (A..K). */
-export const sort: Command<{ id: string }> = (doc, a) => {
+export const sortKeys: Record<string, SortKeys> = {
+  'standard-52': (face, o) => {
+    const { rank, suit } = parseFace(face);
+    const r = (RANKS as readonly string[]).indexOf(rank); // A = 0 … K = 12
+    return { suit: SUIT_ORDER.indexOf(suit), rank: o.aceHigh && rank === 'A' ? 13 : r };
+  },
+};
+const keysFor = (pack: string): SortKeys => sortKeys[pack] ?? sortKeys['standard-52'];
+
+/** `cards` (in their current order) sorted by `mode`. Stable: equal keys keep their order. */
+export function sortedCards(cards: CanvasNode[], pref: SortPref): CanvasNode[] {
+  if (pref.mode === 'reverse') return cards.slice().reverse();
+  const k = new Map(cards.map((c) => [c.id, keysFor(packOf(c))(card(c).face, pref)]));
+  const cmp = (x: CanvasNode, y: CanvasNode) => {
+    const a = k.get(x.id)!;
+    const b = k.get(y.id)!;
+    if (pref.mode === 'suit') return a.suit - b.suit || a.rank - b.rank;
+    if (pref.mode === 'rank') return a.rank - b.rank || a.suit - b.suit;
+    return a.rank - b.rank; // rankOnly
+  };
+  return cards.slice().sort(cmp); // Array.prototype.sort is stable
+}
+
+/**
+ * Sort a group or hand. `mode` / `aceHigh` given: use them and remember them on the container; else
+ * repeat the remembered sort. Only the order changes (never facing: nothing shows or hides).
+ */
+export const sort: Command<{ id: string; mode?: SortMode; aceHigh?: boolean }> = (doc, a) => {
   const box = typeof a?.id === 'string' ? doc.get(a.id) : undefined;
   if (!box || !isDeck(box)) return [];
-  const key = (c: CanvasNode) => {
-    const { rank, suit } = parseFace(card(c).face);
-    return SUIT_ORDER.indexOf(suit) * 100 + (RANKS as readonly string[]).indexOf(rank);
-  };
-  const sorted = cardsIn(doc, box.id).slice().sort((x, y) => key(x) - key(y));
-  return sorted.flatMap((c, i) => (card(c).order === i + 1 ? [] : [set(c.id, F('order'), i + 1)]));
+  const prev = sortPrefOf(box);
+  const pref: SortPref = { mode: a.mode && SORT_MODES.includes(a.mode) ? a.mode : prev.mode, aceHigh: isBool(a.aceHigh) ? a.aceHigh : prev.aceHigh };
+  const changes: Change[] = [];
+  if (pref.mode !== prev.mode || pref.aceHigh !== prev.aceHigh || !(box[FIELD] as { sort?: unknown }).sort) changes.push(set(box.id, F('sort'), { ...pref }));
+  const sorted = sortedCards(cardsIn(doc, box.id), pref);
+  changes.push(...sorted.flatMap((c, i) => (card(c).order === i + 1 ? [] : [set(c.id, F('order'), i + 1)])));
+  return changes;
 };
 
 const okColor = (c: unknown) => (typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c) ? c : undefined);

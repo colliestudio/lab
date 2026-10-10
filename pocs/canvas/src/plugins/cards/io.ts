@@ -41,6 +41,7 @@ export const repairImport: DocFilter = (doc, ctx) => {
         if (f.hand === true && typeof n.owner === 'string') d.layout ??= 'fan';
       }
       if (typeof f.color === 'string' && /^#[0-9a-f]{6}$/i.test(f.color)) d.color = f.color;
+      if (obj(f.sort)) d.sort = f.sort as DeckField['sort'];
       if (!d.home) {
         if (f.blind === true) d.blind = true;
         if (f.showing === true) d.showing = true;

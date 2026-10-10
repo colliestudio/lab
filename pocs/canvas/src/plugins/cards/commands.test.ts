@@ -3,7 +3,7 @@ import * as Y from 'yjs';
 import { OTHERS, Store, parse, serialize, type CanvasNode, type CommandCtx } from '../../core';
 import { registerCoreCommands } from '../../core/commands';
 import { registerCardsLogic } from './index';
-import { DROP_FAN, DROP_STACK, dropMode, freeSpot } from './commands';
+import { DROP_FAN, DROP_STACK, SORT_MODES, dropMode, freeSpot, sortKeys, sortPrefOf } from './commands';
 import { CARD_W, FIELD, card, concealedFrom, hasFixedFrame, isShown, cardNode, cardsIn, deckNode, hiddenFrom, isBlind, isCard, isDeck, isHomeDeck, layoutOf, standardDeck } from './deck';
 import { HAND_W, PAD, RAISE, emptyHandSize, handSlots, liftedDrop, rowTop, slots, thresholdY } from './layout';
 import { handHtml, tabText } from './render';
@@ -351,7 +351,7 @@ describe('groups and hands', () => {
   it('setLayout, sort, ungroup; a group set to stack acts like a deck', () => {
     const s = withDeck(1, ...loose('KH', '2S', 'AS'));
     const g = s.dispatch('cards.gather', { ids: ['l0', 'l1', 'l2'] }).select![0];
-    s.dispatch('cards.sort', { id: g });
+    s.dispatch('cards.sort', { id: g, aceHigh: false });
     expect(order(s, g)).toEqual(['AS', '2S', 'KH']);
     s.dispatch('cards.setLayout', { id: g, layout: 'grid' });
     expect(layoutOf(s.doc.get(g)!)).toBe('grid');
@@ -1153,5 +1153,56 @@ describe('give a hand to someone', () => {
     expect(canGive(app('bob', ['alice']), box)).toBe(false);
     expect(ownerAway(app('bob', []), box)).toBe(true); // Alice left
     expect(canGive(app('bob', []), box)).toBe(true);
+  });
+});
+
+describe('Sort ▸', () => {
+  const order = (s: Store, box: string) => faces(s, box);
+  const group = (...fs: string[]) => {
+    const s = withDeck(1, ...fs.map((f, i) => cardNode(`l${i}`, 400 + i * 60, 400, { face: f, faceUp: true }, 100 + i)));
+    const g = s.dispatch('cards.gather', { ids: fs.map((_, i) => `l${i}`) }).select![0];
+    return { s, g };
+  };
+  it('modes: suit then rank, rank then suit, rank only (stable), reverse; ace high by default', () => {
+    const { s, g } = group('KH', '2S', 'AH', '2H', 'AS', 'KS');
+    s.dispatch('cards.sort', { id: g, mode: 'suit' });
+    expect(order(s, g)).toEqual(['2S', 'KS', 'AS', '2H', 'KH', 'AH']);
+    s.dispatch('cards.sort', { id: g, mode: 'rank' });
+    expect(order(s, g)).toEqual(['2S', '2H', 'KS', 'KH', 'AS', 'AH']);
+    s.dispatch('cards.sort', { id: g, aceHigh: false }); // repeats "rank", aces low now
+    expect(order(s, g)).toEqual(['AS', 'AH', '2S', '2H', 'KS', 'KH']);
+    s.dispatch('cards.sort', { id: g, mode: 'reverse' });
+    expect(order(s, g)).toEqual(['KH', 'KS', '2H', '2S', 'AH', 'AS']);
+    s.dispatch('cards.sort', { id: g, mode: 'rankOnly' }); // stable: H before S kept from the reversed order
+    expect(order(s, g)).toEqual(['AH', 'AS', '2H', '2S', 'KH', 'KS']);
+  });
+  it('remembers the last mode per container (saved); plain Sort repeats it', () => {
+    const { s, g } = group('KH', '2S', 'AH');
+    s.dispatch('cards.sort', { id: g, mode: 'rank', aceHigh: false });
+    expect(sortPrefOf(s.doc.get(g)!)).toEqual({ mode: 'rank', aceHigh: false });
+    s.dispatch('cards.pullOut', { id: 'l1' });
+    s.dispatch('cards.drop', { target: g, ids: ['l1'] }); // 2S on top again
+    s.dispatch('cards.sort', { id: g });
+    expect(order(s, g)).toEqual(['AH', '2S', 'KH']);
+    const t = store();
+    t.load(parse(serialize(s.exportDoc())));
+    expect(sortPrefOf(t.doc.get(g)!)).toEqual({ mode: 'rank', aceHigh: false });
+  });
+  it('sorting a hand never changes what anyone sees', () => {
+    const s = withDeck(1, ...['KH', '2S', 'AH', 'QS'].map((f, i) => cardNode(`l${i}`, 400 + i * 200, 400, { face: f, faceUp: false }, 100 + i)));
+    const h = s.dispatch('cards.newHand', { owner: 'alice', x: 0, y: 600 }).select![0];
+    s.dispatch('cards.drop', { target: h, ids: ['l0', 'l1', 'l2', 'l3'] });
+    s.dispatch('cards.allowShowing', { id: h, on: true });
+    s.dispatch('cards.show', { ids: ['l2'], shown: true, by: 'alice' });
+    const vis = () => ['l0', 'l1', 'l2', 'l3'].map((id) => `${isShown(s.doc, s.doc.get(id)!)}:${hiddenFrom(s.doc, s.doc.get(id)!, 'bob')}`);
+    const before = vis();
+    for (const mode of SORT_MODES) {
+      s.dispatch('cards.sort', { id: h, mode });
+      expect(vis()).toEqual(before);
+    }
+  });
+  it('keys come from the pack (a pack can bring its own later)', () => {
+    expect(sortKeys['standard-52']('AS', { aceHigh: true }).rank).toBeGreaterThan(sortKeys['standard-52']('KS', { aceHigh: true }).rank);
+    expect(sortKeys['standard-52']('AS', { aceHigh: false }).rank).toBe(0);
   });
 });

@@ -60,6 +60,8 @@ export interface DeckField {
   showing?: true;
   /** A hand with "Hide card count": others see a generic pile, never its private cards. */
   hideCount?: true;
+  /** The last sort (plain "Sort" repeats it): mode and ace high. */
+  sort?: { mode?: string; aceHigh?: boolean };
   /** "Fixed frame size": the frame keeps `width` whatever the count (on anyway while the count is hidden). */
   fixed?: true;
   /** A fixed frame's width (cards compress to fit); default HAND_W. */

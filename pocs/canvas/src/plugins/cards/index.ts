@@ -1,6 +1,6 @@
 import './cards.css';
 import { loadPlayer, type App, type CanvasNode, type Command, type MenuEntry, type Plugin, type Store } from '../../core';
-import { commands, dropMode, kindOf, outCount, type DropMode, type Kind } from './commands';
+import { SORT_MODES, commands, dropMode, kindOf, outCount, sortPrefOf, type DropMode, type Kind, type SortMode } from './commands';
 import { CARD_W, FIELD, allowsShowing, card, hasFixedFrame, cardsIn, concealedFrom, deckFacing, deckIdOf, handOf, hiddenFrom, hidesCount, homeFor, isBlind, isCard, isCardish, isDeck, isHand, isHomeDeck, isShown, isSpreadOut, isStacked, layoutOf, shownIn, type Layout } from './deck';
 import { mountHandUx, VIEW_AS_KEY, type HandUx } from './handUx';
 import { repairImport, shapeExport } from './io';
@@ -236,6 +236,21 @@ function handMenu(app: App, box: CanvasNode, ux: HandUx): MenuEntry[] {
   return out;
 }
 
+const SORT_NAMES: Record<SortMode, string> = { suit: 'By suit, then rank', rank: 'By rank, then suit', rankOnly: 'By rank only', reverse: 'Reverse current order' };
+/** Sort ▸ modes (the remembered one checked) + Ace high; "Sort again" repeats the remembered mode. */
+function sortMenu(app: App, box: CanvasNode): MenuEntry {
+  const pref = sortPrefOf(box);
+  const run = (a: { mode?: SortMode; aceHigh?: boolean }) => () => app.dispatch('cards.sort', { id: box.id, ...a });
+  return {
+    label: 'Sort',
+    items: () => [
+      { label: `Sort again (${SORT_NAMES[pref.mode].toLowerCase()})`, run: run({}) },
+      ...SORT_MODES.map((m, i): MenuEntry => ({ label: SORT_NAMES[m], checked: pref.mode === m, separator: i === 0, run: run({ mode: m }) })),
+      { label: 'Ace high', separator: true, checked: pref.aceHigh, run: run({ aceHigh: !pref.aceHigh }) },
+    ],
+  };
+}
+
 /** Everything you can do to one container: its tab menu, and its right-click menu. */
 function containerMenu(app: App, box: CanvasNode, ux: HandUx): MenuEntry[] {
   const id = box.id;
@@ -249,7 +264,7 @@ function containerMenu(app: App, box: CanvasNode, ux: HandUx): MenuEntry[] {
       dealMenu(app, id),
       { label: 'Shuffle', hint: 'S', run: () => app.dispatch('cards.shuffle', { ids: [id] }) },
     );
-  } else out.push({ label: 'Sort by suit and rank', run: () => app.dispatch('cards.sort', { id }) });
+  } else out.push(sortMenu(app, box));
   if (kind === 'hand') out.push(...handMenu(app, box, ux));
   else out.push(facingMenu(app, () => [id]));
   out.push({ ...turnIntoMenu(app, box), separator: true });
