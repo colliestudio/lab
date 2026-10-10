@@ -1,7 +1,7 @@
 import './cards.css';
 import { loadPlayer, type App, type CanvasNode, type Command, type MenuEntry, type Plugin, type Store } from '../../core';
 import { commands, dropMode, kindOf, outCount, type DropMode, type Kind } from './commands';
-import { CARD_W, FIELD, card, cardsIn, deckFacing, deckIdOf, hiddenFrom, homeFor, isCard, isCardish, isDeck, isHand, isHomeDeck, isSpreadOut, isStacked, layoutOf, type Layout } from './deck';
+import { CARD_W, FIELD, card, cardsIn, deckFacing, deckIdOf, heldBy, hiddenFrom, homeFor, isCard, isCardish, isDeck, isHand, isHomeDeck, isSpreadOut, isStacked, layoutOf, type Layout } from './deck';
 import { repairImport, shapeExport } from './io';
 import { cardLayouts } from './layout';
 import { cardHtml, deckHtml, groupHtml } from './render';
@@ -166,12 +166,17 @@ export const cardsPlugin: Plugin = {
     app.registerType({
       id: 'card',
       match: isCard,
-      // in someone else's hand a card shows its back to you (trust mode; stage 3 makes it real)
+      // In a hand, facing = shown to the table. The owner always sees the face, marked "only you" or
+      // "shown"; others see a face-down hand card as its back (trust mode; stage 3 makes it real).
       render(node, el, { doc, viewer }) {
         const c = card(node);
+        if (heldBy(doc, node, viewer)) {
+          el.innerHTML = cardHtml({ ...c, faceUp: true }) + (c.faceUp ? '<div class="pc-vis pc-shown" title="Shown to everyone">👁</div>' : '<div class="pc-vis pc-private" title="Only you can see this card">only you</div>');
+          return;
+        }
         el.innerHTML = cardHtml(hiddenFrom(doc, node, viewer) ? { ...c, faceUp: false } : c);
       },
-      renderKey: (node, { doc, viewer }) => `${card(node).face}${card(node).faceUp}${hiddenFrom(doc, node, viewer)}`,
+      renderKey: (node, { doc, viewer }) => `${card(node).face}${card(node).faceUp}${hiddenFrom(doc, node, viewer)}${heldBy(doc, node, viewer)}`,
       onDoubleClick: flipOne,
       // a card shown in a group or hand: dragging pulls it out (dropping it back reorders)
       onDragStart(node, _down, app) {

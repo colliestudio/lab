@@ -187,3 +187,23 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* visibility marker on cards in your own hand */
+.pc-vis {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  font: 600 9px/1 system-ui, sans-serif;
+  padding: 2px 4px;
+  border-radius: 4px;
+  pointer-events: none;
+}
+.pc-private {
+  background: rgba(20, 20, 20, 0.72);
+  color: #fff;
+}
+.pc-shown {
+  background: #f5c542;
+  color: #222;
+  font-size: 11px;
+}

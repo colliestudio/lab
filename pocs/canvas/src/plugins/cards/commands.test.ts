@@ -378,7 +378,7 @@ describe('groups and hands', () => {
     const box = s.doc.get(h)!;
     s.dispatch('cards.drop', { target: 'l0', ids: ['l2'], at: { x: box.x + PAD + 2, y: box.y + 60 } });
     expect(order(s, h)).toEqual(['JD', 'KH', 'QS']);
-    expect(hiddenFrom(s.doc, s.doc.get('l0')!, 'bob')).toBe(true);
+    expect(hiddenFrom(s.doc, s.doc.get('l0')!, 'bob')).toBe(!card(s.doc.get('l0')!).faceUp); // face up in a hand = shown
     expect(hiddenFrom(s.doc, s.doc.get('l0')!, 'alice')).toBe(false);
     // emptied hand stays; can't become a pile
     for (const id of ['l0', 'l1', 'l2']) s.dispatch('cards.pullOut', { id });
@@ -493,7 +493,7 @@ describe('drop modes, stack ⇄ fan, private groups', () => {
     const box = s.doc.get(g)!;
     expect(box.owner).toBe('alice');
     expect(layoutOf(box)).toBe('fan');
-    expect(hiddenFrom(s.doc, s.doc.get('l0')!, 'bob')).toBe(true);
+    expect(hiddenFrom(s.doc, s.doc.get('l0')!, 'bob')).toBe(!card(s.doc.get('l0')!).faceUp); // face up in a hand = shown
     expect(hiddenFrom(s.doc, s.doc.get('l0')!, 'alice')).toBe(false);
     s.dispatch('cards.own', { id: g, owner: null });
     expect(s.doc.get(g)!.owner).toBeUndefined();
@@ -513,7 +513,7 @@ describe('drop modes, stack ⇄ fan, private groups', () => {
     });
     expect((t.doc.get('h')![FIELD] as any).hand).toBeUndefined();
     expect(t.doc.get('h')!.owner).toBe('alice');
-    expect(hiddenFrom(t.doc, t.doc.get('c')!, 'bob')).toBe(true);
+    expect(hiddenFrom(t.doc, t.doc.get('c')!, 'bob')).toBe(!card(t.doc.get('c')!).faceUp); // face up in a hand = shown
   });
 
   it('freeSpot slides a box off occupied space', () => {
@@ -745,7 +745,7 @@ describe('kinds, layouts, put on table, showdown', () => {
     expect(layoutOf(s.doc.get(g)!)).toBe('fan');
     s.dispatch('cards.turnInto', { id: g, kind: 'hand', owner: 'alice', label: "Alice's hand", color: '#3cb44b' });
     expect(s.doc.get(g)!.owner).toBe('alice');
-    expect(hiddenFrom(s.doc, s.doc.get('l0')!, 'bob')).toBe(true);
+    expect(hiddenFrom(s.doc, s.doc.get('l0')!, 'bob')).toBe(!card(s.doc.get('l0')!).faceUp); // face up in a hand = shown
     s.dispatch('cards.turnInto', { id: g, kind: 'deck' });
     expect(s.doc.get(g)!.owner).toBeUndefined();
     expect(layoutOf(s.doc.get(g)!)).toBe('stack');

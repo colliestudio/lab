@@ -81,12 +81,23 @@ export const layoutOf = (n: CanvasNode): Layout => {
 export const isStacked = (n: CanvasNode | undefined): boolean => isDeck(n) && layoutOf(n!) === 'stack';
 /** A container that lays its cards out visibly (group or hand). */
 export const isSpreadOut = (n: CanvasNode | undefined): boolean => isDeck(n) && layoutOf(n!) !== 'stack';
-/** A card sitting in someone else's hand: shown face down to `viewer`. */
-export function hiddenFrom(doc: DocView, c: CanvasNode, viewer: string): boolean {
+/** The hand a card sits in, if it's in an owned hand. */
+export function handOf(doc: DocView, c: CanvasNode): CanvasNode | undefined {
   const p = doc.parentOf(c.id);
   const h = p ? doc.get(p) : undefined;
-  return !!h && isHand(h) && !!h.owner && h.owner !== viewer;
+  return h && isHand(h) && h.owner ? h : undefined;
 }
+/**
+ * In a hand, facing means "shown to the table": the owner always sees the face (as when holding
+ * cards), others see it only if the card is face up. A face-down card in someone else's hand is
+ * hidden from `viewer`.
+ */
+export function hiddenFrom(doc: DocView, c: CanvasNode, viewer: string): boolean {
+  const h = handOf(doc, c);
+  return !!h && h.owner !== viewer && !card(c).faceUp;
+}
+/** Is `viewer` holding this card (in their own hand)? */
+export const heldBy = (doc: DocView, c: CanvasNode, viewer: string): boolean => handOf(doc, c)?.owner === viewer;
 export const card = (n: CanvasNode) => n[FIELD] as CardField;
 export const packOf = (n: CanvasNode) => (field(n)?.pack as string | undefined) ?? PACK;
 
