@@ -7,6 +7,7 @@ compatibility_date = "2025-09-01"
 # Also on canvas.lab.collie.studio (Worker custom domain: Cloudflare creates the DNS record and cert;
 # the record is not in collielab terraform).
 routes = [{ pattern = "canvas.lab.collie.studio", custom_domain = true }]
+workers_dev = true
 
 [assets]
 directory = "../dist"
