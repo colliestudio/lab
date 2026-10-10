@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
-import { Store, parse, serialize, type CommandCtx } from '../../core';
+import { Store, eventLine, parse, serialize, type CommandCtx } from '../../core';
 import { registerCoreCommands } from '../../core/commands';
 import { registerCardsLogic } from '../cards';
 import { card, cardsIn, hiddenFrom, isCard, isHand, isHomeDeck, packOf, roomIn } from '../cards/deck';
@@ -351,5 +351,29 @@ describe('battle line: one game model', () => {
     t.apply(old.map((id) => ({ op: 'del' as const, id })));
     t.dispatch('battleline.deal', { players: [alice] });
     expect([playedRow(t.doc, 'a'), environment(t.doc, 1), tally(t.doc)].every(Boolean)).toBe(true);
+  });
+
+  it('log: the deal, troops played to formations (named: face up), Fog on a flag, claims; hand cards never named', () => {
+    const s = table();
+    s.actor = () => ({ id: 'bob', name: 'Bob', color: '#e6194b' });
+    s.dispatch('battleline.deal', { players: [alice, bob] });
+    const line = () => eventLine(s.log.toArray().at(-1)!, 'alice');
+    expect(line()).toBe('Bob dealt a new game of Battle Line: 7 troops each to Alice and Bob');
+    const t = cardsIn(s.doc, handOf(s.doc, 'b')!.id)[0];
+    const label = s.doc.get(t.id)!.text!;
+    s.dispatch('cards.drop', { target: formation(s.doc, 2, 'b')!.id, ids: [t.id] });
+    expect(line()).toBe(`Bob played ${label} to Flag 2 · B`);
+    const fog = s.doc.nodes.find((n) => isCard(n) && card(n).face === 'fog')!;
+    s.dispatch('cards.pullOut', { id: fog.id }); // out of the deck: not logged
+    expect(line()).toBe(`Bob played ${label} to Flag 2 · B`);
+    s.dispatch('cards.drop', { target: environment(s.doc, 4)!.id, ids: [fog.id] });
+    expect(line()).toBe('Bob played Tactic: Fog to Flag 4 environment');
+    s.dispatch('battleline.claim', { ids: [flags(s.doc)[1].id], side: 'b' });
+    expect(line()).toBe('Bob claimed flag 2 for Bob');
+    s.dispatch('battleline.claim', { ids: [flags(s.doc)[1].id], side: null });
+    expect(line()).toBe('Bob put flag 2 back on the line (unclaimed)');
+    // nothing in Alice's view names a card in Bob's hand
+    const secret = cardsIn(s.doc, handOf(s.doc, 'b')!.id).map((c) => s.doc.get(c.id)!.text!);
+    for (const e of s.log.toArray()) for (const f of secret) expect(eventLine(e, 'alice')).not.toContain(f);
   });
 });

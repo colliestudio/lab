@@ -1,4 +1,4 @@
-import { isIds, isNum, pick, set, toFront, type CanvasNode, type Change, type Command, type CommandCtx, type DocView } from '../../core';
+import { isIds, isNum, pick, set, toFront, type CanvasNode, type Change, type Command, type CommandCtx, type DocView, type EventSpec } from '../../core';
 import { give, shuffled } from '../cards/commands';
 import { FIELD as CARDS, CARD_H, card, cardNode, cardsHomedAt, cardsIn, deckNode, groupNode, isDeck, isHand, isHomeDeck, isSpot, packOf } from '../cards/deck';
 import { HAND_W, emptyHandSize } from '../cards/layout';
@@ -63,6 +63,24 @@ export function homeOf(doc: DocView, n: CanvasNode): { x: number; y: number } {
   const b = formation(doc, f.n, 'b');
   if (!a || !b) return { x: f.hx, y: f.hy };
   return { x: Math.round(a.x + a.width / 2 - FLAG_W / 2), y: Math.round((b.y + b.height + a.y) / 2 - FLAG_H / 2) };
+}
+
+/** A side's player ("Alice", from its owned hand), else "Player A". */
+export function sideName(doc: DocView, side: Side): string {
+  const h = handOf(doc, side);
+  return h?.owner && h.label ? h.label.replace(/['’]s hand$/, '') : `Player ${SIDE_NAME[side]}`;
+}
+
+/** Log entries for flags whose claim changed (`before` → `after`). */
+function claimEvents(before: DocView, after: DocView, ids: string[]): EventSpec[] {
+  return ids.flatMap((id) => {
+    const was = before.get(id);
+    const now = after.get(id);
+    if (!was || !now || !isFlag(now) || flag(was).claim === flag(now).claim) return [];
+    const side = flag(now).claim;
+    const text = side ? `claimed flag ${flag(now).n} for ${sideName(after, side)}` : `put flag ${flag(now).n} back on the line (unclaimed)`;
+    return [{ type: 'battleline.claim', text, targets: [id], cue: 'pulse' }];
+  });
 }
 
 export const playedRow = (doc: DocView, side: Side) => doc.nodes.find((n) => isPart(n, 'played') && part(n)!.side === side);
@@ -164,7 +182,7 @@ export const setup: Command<{ x?: number; y?: number; mat?: boolean }> = (doc, a
     add({ id: ctx.newId(), type: 'text', x: p.x, y: p.y, width: FLAG_W, height: FLAG_H, z: nextZ(), text: flagText(f), [FIELD]: f });
   }
   for (const n of missingParts(doc, g, ctx, nextZ, mark)) add(n);
-  return { changes, select: [] };
+  return { changes, select: [], events: [{ type: 'battleline.setup', text: 'set up Battle Line', targets: matId ? [matId] : [] }] };
 };
 
 export interface Seat {
@@ -271,7 +289,15 @@ export const deal: Command<{ players: Seat[]; count?: number }> = (doc, a, ctx) 
   changes.push(...emptiedGroups(doc, leaving));
   changes.push(...flags(doc).flatMap((n) => claimChanges(doc, n, undefined)));
   for (const n of missingParts(doc, g, ctx, nextZ, mark)) changes.push({ op: 'add', node: n });
-  return { changes, select: [] };
+  const events = (after: DocView): EventSpec[] => [
+    {
+      type: 'battleline.deal',
+      text: `dealt a new game of Battle Line: ${count} troops each to ${SIDES.map((side) => sideName(after, side)).join(' and ')}`,
+      targets: [deck.id, ...hands.map((h) => h.id)],
+      cue: 'deal',
+    },
+  ];
+  return { changes, select: [], events };
 };
 
 const tacticsDeckOf = (doc: DocView) => doc.nodes.find((n) => isHomeDeck(n) && packOf(n) === TACTICS);
@@ -293,7 +319,8 @@ function claimChanges(doc: DocView, n: CanvasNode, side: Side | undefined): Chan
 export const claim: Command<{ ids: string[]; side: Side | null }> = (doc, a) => {
   if (!(a?.side === null || isSide(a?.side))) return [];
   const fs = pick(doc, a.ids).filter(isFlag);
-  return [...fs.flatMap((n) => claimChanges(doc, n, a.side ?? undefined)), ...toFront(doc, fs)];
+  const ids = fs.map((n) => n.id);
+  return { changes: [...fs.flatMap((n) => claimChanges(doc, n, a.side ?? undefined)), ...toFront(doc, fs)], events: (after) => claimEvents(doc, after, ids) };
 };
 
 /**
@@ -302,7 +329,11 @@ export const claim: Command<{ ids: string[]; side: Side | null }> = (doc, a) => 
  */
 export const placeFlags: Command<{ ids: string[] }> = (doc, a) => {
   if (!isIds(a?.ids)) return [];
-  return pick(doc, a.ids)
+  const ids = a.ids;
+  return { changes: placeChanges(doc, ids), events: (after) => claimEvents(doc, after, ids) };
+};
+const placeChanges = (doc: DocView, ids: string[]): Change[] =>
+  pick(doc, ids)
     .filter(isFlag)
     .flatMap((n) => {
       const home = homeOf(doc, n);
@@ -311,7 +342,6 @@ export const placeFlags: Command<{ ids: string[] }> = (doc, a) => {
       if (Math.abs(dx) > COL * 0.75 || Math.abs(dy) > NEAR + FORM_H / 2) return [];
       return claimChanges(doc, n, dy > CLAIM_DY / 2 ? 'a' : dy < -CLAIM_DY / 2 ? 'b' : undefined);
     });
-};
 
 /** Who laid tactic cards on a flag (for the tally). */
 export const markPlayed: Command<{ ids: string[]; side: Side }> = (doc, a) => {
