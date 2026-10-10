@@ -23,10 +23,11 @@ function seats(app: App): Seat[] {
   return all.map((p) => ({ id: p.id, label: handLabelOf(p.name), color: p.color }));
 }
 
-/** A side's player name and color, from its hand ("Alice's hand" → Alice); else "Player A". */
+/** A side's player name and color, from its owned hand ("Alice's hand" → Alice); else "Player A". */
 function sideInfo(doc: DocView, side: Side) {
   const h = handOf(doc, side);
-  return { name: h?.label?.replace(/['’]s hand$/, '') ?? `Player ${SIDE_NAME[side]}`, color: (h?.[CARDS] as { color?: string } | undefined)?.color };
+  const name = h?.owner && h.label ? h.label.replace(/['’]s hand$/, '') : `Player ${SIDE_NAME[side]}`;
+  return { name, color: (h?.[CARDS] as { color?: string } | undefined)?.color };
 }
 
 const dealEntry = (app: App): MenuEntry => ({

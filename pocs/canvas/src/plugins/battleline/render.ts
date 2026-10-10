@@ -8,11 +8,12 @@ const esc = (t: string) => t.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&l
 export function troopHtml(face: string): string {
   const t = parseTroop(face);
   if (!t) return `<div class="pc-card bl-troop">${esc(face)}</div>`;
-  const v = t.value;
+  // 6 and 9 are underlined (upside down they'd read as each other)
+  const v = t.value === 6 || t.value === 9 ? `<u>${t.value}</u>` : String(t.value);
   return (
     `<div class="pc-card bl-troop" style="--bl:${t.color.hex}" data-color="${t.color.code}">` +
     `<div class="bl-corner tl">${v}</div><div class="bl-big">${v}</div>` +
-    `<div class="bl-unit">${UNITS[v - 1]}</div><div class="bl-corner br">${v}</div></div>`
+    `<div class="bl-unit">${UNITS[t.value - 1]}</div><div class="bl-corner br">${v}</div></div>`
   );
 }
 
@@ -55,7 +56,7 @@ export function flagHtml(f: FlagField, color?: string, sideName?: string): strin
   const ink = f.claim ? '#fff' : '#5a4510';
   return (
     `<div class="bl-flag${f.claim ? ' bl-claimed' : ''}" title="Flag ${f.n}${f.claim ? ` (claimed by ${esc(sideName ?? f.claim)})` : ''}: drag toward a side to claim it • right-click: Claim for ▸">` +
-    `<svg viewBox="0 0 64 84" width="64" height="84" aria-hidden="true">` +
+    `<svg viewBox="0 0 64 84" width="100%" height="100%" aria-hidden="true">` +
     `<ellipse cx="18" cy="79" rx="13" ry="4" fill="rgba(0,0,0,.35)"/>` +
     `<rect x="15" y="6" width="4" height="73" rx="2" fill="#6b4f2a"/>` +
     `<circle cx="17" cy="6" r="4.5" fill="#d9b64a"/>` +

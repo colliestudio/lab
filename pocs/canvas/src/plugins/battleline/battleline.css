@@ -135,12 +135,12 @@
 
 /* backs */
 .bl-back {
-  padding: 4cqw;
   background: #2a1d10;
   border: 1px solid #1a1108;
 }
 .bl-back-inner {
-  height: 100%;
+  position: absolute;
+  inset: 4cqw;
   border-radius: 4cqw;
   display: flex;
   flex-direction: column;
@@ -191,9 +191,9 @@
 }
 .bl-flag-claim {
   position: absolute;
-  left: 26px;
-  top: 42px;
-  max-width: 72px;
+  left: 30px;
+  top: 50px;
+  max-width: 84px;
   padding: 1px 6px;
   border-radius: 8px;
   color: #fff;
@@ -201,4 +201,8 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.bl-troop u {
+  text-decoration-thickness: 0.07em;
+  text-underline-offset: 0.08em;
 }

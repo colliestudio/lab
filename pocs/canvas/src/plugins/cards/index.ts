@@ -52,12 +52,16 @@ export function kindName(box: CanvasNode): string {
 /** What a pile's tab says: a fixed pile its label ("Discard"), a home deck its pack's deck name ("Troops"). */
 const deckName = (box: CanvasNode) => (isFixed(box) && box.label) || (isHomeDeck(box) && getPack(packOf(box))?.deckName) || 'Deck';
 
-/** Outlines of a fixed slot area's slots (`slots` of them; up to `max` drawn faint), relative to its frame. */
-function slotOutlines(box: CanvasNode): { dx: number; dy: number; faint?: boolean }[] | undefined {
+/**
+ * A fixed slot area's outline: where the next card goes (dotted past `slots`, e.g. a 4th card for
+ * Mud), none when full. Relative to its frame. (Overlapping layouts would make all outlines a tangle.)
+ */
+function slotOutlines(box: CanvasNode, count: number): { dx: number; dy: number; faint?: boolean }[] | undefined {
   const f = box[FIELD] as DeckField;
   if (!isFixed(box) || !f.slots) return;
-  const n = Math.max(f.slots, f.max ?? 0);
-  return slots(layoutOf(box), n, n).at.map((p, i) => ({ dx: p.dx, dy: p.dy, faint: i >= f.slots! }));
+  const cap = Math.max(f.slots, f.max ?? 0);
+  if (count >= cap) return [];
+  return [{ ...slots(layoutOf(box), count + 1, cap).at[count], faint: count >= f.slots }];
 }
 const titleOf = (box: CanvasNode) => kindName(box) + (isHomeDeck(box) ? ' (home deck)' : '');
 
@@ -205,7 +209,7 @@ export const cardsPlugin: Plugin = {
         const cards = cardsIn(doc, node.id);
         if (isSpreadOut(node)) {
           const f = node[FIELD] as { color?: string };
-          el.innerHTML = groupHtml(cards.length, { hand: isHand(node), home: isHomeDeck(node), label: kindName(node), color: f.color, mine: node.owner === viewer, slots: slotOutlines(node) });
+          el.innerHTML = groupHtml(cards.length, { hand: isHand(node), home: isHomeDeck(node), label: kindName(node), color: f.color, mine: node.owner === viewer, slots: slotOutlines(node, cards.length) });
           return;
         }
         const top = cards.at(-1);

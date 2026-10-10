@@ -83,16 +83,16 @@ export const flagText = (f: FlagField) => `Flag ${f.n}${f.claim ? ` (claimed by 
 
 // --- geometry ------------------------------------------------------------------------------
 
-export const FLAG_W = 64;
-export const FLAG_H = 84;
+export const FLAG_W = 76;
+export const FLAG_H = 100;
 /** How far a claimed flag sits toward its side. */
-export const CLAIM_DY = 72;
+export const CLAIM_DY = 76;
 export const FORM_W = CARD_W + 2 * PAD;
 /** A formation is sized for four cards (Mud); three slots are outlined. */
 export const FORM_H = 2 * PAD + CARD_H + 3 * COLUMN_STEP;
 export const COL = FORM_W + 18;
 /** Gap between the line's middle and a formation's near edge (room for a claimed flag). */
-export const NEAR = FLAG_H / 2 + CLAIM_DY + 10;
+export const NEAR = FLAG_H / 2 + CLAIM_DY + 30;
 
 /** Where everything goes for a line centered at (cx, cy). */
 export function geometry(cx: number, cy: number) {
