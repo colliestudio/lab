@@ -5,8 +5,9 @@ const esc = (t: string) => t.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&l
 /** Chess-clock face: two big tap targets, a pause/start button between, a tab with the time control. */
 export function clockHtml(c: ClockField, now: number): string {
   const rot = c.rot ?? 0;
-  // turned tall, the half at the top faces the player across the table: its digits turn 180°
-  const away: Side | undefined = rot === 90 ? 0 : rot === 270 ? 1 : undefined;
+  // Everyone looks at the same screen, so all text stays upright. Optionally (`facing`), turned tall,
+  // the half at the top faces the player across the table: its text turns 180°.
+  const away: Side | undefined = !c.facing ? undefined : rot === 90 ? 0 : rot === 270 ? 1 : undefined;
   const side = (s: Side) => {
     const cls = ['ck-side', `ck-s${s}`];
     if (c.run === s && c.flag === undefined) cls.push('ck-run');

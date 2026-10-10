@@ -20,8 +20,10 @@ export interface ClockField {
   /** Side 1's own control when it differs (handicap). */
   base1?: number;
   inc1?: number;
-  /** Quarter turns: 90/270 stack the halves vertically, facing the players at the ends. */
+  /** Quarter turns: 90/270 stack the halves vertically (text stays upright for the screen). */
   rot?: Rot;
+  /** Turned tall, the top half's text is upside down, facing the player across a real table. */
+  facing?: true;
   /** Time left per side as of `since` (running side) or the last switch. */
   left0: number;
   left1: number;

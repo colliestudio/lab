@@ -116,7 +116,7 @@ export const control: Command<{ id: string; base: number; inc: number; base1?: n
 
 /**
  * Turn the clock a quarter (clockwise): 0 → 90 → 180 → 270. At 90/270 the box turns tall (keeping
- * its center) and the halves stack, each facing its player.
+ * its center) and the halves stack; the text stays upright (see `facing`).
  */
 export const rotate: Command<{ id: string }> = (doc, a) => {
   const n = clockArg(doc, a?.id);
@@ -130,6 +130,13 @@ export const rotate: Command<{ id: string }> = (doc, a) => {
     changes.push(set(n.id, 'x', Math.round(n.x + (n.width - w) / 2)), set(n.id, 'y', Math.round(n.y + (n.height - h) / 2)));
   }
   return changes;
+};
+
+/** Turned tall: the top half's text upside down (facing the far player) or upright (default). */
+export const facing: Command<{ id: string; on: boolean }> = (doc, a) => {
+  const n = clockArg(doc, a?.id);
+  if (!n || typeof a.on !== 'boolean') return [];
+  return diff(n, { facing: a.on || undefined });
 };
 
 /** Side names ("" = default White/Black). */
@@ -146,4 +153,4 @@ export const names: Command<{ id: string; name0?: string; name1?: string }> = (d
  */
 export const resetAll: Command<Record<string, never>> = (doc) => ({ changes: [], untracked: doc.nodes.filter(isClock).flatMap((n) => diff(n, fresh(clock(n)))) });
 
-export const commands = { create, tap, pause, resume, flag, reset, control, rotate, names, resetAll };
+export const commands = { create, tap, pause, resume, flag, reset, control, rotate, facing, names, resetAll };

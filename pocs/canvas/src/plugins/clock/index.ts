@@ -69,6 +69,9 @@ function settings(app: App, n: CanvasNode): MenuEntry[] {
     },
     { label: 'Reset clock', disabled: !running && c.flag === undefined && c.left0 === baseOf(c, 0) && c.left1 === baseOf(c, 1) ? 'Already reset' : false, run: () => app.dispatch('clock.reset', { id }, NO_UNDO) },
     { label: `Rotate 90° (now ${c.rot ?? 0}°)`, hint: 'R', separator: true, run: () => app.dispatch('clock.rotate', { id }) },
+    ...(c.rot === 90 || c.rot === 270
+      ? [{ label: 'Top half upside down (faces the far player)', checked: !!c.facing, run: () => app.dispatch('clock.facing', { id, on: !c.facing }) }]
+      : []),
     {
       label: 'Side names…',
       run: () => {

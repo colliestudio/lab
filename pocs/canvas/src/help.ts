@@ -149,7 +149,7 @@ const GROUPS: [string, [string, string][]][] = [
       ['Space with the pointer on the clock', 'Tap for the side that is running (or start / resume); elsewhere Space pans'],
       ['▶ / ❚❚', 'Start (left side first) / pause / resume'],
       ['Click its ⠿ tab', 'Time control (1+0 … 15+10, custom, per side for a handicap), pause, reset, side names, rotate'],
-      ['R over the clock', 'Rotate 90° (tall: each half faces its player at the end)'],
+      ['R over the clock', 'Rotate 90° (tall: the halves stack, text stays upright; menu › Top half upside down to face a player across a real table)'],
       ['', 'Red = out of time (the clock stops). Taps can’t be undone; Reset table resets clocks'],
     ],
   ],
