@@ -4,8 +4,8 @@ import { OTHERS, Store, parse, serialize, type CanvasNode, type CommandCtx } fro
 import { registerCoreCommands } from '../../core/commands';
 import { registerCardsLogic } from './index';
 import { DROP_FAN, DROP_STACK, dropMode, freeSpot } from './commands';
-import { CARD_W, FIELD, card, concealedFrom, isShown, cardNode, cardsIn, deckNode, hiddenFrom, isBlind, isCard, isDeck, isHomeDeck, layoutOf, standardDeck } from './deck';
-import { HAND_W, PAD, RAISE, handSlots, liftedDrop, rowTop, slots, thresholdY } from './layout';
+import { CARD_W, FIELD, card, concealedFrom, hasFixedFrame, isShown, cardNode, cardsIn, deckNode, hiddenFrom, isBlind, isCard, isDeck, isHomeDeck, layoutOf, standardDeck } from './deck';
+import { HAND_W, PAD, RAISE, emptyHandSize, handSlots, liftedDrop, rowTop, slots, thresholdY } from './layout';
 import { handHtml, tabText } from './render';
 import { parkedCursor, revealText } from './handUx';
 import { showLabel } from './index';
@@ -420,7 +420,7 @@ describe('groups and hands', () => {
     const json = JSON.parse(serialize(s.exportDoc()));
     const g = json.nodes.find((n: any) => n.id === h);
     expect(g).toMatchObject({ type: 'group', label: "Alice's hand", owner: 'alice' });
-    expect(g.width).toBe(HAND_W);
+    expect(g.width).toBe(emptyHandSize().w); // grows with its cards (3 slots at least)
     const kh = json.nodes.find((n: any) => n.id === 'l0');
     expect(kh.x).toBe(s.doc.get('l0')!.x);
     expect(json.nodes.indexOf(kh)).toBeGreaterThan(json.nodes.indexOf(g)); // drawn above the group
@@ -834,6 +834,7 @@ describe('hands: fixed frame, shown strip, hidden count', () => {
     for (const showing of [false, true]) {
       const s = withDeck(1, ...more(13));
       const h = s.dispatch('cards.newHand', { owner: 'alice', x: 0, y: 600 }).select![0];
+      s.dispatch('cards.fixedFrame', { id: h, on: true });
       if (showing) s.dispatch('cards.allowShowing', { id: h, on: true });
       const sizes = new Set<string>();
       for (let i = 0; i <= 13; i++) {
@@ -845,11 +846,40 @@ describe('hands: fixed frame, shown strip, hidden count', () => {
       expect([...sizes]).toEqual([`${HAND_W}x${s.doc.get(h)!.height}`]);
     }
     const { s, h } = table();
+    s.dispatch('cards.fixedFrame', { id: h, on: true });
     s.dispatch('cards.resizeHand', { id: h, width: 900 });
     expect(s.doc.get(h)!.width).toBe(900);
     s.dispatch('cards.resizeHand', { id: h, width: 10 });
     expect(s.doc.get(h)!.width).toBeGreaterThan(CARD_W); // clamped
     expect(s.dispatch('cards.resizeHand', { id: 'd', width: 900 }).changes).toEqual([]);
+  });
+
+  it('fixed frame: off by default (the hand grows with its cards); hide card count implies it, and leaves it as it was', () => {
+    const s = withDeck(1, ...more(10));
+    const h = s.dispatch('cards.newHand', { owner: 'alice', x: 0, y: 600 }).select![0];
+    const w = () => s.doc.get(h)!.width;
+    expect(hasFixedFrame(s.doc.get(h)!)).toBe(false);
+    s.dispatch('cards.drop', { target: h, ids: ['m0', 'm1', 'm2'] });
+    const w3 = w();
+    s.dispatch('cards.drop', { target: h, ids: ['m3', 'm4', 'm5', 'm6', 'm7', 'm8', 'm9'] });
+    expect(w()).toBeGreaterThan(w3); // grows
+    s.dispatch('cards.hideCount', { id: h, on: true });
+    expect(hasFixedFrame(s.doc.get(h)!)).toBe(true);
+    expect(w()).toBe(HAND_W);
+    expect((s.doc.get(h)![FIELD] as any).fixed).toBeUndefined(); // implied, not stored
+    s.dispatch('cards.hideCount', { id: h, on: false });
+    expect(hasFixedFrame(s.doc.get(h)!)).toBe(false); // back as the user had it
+    s.dispatch('cards.fixedFrame', { id: h, on: true });
+    s.dispatch('cards.hideCount', { id: h, on: true });
+    s.dispatch('cards.hideCount', { id: h, on: false });
+    expect(hasFixedFrame(s.doc.get(h)!)).toBe(true);
+    // round-2 hands (no flag stored) load growing, unless their count is hidden
+    const t = store();
+    t.load(parse(serialize(s.exportDoc())));
+    expect(hasFixedFrame(t.doc.get(h)!)).toBe(true);
+    s.dispatch('cards.fixedFrame', { id: h, on: false });
+    t.load(parse(serialize(s.exportDoc())));
+    expect(hasFixedFrame(t.doc.get(h)!)).toBe(false);
   });
 
   it('allow showing: off by default (no strip, show is a no-op); on adds the strip above, never revealing; off hides all in one step', () => {

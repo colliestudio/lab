@@ -1,7 +1,7 @@
 import './cards.css';
 import { loadPlayer, type App, type CanvasNode, type Command, type MenuEntry, type Plugin, type Store } from '../../core';
 import { commands, dropMode, kindOf, outCount, type DropMode, type Kind } from './commands';
-import { CARD_W, FIELD, allowsShowing, card, cardsIn, concealedFrom, deckFacing, deckIdOf, handOf, hiddenFrom, hidesCount, homeFor, isBlind, isCard, isCardish, isDeck, isHand, isHomeDeck, isShown, isSpreadOut, isStacked, layoutOf, shownIn, type Layout } from './deck';
+import { CARD_W, FIELD, allowsShowing, card, hasFixedFrame, cardsIn, concealedFrom, deckFacing, deckIdOf, handOf, hiddenFrom, hidesCount, homeFor, isBlind, isCard, isCardish, isDeck, isHand, isHomeDeck, isShown, isSpreadOut, isStacked, layoutOf, shownIn, type Layout } from './deck';
 import { mountHandUx, VIEW_AS_KEY, type HandUx } from './handUx';
 import { repairImport, shapeExport } from './io';
 import { cardLayouts, laneOf, liftedDrop, rowTop, thresholdY } from './layout';
@@ -115,7 +115,7 @@ function layoutMenu(app: App, box: CanvasNode): MenuEntry {
 }
 
 const HAND_FLIP_HINT = 'Flipping never shows a hand card to the table: right-click ▸ Show to table';
-const TURN_ON_SHOWING = 'Turn on “Allow showing cards to table” in the hand’s menu';
+const TURN_ON_SHOWING = 'Turn on Visibility ▸ Allow showing cards to table in the hand’s menu';
 const showColor = (h: CanvasNode) => (h[FIELD] as { color?: string }).color ?? '#2f4b7c';
 const ownerOnly = (h: CanvasNode) => `Only ${h.label?.replace(/’s hand$|'s hand$/, '') || 'its owner'} can show these cards`;
 
@@ -155,10 +155,20 @@ function handMenu(app: App, box: CanvasNode, ux: HandUx): MenuEntry[] {
       { label: 'Hide all from table', disabled: shown ? false : 'Nothing shown', run: () => app.dispatch('cards.show', { ids: [box.id], shown: false, by: app.viewer }) },
     );
   const toggle = (cmd: string, on: boolean) => () => app.dispatch(cmd, { id: box.id, on });
+  const fixed = (box[FIELD] as { fixed?: boolean }).fixed === true;
   out.push(
-    { label: 'Allow showing cards to table', separator: true, checked: allowsShowing(box), run: toggle('cards.allowShowing', !allowsShowing(box)) },
-    { label: 'See my cards', checked: !isBlind(box), run: toggle('cards.seeMine', isBlind(box)) },
-    { label: 'Hide card count', checked: hidesCount(box), run: toggle('cards.hideCount', !hidesCount(box)) },
+    {
+      label: 'Visibility',
+      separator: true,
+      items: () => [
+        { label: 'See my cards', checked: !isBlind(box), run: toggle('cards.seeMine', isBlind(box)) },
+        { label: 'Allow showing cards to table', checked: allowsShowing(box), run: toggle('cards.allowShowing', !allowsShowing(box)) },
+        hidesCount(box)
+          ? { label: 'Fixed frame size', checked: true, disabled: 'Needed while the count is hidden' }
+          : { label: 'Fixed frame size', checked: fixed, run: toggle('cards.fixedFrame', !fixed) },
+        { label: 'Hide card count', checked: hidesCount(box), run: toggle('cards.hideCount', !hidesCount(box)) },
+      ],
+    },
     { label: 'View as others', hint: `hold ${VIEW_AS_KEY}`, checked: ux.sticky(), run: () => ux.toggle() },
   );
   return out;
@@ -331,6 +341,7 @@ export const cardsPlugin: Plugin = {
             label: kindName(node),
             color: f.color,
             mine,
+            resizable: mine && hasFixedFrame(node),
             count: asOthers && hidesCount(node) ? undefined : cards.length,
             shown: cards.filter((c) => shownIn(node, c)).length,
             pile: asOthers && hidesCount(node),
@@ -351,7 +362,7 @@ export const cardsPlugin: Plugin = {
         const f = node[FIELD] as { color?: string };
         if (isHand(node)) {
           const shown = cards.filter((c) => shownIn(node, c)).length;
-          return `hand:${cards.length}:${shown}:${isBlind(node)}:${allowsShowing(node)}:${hidesCount(node)}:${ux.asOthers()}:${node.label}:${f.color}:${node.owner === viewer}:${layoutOf(node)}`;
+          return `hand:${cards.length}:${shown}:${isBlind(node)}:${allowsShowing(node)}:${hidesCount(node)}:${hasFixedFrame(node)}:${ux.asOthers()}:${node.label}:${f.color}:${node.owner === viewer}:${layoutOf(node)}`;
         }
         return `${cards.length}:${isHomeDeck(node)}:${layoutOf(node)}:${node.label}:${f.color}:${node.owner === viewer}:${top ? card(top).face + card(top).faceUp : ''}`;
       },

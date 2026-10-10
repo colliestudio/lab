@@ -45,6 +45,7 @@ export const repairImport: DocFilter = (doc, ctx) => {
         if (f.blind === true) d.blind = true;
         if (f.showing === true) d.showing = true;
         if (f.hideCount === true) d.hideCount = true;
+        if (f.fixed === true) d.fixed = true;
         if (typeof f.width === 'number' && Number.isFinite(f.width)) d.width = f.width;
       }
       out.push({ ...n, [FIELD]: d });

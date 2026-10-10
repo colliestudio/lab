@@ -181,6 +181,13 @@ export const hideCount: Command<{ id: string; on: boolean }> = (doc, a) => {
   return [set(box.id, F('hideCount'), a.on ? true : undefined)];
 };
 
+/** "Fixed frame size": the frame keeps its width whatever the count (cards squeeze to fit). Stays on while the count is hidden. */
+export const fixedFrame: Command<{ id: string; on: boolean }> = (doc, a) => {
+  const box = typeof a?.id === 'string' ? doc.get(a.id) : undefined;
+  if (!box || !isHand(box) || !isBool(a.on) || ((box[FIELD] as DeckField).fixed === true) === a.on) return [];
+  return [set(box.id, F('fixed'), a.on ? true : undefined)];
+};
+
 /** Resize a hand's frame (its cards compress or spread to fit). */
 export const resizeHand: Command<{ id: string; width: number }> = (doc, a) => {
   const box = typeof a?.id === 'string' ? doc.get(a.id) : undefined;
@@ -346,7 +353,7 @@ export const setLayout: Command<{ id: string; layout: Layout }> = (doc, a) => {
 export type Kind = 'deck' | 'group' | 'hand';
 export const kindOf = (box: CanvasNode): Kind => (isStacked(box) ? 'deck' : isHand(box) ? 'hand' : 'group');
 
-const HAND_OPTIONS = ['color', 'blind', 'showing', 'hideCount', 'width'] as const;
+const HAND_OPTIONS = ['color', 'blind', 'showing', 'hideCount', 'fixed', 'width'] as const;
 /** A hand becomes public: owner, label and the hand's options go. */
 const unown = (box: CanvasNode, text: string): Change[] =>
   box.owner
@@ -699,4 +706,4 @@ export const resetAll: Command<Record<string, never>> = (doc, _a, ctx) => {
   return changes;
 };
 
-export const commands = { flip, show, seeMine, allowShowing, hideCount, resizeHand, face, move, shuffle, draw, deal, gather, recall, drop, spread, setup, repairHomes, pullOut, setLayout, ungroup, sort, newHand, own, toggleStack, handLabel, migrateHands, turnInto, putOnTable, showdown, resetAll };
+export const commands = { flip, show, seeMine, allowShowing, hideCount, fixedFrame, resizeHand, face, move, shuffle, draw, deal, gather, recall, drop, spread, setup, repairHomes, pullOut, setLayout, ungroup, sort, newHand, own, toggleStack, handLabel, migrateHands, turnInto, putOnTable, showdown, resetAll };

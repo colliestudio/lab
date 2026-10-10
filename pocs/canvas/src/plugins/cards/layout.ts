@@ -1,5 +1,5 @@
 import type { CanvasNode, DocView, LayoutRule, Placement } from '../../core';
-import { CARD_H, CARD_W, FIELD, allowsShowing, cardsIn, isHand, isSpreadOut, layoutOf, shownIn, type DeckField, type Layout } from './deck';
+import { CARD_H, CARD_W, FIELD, allowsShowing, cardsIn, hasFixedFrame, isHand, isSpreadOut, layoutOf, shownIn, type DeckField, type Layout } from './deck';
 
 // Where a container's cards go. Pure geometry; applied at read time through the core layout hook,
 // so the doc only stores each card's container + order (sync-friendly, nothing to rewrite).
@@ -66,6 +66,9 @@ export const handHeight = (h: CanvasNode) => 2 * PAD + laneOf(h) + 6 + HAND_ARC 
 export const rowTop = (h: CanvasNode) => PAD + laneOf(h) + 6;
 
 const handStep = (h: CanvasNode) => (layoutOf(h) === 'fan' ? HAND_STEP : CARD_W + GAP);
+/** A growing frame's step for `n` cards: as groups (fan: up to 40, squeezing past MAX_FAN). */
+const growStep = (h: CanvasNode, n: number) => (layoutOf(h) === 'fan' ? fanStep(n) : CARD_W + GAP);
+const span = (n: number, step: number) => (n ? (n - 1) * step + CARD_W : 0);
 /** x offsets of `n` cards spread centered in the frame, at most `max` apart (closer when they don't fit). */
 function spreadX(n: number, width: number, max: number): number[] {
   const inner = width - 2 * PAD;
@@ -73,21 +76,27 @@ function spreadX(n: number, width: number, max: number): number[] {
   const x0 = PAD + Math.max(0, (inner - ((n - 1) * step + CARD_W)) / 2);
   return Array.from({ length: n }, (_, i) => Math.round(x0 + i * step));
 }
+/** x offsets of one part (strip or row) of `n` cards: fixed frame = centered, squeezed to fit; else from the left. */
+const partX = (h: CanvasNode, n: number, width: number) =>
+  hasFixedFrame(h) ? spreadX(n, width, handStep(h)) : Array.from({ length: n }, (_, i) => Math.round(PAD + i * growStep(h, n)));
+/** Frame width: fixed (Fixed frame size), else it grows with the longer part (at least 3 cards wide). */
+const frameWidth = (h: CanvasNode, nShown: number, nPrivate: number) =>
+  hasFixedFrame(h) ? handWidth(h) : 2 * PAD + Math.max(3 * CARD_W + 2 * GAP, span(nShown, growStep(h, nShown)), span(nPrivate, growStep(h, nPrivate)));
 
 /**
  * A hand's slots: shown cards in the strip at the top (spread on their own, so their spots say nothing
  * about the private cards), private cards in the row below (fan: slight arc). `shown[i]` per card.
  */
 export function handSlots(h: CanvasNode, shown: boolean[]): Slots {
-  const w = handWidth(h);
   const at: Slots['at'] = [];
   const s = shown.flatMap((v, i) => (v ? [i] : []));
   const p = shown.flatMap((v, i) => (v ? [] : [i]));
-  spreadX(s.length, w, handStep(h)).forEach((dx, k) => (at[s[k]] = { dx, dy: PAD }));
+  const w = frameWidth(h, s.length, p.length);
+  partX(h, s.length, w).forEach((dx, k) => (at[s[k]] = { dx, dy: PAD }));
   const fan = layoutOf(h) === 'fan';
   const mid = (p.length - 1) / 2;
   const tilt = p.length > 1 ? Math.min(3, 24 / (p.length - 1)) : 0;
-  spreadX(p.length, w, handStep(h)).forEach((dx, k) => {
+  partX(h, p.length, w).forEach((dx, k) => {
     const t = mid ? (k - mid) / mid : 0;
     at[p[k]] = fan ? { dx, dy: rowTop(h) + Math.round(t * t * HAND_ARC), angle: +((k - mid) * tilt).toFixed(2) || undefined } : { dx, dy: rowTop(h) + HAND_ARC / 2 };
   });
@@ -96,7 +105,7 @@ export function handSlots(h: CanvasNode, shown: boolean[]): Slots {
 
 /** Insertion index among `n` cards of one part of a hand (strip or row) for a drop at world x. */
 export function handSlotIndex(h: CanvasNode, n: number, x: number): number {
-  const xs = spreadX(n + 1, handWidth(h), handStep(h));
+  const xs = partX(h, n + 1, hasFixedFrame(h) ? handWidth(h) : frameWidth(h, 0, n + 1));
   let best = 0;
   xs.forEach((dx, k) => {
     if (Math.abs(h.x + dx + CARD_W / 2 - x) < Math.abs(h.x + xs[best] + CARD_W / 2 - x)) best = k;
@@ -111,7 +120,7 @@ export const thresholdY = (h: CanvasNode) => h.y + PAD + Math.round((laneOf(h) +
 export const liftedDrop = (hand: CanvasNode, topY: number): boolean => laneOf(hand) > 0 && topY < thresholdY(hand);
 
 /** Size of a new empty hand. */
-export const emptyHandSize = () => ({ w: HAND_W, h: 2 * PAD + 6 + HAND_ARC + CARD_H });
+export const emptyHandSize = () => ({ w: 2 * PAD + 3 * CARD_W + 2 * GAP, h: 2 * PAD + 6 + HAND_ARC + CARD_H });
 
 /** Insertion index for a point (world coords) dropped onto container `c` holding `n` cards. */
 export function slotIndex(c: CanvasNode, n: number, at: { x: number; y: number }): number {

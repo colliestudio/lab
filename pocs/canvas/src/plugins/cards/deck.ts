@@ -60,7 +60,9 @@ export interface DeckField {
   showing?: true;
   /** A hand with "Hide card count": others see a generic pile, never its private cards. */
   hideCount?: true;
-  /** A hand's frame width (fixed: cards compress to fit); default HAND_W. */
+  /** "Fixed frame size": the frame keeps `width` whatever the count (on anyway while the count is hidden). */
+  fixed?: true;
+  /** A fixed frame's width (cards compress to fit); default HAND_W. */
   width?: number;
 }
 
@@ -107,6 +109,8 @@ export const isBlind = (h: CanvasNode): boolean => deckField(h)?.blind === true;
 export const allowsShowing = (h: CanvasNode): boolean => deckField(h)?.showing === true;
 /** Hand with "Hide card count" on. */
 export const hidesCount = (h: CanvasNode): boolean => deckField(h)?.hideCount === true;
+/** Fixed frame size: set by the owner, or implied while the count is hidden (a growing frame would show it). */
+export const hasFixedFrame = (h: CanvasNode): boolean => deckField(h)?.fixed === true || hidesCount(h);
 /**
  * A card in a hand shown to the table (in the strip above the row): face up in a hand that allows
  * showing. Any other card in a hand is private.

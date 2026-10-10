@@ -100,6 +100,8 @@ export function handHtml(o: {
   label: string;
   color?: string;
   mine: boolean;
+  /** Show the resize handle (the owner's fixed frame). */
+  resizable?: boolean;
   count?: number;
   shown: number;
   pile: boolean;
@@ -110,7 +112,7 @@ export function handHtml(o: {
 }): string {
   const color = o.color ?? '#2f4b7c';
   const tip = o.mine
-    ? `Your hand: only you see the cards in the row${o.lane ? '; cards in the strip above are shown to everyone (drag a card up above the line to show it, back down to hide it)' : ''}${o.blind ? ' • See my cards is off: you see only the cards you flipped up for yourself' : ''} • click for actions • drag to move • drag the right edge to resize`
+    ? `Your hand: only you see the cards in the row${o.lane ? '; cards in the strip above are shown to everyone (drag a card up above the line to show it, back down to hide it)' : ''}${o.blind ? ' • See my cards is off: you see only the cards you flipped up for yourself' : ''} • click for actions • drag to move${o.resizable ? ' • drag the right edge to resize' : ''}`
     : `${esc(o.label)}${o.lane ? ': cards in the strip are shown to the table' : ''} • click for actions • drag to move`;
   const text = o.count === undefined ? o.label : tabText(o.label, o.count, o.lane ? o.shown : 0);
   const strip = o.lane
@@ -123,7 +125,7 @@ export function handHtml(o: {
     pile +
     `<div class="pc-grip pc-group-tab" data-grip title="${tip}" style="background:${color}">` +
     `<span class="pc-grip-dots">⠿</span>${esc(text)}${o.mine && o.blind ? ' <span class="pc-blind" title="See my cards is off">◐</span>' : ''}</div>` +
-    (o.mine ? '<div class="pc-resize" title="Drag to resize the hand"></div>' : '') +
+    (o.resizable ? '<div class="pc-resize" title="Drag to resize the hand"></div>' : '') +
     `</div>`
   );
 }
