@@ -22,7 +22,9 @@ export const envLayout: LayoutRule = (doc) => {
     cardsIn(doc, e.id).forEach((c, k) => {
       const cx = e.x + ENV_PAD + k * ENV_STEP.x + ENV_CARD.h / 2;
       const cy = e.y + ENV_PAD + k * ENV_STEP.y + ENV_CARD.w / 2;
-      out.set(c.id, { x: Math.round(cx - ENV_CARD.w / 2), y: Math.round(cy - ENV_CARD.h / 2), width: ENV_CARD.w, height: ENV_CARD.h, angle: 90, z: (e.z ?? 0) + (k + 1) / 1000 });
+      // boxes turn around their bottom middle (core.css): a quarter turn puts the box's center at
+      // (w/2 + h/2, h) from its top-left
+      out.set(c.id, { x: Math.round(cx - ENV_CARD.w / 2 - ENV_CARD.h / 2), y: Math.round(cy - ENV_CARD.h), width: ENV_CARD.w, height: ENV_CARD.h, angle: 90, z: (e.z ?? 0) + (k + 1) / 1000 });
     });
   }
   return out;
