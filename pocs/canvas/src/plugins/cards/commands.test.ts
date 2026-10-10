@@ -8,7 +8,7 @@ import { CARD_W, FIELD, card, concealedFrom, hasFixedFrame, isShown, cardNode, c
 import { HAND_W, PAD, RAISE, emptyHandSize, handSlots, liftedDrop, rowTop, slots, thresholdY } from './layout';
 import { handHtml, tabText } from './render';
 import { parkedCursor, revealText } from './handUx';
-import { canGive, ownerAway, showLabel } from './index';
+import { canGive, containerMenu, handLock, ownerAway, showLabel } from './index';
 
 function ctx(prefix = 'id', seed = 1): CommandCtx {
   let n = 0;
@@ -1184,6 +1184,29 @@ describe('give a hand to someone', () => {
     expect(canGive(app('bob', ['alice']), box)).toBe(false);
     expect(ownerAway(app('bob', []), box)).toBe(true); // Alice left
     expect(canGive(app('bob', []), box)).toBe(true);
+  });
+  it('someone else’s hand: everything that changes it is disabled with a reason (unless its owner left)', () => {
+    const { s, h } = table();
+    const ux = { asOthers: () => false, sticky: () => false, toggle() {} };
+    const app = (viewer: string, peers: string[]) => ({ viewer, doc: s.doc, presence: { peers: () => peers.map((id) => ({ id })) } }) as any;
+    const rows = (viewer: string, peers: string[]) => {
+      const out: Record<string, unknown> = {};
+      for (const e of containerMenu(app(viewer, peers), s.doc.get(h)!, ux as any)) {
+        out[e.label] = e.disabled || false;
+        if (e.label === 'Turn into') for (const t of e.items as any[]) out[`Turn into ${t.label}`] = t.disabled;
+      }
+      return out;
+    };
+    const why = 'Only Alice can change this hand';
+    const bob = rows('bob', ['alice']);
+    expect([bob['Sort'], bob['Layout'], bob['Put cards on table'], bob['Return all cards to the deck']]).toEqual([why, why, why, why]);
+    expect(bob['Turn into Deck (makes it public)']).toBe('Only Alice can make it public');
+    for (const r of [rows('alice', ['bob']), rows('bob', [])]) // the owner; anyone once she left
+      expect([r['Sort'], r['Layout'], r['Put cards on table'], r['Return all cards to the deck']]).toEqual([false, false, false, false]);
+    // a card in her hand (its own right-click menu, G, ⇧G) carries the same lock
+    expect(handLock(app('bob', ['alice']), s.doc.get('l0')!)).toBe(why);
+    expect(handLock(app('alice', ['bob']), s.doc.get('l0')!)).toBe(false);
+    expect(handLock(app('bob', ['alice']), s.doc.get('d')!)).toBe(false);
   });
 });
 

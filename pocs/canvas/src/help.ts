@@ -62,7 +62,7 @@ const GROUPS: [string, [string, string][]][] = [
   [
     'Your hand',
     [
-      ['', 'Only you see the cards in your hand; others see backs.'],
+      ['', 'Only you see the cards in your hand; others see backs. Only you can sort it, change its layout, put its cards on the table or return them to the deck (anyone can once you left)'],
       ['Drag a card within your hand', 'Rearrange: it moves only on your screen until you drop it, and nobody sees it travel. Dropped just outside the frame it lands on the table (it flashes so you notice); over the frame the hand lights up “Add to hand”'],
       ['Tab ▸ Visibility ▸', 'The hand’s privacy options (below)'],
       ['Visibility ▸ Fixed frame size', 'The frame keeps its size whatever your count (cards squeeze together to fit); drag its right edge to resize. Off (default): it grows with your cards'],
