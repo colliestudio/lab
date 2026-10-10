@@ -135,3 +135,34 @@
   background: none;
   font-variant-numeric: tabular-nums;
 }
+.cv-node.cv-remote-sel {
+  box-shadow: 0 0 0 3px var(--cv-remote);
+  border-radius: 8px;
+}
+.cv-cursors {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 999999;
+  overflow: hidden;
+}
+.cv-cursor {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transition: transform 60ms linear;
+}
+.cv-cursor svg {
+  display: block;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
+}
+.cv-cursor span {
+  position: absolute;
+  left: 14px;
+  top: 16px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  color: #fff;
+  font: 600 11px/16px system-ui, sans-serif;
+  white-space: nowrap;
+}

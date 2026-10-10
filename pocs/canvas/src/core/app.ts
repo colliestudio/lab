@@ -5,6 +5,7 @@ import type { KeyBinding, MenuItem, ObjectType, Plugin } from './plugin';
 import { Store, type Command, type DispatchResult, type DocFilter } from './store';
 import { View } from './view';
 import { Viewport } from './viewport';
+import type { Presence } from './presence';
 
 /** Local player id. A constant until multiplayer gives each peer its own. */
 export const LOCAL_PLAYER = 'local';
@@ -18,6 +19,9 @@ export class App {
   readonly menu: MenuItem[] = [];
   readonly view: View;
   viewer = LOCAL_PLAYER;
+  /** Set when the table is shared (multiplayer); null when playing solo. */
+  presence: Presence | null = null;
+  private notifiers = new Set<(msg: string) => void>();
 
   constructor(root: HTMLElement) {
     registerCoreCommands(this.store);
@@ -61,6 +65,15 @@ export class App {
   }
   registerExportFilter(f: DocFilter) {
     this.store.exportFilters.push(f);
+  }
+
+  /** Show a short message to the local user (toolbar status). */
+  notify(msg: string) {
+    for (const fn of this.notifiers) fn(msg);
+  }
+  onNotify(fn: (msg: string) => void) {
+    this.notifiers.add(fn);
+    return () => this.notifiers.delete(fn);
   }
 
   // --- helpers ---

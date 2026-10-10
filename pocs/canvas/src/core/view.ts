@@ -59,7 +59,10 @@ export class View {
     this.applyViewport();
 
     root.addEventListener('pointerdown', (e) => this.onPointerDown(e));
-    root.addEventListener('pointerleave', () => (this.hovered = undefined));
+    root.addEventListener('pointerleave', () => {
+      this.hovered = undefined;
+      this.app.presence?.setCursor(null);
+    });
     root.addEventListener('pointermove', (e) => this.onPointerMove(e));
     root.addEventListener('pointerup', (e) => this.onPointerUp(e));
     root.addEventListener('pointercancel', (e) => this.onPointerUp(e));
@@ -153,6 +156,11 @@ export class View {
     this.app.viewport.set(x, y, zoom);
   }
 
+  /** The DOM box of a rendered node (for overlays like remote selections). */
+  boxOf(id: string): HTMLElement | undefined {
+    return this.els.get(id);
+  }
+
   /** Zoom so the selection fills the view (no-op without a selection). */
   zoomToSelection() {
     const sel = this.app.selected();
@@ -222,6 +230,12 @@ export class View {
     const id = nodeEl.dataset.nodeId!;
     const node = this.app.node(id);
     if (!node) return;
+    // another player is dragging it: hands off
+    const holder = this.app.presence?.heldBy(id);
+    if (holder) {
+      this.app.notify(`${holder.name} is holding that`);
+      return;
+    }
     this.app.store.newUndoStep(); // the whole press-drag-drop is one undo step
     const store = this.app.store;
     if (e.shiftKey) {
@@ -237,9 +251,11 @@ export class View {
     this.app.dispatch('core.front', { ids }, { merge: true });
     const w = this.world_(p);
     this.gesture = { kind: 'drag', ids, clickId: id, shift: e.shiftKey, down: e, start: w, applied: { x: 0, y: 0 }, moved: false };
+    this.app.presence?.setHeld(ids);
   }
 
   private onPointerMove(e: PointerEvent) {
+    if (this.app.presence) this.app.presence.setCursor(this.world_(this.local(e)));
     if (!this.pointers.size) this.hovered = (e.target as Element).closest<HTMLElement>('[data-node-id]')?.dataset.nodeId;
     if (!this.pointers.has(e.pointerId)) return;
     const p = this.local(e);
@@ -316,6 +332,7 @@ export class View {
     }
     this.gesture = null;
     this.root.classList.remove('cv-panning');
+    if (g?.kind === 'drag') this.app.presence?.setHeld([]);
     if (!g) return;
 
     if (g.kind === 'pan' && !g.moved && g.onEmpty) this.app.store.select([]);
@@ -440,6 +457,7 @@ export class View {
     g.ids = [out.id];
     g.clickId = out.id;
     this.app.store.select([out.id]);
+    this.app.presence?.setHeld([node.id, out.id]); // keep the deck held too while pulling from it
   }
 
   /** The object a drag would land on: topmost under the pointer, overlapping enough, and willing. */
