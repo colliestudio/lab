@@ -19,11 +19,15 @@ export interface Room {
   leave(): void;
 }
 
-/** ws://<page host>:5192 unless `?signal=` overrides it. */
+/**
+ * Dev server (port 5190/5191): ws://<page host>:5192. Deployed: the same origin, since one Worker
+ * serves the app and `/r/<room>`. `?signal=` overrides both.
+ */
 export function signalingUrl(loc: Location = location): string {
   const override = new URLSearchParams(loc.search).get('signal');
   if (override) return override;
-  return `${loc.protocol === 'https:' ? 'wss' : 'ws'}://${loc.hostname}:5192`;
+  const ws = loc.protocol === 'https:' ? 'wss' : 'ws';
+  return loc.port === '5190' || loc.port === '5191' ? `${ws}://${loc.hostname}:5192` : `${ws}://${loc.host}`;
 }
 
 export const roomDbName = (id: string) => `canvas-poc:room:${id}`;

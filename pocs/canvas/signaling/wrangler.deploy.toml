@@ -1,0 +1,17 @@
+# Deployed POC: one Worker serves the built app (../dist) and y-webrtc signaling at /r/<room>.
+# `pnpm deploy` builds and deploys this. Local dev keeps using wrangler.toml (signaling only, port 5192).
+name = "canvas-poc"
+main = "src/index.ts"
+compatibility_date = "2025-09-01"
+
+[assets]
+directory = "../dist"
+run_worker_first = ["/r/*"]
+
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "SignalRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["SignalRoom"]
