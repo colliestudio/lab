@@ -17,7 +17,16 @@ const GROUPS: [string, [string, string][]][] = [
       ['Right-click', 'Actions for what is under the pointer'],
       ['Add…', 'Put a deck of cards (face up, sorted, spread out; L stacks it), a chess set, a game clock, a Battle Line table or a mat (empty, poker table, player mat, solitaire) in the view (or open the chess piece palette)'],
       ['Reset', 'Everything back to its starting state, keeping what is on the table (one undo): decks get all their cards back face down and shuffled, boards their 32 pieces, clocks their time'],
+      ['⇧L, Log (bottom left)', 'Event log: who shuffled, drew, dealt, played, showed, gave, claimed, moved a chess piece, started or paused the clock, and when. Click an entry to go to its object; while the log is closed a badge counts the others’ new entries'],
       ['?', 'This help'],
+    ],
+  ],
+  [
+    'Event log',
+    [
+      ['', 'What players do that matters shows twice: a short note near the object in the player’s color (“Alex shuffled the deck”, the deck wiggles) and a line in the log. Moving things around isn’t logged'],
+      ['', 'Never a card you can’t see: a face-down draw is “drew a card”, a card going into a hand is named only if everyone saw it on the table, a card played from a hand face down is “a card” (its owner sees the name). A hand that hides its count never gets counted'],
+      ['', 'Undo keeps the log and adds “undid: …”. New table and Open start a new log; the log is part of the shared table (latest 500 entries)'],
     ],
   ],
   [
@@ -74,7 +83,7 @@ const GROUPS: [string, [string, string][]][] = [
       ['Visibility ▸ Hide card count', 'Others see a plain pile instead of your private cards: no count, no order, no movement (keeps the frame fixed)'],
       ['Tab ▸ Give to ▸', 'Hand it to another player (or no one: a public group); you then see it as the others do. A hand whose player left shows greyed “(left)” and anyone can give it on'],
       ['Hold \\, or tab ▸ View as others', 'See your hand as the others do'],
-      ['', 'Others never see which of your private cards you select or touch: over your row your pointer shows at the hand’s tab. When you show a card they get a short note (“Alex showed K♠”)'],
+      ['', 'Others never see which of your private cards you select or touch: over your row your pointer shows at the hand’s tab. When you show a card they get a short note (“Alex showed K♠ to the table”) and a log line'],
     ],
   ],
   [
@@ -159,7 +168,8 @@ const GROUPS: [string, [string, string][]][] = [
       ['Open the link', 'Join the room (your name is asked once)'],
       ['', 'You see the others’ cursors and selections in their color'],
       ['', 'A card someone is dragging can’t be grabbed until they let go'],
-      ['Undo', 'Only undoes your own moves'],
+      ['Undo', 'Only undoes your own moves (the log says “undid: …”)'],
+      ['', 'Everyone sees what the others do as notes near the objects and in the log (⇧L)'],
       ['Leave', 'Back to your own table; the room stays on this device'],
     ],
   ],
