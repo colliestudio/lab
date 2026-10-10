@@ -382,13 +382,23 @@ export const repair: Command<{ ids: string[]; undo?: boolean }> = (doc, a) => {
 };
 
 /**
- * Duplicate rule (see core `registerDuplicateRule`): a piece copy keeps its board and set but no
- * square (it lies beside where it was copied from until dropped); boards aren't duplicated.
+ * Duplicate rule (see core `duplicateRules`): a board copies as an empty board (no last move); a piece
+ * copied together with its board keeps its square on the copy (⌘D of a whole set); a piece copied
+ * alone keeps its board and set but no square (it lies beside where it was copied from until dropped).
  */
-export function duplicatePiece(node: CanvasNode): CanvasNode | null | undefined {
-  if (isBoard(node)) return null;
+export function duplicatePiece(node: CanvasNode, _doc?: DocView, copyOf: (id: string) => string | undefined = () => undefined): CanvasNode | null | undefined {
+  if (isBoard(node)) {
+    const { from: _f, to: _t, ...f } = board(node);
+    return { ...node, [FIELD]: f };
+  }
   if (!isPiece(node)) return;
-  const { square: _sq, ...f } = piece(node);
+  const p = piece(node);
+  const nb = p.board ? copyOf(p.board) : undefined;
+  if (nb) {
+    const f: PieceField = { ...p, board: nb, home: p.home === p.board ? nb : p.home };
+    return { ...node, text: pieceText(f), [FIELD]: f };
+  }
+  const { square: _sq, ...f } = p;
   return { ...node, text: pieceText(f), [FIELD]: f };
 }
 

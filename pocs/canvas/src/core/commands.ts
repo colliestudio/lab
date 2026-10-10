@@ -84,12 +84,20 @@ export function registerCoreCommands(store: Store) {
     const changes: Change[] = [];
     const ids: string[] = [];
     let z = doc.topZ;
-    for (const n of pick(doc, a?.ids)) {
-      if (doc.parentOf(n.id)) continue;
+    const nodes = pick(doc, a?.ids).filter((n) => !doc.parentOf(n.id));
+    const copying = new Set(nodes.map((n) => n.id));
+    const copyIds = new Map<string, string>();
+    const copyOf = (id: string) => {
+      if (!copying.has(id)) return undefined;
+      let c = copyIds.get(id);
+      if (!c) copyIds.set(id, (c = ctx.newId()));
+      return c;
+    };
+    for (const n of nodes) {
       let copy: CanvasNode | null | undefined;
-      for (const rule of store.duplicateRules) if ((copy = rule(n, doc)) !== undefined) break;
+      for (const rule of store.duplicateRules) if ((copy = rule(n, doc, copyOf)) !== undefined) break;
       if (copy === null) continue;
-      const id = ctx.newId();
+      const id = copyOf(n.id)!;
       ids.push(id);
       changes.push({ op: 'add', node: { ...structuredClone(copy ?? n), id, x: Math.round(n.x + dx), y: Math.round(n.y + dy), z: ++z } });
     }
