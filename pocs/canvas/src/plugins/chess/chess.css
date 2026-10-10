@@ -139,3 +139,72 @@
 .cv-node[data-kind='chess-piece'].cv-selected {
   border-radius: 50%;
 }
+
+.ch-palette {
+  position: fixed;
+  z-index: 20;
+  left: 12px;
+  top: 64px;
+  width: 300px;
+  padding: 6px 8px 8px;
+  border-radius: 10px;
+  background: rgba(15, 25, 20, 0.82);
+  backdrop-filter: blur(6px);
+  color: #e8efe9;
+  font: 13px system-ui, sans-serif;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.ch-palette[hidden] {
+  display: none;
+}
+.ch-pal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+.ch-pal-head button {
+  border: 0;
+  border-radius: 6px;
+  padding: 0 8px;
+  background: none;
+  color: inherit;
+  font: 18px/24px system-ui, sans-serif;
+  cursor: pointer;
+}
+.ch-pal-head button:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+.ch-pal-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 4px;
+}
+.ch-pal-cell {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 6px;
+  background: #c9a77f;
+  cursor: grab;
+}
+.ch-pal-cell:nth-child(n + 7) {
+  background: #e8d3b0;
+}
+.ch-pal-cell:hover {
+  outline: 2px solid #ffd54a;
+}
+.ch-pal-hint {
+  margin-top: 6px;
+  font-size: 11px;
+  opacity: 0.7;
+}
+.ch-pal-ghost {
+  position: fixed;
+  z-index: 1000002;
+  pointer-events: none;
+  opacity: 0.9;
+}

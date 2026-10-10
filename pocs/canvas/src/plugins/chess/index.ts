@@ -1,8 +1,9 @@
 import './chess.css';
 import type { App, CanvasNode, Command, Plugin, Store } from '../../core';
-import { commands } from './commands';
+import { commands, duplicatePiece } from './commands';
 import { repairImport, shapeExport } from './io';
 import { board, boardIdOf, isBoard, isPiece, piece } from './model';
+import { mountPalette, targetBoard } from './palette';
 import { boardHtml, pieceHtml } from './render';
 
 const onGrip = (down: PointerEvent) => !!(down.target as Element | null)?.closest?.('[data-grip]');
@@ -11,36 +12,33 @@ const onGrip = (down: PointerEvent) => !!(down.target as Element | null)?.closes
 export function registerChessLogic(store: Store) {
   for (const [name, cmd] of Object.entries(commands)) store.register(`chess.${name}`, cmd as Command);
   store.addRiderRule(boardIdOf);
+  store.duplicateRules.push(duplicatePiece);
   store.importFilters.push(repairImport);
   store.exportFilters.push(shapeExport);
 }
 
 /** Actions for one board (its tab menu and the right-click menu). */
-function boardMenu(app: App, b: CanvasNode) {
+function boardMenu(app: App, b: CanvasNode, pieces: () => void) {
   const id = b.id;
   const locked = !board(b).unlocked;
   return [
     { label: 'Set up pieces', run: () => app.dispatch('chess.setup', { id }) },
     { label: board(b).flipped ? 'Flip board (view from white)' : 'Flip board (view from black)', run: () => app.dispatch('chess.flip', { id }) },
     { label: 'Clear board', run: () => app.dispatch('chess.clear', { id }) },
+    { label: 'Pieces…', run: pieces },
     { label: locked ? 'Unlock (drag anywhere to move)' : 'Lock (drag the tab to move)', run: () => app.dispatch('chess.lock', { id, locked: !locked }) },
   ];
 }
-
-/** The board an action aims at: a selected board, else the board of a selected piece. */
-const targetBoard = (app: App, sel: CanvasNode[]) => {
-  const b = sel.filter(isBoard).at(-1);
-  if (b) return b;
-  const p = sel.filter(isPiece).at(-1);
-  const id = p && app.doc.carrierOf(p.id);
-  return id ? app.node(id) : undefined;
-};
 
 export const chessPlugin: Plugin = {
   id: 'chess',
   setup(app) {
     registerChessLogic(app.store);
     app.registerKit({ id: 'chess.set', label: 'Chess set', create: (a, at) => a.dispatch('chess.create', at) });
+    // DOM only in the browser (tests use registerChessLogic)
+    const palette = typeof document === 'undefined' ? null : mountPalette(app);
+    const openPalette = () => palette?.open();
+    app.registerKit({ id: 'chess.pieces', label: 'Chess pieces', create: () => palette?.toggle() });
 
     app.registerType({
       id: 'chess-board',
@@ -56,7 +54,7 @@ export const chessPlugin: Plugin = {
       grabbable: (node, down) => onGrip(down) || !!board(node).unlocked,
       onClick(node, down, app) {
         if (!onGrip(down)) return false;
-        app.view.openMenu(boardMenu(app, node), (down.target as Element).closest('[data-grip]')!);
+        app.view.openMenu(boardMenu(app, node, openPalette), (down.target as Element).closest('[data-grip]')!);
         return true;
       },
     });
@@ -79,6 +77,7 @@ export const chessPlugin: Plugin = {
     app.registerMenuItem({ label: 'Set up pieces', when: hasBoard, run: onBoard((a, b) => a.dispatch('chess.setup', { id: b.id })) });
     app.registerMenuItem({ label: 'Flip board', when: hasBoard, run: onBoard((a, b) => a.dispatch('chess.flip', { id: b.id })) });
     app.registerMenuItem({ label: 'Clear board', when: hasBoard, run: onBoard((a, b) => a.dispatch('chess.clear', { id: b.id })) });
+    app.registerMenuItem({ label: 'Pieces…', when: hasBoard, run: openPalette });
     app.registerMenuItem({
       get label() {
         const b = targetBoard(app, app.selected());

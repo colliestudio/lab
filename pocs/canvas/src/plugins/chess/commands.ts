@@ -11,13 +11,18 @@ import {
   center,
   inZone,
   isBoard,
+  isColor,
+  isKind,
   isPiece,
   piece,
   pieceNode,
   squareAt,
   squarePos,
+  pieceText,
   zone,
   type Color,
+  type Kind,
+  type PieceField,
 } from './model';
 
 // Pure commands: (read-only doc, args, ctx) -> per-field changes. No DOM. Bad args = no-op.
@@ -152,14 +157,14 @@ export const lock: Command<{ id: string; locked: boolean }> = (doc, a) => {
 };
 
 /**
- * Pieces were put down where they now lie. On a board's grid: snap to the square under the piece's
- * center; an occupant goes to the capture rows (free-play capture). Off the grid but beside a board:
- * stays with that board. Elsewhere: lies free. A single piece changing squares marks the last move.
+ * Where pieces put down at their current position end up. On a board's grid: the square under the
+ * piece's center; an occupant goes to the capture rows (free-play capture). Off the grid but beside a
+ * board: stays with that board. Elsewhere: lies free. `moved` may include nodes not yet in the doc
+ * (a spawn). A single piece changing squares marks the last move.
  */
-export const place: Command<{ ids: string[] }> = (doc, a) => {
-  const moved = pick(doc, a?.ids).filter((n) => isPiece(n) && !doc.parentOf(n.id));
-  if (!moved.length) return [];
+function settle(doc: DocView, moved: CanvasNode[]) {
   const moving = new Set(moved.map((n) => n.id));
+  const byId = new Map(moved.map((n) => [n.id, n]));
   const state = new Map<string, Spot>();
   const occupancy = new Map<string, Map<string, string>>();
   const occ = (b: CanvasNode) => {
@@ -190,7 +195,7 @@ export const place: Command<{ ids: string[] }> = (doc, a) => {
     const sq = squareAt(b, c.x, c.y)!;
     const o = occ(b);
     const victim = o.get(sq);
-    if (victim && victim !== p.id) state.set(victim, { board: b.id, ...slot(b, piece(doc.get(victim)!).color) });
+    if (victim && victim !== p.id) state.set(victim, { board: b.id, ...slot(b, piece(byId.get(victim) ?? doc.get(victim)!).color) });
     o.set(sq, p.id);
     state.set(p.id, { board: b.id, square: sq, ...squarePos(b, sq) });
     if (moved.length === 1 && (was.board !== b.id || was.square !== sq)) {
@@ -199,8 +204,56 @@ export const place: Command<{ ids: string[] }> = (doc, a) => {
       if (board(b).to !== sq) boardChanges.push(set(b.id, F('to'), sq));
     }
   }
-  const changes = [...state].flatMap(([id, to]) => moveTo(doc.get(id)!, to));
-  return [...changes, ...boardChanges];
+  return { state, boardChanges };
+}
+
+/** Pieces were put down where they now lie (end of a drag): snap / capture / attach / free, see `settle`. */
+export const place: Command<{ ids: string[] }> = (doc, a) => {
+  const moved = pick(doc, a?.ids).filter((n) => isPiece(n) && !doc.parentOf(n.id));
+  if (!moved.length) return [];
+  const { state, boardChanges } = settle(doc, moved);
+  return [...[...state].flatMap(([id, to]) => moveTo(doc.get(id)!, to)), ...boardChanges];
 };
 
-export const commands = { create, setup, flip, clear, lock, place };
+/**
+ * A new piece. With (x, y): put down centered there (snaps / captures like a drop; on or beside a
+ * board it joins that board's set). With `board` instead: in the first free capture slot beside that
+ * board (its owner's side), part of its set. Selects the new piece unless `keepSelection`.
+ */
+export const spawn: Command<{ piece: Kind; color: Color; x?: number; y?: number; board?: string; keepSelection?: boolean }> = (doc, a, ctx) => {
+  if (!isKind(a?.piece) || !isColor(a.color)) return [];
+  const id = ctx.newId();
+  const z = doc.topZ + 1;
+  const sel = a.keepSelection ? undefined : [id];
+  const b = boardArg(doc, a.board);
+  if (b) {
+    const pos = slots(doc, b, new Set())(a.color);
+    return { changes: [{ op: 'add', node: pieceNode(id, pos.x, pos.y, { piece: a.piece, color: a.color, board: b.id, home: b.id }, z) }], select: sel };
+  }
+  if (!isNum(a.x) || !isNum(a.y)) return [];
+  const node = pieceNode(id, Math.round(a.x - SQ / 2), Math.round(a.y - SQ / 2), { piece: a.piece, color: a.color }, z);
+  const { state, boardChanges } = settle(doc, [node]);
+  const changes: Change[] = [];
+  for (const [pid, to] of state) {
+    if (pid !== id) {
+      changes.push(...moveTo(doc.get(pid)!, to));
+      continue;
+    }
+    const f: PieceField = { piece: a.piece, color: a.color, board: to.board, square: to.square, home: to.board };
+    changes.unshift({ op: 'add', node: pieceNode(id, to.x, to.y, f, z) });
+  }
+  return { changes: [...changes, ...boardChanges], select: sel };
+};
+
+/**
+ * Duplicate rule (see core `registerDuplicateRule`): a piece copy keeps its board and set but no
+ * square (it lies beside where it was copied from until dropped); boards aren't duplicated.
+ */
+export function duplicatePiece(node: CanvasNode): CanvasNode | null | undefined {
+  if (isBoard(node)) return null;
+  if (!isPiece(node)) return;
+  const { square: _sq, ...f } = piece(node);
+  return { ...node, text: pieceText(f), [FIELD]: f };
+}
+
+export const commands = { create, setup, flip, clear, lock, place, spawn };

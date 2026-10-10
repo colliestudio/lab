@@ -264,4 +264,64 @@ describe('chess commands', () => {
       expect(label(at(st, b, 'd5'))).toBe('bP');
     }
   });
+
+  it('spawn onto a square snaps, captures and joins the set; on the table it lies free', () => {
+    const { s, b } = withSet();
+    const victim = at(s, b, 'e7')!.id;
+    const r = s.dispatch('chess.spawn', { piece: 'Q', color: 'w', ...sqCenter(s, b, 'e7') });
+    const q = s.doc.get(r.select![0])!;
+    expect(piece(q)).toEqual({ piece: 'Q', color: 'w', board: b, square: 'e7', home: b });
+    expect({ x: q.x, y: q.y }).toEqual(squarePos(s.doc.get(b)!, 'e7'));
+    expect(piece(s.doc.get(victim)!).square).toBeUndefined();
+    expect(board(s.doc.get(b)!)).toMatchObject({ to: 'e7' });
+    expect(q.text).toBe('♕ e7');
+    s.undo(); // one step
+    expect(s.doc.get(q.id)).toBeUndefined();
+    expect(piece(s.doc.get(victim)!).square).toBe('e7');
+    const f = s.dispatch('chess.spawn', { piece: 'N', color: 'b', x: 2000, y: 2000 });
+    const n = s.doc.get(f.select![0])!;
+    expect(piece(n)).toEqual({ piece: 'N', color: 'b' });
+    expect([n.x + SQ / 2, n.y + SQ / 2]).toEqual([2000, 2000]);
+    expect(s.dispatch('chess.spawn', { piece: 'X', color: 'w', x: 0, y: 0 }).changes).toEqual([]);
+  });
+
+  it('spawn beside a board lands in a free capture slot of its set; set up keeps extras aside', () => {
+    const { s, b } = withSet();
+    const r1 = s.dispatch('chess.spawn', { piece: 'Q', color: 'w', board: b, keepSelection: true });
+    const r2 = s.dispatch('chess.spawn', { piece: 'Q', color: 'w', board: b, keepSelection: true });
+    expect(r1.select).toBeUndefined();
+    const [q1, q2] = [r1, r2].map((r) => s.doc.get((r.changes[0] as any).node.id)!);
+    const slots = captureSlots(s.doc.get(b)!, 'w');
+    expect([{ x: q1.x, y: q1.y }, { x: q2.x, y: q2.y }]).toEqual([slots[0], slots[1]]);
+    expect(piece(q1)).toEqual({ piece: 'Q', color: 'w', board: b, home: b });
+    // set up: 32 on squares, the two extra queens stay beside the board
+    drag(s, q1.id, sqCenter(s, b, 'd4'));
+    s.dispatch('chess.setup', { id: b });
+    expect(s.doc.riders(b).filter((p) => piece(p).square)).toHaveLength(32);
+    const extras = s.doc.riders(b).filter((p) => !piece(p).square);
+    expect(extras).toHaveLength(2);
+    expect(extras.every((p) => p.y > s.doc.get(b)!.y + BOARD)).toBe(true);
+    // clear: all 34 off the squares (beyond 16 per color they share the last slot)
+    s.dispatch('chess.clear', { id: b });
+    expect(s.doc.riders(b)).toHaveLength(34);
+    expect(s.doc.riders(b).every((p) => !piece(p).square)).toBe(true);
+  });
+
+  it('duplicate copies pieces offset, keeping board and set but not the square; boards refuse', () => {
+    const { s, b } = withSet();
+    const k = at(s, b, 'e1')!;
+    const r = s.dispatch('core.duplicate', { ids: [k.id, b] });
+    expect(r.select).toHaveLength(1);
+    const c = s.doc.get(r.select![0])!;
+    expect(piece(c)).toEqual({ piece: 'K', color: 'w', board: b, home: b });
+    expect([c.x, c.y]).toEqual([k.x + 24, k.y + 24]);
+    expect(at(s, b, 'e1')!.id).toBe(k.id);
+    expect(s.doc.nodes.filter(isBoard)).toHaveLength(1);
+    // dropping the copy snaps it like any piece
+    drag(s, c.id, sqCenter(s, b, 'e4'));
+    expect(piece(s.doc.get(c.id)!).square).toBe('e4');
+    // delete removes pieces
+    s.dispatch('core.delete', { ids: [c.id] });
+    expect(s.doc.get(c.id)).toBeUndefined();
+  });
 });

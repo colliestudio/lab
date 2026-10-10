@@ -27,6 +27,7 @@ const GROUPS: [string, [string, string][]][] = [
       ['⌘A', 'Select everything on the table'],
       ['Esc', 'Clear selection'],
       ['Delete / Backspace', 'Delete selection'],
+      ['⌘D', 'Duplicate selection (not cards)'],
       ['Arrows (⇧ arrows)', 'Nudge 1px (10px)'],
     ],
   ],
@@ -61,6 +62,10 @@ const GROUPS: [string, [string, string][]][] = [
       ['Drop beside the board', 'Stays with the board; further away it lies free on the table'],
       ['Drag the board’s ⠿ tab', 'Move the board with its pieces (the surface is locked: dragging it box-selects)'],
       ['Click the tab, right-click', 'Set up pieces, flip board (view from black), clear, lock/unlock'],
+      ['Pieces… (tab, right-click, Add…)', 'Piece palette: drag a piece onto a square or the table; click one to put it beside the selected board'],
+      ['⌘D', 'Duplicate the selected pieces (copies lie offset until you drop them on a square)'],
+      ['Delete', 'Remove the selected pieces'],
+      ['', 'Set up keeps extra pieces beside the board'],
     ],
   ],
   [
