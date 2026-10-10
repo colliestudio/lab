@@ -13,8 +13,14 @@
     radial-gradient(ellipse at center, rgba(255, 255, 255, 0.06), rgba(0, 0, 0, 0.35));
 }
 .cv-root.cv-space,
-.cv-root.cv-space * {
+.cv-root.cv-space *,
+.cv-root.cv-hand,
+.cv-root.cv-hand * {
   cursor: grab !important;
+}
+.cv-root.cv-panning,
+.cv-root.cv-panning * {
+  cursor: grabbing !important;
 }
 .cv-world {
   position: absolute;
@@ -28,7 +34,7 @@
   position: absolute;
   left: 0;
   top: 0;
-  cursor: grab;
+  cursor: pointer;
 }
 .cv-node.cv-dragging {
   cursor: grabbing;

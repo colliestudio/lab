@@ -37,6 +37,9 @@ export class View {
   private gesture: Gesture | null = null;
   private pointers = new Map<number, Pt>();
   private spaceDown = false;
+  /** Active tool: select (default) or hand (plain drag pans). */
+  tool: 'select' | 'hand' = 'select';
+  private toolListeners = new Set<(t: 'select' | 'hand') => void>();
   private lastClick = { id: '', t: 0 };
   /** Node under the mouse when no button is pressed (for "hovered" keyboard targets). */
   hovered: string | undefined;
@@ -136,8 +139,7 @@ export class View {
   }
 
   /** Zoom/pan so every node is visible. */
-  fit(padding = 60) {
-    const nodes = this.app.store.doc.visible;
+  fit(padding = 60, nodes = this.app.store.doc.visible, maxZoom = 1.5) {
     if (!nodes.length) return this.app.viewport.set(this.root.clientWidth / 2, this.root.clientHeight / 2, 1);
     const minX = Math.min(...nodes.map((n) => n.x));
     const minY = Math.min(...nodes.map((n) => n.y));
@@ -145,10 +147,26 @@ export class View {
     const maxY = Math.max(...nodes.map((n) => n.y + n.height));
     const w = this.root.clientWidth - padding * 2;
     const h = this.root.clientHeight - padding * 2;
-    const zoom = Math.min(1.5, Math.max(Viewport.MIN, Math.min(w / (maxX - minX), h / (maxY - minY))));
+    const zoom = Math.min(maxZoom, Math.max(Viewport.MIN, Math.min(w / (maxX - minX), h / (maxY - minY))));
     const x = (this.root.clientWidth - (maxX - minX) * zoom) / 2 - minX * zoom;
     const y = (this.root.clientHeight - (maxY - minY) * zoom) / 2 - minY * zoom;
     this.app.viewport.set(x, y, zoom);
+  }
+
+  /** Zoom so the selection fills the view (no-op without a selection). */
+  zoomToSelection() {
+    const sel = this.app.selected();
+    if (sel.length) this.fit(80, sel, Viewport.MAX);
+  }
+
+  setTool(t: 'select' | 'hand') {
+    this.tool = t;
+    this.root.classList.toggle('cv-hand', t === 'hand');
+    for (const fn of this.toolListeners) fn(t);
+  }
+  onToolChange(fn: (t: 'select' | 'hand') => void) {
+    this.toolListeners.add(fn);
+    return () => this.toolListeners.delete(fn);
   }
 
   // ---------------------------------------------------------------- input
@@ -190,8 +208,9 @@ export class View {
     }
     // Pan: Space+drag or middle button (wheel pans too). Plain drag on empty table = box select;
     // Shift adds to the current selection.
-    if (this.spaceDown || e.button === 1) {
+    if (this.spaceDown || e.button === 1 || this.tool === 'hand') {
       this.gesture = { kind: 'pan', last: p, start: p, moved: false, onEmpty: !nodeEl };
+      this.root.classList.add('cv-panning');
       return;
     }
     if (!nodeEl) {
@@ -274,8 +293,11 @@ export class View {
           width: `${r.w * s1.zoom}px`,
           height: `${r.h * s1.zoom}px`,
         });
-        const hits = this.app.store.doc.visible.filter(
-          (n) => n.x < r.x + r.w && n.x + n.width > r.x && n.y < r.y + r.h && n.y + n.height > r.y,
+        // touching by default; Alt = only objects fully inside the box
+        const hits = this.app.store.doc.visible.filter((n) =>
+          e.altKey
+            ? n.x >= r.x && n.x + n.width <= r.x + r.w && n.y >= r.y && n.y + n.height <= r.y + r.h
+            : n.x < r.x + r.w && n.x + n.width > r.x && n.y < r.y + r.h && n.y + n.height > r.y,
         );
         this.app.store.select([...g.base, ...hits.map((n) => n.id)]);
         return;
@@ -293,6 +315,7 @@ export class View {
       return;
     }
     this.gesture = null;
+    this.root.classList.remove('cv-panning');
     if (!g) return;
 
     if (g.kind === 'pan' && !g.moved && g.onEmpty) this.app.store.select([]);
@@ -352,8 +375,8 @@ export class View {
   }
 
   private onKeyDown(e: KeyboardEvent) {
-    const t = e.target as HTMLElement;
-    if (t.closest('input, textarea, select, [contenteditable="true"]')) return;
+    const t = e.target;
+    if (t instanceof Element && t.closest('input, textarea, select, [contenteditable="true"]')) return;
     if (e.key === ' ') {
       e.preventDefault();
       this.spaceDown = true;
@@ -375,6 +398,18 @@ export class View {
     if (mod && e.key.toLowerCase() === 'a') {
       e.preventDefault();
       store.select(store.doc.visible.map((n) => n.id));
+      return;
+    }
+    const arrow = ({ ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] } as Record<string, [number, number]>)[e.key];
+    if (arrow && !mod && store.selection.size) {
+      // nudge 1px (Shift 10px); a held-down key's repeats form one undo step
+      e.preventDefault();
+      const step = e.shiftKey ? 10 : 1;
+      this.app.dispatch('core.move', { ids: [...store.selection], dx: arrow[0] * step, dy: arrow[1] * step }, { merge: e.repeat });
+      return;
+    }
+    if (!mod && !e.altKey && !e.shiftKey && (e.key === 'v' || e.key === 'h')) {
+      this.setTool(e.key === 'h' ? 'hand' : 'select');
       return;
     }
     if (mod && (e.key.toLowerCase() === 'z' || e.key.toLowerCase() === 'y')) {

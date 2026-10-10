@@ -101,3 +101,17 @@ body {
   margin: 0;
   color: #444;
 }
+#toolbar .tools {
+  display: flex;
+  gap: 2px;
+  padding-right: 6px;
+  margin-right: 2px;
+  border-right: 1px solid rgba(255, 255, 255, 0.15);
+}
+#toolbar .tools button {
+  min-width: 32px;
+  background: none;
+}
+#toolbar .tools button.active {
+  background: rgba(255, 255, 255, 0.28);
+}

@@ -124,7 +124,7 @@ export const cardsPlugin: Plugin = {
     };
     for (let k = 1; k <= 9; k++) {
       app.registerKey({ key: `${k}`, label: `Deal ${k} face up`, run: dealN(k, true) });
-      app.registerKey({ key: `shift+${k}`, label: `Deal ${k} face down`, run: dealN(k, false) });
+      app.registerKey({ key: `alt+${k}`, label: `Deal ${k} face down`, run: dealN(k, false) });
     }
 
     const any = (_: App, sel: CanvasNode[]) => sel.some(isCardish);
@@ -136,7 +136,7 @@ export const cardsPlugin: Plugin = {
     app.registerMenuItem({ label: 'Draw face down', hint: '⇧D', when: hasDeck, run: drawSel(false) });
     app.registerMenuItem({ label: 'Deal 3 face up', hint: '3', when: hasDeck, run: dealN(3, true) });
     app.registerMenuItem({ label: 'Deal 5 face up', hint: '5', when: hasDeck, run: dealN(5, true) });
-    app.registerMenuItem({ label: 'Deal 5 face down', hint: '⇧5', when: hasDeck, run: dealN(5, false) });
+    app.registerMenuItem({ label: 'Deal 5 face down', hint: '⌥5', when: hasDeck, run: dealN(5, false) });
     app.registerMenuItem({ label: 'Spread out', hint: 'E', when: hasDeck, run: spreadSel });
     app.registerMenuItem({ label: 'Gather into deck', hint: 'G', when: several, run: gatherSel() });
     // label shows how many are out; built when the menu opens

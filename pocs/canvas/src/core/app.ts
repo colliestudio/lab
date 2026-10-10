@@ -27,6 +27,10 @@ export class App {
     for (const key of ['mod+=', 'mod++', 'mod+shift+=', 'mod+shift++']) this.registerKey({ key, label: 'Zoom in', ...zin });
     for (const key of ['mod+-', 'mod+shift+-', 'mod+_', 'mod+shift+_']) this.registerKey({ key, label: 'Zoom out', run: () => this.view.zoomCenter('out') });
     this.registerKey({ key: 'mod+0', label: 'Zoom to 100%', run: () => this.view.zoomCenter(1) });
+    // Figma: Shift+1 fit, Shift+2 selection, Shift+0 100%
+    this.registerKey({ key: 'shift+0', label: 'Zoom to 100%', run: () => this.view.zoomCenter(1) });
+    this.registerKey({ key: 'shift+1', label: 'Zoom to fit', run: () => this.view.fit() });
+    this.registerKey({ key: 'shift+2', label: 'Zoom to selection', run: () => this.view.zoomToSelection() });
   }
 
   use(plugin: Plugin) {

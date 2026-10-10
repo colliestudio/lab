@@ -4,21 +4,35 @@ const GROUPS: [string, [string, string][]][] = [
   [
     'Table',
     [
-      ['Drag empty table', 'Box select (⇧ adds to selection)'],
+      ['V / H', 'Select tool / hand tool (toolbar buttons too)'],
+      ['Drag empty table', 'Box select: touching objects (⇧ adds, ⌥ only fully inside)'],
       ['Wheel / two-finger scroll', 'Pan (⇧wheel sideways)'],
-      ['Space+drag, middle-drag', 'Pan'],
+      ['Space+drag, middle-drag, hand tool', 'Pan'],
       ['⌘wheel, pinch', 'Zoom at the pointer'],
-      ['⌘+ / ⌘− / ⌘0', 'Zoom in / out / 100%'],
-      ['0', 'Fit everything'],
-      ['⌘A, Esc, Delete', 'Select all, clear selection, delete'],
+      ['⌘+ / ⌘−', 'Zoom in / out'],
+      ['⇧0 or ⌘0', 'Zoom to 100%'],
+      ['⇧1 or 0', 'Zoom to fit everything'],
+      ['⇧2', 'Zoom to selection'],
       ['⌘Z / ⇧⌘Z', 'Undo / redo'],
       ['Right-click', 'Actions for what is under the pointer'],
+      ['?', 'This help'],
+    ],
+  ],
+  [
+    'Selection',
+    [
+      ['Click', 'Select'],
+      ['⇧click', 'Add / remove from selection'],
+      ['⌘A', 'Select everything on the table'],
+      ['Esc', 'Clear selection'],
+      ['Delete / Backspace', 'Delete selection'],
+      ['Arrows (⇧ arrows)', 'Nudge 1px (10px)'],
     ],
   ],
   [
     'Cards',
     [
-      ['Drag', 'Move (⇧click adds to selection)'],
+      ['Drag', 'Move'],
       ['Double-click, F', 'Flip'],
       ['Drop squarely on a card or deck', 'Stack it (the target lights up); it takes that pile’s facing'],
       ['G', 'Stack the selection into a pile'],
@@ -29,11 +43,11 @@ const GROUPS: [string, [string, string][]][] = [
     'Decks',
     [
       ['Drag a deck', 'Take its top card'],
-      ['Drag its ⠿ tab, Alt+drag', 'Move the whole deck'],
+      ['Drag its ⠿ tab, ⌥drag', 'Move the whole deck'],
       ['Click its ⠿ tab', 'Deck menu: gather all, shuffle, deal, flip, spread'],
       ['S / E', 'Shuffle / spread'],
       ['D (⇧D)', 'Draw one face up (face down)'],
-      ['1–9 (⇧1–9)', 'Deal N face up (face down)'],
+      ['1–9 (⌥1–9)', 'Deal N face up (face down)'],
       ['', 'Deck keys act on the deck under the mouse, else the selected one'],
     ],
   ],
@@ -46,6 +60,7 @@ const GROUPS: [string, [string, string][]][] = [
     ],
   ],
 ];
+
 
 /** Help overlay: `?` button / key; Esc or a click outside closes it. */
 export function mountHelp(app: App, button: HTMLElement) {

@@ -68,6 +68,24 @@ button('Open…', 'Open a .canvas file (⌘O)', doOpen);
 button('Save', 'Save as .canvas (⌘S)', () => doSave());
 button('Undo', 'Undo (⌘Z)', () => app.store.undo());
 button('Redo', 'Redo (⇧⌘Z)', () => app.store.redo());
+// tools: select (V) / hand (H)
+const tools = document.createElement('span');
+tools.className = 'tools';
+const toolBtn = (tool: 'select' | 'hand', label: string, title: string) => {
+  const b = document.createElement('button');
+  b.textContent = label;
+  b.title = title;
+  b.dataset.tool = tool;
+  b.addEventListener('click', () => app.view.setTool(tool));
+  tools.append(b);
+  return b;
+};
+const toolBtns = [toolBtn('select', '↖', 'Select (V)'), toolBtn('hand', '✋\uFE0E', 'Hand: drag to pan (H, or hold Space)')];
+const syncTools = () => toolBtns.forEach((b) => b.classList.toggle('active', b.dataset.tool === app.view.tool));
+app.view.onToolChange(syncTools);
+syncTools();
+bar.prepend(tools);
+
 const helpBtn = document.createElement('button');
 helpBtn.textContent = '?';
 helpBtn.title = 'Controls (?)';
