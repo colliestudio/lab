@@ -14,7 +14,10 @@ function gatherSelection(app: App) {
 }
 function drawFromSelection(app: App, faceUp: boolean) {
   const stack = selectedCards(app).filter(isStack).at(-1);
-  if (stack) app.dispatch('cards.draw', { id: stack.id, faceUp });
+  if (!stack) return;
+  app.dispatch('cards.draw', { id: stack.id, faceUp });
+  // keep the deck selected so D can be pressed repeatedly to deal
+  if (app.node(stack.id) && isStack(app.node(stack.id)!)) app.store.select([stack.id]);
 }
 
 export const cardsPlugin: Plugin = {

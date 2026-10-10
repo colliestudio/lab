@@ -116,7 +116,7 @@
 .pc-back {
   background: #fff;
   border: 1px solid #cfcfcf;
-  padding: 6cqw;
+  padding: 6%; /* % not cqw: cqw on the container itself would resolve against the viewport */
 }
 .pc-back-inner {
   width: 100%;
