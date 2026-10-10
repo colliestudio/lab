@@ -2,6 +2,7 @@ import './style.css';
 import { App, joinRoom, localPlayer, mountZoomControl, openFile, parse, persistLocally, persistViewport, resetFileHandle, roomDbName, saveFile, type CanvasDoc } from './core';
 import { copyText, createRoomFrom, mountRoomStatus, roomFromUrl, roomLink } from './share';
 import { cardsPlugin } from './plugins/cards';
+import { chessPlugin } from './plugins/chess';
 import { mountHelp, removeHelpNote } from './help';
 
 const ROOM = roomFromUrl();
@@ -10,6 +11,7 @@ const VIEW_KEY = 'canvas-poc:view';
 
 const app = new App(document.getElementById('table')!);
 app.use(cardsPlugin);
+app.use(chessPlugin);
 app.store.migrations.push(removeHelpNote);
 
 

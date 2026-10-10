@@ -15,6 +15,7 @@ const GROUPS: [string, [string, string][]][] = [
       ['⇧2', 'Zoom to selection'],
       ['⌘Z / ⇧⌘Z', 'Undo / redo'],
       ['Right-click', 'Actions for what is under the pointer'],
+      ['Add…', 'Put a deck of cards or a chess set in the middle of the view'],
       ['?', 'This help'],
     ],
   ],
@@ -49,6 +50,17 @@ const GROUPS: [string, [string, string][]][] = [
       ['D (⇧D)', 'Draw one as it lies (⇧: turned over)'],
       ['1–9 (⌥1–9)', 'Deal N as they lie (⌥: turned over)'],
       ['', 'Deck keys act on the deck under the mouse, else the selected one'],
+    ],
+  ],
+  [
+    'Chess',
+    [
+      ['Add… › Chess set', 'A board with 32 pieces in the starting position (free play: no rules)'],
+      ['Drag a piece', 'It snaps to the square under its center; the move is tinted on the board'],
+      ['Drop on a piece', 'Capture: the piece there goes beside the board on its owner’s side'],
+      ['Drop beside the board', 'Stays with the board; further away it lies free on the table'],
+      ['Drag the board’s ⠿ tab', 'Move the board with its pieces (the surface is locked: dragging it box-selects)'],
+      ['Click the tab, right-click', 'Set up pieces, flip board (view from black), clear, lock/unlock'],
     ],
   ],
   [

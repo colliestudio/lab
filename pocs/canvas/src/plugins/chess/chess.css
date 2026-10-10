@@ -1,0 +1,138 @@
+.ch-board {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  border-radius: 10px;
+  background: linear-gradient(145deg, #6b4428, #4a2c18 60%, #3c2312);
+  box-shadow: 0 2px 3px rgba(0, 0, 0, 0.4), 0 10px 26px rgba(0, 0, 0, 0.35), inset 0 0 0 2px rgba(255, 255, 255, 0.08);
+  cursor: default;
+}
+.ch-board.ch-unlocked {
+  cursor: move;
+}
+.ch-grid {
+  position: absolute;
+  inset: 28px;
+  display: grid;
+  grid-template: repeat(8, 1fr) / repeat(8, 1fr);
+  box-shadow: 0 0 0 2px #2b180c;
+}
+.ch-sq {
+  position: relative;
+}
+.ch-light {
+  background: #f0d9b5;
+}
+.ch-dark {
+  background: #b58863;
+}
+.ch-last::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(155, 199, 0, 0.45);
+}
+.ch-files,
+.ch-ranks {
+  position: absolute;
+  display: flex;
+  color: #e9d3b0;
+  font: 600 13px/1 system-ui, sans-serif;
+  pointer-events: none;
+}
+.ch-files {
+  left: 28px;
+  right: 28px;
+  height: 28px;
+}
+.ch-files.ch-top {
+  top: 0;
+  transform: rotate(180deg);
+}
+.ch-files.ch-bottom {
+  bottom: 0;
+}
+.ch-ranks {
+  top: 28px;
+  bottom: 28px;
+  width: 28px;
+  flex-direction: column;
+}
+.ch-ranks.ch-left {
+  left: 0;
+}
+.ch-ranks.ch-right {
+  right: 0;
+  transform: rotate(180deg);
+}
+.ch-files span,
+.ch-ranks span {
+  flex: 1;
+  display: grid;
+  place-items: center;
+}
+.ch-files.ch-top,
+.ch-ranks.ch-right {
+  opacity: 0.55;
+}
+.ch-grip {
+  position: absolute;
+  left: 50%;
+  top: -26px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 12px 0 8px;
+  box-sizing: border-box;
+  border-radius: 8px 8px 0 0;
+  background: #3c2312;
+  color: #f3e3c8;
+  font: 600 12px/26px system-ui, sans-serif;
+  white-space: nowrap;
+  box-shadow: 0 -1px 4px rgba(0, 0, 0, 0.35);
+  cursor: move;
+}
+.ch-grip:hover {
+  background: #573520;
+}
+.ch-grip-dots {
+  font-size: 14px;
+  opacity: 0.7;
+}
+.ch-lock {
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+.ch-piece {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+  display: grid;
+  place-items: center;
+  cursor: grab;
+}
+.ch-piece span {
+  font-family: 'Apple Symbols', 'Segoe UI Symbol', 'DejaVu Sans', 'Noto Sans Symbols 2', serif;
+  font-size: 84cqw;
+  line-height: 1;
+  /* nudge: chess glyphs sit a little high in most fonts */
+  transform: translateY(2cqw);
+  paint-order: stroke fill;
+  -webkit-text-stroke: 5cqw var(--ch-edge);
+  color: var(--ch-fill);
+  filter: drop-shadow(0 2cqw 1.5cqw rgba(0, 0, 0, 0.45));
+}
+.ch-w {
+  --ch-fill: #fbf7ee;
+  --ch-edge: #1d1a17;
+}
+.ch-b {
+  --ch-fill: #1d1a17;
+  --ch-edge: #c9bfae;
+}
+.cv-node[data-kind='chess-piece'].cv-selected {
+  border-radius: 50%;
+}
