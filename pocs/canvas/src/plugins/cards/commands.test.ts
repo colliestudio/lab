@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
-import { OTHERS, Store, parse, serialize, type CanvasNode, type CommandCtx } from '../../core';
+import { OTHERS, Store, parse, raise, serialize, type CanvasNode, type CommandCtx } from '../../core';
 import { registerCoreCommands } from '../../core/commands';
 import { registerCardsLogic } from './index';
 import { DROP_FAN, DROP_STACK, SORT_MODES, dropMode, freeSpot, sortKeys, sortPrefOf } from './commands';
@@ -1113,6 +1113,37 @@ describe('showdown undo', () => {
     a.redo();
     expect(a.doc.nodes.filter(isDeck).map((n) => n.id)).toEqual(['d']);
     expect(b.doc.nodes.filter(isDeck).map((n) => n.id)).toEqual(['d']);
+  });
+});
+
+describe('pressing a card is not an undo step', () => {
+  /** What a press on an object does (view.ts): new step, then raise it (not undoable). */
+  const press = (s: Store, id: string) => {
+    s.newUndoStep();
+    raise(s, [id]);
+  };
+  it('showdown, click cards, one undo restores the hands; undo, click, redo still works', () => {
+    const s = store();
+    s.load({ nodes: [deckNode('d', 0, 0, 1, undefined, true), ...standardDeck().slice(0, 6).map((f, i) => cardNode(`c${i}`, 200 + i * 130, 0, { face: f, faceUp: false, home: 'd' }, 2 + i))], edges: [] });
+    const ha = s.dispatch('cards.newHand', { owner: 'A', label: "A's hand", x: 0, y: 400 }).select![0];
+    s.dispatch('cards.drop', { target: ha, ids: ['c0', 'c1', 'c2'] });
+    const hb = s.dispatch('cards.newHand', { owner: 'B', label: "B's hand", x: 800, y: 400 }).select![0];
+    s.dispatch('cards.drop', { target: hb, ids: ['c3', 'c4'] });
+    s.dispatch('cards.showdown', {});
+    expect(s.doc.get(ha)).toBeUndefined();
+    const z0 = s.doc.get('c0')!.z!;
+    press(s, 'c0');
+    press(s, 'c3');
+    expect(s.doc.get('c0')!.z!).toBeGreaterThan(z0); // the press did raise it
+    s.undo();
+    expect(faces(s, ha)).toEqual(['AS', '2S', '3S']);
+    expect(faces(s, hb)).toEqual(['4S', '5S']);
+    press(s, 'c5');
+    press(s, 'd');
+    s.redo();
+    expect(s.doc.get(ha)).toBeUndefined();
+    expect(s.doc.get(hb)).toBeUndefined();
+    expect(s.doc.nodes.filter(isDeck).map((n) => n.id)).toEqual(['d']);
   });
 });
 

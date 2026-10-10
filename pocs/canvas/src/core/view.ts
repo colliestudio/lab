@@ -1,4 +1,5 @@
 import type { App } from './app';
+import { raise } from './commands';
 import type { CanvasNode } from './doc';
 import { Menu } from './menu';
 import type { MenuEntry, ObjectType, RenderCtx } from './plugin';
@@ -277,7 +278,7 @@ export class View {
       store.select([id]);
     }
     const ids = this.app.selected().map((n) => n.id);
-    this.app.dispatch('core.front', { ids }, { merge: true });
+    raise(this.app.store, ids);
     const w = this.world_(p);
     this.gesture = { kind: 'drag', ids, clickId: id, shift: e.shiftKey, down: e, start: w, applied: { x: 0, y: 0 }, moved: false };
     this.app.presence?.setHeld(this.app.publicIds(ids));

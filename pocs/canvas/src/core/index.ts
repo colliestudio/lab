@@ -4,7 +4,7 @@ export * from './store';
 export * from './io';
 export * from './files';
 export * from './persist';
-export { isIds, isNum, pick, toFront, withRiders } from './commands';
+export { isIds, isNum, pick, raise, toFront, withRiders } from './commands';
 export type { ObjectType, KeyBinding, MenuItem, MenuEntry, MenuProvider, Kit, Plugin, RenderCtx } from './plugin';
 export { Viewport } from './viewport';
 export { mountZoomControl } from './zoomControl';
