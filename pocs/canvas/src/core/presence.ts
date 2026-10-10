@@ -37,10 +37,16 @@ export class Presence {
 
   constructor(
     readonly awareness: Awareness,
-    readonly me: PlayerInfo,
+    public me: PlayerInfo,
   ) {
     awareness.setLocalState({ user: me, cursor: null, sel: [], held: [] } satisfies PeerState);
     awareness.on('change', () => this.emit());
+  }
+
+  /** Change my name/color; goes out to everyone right away. */
+  setMe(me: PlayerInfo) {
+    this.me = me;
+    this.awareness.setLocalStateField('user', me);
   }
 
   /** Everyone else currently in the room. */
@@ -154,23 +160,4 @@ export function mountPresenceView(app: App, presence: Presence) {
   app.store.subscribe(draw); // node boxes may have been (re)created
   app.store.subscribe(() => presence.setSelection(app.store.selection));
   draw();
-}
-
-const PALETTE = ['#e6194b', '#3cb44b', '#4363d8', '#f58231', '#911eb4', '#0aa5a5', '#d6338a', '#8a6d00', '#2f4b7c', '#c0392b'];
-
-/** This browser's player identity: asked once, kept in localStorage. */
-export function localPlayer(storageKey = 'canvas-poc:player', ask: (def: string) => string | null = (d) => prompt('Your name at the table?', d)): PlayerInfo {
-  try {
-    const saved = JSON.parse(localStorage.getItem(storageKey) ?? 'null');
-    if (saved?.id && saved?.name && saved?.color) return saved;
-  } catch {
-    /* ask again */
-  }
-  const n = 1 + Math.floor(Math.random() * 99);
-  const def = `Player ${n}`;
-  const name = (ask(def) ?? '').trim().slice(0, 24) || def;
-  const id = Array.from(crypto.getRandomValues(new Uint8Array(6)), (b) => b.toString(16).padStart(2, '0')).join('');
-  const me = { id, name, color: PALETTE[n % PALETTE.length] };
-  localStorage.setItem(storageKey, JSON.stringify(me));
-  return me;
 }

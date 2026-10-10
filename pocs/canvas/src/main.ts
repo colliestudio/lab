@@ -1,6 +1,7 @@
 import './style.css';
-import { App, joinRoom, localPlayer, mountZoomControl, openFile, parse, persistLocally, persistViewport, resetFileHandle, roomDbName, saveFile, type CanvasDoc } from './core';
+import { App, joinRoom, loadPlayer, mountZoomControl, savePlayer, openFile, parse, persistLocally, persistViewport, resetFileHandle, roomDbName, saveFile, type CanvasDoc } from './core';
 import { copyText, createRoomFrom, mountRoomStatus, roomFromUrl, roomLink } from './share';
+import { askName } from './nameDialog';
 import { cardsPlugin } from './plugins/cards';
 import { mountHelp, removeHelpNote } from './help';
 
@@ -139,13 +140,27 @@ persistLocally(app, DB_NAME).then(({ empty }) => {
     return;
   }
   // Room: the table comes from this device (if it was here before) and from the other players.
-  const me = localPlayer();
-  const room = joinRoom(app, ROOM, me);
+  // Join right away (the table loads meanwhile); ask for a name in-app if none was chosen yet.
+  const stored = loadPlayer();
+  const info = ({ id, name, color }: { id: string; name: string; color: string }) => ({ id, name, color });
+  const room = joinRoom(app, ROOM, info(stored));
   (window as any).room = room;
-  mountRoomStatus(app, room, bar, () => {
-    room.leave();
-    location.href = location.pathname;
-  });
+  const rename = async (first = false) => {
+    const choice = await askName(room.presence.me, first ? { title: 'Join the table', action: 'Join' } : { title: 'Your name and color', action: 'Save' });
+    if (!choice) return;
+    room.presence.setMe(info(savePlayer(choice)));
+  };
+  mountRoomStatus(
+    app,
+    room,
+    bar,
+    () => {
+      room.leave();
+      location.href = location.pathname;
+    },
+    () => void rename(),
+  );
+  if (!stored.named) void rename(true);
   const shared = sessionStorage.getItem('canvas-poc:shared');
   sessionStorage.removeItem('canvas-poc:shared');
   if (shared === 'copied') flash('Room created, link copied: send it to the other players');

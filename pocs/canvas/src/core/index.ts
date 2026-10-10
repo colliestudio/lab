@@ -8,5 +8,6 @@ export { isIds, isNum, pick, toFront } from './commands';
 export type { ObjectType, KeyBinding, MenuItem, Plugin, RenderCtx } from './plugin';
 export { Viewport } from './viewport';
 export { mountZoomControl } from './zoomControl';
-export { Presence, mountPresenceView, localPlayer, type PlayerInfo, type Peer } from './presence';
+export { Presence, mountPresenceView, type PlayerInfo, type Peer } from './presence';
+export { loadPlayer, savePlayer, PALETTE, MAX_NAME, type StoredPlayer } from './player';
 export { joinRoom, signalingUrl, roomDbName, type Room } from './sync';
