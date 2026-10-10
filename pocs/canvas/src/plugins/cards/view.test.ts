@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it } from 'vitest';
 import { App } from '../../core';
-import { cardNode, deckNode, standardDeck } from './deck';
+import { CARD_W, cardNode, deckNode, standardDeck } from './deck';
+import { rowTop } from './layout';
 import { cardsPlugin } from './index';
 
 // The real view + cards plugin on a DOM: what another player's screen shows of a private hand.
@@ -42,7 +43,7 @@ describe('a hidden-count hand on another player’s screen', () => {
     for (const n of [1, 4]) {
       const { root } = bobsTable(n);
       const z = zOf(root);
-      expect(Object.keys(z).filter((id) => id.startsWith('c'))).toEqual([]); // the hand's cards aren't rendered at all
+      expect(Object.keys(z).filter((id) => /^c\d+$/.test(id))).toEqual([]); // the hand's cards aren't rendered at all
       expect(Object.values(z).sort((a, b) => a - b)).toEqual([1, 2, 3, 4]); // deck, hand, l0, l1
       expect([z.l0, z.l1]).toEqual([3, 4]);
     }
@@ -55,5 +56,32 @@ describe('a hidden-count hand on another player’s screen', () => {
     expect(before).toBeTruthy();
     app.dispatch('cards.drop', { target: h, ids: ['l0'] });
     expect(frame()).toBe(before);
+  });
+
+  it('a private card leaving the hand slides out from the middle of the hand, a shown one from its slot', async () => {
+    const { app, root, h } = bobsTable(4);
+    app.dispatch('cards.hideCount', { id: h, on: false }); // backs visible: slots are on screen
+    app.dispatch('cards.allowShowing', { id: h, on: true });
+    app.dispatch('cards.show', { ids: ['c3'], shown: true, by: 'alice' });
+    const hand = app.node(h)!;
+    const middle = `translate(${hand.x + hand.width / 2 - CARD_W / 2}px, ${hand.y + rowTop(hand)}px)`;
+    /** Where a card's box slid out from while `fn` ran: the middle of the hand, or its own slot. */
+    const starts = async (id: string, fn: () => void) => {
+      const seen: string[] = [];
+      const box = () => root.querySelector<HTMLElement>(`[data-node-id="${id}"]`)!;
+      const slot = app.node(id)!;
+      const at = `translate(${slot.x}px, ${slot.y}px)`;
+      const mo = new MutationObserver((rs) => rs.forEach((r) => seen.push(r.oldValue ?? '')));
+      mo.observe(box(), { attributes: true, attributeFilter: ['style'], attributeOldValue: true });
+      fn();
+      await Promise.resolve();
+      mo.disconnect();
+      // the slide's start is what the box showed with transitions off
+      const start = seen.filter((v) => v.includes('transition: none'));
+      return { fromMiddle: start.some((v) => v.includes(middle)), fromSlot: start.some((v) => v.includes(at)) };
+    };
+    // c0 sits left of the middle in a 4-card hand, so the two starting points differ
+    expect(await starts('c0', () => app.dispatch('cards.pullOut', { id: 'c0', x: 900, y: 900 }))).toEqual({ fromMiddle: true, fromSlot: false });
+    expect(await starts('c3', () => app.dispatch('cards.pullOut', { id: 'c3', x: 900, y: 1200 }))).toEqual({ fromMiddle: false, fromSlot: true });
   });
 });

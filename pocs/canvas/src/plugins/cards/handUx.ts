@@ -1,5 +1,5 @@
 import type { App, CanvasNode } from '../../core';
-import { CARD_W, card, concealedFrom, handOf, hiddenFrom, isCard, isHand, label, shownIn } from './deck';
+import { CARD_W, card, handOf, hiddenFrom, isCard, isHand, label, shownIn } from './deck';
 import { rowTop } from './layout';
 
 // Hand UX that lives in the view only: "view as others" (hold \ or the tab menu toggle), privacy of
@@ -92,12 +92,14 @@ export function revealText(name: string, showed: string[]): string {
   return `${name} showed ${showed.length > 3 ? `${showed.length} cards` : showed.join(', ')}`;
 }
 
-type Seen = { hand: string; shown: boolean; x: number; y: number; concealed: boolean };
+/** `hidden`: its face was hidden from this viewer (a back, or nothing at all if the count is hidden). */
+type Seen = { hand: string; shown: boolean; x: number; y: number; hidden: boolean };
 
 /**
  * Watches hand cards. A card that is now shown in the hand it was private in was shown to the table:
  * others get a small toast near the hand, everyone a short glow. A card that left someone else's hand
- * for the table slides out from where it was in the hand (or from the hand, if its count is hidden).
+ * for the table slides out from where it was if it was shown; a private one from the middle of the hand
+ * (its slot in a sorted hand would hint at its rank).
  */
 function mountAnnouncer(app: App) {
   const last = new Map<string, Seen>();
@@ -115,7 +117,7 @@ function mountAnnouncer(app: App) {
         continue;
       }
       const shown = shownIn(h, n);
-      last.set(n.id, { hand: h.id, shown, x: n.x, y: n.y, concealed: concealedFrom(doc, n, app.viewer) });
+      last.set(n.id, { hand: h.id, shown, x: n.x, y: n.y, hidden: hiddenFrom(doc, n, app.viewer) });
       if (!announce || !prev || prev.hand !== h.id || prev.shown || !shown) continue;
       let e = events.get(h.id);
       if (!e) events.set(h.id, (e = { hand: h, showed: [], ids: [] }));
@@ -143,7 +145,7 @@ function glow(app: App, id: string) {
 function slideOut(app: App, n: CanvasNode, prev: Seen, hand: CanvasNode) {
   const box = app.view.boxOf(n.id);
   if (!box) return;
-  const from = prev.concealed ? { x: hand.x + hand.width / 2 - CARD_W / 2, y: hand.y + rowTop(hand) } : prev;
+  const from = prev.hidden ? { x: hand.x + hand.width / 2 - CARD_W / 2, y: hand.y + rowTop(hand) } : prev;
   const to = box.style.transform;
   box.style.transition = 'none';
   box.style.transform = `translate(${from.x}px, ${from.y}px)`;
