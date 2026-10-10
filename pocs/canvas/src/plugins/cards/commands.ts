@@ -1,5 +1,5 @@
 import { isIds, isNum, pick, set, toFront, type CanvasNode, type Change, type Command, type DocView } from '../../core';
-import { CARD_H, CARD_W, FIELD, card, cardNode, cardsHomedAt, cardsIn, deckNode, groupNode, isCard, isCardish, isDeck, isHand, isHomeDeck, isSpreadOut, isStacked, layoutOf, packOf, standardDeck, type DeckField, type Layout } from './deck';
+import { CARD_H, CARD_W, FIELD, card, cardNode, cardsHomedAt, cardsIn, deckNode, groupNode, isCard, isCardish, isDeck, isHand, isHomeDeck, isSpreadOut, isStacked, isFixed, layoutOf, packOf, roomIn, standardDeck, type DeckField, type Layout } from './deck';
 import { PAD, slotIndex, slots } from './layout';
 import { packOrder } from './packs';
 
@@ -54,8 +54,8 @@ const stackInto = (c: CanvasNode, deck: CanvasNode, order: number): Change[] => 
   set(c.id, 'y', deck.y),
 ];
 
-/** Containers that stay when emptied: a home deck (an empty slot) and a hand. Groups go. */
-const persists = (c: CanvasNode) => isHomeDeck(c) || isHand(c);
+/** Containers that stay when emptied: a home deck (an empty slot), a hand, a fixed slot area. Groups go. */
+const persists = (c: CanvasNode) => isHomeDeck(c) || isHand(c) || isFixed(c);
 
 /** A container that just lost its last card: a group disappears, a home deck or hand stays. */
 const emptied = (deck: CanvasNode): Change[] => (persists(deck) ? [] : [{ op: 'del', id: deck.id }]);
@@ -319,7 +319,7 @@ export const putOnTable: Command<{ id: string }> = (doc, a) => {
   const cards = cardsIn(doc, box.id);
   const p = rowStart(box);
   const changes = layRow(cards, p.x, p.y, Math.floor(doc.topZ));
-  if (!isHomeDeck(box)) changes.push({ op: 'del', id: box.id });
+  if (!isHomeDeck(box) && !isFixed(box)) changes.push({ op: 'del', id: box.id });
   return { changes, select: cards.map((c) => c.id) };
 };
 
@@ -485,7 +485,7 @@ export const repairHomes: Command<Record<string, never>> = (doc, _a, ctx) => {
   }
   for (const [pack, { stacks, cards }] of packs) {
     if (!cards.length) {
-      for (const st of stacks) if (!isHomeDeck(st) && !isHand(st)) changes.push({ op: 'del', id: st.id });
+      for (const st of stacks) if (!isHomeDeck(st) && !isHand(st) && !isFixed(st)) changes.push({ op: 'del', id: st.id });
       continue;
     }
     const claims = (st: CanvasNode) => cards.filter((c) => card(c).home === st.id).length;
@@ -497,7 +497,7 @@ export const repairHomes: Command<Record<string, never>> = (doc, _a, ctx) => {
       return a.x < b.x || (a.x === b.x && a.id < b.id);
     };
     // only a plain pile can be the home deck (not a hand, not a spread-out group)
-    const candidates = stacks.filter((st) => isHomeDeck(st) || (isStacked(st) && !isHand(st)));
+    const candidates = stacks.filter((st) => isHomeDeck(st) || (isStacked(st) && !isHand(st) && !isFixed(st)));
     let home = candidates.reduce<CanvasNode | undefined>((best, st) => (!best || better(st, best) ? st : best), undefined);
     if (!home) {
       const left = cards.filter((c) => !doc.parentOf(c.id)).reduce((a, b) => (b.x < a.x ? b : a), cards[0]);
@@ -507,7 +507,7 @@ export const repairHomes: Command<Record<string, never>> = (doc, _a, ctx) => {
       changes.push(set(home.id, F('home'), true), set(home.id, 'text', 'Deck'));
     }
     for (const st of stacks) {
-      if (st.id === home.id || isHand(st)) continue;
+      if (st.id === home.id || isHand(st) || isFixed(st)) continue;
       if (isHomeDeck(st)) changes.push(set(st.id, F('home'), undefined), set(st.id, 'text', 'Pile'));
       if (!size(st)) changes.push({ op: 'del', id: st.id });
       else if (size(st) === 1) changes.push(...shrunk(st, cardsIn(doc, st.id))); // a pile of one is just a card
@@ -528,6 +528,7 @@ export const drop: Command<{ target: string; ids: string[]; at?: { x: number; y:
   if (!dropped.length) return [];
   const parent = isCard(target) ? doc.parentOf(target.id) : undefined;
   const host = isDeck(target) ? target : parent ? doc.get(parent) : undefined;
+  if (host && !dropped.some((n) => n.id === host.id) && incomingCount(doc, host, dropped) > roomIn(doc, host)) return [];
   if (!host || dropped.some((n) => n.id === host.id))
     return gather(doc, { ids: [target.id, ...dropped.map((n) => n.id)], layout: a.as === 'stack' ? 'stack' : 'fan' }, ctx);
   if (isStacked(host)) return { changes: [...insertInto(doc, host, dropped), ...toFront(doc, [host])], select: [host.id] };
@@ -537,6 +538,10 @@ export const drop: Command<{ target: string; ids: string[]; at?: { x: number; y:
   const index = at ? slotIndex(host, staying.length, at) : parent ? staying.findIndex((c) => c.id === target.id) + 1 : undefined;
   return { changes: insertInto(doc, host, dropped, index), select: dropped.map((n) => n.id) };
 };
+
+/** Cards that would newly enter `box` if `dropped` (cards or containers) were dropped on it. */
+export const incomingCount = (doc: DocView, box: CanvasNode, dropped: CanvasNode[]) =>
+  dropped.flatMap((n) => (isDeck(n) ? cardsIn(doc, n.id) : [n])).filter((c) => doc.parentOf(c.id) !== box.id).length;
 
 /** Lay a deck out as an overlapping row, bottom card left. Removes the deck. */
 export const spread: Command<{ id: string; step?: number }> = (doc, a) => {

@@ -1,13 +1,14 @@
 import './cards.css';
 import './standard';
 import { loadPlayer, type App, type CanvasNode, type Command, type MenuEntry, type Plugin, type Store } from '../../core';
-import { commands, dropMode, kindOf, outCount, type DropMode, type Kind } from './commands';
-import { CARD_W, FIELD, card, cardsIn, deckFacing, deckIdOf, hiddenFrom, homeFor, isCard, isCardish, isDeck, isHand, isHomeDeck, isSpreadOut, isStacked, layoutOf, type Layout } from './deck';
+import { commands, dropMode, incomingCount, kindOf, outCount, type DropMode, type Kind } from './commands';
+import { CARD_W, FIELD, card, cardsIn, deckFacing, deckIdOf, hiddenFrom, homeFor, isCard, isCardish, isDeck, isHand, isHomeDeck, isSpreadOut, isStacked, isFixed, layoutOf, packOf, roomIn, type DeckField, type Layout } from './deck';
 import { repairImport, shapeExport } from './io';
-import { cardLayouts } from './layout';
+import { cardLayouts, slots } from './layout';
+import { getPack } from './packs';
 import { cardHtml, deckHtml, groupHtml } from './render';
 
-const LAYOUT_NAMES: Record<Exclude<Layout, 'stack'>, string> = { fan: 'Fan', row: 'Row', grid: 'Grid' };
+const LAYOUT_NAMES: Record<Exclude<Layout, 'stack'>, string> = { fan: 'Fan', row: 'Row', grid: 'Grid', column: 'Column', 'column-up': 'Column (upward)' };
 
 const selectedCards = (app: App) => app.selected().filter(isCardish);
 const ids = (ns: CanvasNode[]) => ns.map((n) => n.id);
@@ -46,6 +47,16 @@ export function kindName(box: CanvasNode): string {
   const k = kindOf(box);
   if (k === 'hand') return box.label ?? 'Hand';
   return k === 'deck' ? 'Deck' : 'Group';
+}
+/** What a pile's tab says: a fixed pile its label ("Discard"), a home deck its pack's deck name ("Troops"). */
+const deckName = (box: CanvasNode) => (isFixed(box) && box.label) || (isHomeDeck(box) && getPack(packOf(box))?.deckName) || 'Deck';
+
+/** Outlines of a fixed slot area's slots (`slots` of them; up to `max` drawn faint), relative to its frame. */
+function slotOutlines(box: CanvasNode): { dx: number; dy: number; faint?: boolean }[] | undefined {
+  const f = box[FIELD] as DeckField;
+  if (!isFixed(box) || !f.slots) return;
+  const n = Math.max(f.slots, f.max ?? 0);
+  return slots(layoutOf(box), n, n).at.map((p, i) => ({ dx: p.dx, dy: p.dy, faint: i >= f.slots! }));
 }
 const titleOf = (box: CanvasNode) => kindName(box) + (isHomeDeck(box) ? ' (home deck)' : '');
 
@@ -152,12 +163,15 @@ export const cardsPlugin: Plugin = {
       fan: () => 'Fan',
       add: (t, app) => {
         const box = isDeck(t) ? t : app.node(app.doc.parentOf(t.id) ?? '');
-        return !box ? 'Add' : isHomeDeck(box) ? 'Add to deck' : isStacked(box) ? 'Add to pile' : isHand(box) ? 'Add to hand' : 'Add to group';
+        return !box ? 'Add' : isFixed(box) && box.label ? `Add to ${box.label}` : isHomeDeck(box) ? 'Add to deck' : isStacked(box) ? 'Add to pile' : isHand(box) ? 'Add to hand' : 'Add to group';
       },
     };
     const canDrop = (t: CanvasNode, dropped: CanvasNode[], app: App, overlap: number) => {
       if (!dropped.some(isCardish)) return false;
       const mode = dropMode(app.doc, t, overlap);
+      // a container with a `max` refuses more than it has room for
+      const box = mode === 'add' ? (isDeck(t) ? t : app.node(app.doc.parentOf(t.id) ?? '')) : undefined;
+      if (box && incomingCount(app.doc, box, dropped) > roomIn(app.doc, box)) return false;
       return mode ? LABEL[mode](t, app) : false;
     };
     const onDrop = (target: CanvasNode, dropped: string[], app: App, at: { x: number; y: number }, mode?: string) =>
@@ -190,11 +204,11 @@ export const cardsPlugin: Plugin = {
         const cards = cardsIn(doc, node.id);
         if (isSpreadOut(node)) {
           const f = node[FIELD] as { color?: string };
-          el.innerHTML = groupHtml(cards.length, { hand: isHand(node), home: isHomeDeck(node), label: kindName(node), color: f.color, mine: node.owner === viewer });
+          el.innerHTML = groupHtml(cards.length, { hand: isHand(node), home: isHomeDeck(node), label: kindName(node), color: f.color, mine: node.owner === viewer, slots: slotOutlines(node) });
           return;
         }
         const top = cards.at(-1);
-        el.innerHTML = deckHtml(top && card(top), cards.length, isHomeDeck(node));
+        el.innerHTML = deckHtml(top && card(top), cards.length, isHomeDeck(node), deckName(node));
       },
       renderKey(node, { doc, viewer }) {
         const cards = cardsIn(doc, node.id);

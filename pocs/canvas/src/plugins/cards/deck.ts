@@ -30,9 +30,13 @@ export interface CardField {
   /** The home deck this card belongs to: "gather all" on it pulls the card back from anywhere. Always a home deck. */
   home?: string;
 }
-/** How a container shows its cards: a face-down-able pile, or every card visible. */
-export type Layout = 'stack' | 'fan' | 'row' | 'grid';
-export const LAYOUTS: Layout[] = ['fan', 'row', 'grid', 'stack'];
+/**
+ * How a container shows its cards: a face-down-able pile, or every card visible. `column` cascades
+ * the cards downward, each overlapping the one before (`column-up`: upward), like a Battle Line
+ * formation or a solitaire tableau.
+ */
+export type Layout = 'stack' | 'fan' | 'row' | 'grid' | 'column' | 'column-up';
+export const LAYOUTS: Layout[] = ['fan', 'row', 'grid', 'column', 'column-up', 'stack'];
 
 /**
  * A container node's `x-cards` field; its cards are the card nodes pointing at it (`stack`), each
@@ -50,6 +54,15 @@ export interface DeckField {
   home?: true;
   layout?: Layout;
   color?: string;
+  /**
+   * A fixed spot on the table (a game's slot area: a formation, a discard pile): stays when emptied
+   * or down to one card, and Reset keeps it.
+   */
+  fixed?: true;
+  /** Slots outlined while empty (a spread-out container is at least this big). */
+  slots?: number;
+  /** Most cards it takes: drops beyond are refused (and it is sized for this many). */
+  max?: number;
 }
 
 export function parseFace(face: string): { rank: Rank; suit: Suit } {
@@ -79,8 +92,15 @@ export const isCardish = (n: CanvasNode | undefined) => isCard(n) || isDeck(n);
 export const isHand = (n: CanvasNode | undefined): boolean => isDeck(n) && !isHomeDeck(n) && typeof n!.owner === 'string' && !!n!.owner;
 export const layoutOf = (n: CanvasNode): Layout => {
   const l = field(n)?.layout;
-  return l === 'fan' || l === 'row' || l === 'grid' ? l : 'stack';
+  return l === 'fan' || l === 'row' || l === 'grid' || l === 'column' || l === 'column-up' ? l : 'stack';
 };
+/** A fixed slot area (see DeckField.fixed). */
+export const isFixed = (n: CanvasNode | undefined): boolean => isDeck(n) && field(n!)?.fixed === true;
+/** Room left in a container with a `max`, else Infinity. */
+export function roomIn(doc: DocView, box: CanvasNode): number {
+  const max = field(box)?.max;
+  return typeof max === 'number' ? Math.max(0, max - cardsIn(doc, box.id).length) : Infinity;
+}
 /** A container drawn as one pile (cards hidden, top card shown): home deck or a group set to stack. */
 export const isStacked = (n: CanvasNode | undefined): boolean => isDeck(n) && layoutOf(n!) === 'stack';
 /** A container that lays its cards out visibly (group or hand). */
@@ -181,10 +201,14 @@ export function groupNode(
   x: number,
   y: number,
   z: number,
-  o: { layout?: Layout; pack?: string; owner?: string; label?: string; color?: string } = {},
+  o: { layout?: Layout; pack?: string; owner?: string; label?: string; color?: string; fixed?: boolean; slots?: number; max?: number } = {},
 ): CanvasNode {
-  const f: DeckField = { pack: o.pack ?? PACK, deck: true, layout: o.layout ?? 'fan' };
+  const f: DeckField = { pack: o.pack ?? PACK, deck: true };
+  if (o.layout !== 'stack') f.layout = o.layout ?? 'fan';
   if (o.color) f.color = o.color;
+  if (o.fixed) f.fixed = true;
+  if (o.slots) f.slots = o.slots;
+  if (o.max) f.max = o.max;
   const n: CanvasNode = { id, type: 'text', x, y, width: CARD_W, height: CARD_H, z, text: o.label ?? (o.owner ? 'Hand' : 'Group'), [FIELD]: f };
   if (o.owner) n.owner = o.owner;
   if (o.label) n.label = o.label;

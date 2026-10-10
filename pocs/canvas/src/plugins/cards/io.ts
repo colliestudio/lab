@@ -42,6 +42,8 @@ export const repairImport: DocFilter = (doc, ctx) => {
         if (f.hand === true && typeof n.owner === 'string') d.layout ??= 'fan';
       }
       if (typeof f.color === 'string' && /^#[0-9a-f]{6}$/i.test(f.color)) d.color = f.color;
+      if (f.fixed === true) d.fixed = true;
+      for (const k of ['slots', 'max'] as const) if (typeof f[k] === 'number' && Number.isInteger(f[k]) && (f[k] as number) > 0 && (f[k] as number) <= 60) d[k] = f[k] as number;
       out.push({ ...n, [FIELD]: d });
       continue;
     }
@@ -71,8 +73,10 @@ export const repairImport: DocFilter = (doc, ctx) => {
     }
   }
   // an empty hand (a group with an owner) is a player's seat: keep it (Reset empties hands)
+  // a fixed slot area (formation, discard) stays too
   const hand = (n: CanvasNode) => typeof n.owner === 'string' && !!n.owner;
-  return { ...doc, nodes: out.filter((n) => !decks.has(n.id) || used.has(n.id) || hand(n)) };
+  const fixed = (n: CanvasNode) => (n[FIELD] as DeckField).fixed === true;
+  return { ...doc, nodes: out.filter((n) => !decks.has(n.id) || used.has(n.id) || hand(n) || fixed(n)) };
 };
 
 function strip(n: CanvasNode): CanvasNode {
@@ -106,9 +110,11 @@ export const shapeExport: DocFilter = (doc: CanvasDoc) => {
     const f = n[FIELD] as DeckField;
     const spread = f.layout && f.layout !== 'stack';
     const owned = !f.home && typeof n.owner === 'string' && !!n.owner;
-    const name = f.home ? 'Deck' : owned ? (n.label ?? 'Hand') : spread ? 'Group' : 'Pile';
+    // a fixed slot area keeps its own label (e.g. "Flag 3 · A"), like a hand
+    const named = owned || (f.fixed === true && !!n.label);
+    const name = f.home ? 'Deck' : named ? (n.label ?? 'Hand') : spread ? 'Group' : 'Pile';
     const { text: _t, ...rest } = n;
-    const group = { ...rest, type: 'group', label: owned ? name : `${name}: ${cards.length} card${cards.length === 1 ? '' : 's'}` };
+    const group = { ...rest, type: 'group', label: named ? name : `${name}: ${cards.length} card${cards.length === 1 ? '' : 's'}` };
     return spread ? [group, ...cards] : [...cards.map((c) => ({ ...c, x: n.x, y: n.y })), group];
   });
   return { ...doc, nodes };

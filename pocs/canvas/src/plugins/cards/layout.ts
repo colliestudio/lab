@@ -1,11 +1,13 @@
 import type { CanvasNode, DocView, LayoutRule, Placement } from '../../core';
-import { CARD_H, CARD_W, cardsIn, isHand, isSpreadOut, layoutOf, type Layout } from './deck';
+import { CARD_H, CARD_W, FIELD, cardsIn, isHand, isSpreadOut, layoutOf, type DeckField, type Layout } from './deck';
 
 // Where a container's cards go. Pure geometry; applied at read time through the core layout hook,
 // so the doc only stores each card's container + order (sync-friendly, nothing to rewrite).
 
 export const PAD = 14;
 const GAP = 10;
+/** How much of each card shows above (column: below) the next one in a column. */
+export const COLUMN_STEP = 46;
 const MAX_FAN = 640;
 
 export interface Slots {
@@ -20,6 +22,12 @@ const fanStep = (n: number) => (n > 1 ? Math.min(40, (MAX_FAN - CARD_W) / (n - 1
 /** Card offsets inside a container (relative to its top-left), and the container's size. */
 export function slots(layout: Layout, n: number, minSlots = 1): Slots {
   const at: Slots['at'] = [];
+  if (layout === 'column' || layout === 'column-up') {
+    const k = Math.max(n, minSlots);
+    const h = 2 * PAD + CARD_H + (k - 1) * COLUMN_STEP;
+    for (let i = 0; i < n; i++) at.push({ dx: PAD, dy: layout === 'column' ? PAD + i * COLUMN_STEP : h - PAD - CARD_H - i * COLUMN_STEP });
+    return { w: 2 * PAD + CARD_W, h, at };
+  }
   if (layout === 'row') {
     for (let i = 0; i < n; i++) at.push({ dx: PAD + i * (CARD_W + GAP), dy: PAD });
     const k = Math.max(n, minSlots);
@@ -50,6 +58,7 @@ export function slotIndex(c: CanvasNode, n: number, at: { x: number; y: number }
   const lx = at.x - c.x - PAD;
   const ly = at.y - c.y - PAD;
   let i: number;
+  if (layout === 'column' || layout === 'column-up') return n; // a column fills its next free slot
   if (layout === 'grid') {
     const cols = gridCols(n + 1);
     const col = Math.max(0, Math.min(cols - 1, Math.floor(lx / (CARD_W + GAP))));
@@ -62,7 +71,11 @@ export function slotIndex(c: CanvasNode, n: number, at: { x: number; y: number }
   return Math.max(0, Math.min(n, i));
 }
 
-const minSlotsOf = (c: CanvasNode) => (isHand(c) ? 3 : 1);
+/** Slots a container is sized for when it holds fewer cards: its `max` or `slots`, a hand 3, else 1. */
+export const minSlotsOf = (c: CanvasNode) => {
+  const f = c[FIELD] as DeckField;
+  return f.max ?? f.slots ?? (isHand(c) ? 3 : 1);
+};
 
 /** The core layout rule: size every spread-out container and place its cards above it, in order. */
 export const cardLayouts: LayoutRule = (doc: DocView) => {

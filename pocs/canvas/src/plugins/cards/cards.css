@@ -187,3 +187,35 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* a fixed slot area (a game's table spots: formation, discard): quiet frame, outlined slots */
+.pc-group.pc-fixed {
+  --pc-group: #ffffff;
+  border: 1.5px solid color-mix(in srgb, var(--pc-group) 22%, transparent);
+  background: color-mix(in srgb, var(--pc-group) 5%, transparent);
+}
+.pc-slot {
+  position: absolute;
+  width: 120px;
+  height: 168px;
+  box-sizing: border-box;
+  border: 1.5px dashed rgba(255, 255, 255, 0.28);
+  border-radius: 7px;
+  margin: -1.5px 0 0 -1.5px;
+}
+.pc-slot-faint {
+  border-style: dotted;
+  border-color: rgba(255, 255, 255, 0.14);
+}
+.pc-fixed .pc-group-tab {
+  height: 18px;
+  top: -18px;
+  padding: 0 7px 0 5px;
+  font: 600 10.5px/18px system-ui, sans-serif;
+  background: rgba(0, 0, 0, 0.32);
+  color: rgba(255, 255, 255, 0.75);
+  box-shadow: none;
+}
+.pc-fixed .pc-group-tab:hover {
+  background: rgba(0, 0, 0, 0.55);
+}

@@ -68,7 +68,7 @@ export function standardFaceHtml(face: string): string {
 }
 
 /** A deck: its top card plus a visible edge whose thickness follows the card count. */
-export function deckHtml(top: CardData | undefined, count: number, home = false): string {
+export function deckHtml(top: CardData | undefined, count: number, home = false, name = 'Deck'): string {
   const layers = Math.min(10, Math.ceil(count / 4));
   const shadow = Array.from({ length: layers }, (_, i) => {
     const o = (i + 1) * 1.1;
@@ -79,15 +79,29 @@ export function deckHtml(top: CardData | undefined, count: number, home = false)
     `<div class="pc-stack" style="--pc-stack-shadow:${shadow.join(',')}">` +
     (top ? cardHtml(top) : '<div class="pc-card pc-empty"></div>') +
     `<div class="pc-grip${home ? ' pc-home' : ''}" data-grip title="${home ? 'Home deck' : 'Deck'}: click for actions • drag here (or Alt+drag) to move it • drag the cards to draw">` +
-    `<span class="pc-grip-dots">⠿</span>Deck · ${count}` +
+    `<span class="pc-grip-dots">⠿</span>${esc(name)} · ${count}` +
     `</div></div>`
   );
 }
 
 const esc = (t: string) => t.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 
-/** A spread-out group or a hand: a frame under its cards, with a tab "Group · 4" (drag = move all, click = menu). */
-export function groupHtml(count: number, o: { hand: boolean; home?: boolean; label: string; color?: string; mine?: boolean }): string {
+/**
+ * A spread-out group or a hand: a frame under its cards, with a tab "Group · 4" (drag = move all, click = menu).
+ * A fixed slot area (`slots` = outlines, relative to the frame; `faint` = extra capacity) is drawn quieter.
+ */
+export function groupHtml(
+  count: number,
+  o: { hand: boolean; home?: boolean; label: string; color?: string; mine?: boolean; slots?: { dx: number; dy: number; faint?: boolean }[] },
+): string {
+  if (o.slots) {
+    const outlines = o.slots.map((p) => `<div class="pc-slot${p.faint ? ' pc-slot-faint' : ''}" style="left:${p.dx}px;top:${p.dy}px"></div>`).join('');
+    return (
+      `<div class="pc-group pc-fixed"${o.color ? ` style="--pc-group:${o.color}"` : ''}>${outlines}` +
+      `<div class="pc-grip pc-group-tab" data-grip title="${esc(o.label)}: click for actions • drag here to move">` +
+      `<span class="pc-grip-dots">⠿</span>${esc(o.label)} · ${count}</div></div>`
+    );
+  }
   const color = o.color ?? (o.hand ? '#2f4b7c' : o.home ? '#233257' : '#555');
   const name = `${esc(o.label)}${o.hand && !o.mine ? ' 👁︎' : ''}`;
   const tip = o.hand

@@ -18,6 +18,8 @@ export interface Pack {
   face(face: string): string;
   /** HTML of a face-down card; default: the standard back. */
   back?: string;
+  /** What its home deck's tab says (default "Deck"), e.g. "Troops". */
+  deckName?: string;
 }
 
 const packs = new Map<string, Pack>();
