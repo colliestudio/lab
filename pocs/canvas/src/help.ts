@@ -61,13 +61,16 @@ const GROUPS: [string, [string, string][]][] = [
   [
     'Your hand',
     [
-      ['', 'Cards in the row are private. Raised cards (lifted out, glowing in your color) are shown to everyone; the others see your hand the same way. The tab counts them: “Alex’s hand · 5 · 2 shown”.'],
-      ['Drag a card up / back down', 'Show it to the table / hide it again (the drop label says which)'],
-      ['Right-click ▸ Show to table / Hide', 'Same, for every selected card; the tab menu has Show all / Hide all'],
-      ['Double-click, F', 'Never shows a card: showing is always deliberate'],
-      ['Hold \\, or tab ▸ View as others', 'See your hand as the others do (private cards as backs)'],
-      ['Tab ▸ See my cards', 'On (default): you see all your private cards. Off: a blind hand: F or double-click flips a private card face up or down for you only'],
-      ['', 'Others get a short note (“Alex showed K♠”) and the card pulses. A private card you drag out stays a back for them until it lands'],
+      ['', 'Only you see the cards in your hand; others see backs. The frame has a fixed size (cards squeeze together to fit), so it doesn’t give your count away; drag its right edge to resize it.'],
+      ['Drag a card within your hand', 'Rearrange: it moves only on your screen until you drop it, and nobody sees it travel. Dropped just outside the frame it lands on the table (it flashes so you notice); over the frame the hand lights up “Add to hand”'],
+      ['Tab ▸ Allow showing cards to table', 'Adds a “Shown to table” strip above the row (off by default). Turning it off hides shown cards again'],
+      ['Drag a card above the line / back down', 'Show it to the table / hide it again (the line and the drop label appear while you drag)'],
+      ['Right-click ▸ Show to table / Hide from table', 'Same, for every selected card (with the count); the tab menu has Show all / Hide all'],
+      ['Double-click, F', 'Never show a card to the table'],
+      ['Tab ▸ See my cards', 'On (default): you see all your private cards. Off: F or double-click turns a private card face up or down for you only'],
+      ['Tab ▸ Hide card count', 'Others see a plain pile instead of your private cards: no count, no order, no movement'],
+      ['Hold \\, or tab ▸ View as others', 'See your hand as the others do'],
+      ['', 'Others never see which of your private cards you select or touch: over your row your pointer shows at the hand’s tab. When you show a card they get a short note (“Alex showed K♠”)'],
     ],
   ],
   [
