@@ -45,8 +45,14 @@ export interface CanvasDoc {
 /** Read-only snapshot handed to commands and renderers. `nodes` sorted by z (bottom first). */
 export interface DocView extends CanvasDoc {
   get(id: string): CanvasNode | undefined;
-  /** Nodes shown on the table: everything not contained in another node (e.g. cards inside a deck). */
+  /**
+   * Nodes shown on the table: everything not contained in another node (e.g. cards inside a deck),
+   * plus contained nodes a layout places (e.g. cards fanned out in a hand).
+   */
   visible: CanvasNode[];
+  isVisible(id: string): boolean;
+  /** Display-only extras from layouts (rotation in degrees). Not part of the document. */
+  styleOf(id: string): { angle?: number } | undefined;
   /** Nodes contained in `id`, in z order. */
   children(id: string): CanvasNode[];
   /** Id of the containing node, if it exists. */
@@ -75,7 +81,33 @@ export const byZ = (a: CanvasNode, b: CanvasNode) => (a.z ?? 0) - (b.z ?? 0) || 
 /** Containment rule supplied by plugins: return the id of the node that contains `node`, if any. */
 export type ParentOf = (node: CanvasNode, get: (id: string) => CanvasNode | undefined) => string | undefined;
 
-export function makeView(doc: CanvasDoc, parentRules: readonly ParentOf[] = []): DocView {
+/** Where a layout puts a node: position/size/stacking override, plus display-only rotation. */
+export type Placement = Partial<Pick<CanvasNode, 'x' | 'y' | 'z' | 'width' | 'height'>> & { angle?: number };
+
+/**
+ * A layout rule supplied by plugins: given the doc (containment resolved, no layouts applied yet),
+ * return placements. A placement for a contained node also makes it visible. Layouts are derived
+ * at read time (never written to the doc), so moving a container moves its contents for free and
+ * concurrent edits can't leave stale positions behind.
+ */
+export type LayoutRule = (doc: DocView) => Map<string, Placement>;
+
+export function makeView(doc: CanvasDoc, parentRules: readonly ParentOf[] = [], layouts: readonly LayoutRule[] = []): DocView {
+  const base = buildView(doc, parentRules, new Map());
+  if (!layouts.length) return base;
+  const placed = new Map<string, Placement>();
+  for (const rule of layouts) for (const [id, p] of rule(base)) placed.set(id, { ...placed.get(id), ...p });
+  if (!placed.size) return base;
+  const nodes = doc.nodes.map((n) => {
+    const p = placed.get(n.id);
+    if (!p) return n;
+    const { angle: _a, ...fields } = p;
+    return { ...n, ...fields };
+  });
+  return buildView({ ...doc, nodes }, parentRules, placed);
+}
+
+function buildView(doc: CanvasDoc, parentRules: readonly ParentOf[], placed: Map<string, Placement>): DocView {
   const nodes = doc.nodes.slice().sort(byZ);
   const map = new Map(nodes.map((n) => [n.id, n]));
   const get = (id: string) => map.get(id);
@@ -93,12 +125,18 @@ export function makeView(doc: CanvasDoc, parentRules: readonly ParentOf[] = []):
       }
     }
   }
+  const shown = (id: string) => !parent.has(id) || placed.has(id);
   return {
     nodes,
     edges: doc.edges,
     extra: doc.extra,
     get,
-    visible: nodes.filter((n) => !parent.has(n.id)),
+    visible: nodes.filter((n) => shown(n.id)),
+    isVisible: (id) => map.has(id) && shown(id),
+    styleOf: (id) => {
+      const a = placed.get(id)?.angle;
+      return a ? { angle: a } : undefined;
+    },
     children: (id) => kids.get(id) ?? [],
     parentOf: (id) => parent.get(id),
     topZ: nodes.length ? (nodes[nodes.length - 1].z ?? 0) : 0,

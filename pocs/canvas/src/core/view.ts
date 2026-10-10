@@ -109,15 +109,16 @@ export class View {
         this.world.append(box);
         this.els.set(n.id, box);
       }
-      box.style.transform = `translate(${n.x}px, ${n.y}px)`;
+      const angle = doc.styleOf(n.id)?.angle;
+      box.style.transform = `translate(${n.x}px, ${n.y}px)` + (angle ? ` rotate(${angle}deg)` : '');
       box.style.zIndex = String(i + 1);
+      box.style.width = `${n.width}px`;
+      box.style.height = `${n.height}px`;
       box.classList.toggle('cv-selected', sel.has(n.id));
       const type = this.app.typeOf(n);
       const key = (type?.id ?? '') + '\n' + (type?.renderKey?.(n, ctx) ?? contentKey(n));
       if (this.contentKeys.get(n.id) !== key) {
         this.contentKeys.set(n.id, key);
-        box.style.width = `${n.width}px`;
-        box.style.height = `${n.height}px`;
         box.dataset.kind = type?.id ?? n.type;
         box.replaceChildren();
         if (type) type.render(n, box, ctx);
@@ -344,7 +345,8 @@ export class View {
       const targetId = this.findDropTarget(g, e);
       this.setDropTarget(g, undefined);
       const target = targetId && this.app.node(targetId);
-      if (target) this.app.store.merged(() => this.app.typeOf(target)?.onDrop?.(target, g.ids, this.app));
+      const at = this.world_(this.local(e));
+      if (target) this.app.store.merged(() => this.app.typeOf(target)?.onDrop?.(target, g.ids, this.app, at));
       return;
     }
     // plain click

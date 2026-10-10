@@ -33,7 +33,8 @@ export interface ObjectType {
   /** Would this object take `dropped` if they were released on it? (drives the hover highlight) */
   canDrop?(target: CanvasNode, dropped: CanvasNode[], app: App): boolean;
   /** Objects were deliberately dropped onto this one. */
-  onDrop?(target: CanvasNode, droppedIds: string[], app: App): void;
+  /** `at` = the drop point in world coordinates (e.g. to insert at a position in a layout). */
+  onDrop?(target: CanvasNode, droppedIds: string[], app: App, at: { x: number; y: number }): void;
 }
 
 export interface KeyBinding {
