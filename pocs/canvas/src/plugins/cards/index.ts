@@ -1,6 +1,6 @@
 import './cards.css';
-import type { App, CanvasNode, Command, Plugin, Store } from '../../core';
-import { commands, outCount } from './commands';
+import { loadPlayer, type App, type CanvasNode, type Command, type Plugin, type Store } from '../../core';
+import { commands, dropMode, outCount, type DropMode } from './commands';
 import { CARD_W, FIELD, card, cardsIn, deckFacing, deckIdOf, hiddenFrom, homeFor, isCard, isCardish, isDeck, isHand, isHomeDeck, isSpreadOut, isStacked, layoutOf, type Layout } from './deck';
 import { repairImport, shapeExport } from './io';
 import { cardLayouts } from './layout';
@@ -30,16 +30,31 @@ export function registerCardsLogic(store: Store) {
   store.addLayout(cardLayouts);
   store.importFilters.push(repairImport);
   store.exportFilters.push(shapeExport);
+  store.migrations.push(commands.migrateHands as Command);
   store.migrations.push(commands.repairHomes as Command);
 }
 
 /** Tab menu of a group or hand: layout, facing, sort, gather/return, ungroup. */
+/** The local player (in a room: presence; solo: this browser's stored player). */
+const me = (app: App) => app.presence?.me ?? loadPlayer();
+export const handLabelOf = (name: string) => `${name}'s hand`;
+
+function ownership(app: App, box: CanvasNode): Item[] {
+  const id = box.id;
+  if (!box.owner)
+    return [{ label: 'Make mine (others see backs)', run: () => app.dispatch('cards.own', { id, owner: me(app).id, label: handLabelOf(me(app).name), color: me(app).color }) }];
+  if (box.owner === app.viewer) return [{ label: 'Make public', run: () => app.dispatch('cards.own', { id, owner: null }) }];
+  return [{ label: 'Make public (it’s someone else’s)', run: () => app.dispatch('cards.own', { id, owner: null }) }];
+}
+
 function groupMenu(app: App, box: CanvasNode): Item[] {
   const id = box.id;
   const items: Item[] = [];
   const cur = layoutOf(box);
-  for (const l of isHand(box) ? (['fan', 'row', 'grid'] as Layout[]) : (['fan', 'row', 'grid', 'stack'] as Layout[]))
+  if (!isHand(box)) items.push({ label: 'Stack as subdeck', hint: 'L', run: () => app.dispatch('cards.toggleStack', { id }) });
+  for (const l of ['fan', 'row', 'grid'] as Layout[])
     items.push({ label: `${l === cur ? '✓ ' : '   '}${LAYOUT_NAMES[l]}`, run: () => app.dispatch('cards.setLayout', { id, layout: l }) });
+  items.push(...ownership(app, box));
   items.push(
     { label: 'All face up', run: () => app.dispatch('cards.face', { ids: [id], faceUp: true }) },
     { label: 'All face down', run: () => app.dispatch('cards.face', { ids: [id], faceUp: false }) },
@@ -70,7 +85,9 @@ function tabMenu(app: App, deck: CanvasNode): Item[] {
     { label: 'Spread', hint: 'E', run: () => app.dispatch('cards.spread', { id, step: Math.round(CARD_W / 4) }) },
   );
   if (!isHomeDeck(deck)) {
-    for (const l of ['fan', 'row', 'grid'] as Layout[]) items.push({ label: `Lay out: ${LAYOUT_NAMES[l]}`, run: () => app.dispatch('cards.setLayout', { id, layout: l }) });
+    items.push({ label: 'Spread as group', hint: 'L', run: () => app.dispatch('cards.toggleStack', { id }) });
+    for (const l of ['row', 'grid'] as Layout[]) items.push({ label: `Spread as ${LAYOUT_NAMES[l].toLowerCase()}`, run: () => app.dispatch('cards.setLayout', { id, layout: l }) });
+    items.push(...ownership(app, deck));
     items.push({ label: 'Ungroup', run: () => app.dispatch('cards.ungroup', { id }) });
   }
   return items;
@@ -81,8 +98,22 @@ export const cardsPlugin: Plugin = {
   setup(app) {
     registerCardsLogic(app.store);
 
-    const canDrop = (_t: CanvasNode, dropped: CanvasNode[]) => dropped.some(isCardish);
-    const onDrop = (target: CanvasNode, dropped: string[], app: App, at: { x: number; y: number }) => app.dispatch('cards.drop', { target: target.id, ids: dropped, at });
+    // drop classification, shown on the target while hovering: Stack / Fan / Add to …
+    const LABEL: Record<DropMode, (t: CanvasNode, app: App) => string> = {
+      stack: () => 'Stack',
+      fan: () => 'Fan',
+      add: (t, app) => {
+        const box = isDeck(t) ? t : app.node(app.doc.parentOf(t.id) ?? '');
+        return !box ? 'Add' : isHomeDeck(box) ? 'Add to deck' : isStacked(box) ? 'Add to pile' : isHand(box) ? 'Add to hand' : 'Add to group';
+      },
+    };
+    const canDrop = (t: CanvasNode, dropped: CanvasNode[], app: App, overlap: number) => {
+      if (!dropped.some(isCardish)) return false;
+      const mode = dropMode(app.doc, t, overlap);
+      return mode ? LABEL[mode](t, app) : false;
+    };
+    const onDrop = (target: CanvasNode, dropped: string[], app: App, at: { x: number; y: number }, mode?: string) =>
+      app.dispatch('cards.drop', { target: target.id, ids: dropped, at, as: mode === 'Stack' ? 'stack' : mode === 'Fan' ? 'fan' : undefined });
     const flipOne = (node: CanvasNode, app: App) => app.dispatch('cards.flip', { ids: [node.id] });
 
     app.registerType({
@@ -168,6 +199,19 @@ export const cardsPlugin: Plugin = {
     app.registerKey({ key: 'g', label: 'Group the selection', run: gatherSel() });
     app.registerKey({ key: 'shift+g', label: 'Gather all cards back to their deck', run: recallHome });
     app.registerKey({ key: 'e', label: 'Spread deck', run: spreadSel });
+    // L: the container under the mouse (or holding the card under it), else the selected one
+    app.registerKey({
+      key: 'l',
+      label: 'Stack ⇄ fan',
+      run: (a) => {
+        const h = a.view.hovered ? a.node(a.view.hovered) : undefined;
+        const fromHover = h && (isDeck(h) ? h : a.node(a.doc.parentOf(h.id) ?? ''));
+        const box = fromHover && isDeck(fromHover) ? fromHover : a.selected().filter(isDeck).at(-1);
+        if (!box || isHomeDeck(box)) return;
+        if (isHand(box) && isSpreadOut(box)) return a.notify('A private group can’t be a stack (others would see its top card)');
+        a.dispatch('cards.toggleStack', { id: box.id });
+      },
+    });
     const dealN = (count: number, flipped = false) => (a: App) => {
       const d = targetDeck(a);
       if (d) a.dispatch('cards.deal', { id: d.id, count, faceUp: flipped ? !deckFacing(a.doc, d.id) : undefined });

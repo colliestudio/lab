@@ -75,13 +75,14 @@ const esc = (t: string) => t.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&l
 
 /** A spread-out group or a hand: a frame under its cards, with a tab (drag = move all, click = menu). */
 export function groupHtml(count: number, o: { hand: boolean; label?: string; color?: string; mine?: boolean }): string {
+  // hand = owned (private) group
   const color = o.color ?? (o.hand ? '#2f4b7c' : '#555');
   const name = o.hand ? `${esc(o.label ?? 'Hand')}${o.mine ? '' : ' 👁︎'}` : 'Group';
   const tip = o.hand
     ? o.mine
       ? 'Your hand: others see these cards face down • click for actions • drag to move'
       : `${esc(o.label ?? 'Hand')}: shown face down to you • click for actions • drag to move`
-    : 'Click for group actions • drag here to move the whole group';
+    : 'Click for group actions (make it yours, stack it…) • drag here to move the whole group';
   return (
     `<div class="pc-group${o.hand ? ' pc-hand' : ''}" style="--pc-group:${color}">` +
     `<div class="pc-grip pc-group-tab" data-grip title="${tip}" style="background:${color}">` +

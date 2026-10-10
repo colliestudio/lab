@@ -37,10 +37,8 @@ export const repairImport: DocFilter = (doc, ctx) => {
       if (f.home === true) d.home = true;
       else {
         if (typeof f.layout === 'string' && (LAYOUTS as string[]).includes(f.layout) && f.layout !== 'stack') d.layout = f.layout as DeckField['layout'];
-        if (f.hand === true && typeof n.owner === 'string') {
-          d.hand = true;
-          d.layout ??= 'fan';
-        }
+        // stage-2 hands (`hand: true`) are owned groups now
+        if (f.hand === true && typeof n.owner === 'string') d.layout ??= 'fan';
       }
       if (typeof f.color === 'string' && /^#[0-9a-f]{6}$/i.test(f.color)) d.color = f.color;
       out.push({ ...n, [FIELD]: d });
@@ -104,9 +102,10 @@ export const shapeExport: DocFilter = (doc: CanvasDoc) => {
     cards.sort((a, b) => ((a[FIELD] as CardField).order ?? 0) - ((b[FIELD] as CardField).order ?? 0));
     const f = n[FIELD] as DeckField;
     const spread = f.layout && f.layout !== 'stack';
-    const name = f.home ? 'Deck' : f.hand ? (n.label ?? 'Hand') : spread ? 'Group' : 'Pile';
+    const owned = !f.home && typeof n.owner === 'string' && !!n.owner;
+    const name = f.home ? 'Deck' : owned ? (n.label ?? 'Hand') : spread ? 'Group' : 'Pile';
     const { text: _t, ...rest } = n;
-    const group = { ...rest, type: 'group', label: f.hand ? name : `${name}: ${cards.length} card${cards.length === 1 ? '' : 's'}` };
+    const group = { ...rest, type: 'group', label: owned ? name : `${name}: ${cards.length} card${cards.length === 1 ? '' : 's'}` };
     return spread ? [group, ...cards] : [...cards.map((c) => ({ ...c, x: n.x, y: n.y })), group];
   });
   return { ...doc, nodes };

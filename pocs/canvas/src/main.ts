@@ -2,7 +2,7 @@ import './style.css';
 import { App, joinRoom, loadPlayer, mountZoomControl, savePlayer, openFile, parse, persistLocally, persistViewport, resetFileHandle, roomDbName, saveFile, type CanvasDoc } from './core';
 import { copyText, createRoomFrom, mountRoomStatus, roomFromUrl, roomLink } from './share';
 import { askName } from './nameDialog';
-import { cardsPlugin } from './plugins/cards';
+import { cardsPlugin, handLabelOf } from './plugins/cards';
 import { mountHelp, removeHelpNote } from './help';
 
 const ROOM = roomFromUrl();
@@ -109,21 +109,19 @@ if (!ROOM) {
   });
   bar.append(share);
 }
-// my hand: create it near the bottom of the view, or bring it into view
-const handLabelOf = (name: string) => `${name}'s hand`;
+// Hand: a new private fan group (others see backs), in free space near the bottom of the view
 const handBtn = document.createElement('button');
 handBtn.textContent = 'Hand';
-handBtn.title = 'Your hand: cards you hold (others see them face down)';
+handBtn.title = 'New hand: a private group for cards you hold (others see them face down)';
 handBtn.addEventListener('click', () => {
   const me = app.presence?.me ?? loadPlayer();
   const vp = app.viewport;
   const root = app.view.root;
-  const [x, y] = vp.toWorld(root.clientWidth / 2 - 200, root.clientHeight - 260 * vp.zoom - 30);
-  const res = app.dispatch('cards.hand', { owner: me.id, label: handLabelOf(me.name), color: me.color, x, y });
-  const id = res.select?.[0];
-  const h = id && app.node(id);
+  // preferred spot: bottom middle of the view; the command slides it into free space
+  const [x, y] = vp.toWorld(root.clientWidth / 2, root.clientHeight - 40);
+  const res = app.dispatch('cards.newHand', { owner: me.id, label: handLabelOf(me.name), color: me.color, x: x - 210, y: y - 230 });
+  const h = res.select?.[0] && app.node(res.select[0]);
   if (h) {
-    // make sure it's on screen
     const sx = h.x * vp.zoom + vp.x;
     const sy = h.y * vp.zoom + vp.y;
     const offscreen = sx < 0 || sy < 0 || sx + h.width * vp.zoom > root.clientWidth || sy + h.height * vp.zoom > root.clientHeight;

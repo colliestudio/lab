@@ -37,9 +37,10 @@ export const LAYOUTS: Layout[] = ['fan', 'row', 'grid', 'stack'];
  * A container node's `x-cards` field; its cards are the card nodes pointing at it (`stack`), each
  * keeping its own facing. Kinds:
  * - home deck (`home: true`, one per pack, made by New table): a stack; stays as an empty slot;
- * - group (made by stacking/gathering): any layout; dissolves when down to one card;
- * - hand (`hand: true`, node `owner` = player id): fan/row/grid, persists even when empty;
- *   other players see its cards face down (UI only for now; real secrecy is stage 3).
+ * - group (made by stacking/gathering): any layout; a public group dissolves when down to one card;
+ * - a group with a node `owner` (player id) is private, a "hand": never a stack, persists even
+ *   when empty, and other players see its cards face down (UI only for now; real secrecy is stage 3).
+ *   Any group can be made mine / public; the Hand button makes a new empty one.
  * `deck: true` marks every container (name kept from when stacks were the only kind).
  */
 export interface DeckField {
@@ -47,7 +48,6 @@ export interface DeckField {
   deck: true;
   home?: true;
   layout?: Layout;
-  hand?: true;
   color?: string;
 }
 
@@ -71,7 +71,8 @@ export const isCard = (n: CanvasNode | undefined): boolean => !!n && typeof fiel
 export const isDeck = (n: CanvasNode | undefined): boolean => !!n && field(n)?.deck === true;
 export const isHomeDeck = (n: CanvasNode | undefined): boolean => isDeck(n) && field(n!)?.home === true;
 export const isCardish = (n: CanvasNode | undefined) => isCard(n) || isDeck(n);
-export const isHand = (n: CanvasNode | undefined): boolean => isDeck(n) && field(n!)?.hand === true;
+/** A private group: has an owner (a player id). */
+export const isHand = (n: CanvasNode | undefined): boolean => isDeck(n) && !isHomeDeck(n) && typeof n!.owner === 'string' && !!n!.owner;
 export const layoutOf = (n: CanvasNode): Layout => {
   const l = field(n)?.layout;
   return l === 'fan' || l === 'row' || l === 'grid' ? l : 'stack';
@@ -179,7 +180,6 @@ export function groupNode(
   o: { layout?: Layout; pack?: string; owner?: string; label?: string; color?: string } = {},
 ): CanvasNode {
   const f: DeckField = { pack: o.pack ?? PACK, deck: true, layout: o.layout ?? 'fan' };
-  if (o.owner) f.hand = true;
   if (o.color) f.color = o.color;
   const n: CanvasNode = { id, type: 'text', x, y, width: CARD_W, height: CARD_H, z, text: o.label ?? (o.owner ? 'Hand' : 'Group'), [FIELD]: f };
   if (o.owner) n.owner = o.owner;

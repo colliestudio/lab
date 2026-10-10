@@ -42,21 +42,24 @@ const GROUPS: [string, [string, string][]][] = [
   [
     'Groups',
     [
-      ['Drop a card squarely on a card', 'Make a group: every card shown, each keeps its facing'],
+      ['Drop a card right on top of a card', 'Stack: a subdeck (the target shows “Stack”)'],
+      ['Drop it partly over a card', 'Fan: a group with every card shown (the target shows “Fan”)'],
+      ['L', 'Turn a subdeck into a fan group and back (also in the ⠿ menu)'],
       ['G', 'Group the selection (into a selected deck or group, if there is one)'],
       ['Drag a card in a group', 'Take it out; drop it back to put it at that spot'],
       ['Drag the group’s ⠿ tab', 'Move the whole group'],
-      ['Click the ⠿ tab', 'Layout (fan, row, grid, stack), all face up/down, sort, ungroup'],
-      ['', 'A group set to Stack is a deck: dragging it takes the top card'],
+      ['Click the ⠿ tab', 'Stack / fan / row / grid, make mine / public, face up/down, sort, ungroup'],
+      ['', 'A subdeck acts like a deck: dragging it takes the top card'],
       ['', 'A group of one card is just a card'],
     ],
   ],
   [
     'Hands',
     [
-      ['Hand (toolbar)', 'Your hand, near the bottom of the view (one per player)'],
+      ['Hand (toolbar)', 'A new hand in free space near the bottom of the view (as many as you like)'],
+      ['', 'A hand is a group that’s yours: others see its cards face down (and you theirs)'],
+      ['Make mine / Make public', 'Turn any group into a hand, or back (⠿ menu)'],
       ['Drop cards on it', 'Hold them; drag within to reorder; Sort in its ⠿ menu'],
-      ['', 'Other players see the cards in your hand face down (and you theirs)'],
     ],
   ],
   [

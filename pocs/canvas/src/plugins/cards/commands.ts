@@ -2,6 +2,24 @@ import { isIds, isNum, pick, set, toFront, type CanvasNode, type Change, type Co
 import { CARD_H, CARD_W, FIELD, RANKS, card, cardNode, cardsHomedAt, cardsIn, deckNode, groupNode, isCard, isCardish, isDeck, isHand, isHomeDeck, isSpreadOut, isStacked, layoutOf, packOf, parseFace, standardDeck, type Layout } from './deck';
 import { PAD, slotIndex, slots } from './layout';
 
+/**
+ * How a drop would land (shown while hovering, then passed to `drop`). Onto a container, or a card
+ * shown in one: added to it from 30% overlap. Onto a loose card: ≥ 75% overlap (dropped squarely,
+ * pointer near its center) = a stack (subdeck); 30–75% (offset) = a fan group; less = nothing.
+ * Overlap = intersection over the smaller box.
+ */
+export const DROP_ADD = 0.3;
+export const DROP_FAN = 0.3;
+export const DROP_STACK = 0.75;
+export type DropMode = 'stack' | 'fan' | 'add';
+export function dropMode(doc: DocView, target: CanvasNode, overlap: number): DropMode | null {
+  const parent = isCard(target) ? doc.parentOf(target.id) : undefined;
+  if (isDeck(target) || parent) return overlap >= DROP_ADD ? 'add' : null;
+  if (!isCard(target)) return null;
+  if (overlap >= DROP_STACK) return 'stack';
+  return overlap >= DROP_FAN ? 'fan' : null;
+}
+
 // Pure commands: (read-only doc, args, ctx) -> per-field changes. No DOM. Bad args = no-op.
 // Cards live as separate nodes; "in a deck" = `x-cards.stack` points at the deck. Moving a card
 // between decks/table only rewrites that card's own fields, so concurrent draws can't duplicate it.
@@ -277,19 +295,66 @@ export const sort: Command<{ id: string }> = (doc, a) => {
   return sorted.flatMap((c, i) => (card(c).order === i + 1 ? [] : [set(c.id, F('order'), i + 1)]));
 };
 
+const okColor = (c: unknown) => (typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c) ? c : undefined);
+
+/** First spot near (x, y) where a w×h box overlaps nothing on the table: along the row, then rows above. */
+export function freeSpot(doc: DocView, x: number, y: number, w: number, h: number): { x: number; y: number } {
+  const boxes = doc.visible.filter((n) => !doc.parentOf(n.id));
+  const free = (px: number, py: number) =>
+    !boxes.some((n) => n.x < px + w + 10 && n.x + n.width + 10 > px && n.y - 30 < py + h + 10 && n.y + n.height + 10 > py - 30);
+  for (let row = 0; row < 8; row++) {
+    for (let k = 0; k < 17; k++) {
+      const dx = (k % 2 ? 1 : -1) * Math.ceil(k / 2) * Math.round(w / 2);
+      const px = Math.round(x + dx);
+      const py = Math.round(y - row * (h + 40));
+      if (free(px, py)) return { x: px, y: py };
+    }
+  }
+  return { x: Math.round(x), y: Math.round(y) };
+}
+
 /**
- * A player's hand: selects it if `owner` has one, else creates it at (x, y). `label` (e.g.
- * "Alice's hand") and `color` show who it belongs to.
+ * Hand button: a new empty private fan group owned by `owner` (any number per player), in free space
+ * near (x, y). `label` (e.g. "Alice's hand") and `color` show whose it is.
  */
-export const hand: Command<{ owner: string; label?: string; color?: string; x?: number; y?: number }> = (doc, a, ctx) => {
+export const newHand: Command<{ owner: string; label?: string; color?: string; x?: number; y?: number }> = (doc, a, ctx) => {
   if (typeof a?.owner !== 'string' || !a.owner) return [];
-  const mine = doc.nodes.find((n) => isHand(n) && n.owner === a.owner);
-  if (mine) return { changes: toFront(doc, [mine]), select: [mine.id] };
   const label = typeof a.label === 'string' ? a.label.slice(0, 40) : 'Hand';
-  const color = typeof a.color === 'string' && /^#[0-9a-f]{6}$/i.test(a.color) ? a.color : undefined;
-  const node = groupNode(ctx.newId(), Math.round(isNum(a.x) ? a.x : 0), Math.round(isNum(a.y) ? a.y : 0), Math.floor(doc.topZ) + 1, { layout: 'fan', owner: a.owner, label, color });
+  const s = slots('fan', 0, 3);
+  const at = freeSpot(doc, isNum(a.x) ? a.x : 0, isNum(a.y) ? a.y : 0, s.w, s.h);
+  const node = groupNode(ctx.newId(), at.x, at.y, Math.floor(doc.topZ) + 1, { layout: 'fan', owner: a.owner, label, color: okColor(a.color) });
   return { changes: [{ op: 'add', node }], select: [node.id] };
 };
+
+/**
+ * Make a group private (`owner` = a player id; others see its cards face down) or public
+ * (`owner` = null). A private group is never a stack, so a stacked group is spread out as a fan.
+ */
+export const own: Command<{ id: string; owner: string | null; label?: string; color?: string }> = (doc, a, ctx) => {
+  const box = typeof a?.id === 'string' ? doc.get(a.id) : undefined;
+  if (!box || !isDeck(box) || isHomeDeck(box)) return [];
+  if (a.owner === null) {
+    if (!box.owner) return [];
+    return [set(box.id, 'owner', undefined), set(box.id, 'label', undefined), set(box.id, 'text', 'Group'), set(box.id, F('color'), undefined)];
+  }
+  if (typeof a.owner !== 'string' || !a.owner) return [];
+  const changes = [set(box.id, 'owner', a.owner)];
+  if (typeof a.label === 'string') changes.push(set(box.id, 'label', a.label.slice(0, 40)), set(box.id, 'text', a.label.slice(0, 40)));
+  if (okColor(a.color)) changes.push(set(box.id, F('color'), okColor(a.color)));
+  if (isStacked(box)) changes.push(...(setLayout(doc, { id: box.id, layout: 'fan' }, ctx) as Change[]));
+  return changes;
+};
+
+/** L: a pile becomes a fan group, any spread-out group becomes a pile (a subdeck). Not the home deck or a private group. */
+export const toggleStack: Command<{ id: string }> = (doc, a, ctx) => {
+  const box = typeof a?.id === 'string' ? doc.get(a.id) : undefined;
+  if (!box || !isDeck(box) || isHomeDeck(box)) return [];
+  return setLayout(doc, { id: box.id, layout: isStacked(box) ? 'fan' : 'stack' }, ctx);
+};
+
+/** Old stage-2 hands carried `hand: true`; a hand is now just a group with an owner. Idempotent. */
+export const migrateHands: Command<Record<string, never>> = (doc) =>
+  doc.nodes.filter((n) => isDeck(n) && (n[FIELD] as { hand?: unknown }).hand !== undefined).map((n) => set(n.id, F('hand'), undefined));
 
 /** Relabel a player's hands after they rename themselves. */
 export const handLabel: Command<{ owner: string; label: string; color?: string }> = (doc, a) => {
@@ -382,14 +447,15 @@ export const repairHomes: Command<Record<string, never>> = (doc, _a, ctx) => {
  * Something was dropped onto `target`. Onto a container, or a card shown in one: into that container
  * (a pile: on top; a group or hand: at the drop point `at`). Onto a loose card: a new group.
  */
-export const drop: Command<{ target: string; ids: string[]; at?: { x: number; y: number } }> = (doc, a, ctx) => {
+export const drop: Command<{ target: string; ids: string[]; at?: { x: number; y: number }; as?: 'stack' | 'fan' }> = (doc, a, ctx) => {
   const target = typeof a?.target === 'string' ? doc.get(a.target) : undefined;
   if (!target || !isCardish(target) || !isIds(a.ids)) return [];
   const dropped = pick(doc, a.ids).filter((n) => isCardish(n) && n.id !== target.id && doc.isVisible(n.id));
   if (!dropped.length) return [];
   const parent = isCard(target) ? doc.parentOf(target.id) : undefined;
   const host = isDeck(target) ? target : parent ? doc.get(parent) : undefined;
-  if (!host || dropped.some((n) => n.id === host.id)) return gather(doc, { ids: [target.id, ...dropped.map((n) => n.id)] }, ctx);
+  if (!host || dropped.some((n) => n.id === host.id))
+    return gather(doc, { ids: [target.id, ...dropped.map((n) => n.id)], layout: a.as === 'stack' ? 'stack' : 'fan' }, ctx);
   if (isStacked(host)) return { changes: [...insertInto(doc, host, dropped), ...toFront(doc, [host])], select: [host.id] };
   const movingIds = new Set(dropped.flatMap((n) => (isDeck(n) ? cardsIn(doc, n.id) : [n])).map((c) => c.id));
   const staying = cardsIn(doc, host.id).filter((c) => !movingIds.has(c.id));
@@ -443,4 +509,4 @@ export const setup: Command<{ x?: number; y?: number }> = (doc, a, ctx) => {
   return changes;
 };
 
-export const commands = { flip, face, move, shuffle, draw, deal, gather, recall, drop, spread, setup, repairHomes, pullOut, setLayout, ungroup, sort, hand, handLabel };
+export const commands = { flip, face, move, shuffle, draw, deal, gather, recall, drop, spread, setup, repairHomes, pullOut, setLayout, ungroup, sort, newHand, own, toggleStack, handLabel, migrateHands };
