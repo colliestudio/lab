@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
-import { OTHERS, Store, parse, serialize, type CanvasNode, type CommandCtx } from '../../core';
+import { OTHERS, Store, parse, raise, serialize, type CanvasNode, type CommandCtx } from '../../core';
 import { registerCoreCommands } from '../../core/commands';
 import { registerCardsLogic } from './index';
 import { DROP_FAN, DROP_STACK, SORT_MODES, dropMode, freeSpot, sortKeys, sortPrefOf } from './commands';
@@ -8,7 +8,7 @@ import { CARD_W, FIELD, card, concealedFrom, hasFixedFrame, isShown, cardNode, c
 import { HAND_W, PAD, RAISE, emptyHandSize, handSlots, liftedDrop, rowTop, slots, thresholdY } from './layout';
 import { handHtml, tabText } from './render';
 import { parkedCursor, revealText } from './handUx';
-import { canGive, ownerAway, showLabel } from './index';
+import { canGive, containerMenu, handLock, ownerAway, showLabel } from './index';
 
 function ctx(prefix = 'id', seed = 1): CommandCtx {
   let n = 0;
@@ -1116,6 +1116,37 @@ describe('showdown undo', () => {
   });
 });
 
+describe('pressing a card is not an undo step', () => {
+  /** What a press on an object does (view.ts): new step, then raise it (not undoable). */
+  const press = (s: Store, id: string) => {
+    s.newUndoStep();
+    raise(s, [id]);
+  };
+  it('showdown, click cards, one undo restores the hands; undo, click, redo still works', () => {
+    const s = store();
+    s.load({ nodes: [deckNode('d', 0, 0, 1, undefined, true), ...standardDeck().slice(0, 6).map((f, i) => cardNode(`c${i}`, 200 + i * 130, 0, { face: f, faceUp: false, home: 'd' }, 2 + i))], edges: [] });
+    const ha = s.dispatch('cards.newHand', { owner: 'A', label: "A's hand", x: 0, y: 400 }).select![0];
+    s.dispatch('cards.drop', { target: ha, ids: ['c0', 'c1', 'c2'] });
+    const hb = s.dispatch('cards.newHand', { owner: 'B', label: "B's hand", x: 800, y: 400 }).select![0];
+    s.dispatch('cards.drop', { target: hb, ids: ['c3', 'c4'] });
+    s.dispatch('cards.showdown', {});
+    expect(s.doc.get(ha)).toBeUndefined();
+    const z0 = s.doc.get('c0')!.z!;
+    press(s, 'c0');
+    press(s, 'c3');
+    expect(s.doc.get('c0')!.z!).toBeGreaterThan(z0); // the press did raise it
+    s.undo();
+    expect(faces(s, ha)).toEqual(['AS', '2S', '3S']);
+    expect(faces(s, hb)).toEqual(['4S', '5S']);
+    press(s, 'c5');
+    press(s, 'd');
+    s.redo();
+    expect(s.doc.get(ha)).toBeUndefined();
+    expect(s.doc.get(hb)).toBeUndefined();
+    expect(s.doc.nodes.filter(isDeck).map((n) => n.id)).toEqual(['d']);
+  });
+});
+
 describe('give a hand to someone', () => {
   function table() {
     const s = withDeck(1, ...['KH', 'QS'].map((f, i) => cardNode(`l${i}`, 400 + i * 200, 400, { face: f, faceUp: false }, 100 + i)));
@@ -1153,6 +1184,29 @@ describe('give a hand to someone', () => {
     expect(canGive(app('bob', ['alice']), box)).toBe(false);
     expect(ownerAway(app('bob', []), box)).toBe(true); // Alice left
     expect(canGive(app('bob', []), box)).toBe(true);
+  });
+  it('someone else’s hand: everything that changes it is disabled with a reason (unless its owner left)', () => {
+    const { s, h } = table();
+    const ux = { asOthers: () => false, sticky: () => false, toggle() {} };
+    const app = (viewer: string, peers: string[]) => ({ viewer, doc: s.doc, presence: { peers: () => peers.map((id) => ({ id })) } }) as any;
+    const rows = (viewer: string, peers: string[]) => {
+      const out: Record<string, unknown> = {};
+      for (const e of containerMenu(app(viewer, peers), s.doc.get(h)!, ux as any)) {
+        out[e.label] = e.disabled || false;
+        if (e.label === 'Turn into') for (const t of e.items as any[]) out[`Turn into ${t.label}`] = t.disabled;
+      }
+      return out;
+    };
+    const why = 'Only Alice can change this hand';
+    const bob = rows('bob', ['alice']);
+    expect([bob['Sort'], bob['Layout'], bob['Put cards on table'], bob['Return all cards to the deck']]).toEqual([why, why, why, why]);
+    expect(bob['Turn into Deck (makes it public)']).toBe('Only Alice can make it public');
+    for (const r of [rows('alice', ['bob']), rows('bob', [])]) // the owner; anyone once she left
+      expect([r['Sort'], r['Layout'], r['Put cards on table'], r['Return all cards to the deck']]).toEqual([false, false, false, false]);
+    // a card in her hand (its own right-click menu, G, ⇧G) carries the same lock
+    expect(handLock(app('bob', ['alice']), s.doc.get('l0')!)).toBe(why);
+    expect(handLock(app('alice', ['bob']), s.doc.get('l0')!)).toBe(false);
+    expect(handLock(app('bob', ['alice']), s.doc.get('d')!)).toBe(false);
   });
 });
 

@@ -65,6 +65,17 @@ export const ownerAway = (app: App, box: CanvasNode) => !!box.owner && box.owner
 /** May I give this away? Its owner, anyone for an unowned group, anyone when the owner left. */
 export const canGive = (app: App, box: CanvasNode) => !box.owner || box.owner === app.viewer || ownerAway(app, box);
 
+/**
+ * Why I can't change this hand (or the hand a card sits in): it's someone else's and they're here.
+ * False when I may (mine, a public group, or its owner left).
+ */
+export function handLock(app: App, n: CanvasNode | undefined): string | false {
+  const h = n && (isHand(n) ? n : handOf(app.doc, n));
+  return h && !canGive(app, h) ? `Only ${ownerNameOf(h)} can change this hand` : false;
+}
+/** The first lock among `nodes` (see handLock). */
+const lockAmong = (app: App, nodes: CanvasNode[]) => nodes.map((n) => handLock(app, n)).find(Boolean) || false;
+
 /** One row per seat (color dot, "(you)", "(left)" greyed), `current` checked. */
 function seatEntries(app: App, current: string | undefined, pick: (p: Seat) => void): MenuEntry[] {
   return seats(app).map((p) => ({
@@ -139,7 +150,7 @@ function gatherEntry(app: App, from: CanvasNode | undefined): MenuEntry[] {
   const home = homeFor(app.doc, from);
   if (!home) return [];
   const label = from?.id === home ? `Gather all cards (${outCount(app.doc, home)} out)` : 'Return all cards to the deck';
-  return [{ label, hint: '⇧G', run: () => app.dispatch('cards.recall', { id: home }) }];
+  return [{ label, hint: '⇧G', disabled: handLock(app, from), run: () => app.dispatch('cards.recall', { id: home }) }];
 }
 
 const facingMenu = (app: App, ids: () => string[]): MenuEntry => ({
@@ -237,6 +248,7 @@ function layoutMenu(app: App, box: CanvasNode): MenuEntry {
   const options = isHand(box) ? (['fan', 'row'] as const) : (['fan', 'row', 'grid'] as const);
   return {
     label: 'Layout',
+    disabled: handLock(app, box),
     items: options.map((l) => ({ label: LAYOUT_NAMES[l], checked: cur === l, run: () => app.dispatch('cards.setLayout', { id: box.id, layout: l }) })),
   };
 }
@@ -309,6 +321,7 @@ function sortMenu(app: App, box: CanvasNode): MenuEntry {
   const run = (a: { mode?: SortMode; aceHigh?: boolean }) => () => app.dispatch('cards.sort', { id: box.id, ...a });
   return {
     label: 'Sort',
+    disabled: handLock(app, box),
     items: () => [
       { label: `Sort again (${SORT_NAMES[pref.mode].toLowerCase()})`, run: run({}) },
       ...SORT_MODES.map((m, i): MenuEntry => ({ label: SORT_NAMES[m], checked: pref.mode === m, separator: i === 0, run: run({ mode: m }) })),
@@ -318,7 +331,7 @@ function sortMenu(app: App, box: CanvasNode): MenuEntry {
 }
 
 /** Everything you can do to one container: its tab menu, and its right-click menu. */
-function containerMenu(app: App, box: CanvasNode, ux: HandUx): MenuEntry[] {
+export function containerMenu(app: App, box: CanvasNode, ux: HandUx): MenuEntry[] {
   const id = box.id;
   const kind = kindOf(box);
   const out: MenuEntry[] = [...gatherEntry(app, box)];
@@ -338,6 +351,7 @@ function containerMenu(app: App, box: CanvasNode, ux: HandUx): MenuEntry[] {
   out.push({
     label: isHomeDeck(box) ? 'Put cards on table (deck slot stays)' : 'Put cards on table',
     separator: true,
+    disabled: handLock(app, box),
     run: () => app.dispatch('cards.putOnTable', { id }),
   });
   if (kind === 'deck') out.push({ label: 'Spread on table, overlapping', hint: 'E', run: () => app.dispatch('cards.spread', { id, step: Math.round(CARD_W / 4) }) });
@@ -549,7 +563,9 @@ export const cardsPlugin: Plugin = {
         const f = node[FIELD] as { color?: string };
         if (isHand(node)) {
           const shown = cards.filter((c) => shownIn(node, c)).length;
-          return `hand:${ownerAway(app, node)}:${cards.length}:${shown}:${isBlind(node)}:${allowsShowing(node)}:${hidesCount(node)}:${hasFixedFrame(node)}:${ux.asOthers()}:${node.label}:${f.color}:${node.owner === viewer}:${layoutOf(node)}`;
+          // a count this viewer can't see stays out of the key (else the frame rebuilds on every change)
+          const count = (node.owner !== viewer || ux.asOthers()) && hidesCount(node) ? '?' : cards.length;
+          return `hand:${ownerAway(app, node)}:${count}:${shown}:${isBlind(node)}:${allowsShowing(node)}:${hidesCount(node)}:${hasFixedFrame(node)}:${ux.asOthers()}:${node.label}:${f.color}:${node.owner === viewer}:${layoutOf(node)}`;
         }
         const cap = capacityOf(doc, node);
         return `${cards.length}:${isHomeDeck(node)}:${layoutOf(node)}:${node.label}:${f.color}:${node.owner === viewer}:${top ? card(top).face + card(top).faceUp : ''}:${node.width}x${node.height}:${cap.slots}:${cap.max}:${tabNote(node, doc)}`;
@@ -587,10 +603,17 @@ export const cardsPlugin: Plugin = {
       if (d) a.dispatch('cards.spread', { id: d.id, step: Math.round(CARD_W / 4) });
     };
     const recallHome = (a: App) => {
+      const hovered = a.view.hovered ? a.node(a.view.hovered) : undefined;
+      const lock = handLock(a, hovered ?? selectedCards(a).at(-1));
+      if (lock) return a.notify(lock);
       const h = targetHome(a);
       if (h) a.dispatch('cards.recall', { id: h });
     };
-    const gatherSel = (faceUp?: boolean) => (a: App) => a.dispatch('cards.gather', { ids: ids(selectedCards(a)), faceUp });
+    const gatherSel = (faceUp?: boolean) => (a: App) => {
+      const lock = lockAmong(a, selectedCards(a));
+      if (lock) return a.notify(lock);
+      a.dispatch('cards.gather', { ids: ids(selectedCards(a)), faceUp });
+    };
 
     app.registerKey({ key: 'f', label: 'Flip', run: flipSel });
     app.registerKey({ key: 's', label: 'Shuffle', run: shuffleSel });
@@ -649,6 +672,7 @@ export const cardsPlugin: Plugin = {
         const make = (layout?: 'stack', faceUp?: boolean) => () => a.dispatch('cards.gather', { ids: ids(selectedCards(a)), layout, faceUp });
         entries.push({
           label: 'Turn into',
+          disabled: lockAmong(a, cards),
           items: [
             { label: 'Deck', run: make('stack') },
             { label: 'Group', hint: 'G', run: make() },
