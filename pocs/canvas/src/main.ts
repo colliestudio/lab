@@ -111,7 +111,7 @@ if (!ROOM) {
 }
 // Hand: a new private fan group (others see backs), in free space near the bottom of the view
 const handBtn = document.createElement('button');
-handBtn.textContent = 'Hand';
+handBtn.textContent = 'New hand';
 handBtn.title = 'New hand: a private group for cards you hold (others see them face down)';
 handBtn.addEventListener('click', () => {
   const me = app.presence?.me ?? loadPlayer();
