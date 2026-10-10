@@ -53,6 +53,23 @@ export interface ObjectType {
    * join the move's undo step.
    */
   onDragEnd?(dragged: CanvasNode[], app: App, target?: string, via?: 'drag' | 'keys'): void;
+  /**
+   * Not rendered at all for this viewer (no box: can't be seen, hovered or selected), e.g. the private
+   * cards of a hand that hides its count from other players.
+   */
+  concealed?(node: CanvasNode, ctx: RenderCtx): boolean;
+  /**
+   * A drag of this object stays local until it's released: the object moves only on this screen and
+   * nothing is sent while it moves (others see nothing until the drop). Drop on a target = `onDrop` of
+   * the target as usual (`app.view.dragBox(id)` gives the dragged spot); drop on nothing = `onLocalDrop`.
+   */
+  dragsLocally?(node: CanvasNode, app: App): boolean;
+  /** A local drag ended on no target, with the object's top-left at `at` (world). */
+  onLocalDrop?(node: CanvasNode, at: { x: number; y: number }, app: App): void;
+  /** A local drag of this object starts / ends (e.g. to show drop zones). */
+  onLocalDrag?(node: CanvasNode, phase: 'start' | 'end', app: App): void;
+  /** A drop over this object goes to another one instead (its id), e.g. a card in a hand → the hand. */
+  dropProxy?(node: CanvasNode, app: App): string | undefined;
 }
 
 export interface KeyBinding {

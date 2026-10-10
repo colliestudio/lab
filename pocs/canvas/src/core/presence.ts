@@ -137,7 +137,9 @@ export function mountPresenceView(app: App, presence: Presence) {
     for (const p of peers) {
       for (const id of [...p.sel, ...p.held]) {
         const box = app.view.boxOf(id);
-        if (!box || next.has(id)) continue;
+        const node = app.node(id);
+        // never mark what's hidden from me (which of their private cards they touch is information)
+        if (!box || next.has(id) || (node && app.hiddenFrom(node))) continue;
         next.add(id);
         box.classList.add('cv-remote-sel');
         box.style.setProperty('--cv-remote', p.color);
@@ -158,6 +160,6 @@ export function mountPresenceView(app: App, presence: Presence) {
   presence.onChange(draw);
   app.viewport.onChange(draw);
   app.store.subscribe(draw); // node boxes may have been (re)created
-  app.store.subscribe(() => presence.setSelection(app.store.selection));
+  app.store.subscribe(() => presence.setSelection(app.publicIds(app.store.selection)));
   draw();
 }
