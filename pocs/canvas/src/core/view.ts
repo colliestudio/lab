@@ -110,9 +110,12 @@ export class View {
     const ctx: RenderCtx = { doc, viewer: this.app.viewer };
     const sel = this.app.store.selection;
     const alive = new Set<string>();
-    doc.visible.forEach((n, i) => {
+    // z-index by rendered position: numbering by doc order would skip one per concealed node (a count leak)
+    let z = 0;
+    doc.visible.forEach((n) => {
       const type = this.app.typeOf(n);
       if (type?.concealed?.(n, ctx)) return;
+      z++;
       alive.add(n.id);
       let box = this.els.get(n.id);
       if (!box) {
@@ -124,7 +127,7 @@ export class View {
       const angle = doc.styleOf(n.id)?.angle;
       const off = this.localDrag?.ids.has(n.id) ? this.localDrag : undefined;
       box.style.transform = `translate(${n.x + (off?.dx ?? 0)}px, ${n.y + (off?.dy ?? 0)}px)` + (angle ? ` rotate(${angle}deg)` : '');
-      box.style.zIndex = String(off ? 1e6 : i + 1);
+      box.style.zIndex = String(off ? 1e6 : z);
       box.style.width = `${n.width}px`;
       box.style.height = `${n.height}px`;
       box.classList.toggle('cv-selected', sel.has(n.id));
