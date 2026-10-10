@@ -2,7 +2,7 @@ import './style.css';
 import { App, joinRoom, loadPlayer, mountZoomControl, savePlayer, openFile, parse, persistLocally, persistViewport, resetFileHandle, roomDbName, saveFile, type CanvasDoc } from './core';
 import { copyText, createRoomFrom, mountRoomStatus, roomFromUrl, roomLink } from './share';
 import { askName } from './nameDialog';
-import { cardsPlugin, handLabelOf } from './plugins/cards';
+import { cardsPlugin, handLabelOf, newHandEntries, newHandFor } from './plugins/cards';
 import { chessPlugin } from './plugins/chess';
 import { clockPlugin } from './plugins/clock';
 import { battleLinePlugin } from './plugins/battleline';
@@ -128,24 +128,14 @@ if (!ROOM) {
   });
   bar.append(share);
 }
-// Hand: a new private fan group (others see backs), in free space near the bottom of the view
+// Hand: a new private group (others see backs), in free space near the bottom of the view. In a room:
+// New hand ▸ players (me first); solo: mine right away.
 const handBtn = document.createElement('button');
 handBtn.textContent = 'New hand';
-handBtn.title = 'New hand: a private group for cards you hold (others see them face down)';
+handBtn.title = 'New hand: a private group for cards someone holds (others see them face down)';
 handBtn.addEventListener('click', () => {
-  const me = app.presence?.me ?? loadPlayer();
-  const vp = app.viewport;
-  const root = app.view.root;
-  // preferred spot: bottom middle of the view; the command slides it into free space
-  const [x, y] = vp.toWorld(root.clientWidth / 2, root.clientHeight - 40);
-  const res = app.dispatch('cards.newHand', { owner: me.id, label: handLabelOf(me.name), color: me.color, x: x - 210, y: y - 230 });
-  const h = res.select?.[0] && app.node(res.select[0]);
-  if (h) {
-    const sx = h.x * vp.zoom + vp.x;
-    const sy = h.y * vp.zoom + vp.y;
-    const offscreen = sx < 0 || sy < 0 || sx + h.width * vp.zoom > root.clientWidth || sy + h.height * vp.zoom > root.clientHeight;
-    if (offscreen) vp.set(root.clientWidth / 2 - (h.x + h.width / 2) * vp.zoom, root.clientHeight - (h.y + h.height) * vp.zoom - 40, vp.zoom);
-  }
+  if (!app.presence) return newHandFor(app, { ...loadPlayer() });
+  app.view.openMenu(newHandEntries(app), handBtn, 'New hand for');
 });
 bar.append(handBtn, helpBtn, status);
 app.onNotify(flash);

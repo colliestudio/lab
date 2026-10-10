@@ -20,6 +20,8 @@ type Gesture =
       moved: boolean;
       target?: string;
       mode?: string;
+      /** A local drag (see ObjectType.dragsLocally): moves on this screen only until the drop. */
+      local?: boolean;
     }
   | { kind: 'marquee'; start: Pt; base: Set<string>; /** the object the press fell through (never box-selected) */ skip?: string }
   | { kind: 'pinch'; dist: number; mid: Pt };
@@ -47,8 +49,12 @@ export class View {
   tool: 'select' | 'hand' = 'select';
   private toolListeners = new Set<(t: 'select' | 'hand') => void>();
   private lastClick = { id: '', t: 0 };
+  /** Where the last right-click menu opened, in world coordinates (e.g. "new … here"). */
+  menuPoint: Pt | undefined;
   /** Node under the mouse when no button is pressed (for "hovered" keyboard targets). */
   hovered: string | undefined;
+  /** The local drag in progress: what moves and by how much (world units). */
+  private localDrag: { ids: Set<string>; dx: number; dy: number } | null = null;
 
   constructor(
     private app: App,
@@ -108,6 +114,8 @@ export class View {
     const sel = this.app.store.selection;
     const alive = new Set<string>();
     doc.visible.forEach((n, i) => {
+      const type = this.app.typeOf(n);
+      if (type?.concealed?.(n, ctx)) return;
       alive.add(n.id);
       let box = this.els.get(n.id);
       if (!box) {
@@ -117,16 +125,19 @@ export class View {
         this.els.set(n.id, box);
       }
       const angle = doc.styleOf(n.id)?.angle;
-      const geo = `${n.x},${n.y},${angle ?? 0},${i},${n.width},${n.height},${sel.has(n.id)}`;
+      const off = this.localDrag?.ids.has(n.id) ? this.localDrag : undefined;
+      const bx = n.x + (off?.dx ?? 0);
+      const by = n.y + (off?.dy ?? 0);
+      const bz = off ? 1e6 : i + 1;
+      const geo = `${bx},${by},${angle ?? 0},${bz},${n.width},${n.height},${sel.has(n.id)}`;
       if (this.boxKeys.get(n.id) !== geo) {
         this.boxKeys.set(n.id, geo);
-        box.style.transform = `translate(${n.x}px, ${n.y}px)` + (angle ? ` rotate(${angle}deg)` : '');
-        box.style.zIndex = String(i + 1);
+        box.style.transform = `translate(${bx}px, ${by}px)` + (angle ? ` rotate(${angle}deg)` : '');
+        box.style.zIndex = String(bz);
         box.style.width = `${n.width}px`;
         box.style.height = `${n.height}px`;
         box.classList.toggle('cv-selected', sel.has(n.id));
       }
-      const type = this.app.typeOf(n);
       const key = (type?.id ?? '') + '\n' + (type?.renderKey?.(n, ctx) ?? contentKey(n));
       if (this.contentKeys.get(n.id) !== key) {
         this.contentKeys.set(n.id, key);
@@ -167,6 +178,12 @@ export class View {
     const x = (this.root.clientWidth - (maxX - minX) * zoom) / 2 - minX * zoom;
     const y = (this.root.clientHeight - (maxY - minY) * zoom) / 2 - minY * zoom;
     this.app.viewport.set(x, y, zoom);
+  }
+
+  /** Where a locally dragged node is shown right now (world box), else undefined. */
+  dragBox(id: string): { x: number; y: number; width: number; height: number } | undefined {
+    const n = this.localDrag?.ids.has(id) ? this.app.node(id) : undefined;
+    return n && { x: n.x + this.localDrag!.dx, y: n.y + this.localDrag!.dy, width: n.width, height: n.height };
   }
 
   /** The DOM box of a rendered node (for overlays like remote selections). */
@@ -214,6 +231,10 @@ export class View {
       // second finger: switch to pinch, abandon whatever the first finger started
       const [a, b] = [...this.pointers.values()];
       this.gesture = { kind: 'pinch', dist: dist(a, b), mid: midpoint(a, b) };
+      if (this.localDrag) {
+        this.localDrag = null;
+        this.render();
+      }
       return;
     }
     if (this.pointers.size > 2) return;
@@ -271,11 +292,11 @@ export class View {
     this.app.dispatch('core.front', { ids }, { merge: true });
     const w = this.world_(p);
     this.gesture = { kind: 'drag', ids, clickId: id, shift: e.shiftKey, down: e, start: w, applied: { x: 0, y: 0 }, moved: false };
-    this.app.presence?.setHeld(ids);
+    this.app.presence?.setHeld(this.app.publicIds(ids));
   }
 
   private onPointerMove(e: PointerEvent) {
-    if (this.app.presence) this.app.presence.setCursor(this.world_(this.local(e)));
+    if (this.app.presence) this.app.presence.setCursor(this.app.publicCursor(this.world_(this.local(e))));
     if (!this.pointers.size) this.hovered = (e.target as Element).closest<HTMLElement>('[data-node-id]')?.dataset.nodeId;
     if (!this.pointers.has(e.pointerId)) return;
     const p = this.local(e);
@@ -306,15 +327,29 @@ export class View {
         if (!g.moved && Math.hypot(tx, ty) * this.app.viewport.zoom < DRAG_THRESHOLD) return;
         if (!g.moved) {
           g.moved = true;
-          this.maybeSwapDragged(g);
+          const clicked = this.app.node(g.clickId);
+          const ct = clicked && this.app.typeOf(clicked);
+          if (clicked && !g.shift && ct?.dragsLocally?.(clicked, this.app)) {
+            g.local = true;
+            g.ids = [g.clickId];
+            this.localDrag = { ids: new Set(g.ids), dx: 0, dy: 0 };
+            ct.onLocalDrag?.(clicked, 'start', this.app);
+          } else this.maybeSwapDragged(g);
           for (const id of g.ids) this.els.get(id)?.classList.add('cv-dragging');
           this.promote(g.ids);
         }
-        const dx = tx - g.applied.x;
-        const dy = ty - g.applied.y;
-        if (dx || dy) {
-          this.app.dispatch('core.move', { ids: g.ids, dx, dy }, { merge: true });
+        if (g.local && this.localDrag) {
+          this.localDrag.dx = tx;
+          this.localDrag.dy = ty;
           g.applied = { x: tx, y: ty };
+          this.render();
+        } else {
+          const dx = tx - g.applied.x;
+          const dy = ty - g.applied.y;
+          if (dx || dy) {
+            this.app.dispatch('core.move', { ids: g.ids, dx, dy }, { merge: true });
+            g.applied = { x: tx, y: ty };
+          }
         }
         const t = this.findDropTarget(g, e);
         this.setDropTarget(g, t?.id, t?.mode);
@@ -333,7 +368,7 @@ export class View {
         });
         // touching by default; Alt = only objects fully inside the box
         const hits = this.app.store.doc.visible.filter((n) =>
-          n.id === g.skip
+          n.id === g.skip || this.app.isConcealed(n)
             ? false
             : e.altKey
             ? n.x >= r.x && n.x + n.width <= r.x + r.w && n.y >= r.y && n.y + n.height <= r.y + r.h
@@ -371,6 +406,15 @@ export class View {
       const target = found && this.app.node(found.id);
       const at = this.world_(this.local(e));
       if (target) this.app.store.merged(() => this.app.typeOf(target)?.onDrop?.(target, g.ids, this.app, at, found.mode));
+      if (g.local) {
+        const node = this.app.node(g.clickId);
+        const box = this.dragBox(g.clickId);
+        const type = node && this.app.typeOf(node);
+        if (!target && node && box) this.app.store.merged(() => type?.onLocalDrop?.(node, { x: Math.round(box.x), y: Math.round(box.y) }, this.app));
+        this.localDrag = null;
+        if (node) type?.onLocalDrag?.(node, 'end', this.app);
+        this.render();
+      }
       this.endDrag(g.ids, target ? target.id : undefined);
       return;
     }
@@ -446,7 +490,7 @@ export class View {
     }
     if (mod && e.key.toLowerCase() === 'a') {
       e.preventDefault();
-      store.select(store.doc.visible.map((n) => n.id));
+      store.select(store.doc.visible.filter((n) => !this.app.isConcealed(n)).map((n) => n.id));
       return;
     }
     const arrow = ({ ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] } as Record<string, [number, number]>)[e.key];
@@ -524,15 +568,16 @@ export class View {
     g.ids = [out.id];
     g.clickId = out.id;
     this.app.store.select([out.id]);
-    this.app.presence?.setHeld([node.id, out.id]); // keep the deck held too while pulling from it
+    this.app.presence?.setHeld(this.app.publicIds([node.id, out.id])); // keep the deck held too while pulling from it
   }
 
   /** The object a drag would land on: topmost under the pointer, overlapping enough, and willing. */
   private findDropTarget(g: Extract<Gesture, { kind: 'drag' }>, e: PointerEvent): { id: string; mode?: string } | undefined {
     // what moves with the drag (a container's laid-out cards too) is never a target
     const dragged = new Set([...g.ids, ...this.moving]);
-    const primary = this.app.node(g.clickId);
-    if (!primary) return;
+    const node = this.app.node(g.clickId);
+    if (!node) return;
+    const primary = { ...node, ...this.dragBox(g.clickId) };
     // cheap geometric pre-check: over empty table, skip the DOM hit test (it forces a style recalc)
     const w = this.world_(this.local(e));
     const M = 32; // tabs and grips stick out of a node's box
@@ -544,13 +589,15 @@ export class View {
       .elementsFromPoint(e.clientX, e.clientY)
       .map((x) => x.closest<HTMLElement>('[data-node-id]'))
       .find((x) => x && !dragged.has(x.dataset.nodeId!));
-    const target = under && this.app.node(under.dataset.nodeId!);
-    if (!target) return;
+    let target = under && this.app.node(under.dataset.nodeId!);
+    const proxy = target && this.app.typeOf(target)?.dropProxy?.(target, this.app);
+    if (proxy) target = this.app.node(proxy);
+    if (!target || dragged.has(target.id)) return;
     const type = this.app.typeOf(target);
     if (!type?.onDrop) return;
     const ov = overlap(primary, target);
     if (!type.canDrop) return ov >= DROP_OVERLAP ? { id: target.id } : undefined;
-    const dropped = g.ids.map((id) => this.app.node(id)).filter((n): n is CanvasNode => !!n);
+    const dropped = g.ids.map((id) => (id === g.clickId ? primary : this.app.node(id))).filter((n): n is CanvasNode => !!n);
     const verdict = type.canDrop(target, dropped, this.app, ov);
     if (!verdict) return;
     return { id: target.id, mode: typeof verdict === 'string' ? verdict : undefined };
@@ -576,6 +623,7 @@ export class View {
 
   private onContextMenu(e: MouseEvent) {
     e.preventDefault();
+    this.menuPoint = this.world_(this.local(e));
     const nodeEl = (e.target as Element).closest<HTMLElement>('[data-node-id]');
     const store = this.app.store;
     if (nodeEl && !store.selection.has(nodeEl.dataset.nodeId!)) store.select([nodeEl.dataset.nodeId!]);

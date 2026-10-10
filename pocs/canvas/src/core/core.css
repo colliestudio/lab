@@ -251,3 +251,15 @@
   z-index: 2;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
 }
+.cv-menu-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 6px;
+  border-radius: 50%;
+  vertical-align: 0;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.2);
+}
+.cv-menu-item.cv-muted .cv-menu-label {
+  opacity: 0.55;
+}

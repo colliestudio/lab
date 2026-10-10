@@ -9,6 +9,8 @@ import type { Presence } from './presence';
 
 /** Local player id. A constant until multiplayer gives each peer its own. */
 export const LOCAL_PLAYER = 'local';
+/** A viewer id that is nobody: "hidden from OTHERS" = hidden from every other player. */
+export const OTHERS = '\u0000others';
 
 /** The host: store + viewport + view + what plugins registered. */
 export class App {
@@ -25,6 +27,10 @@ export class App {
   /** Set when the table is shared (multiplayer); null when playing solo. */
   presence: Presence | null = null;
   private notifiers = new Set<(msg: string) => void>();
+  /** Privacy rules: is `node` hidden from `viewer` (its content must not leak via presence either)? */
+  readonly hiders: ((node: CanvasNode, viewer: string) => boolean)[] = [];
+  /** Where others see my pointer: a rule may park it (e.g. over my private cards → at my hand's tab). */
+  readonly cursorRules: ((p: { x: number; y: number }, app: App) => { x: number; y: number } | undefined)[] = [];
 
   constructor(root: HTMLElement) {
     registerCoreCommands(this.store);
@@ -101,6 +107,37 @@ export class App {
   onNotify(fn: (msg: string) => void) {
     this.notifiers.add(fn);
     return () => this.notifiers.delete(fn);
+  }
+
+  /** A rule saying a node is hidden from a viewer: no presence outlines on it, never broadcast. */
+  registerHider(fn: (node: CanvasNode, viewer: string) => boolean) {
+    this.hiders.push(fn);
+  }
+  registerCursorRule(fn: (p: { x: number; y: number }, app: App) => { x: number; y: number } | undefined) {
+    this.cursorRules.push(fn);
+  }
+  /** Is `node` hidden from `viewer`? `OTHERS` = from every other player (what may I broadcast?). */
+  hiddenFrom(node: CanvasNode, viewer: string = this.viewer): boolean {
+    return this.hiders.some((f) => f(node, viewer));
+  }
+  /** Ids safe to tell other players about (selection, held). */
+  publicIds(ids: Iterable<string>): string[] {
+    return [...ids].filter((id) => {
+      const n = this.node(id);
+      return !n || !this.hiddenFrom(n, OTHERS);
+    });
+  }
+  /** My pointer as others may see it. */
+  publicCursor(p: { x: number; y: number }) {
+    for (const r of this.cursorRules) {
+      const q = r(p, this);
+      if (q) return q;
+    }
+    return p;
+  }
+  /** Not rendered for the local viewer (see ObjectType.concealed). */
+  isConcealed(n: CanvasNode): boolean {
+    return !!this.typeOf(n)?.concealed?.(n, { doc: this.store.doc, viewer: this.viewer });
   }
 
   // --- helpers ---

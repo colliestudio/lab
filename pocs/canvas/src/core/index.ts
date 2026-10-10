@@ -1,4 +1,4 @@
-export { App, LOCAL_PLAYER } from './app';
+export { App, LOCAL_PLAYER, OTHERS } from './app';
 export * from './doc';
 export * from './store';
 export * from './io';

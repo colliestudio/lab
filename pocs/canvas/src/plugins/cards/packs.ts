@@ -20,6 +20,11 @@ export interface Pack {
   back?: string;
   /** What its home deck's tab says (default "Deck"), e.g. "Troops". */
   deckName?: string;
+  /**
+   * Sort ▸ keys of a face: `suit` (the grouping: suit, color…) and `rank` (the value). Sort modes
+   * order by these (by suit then rank, rank then suit, rank only). Default: standard-52's.
+   */
+  sortKeys?(face: string, o: { aceHigh: boolean }): { suit: number; rank: number };
   /** Columns when the whole pack is laid out as a grid (Add menu), e.g. 13 for standard-52. */
   cols?: number;
 }

@@ -1,5 +1,5 @@
 import { registerPack } from '../cards/packs';
-import { SIDE_COLOR, TACTICS, TACTICS_CARDS, TROOPS, UNITS, parseTroop, tactic, tacticLabel, troopFaces, troopLabel, type FlagField } from './model';
+import { COLORS, SIDE_COLOR, TACTICS, TACTICS_CARDS, TROOPS, UNITS, parseTroop, tactic, tacticLabel, troopFaces, troopLabel, type FlagField } from './model';
 
 // Card faces and backs for the two Battle Line packs (pure HTML strings, no assets), and the flag.
 
@@ -32,12 +32,19 @@ export function tacticHtml(face: string): string {
   );
 }
 
+const BY_NAME = TACTICS_CARDS.slice().sort((a, b) => a.name.localeCompare(b.name)).map((t) => t.face);
+
 registerPack({
   id: TROOPS,
   name: 'Battle Line troops',
   deckName: 'Troops',
   cards: troopFaces().map((face) => ({ face, label: troopLabel(face) })),
   face: troopHtml,
+  // Sort ▸: "suit" = color (red … purple), rank = value
+  sortKeys: (face) => {
+    const t = parseTroop(face);
+    return { suit: t ? COLORS.indexOf(t.color) : 99, rank: t?.value ?? 99 };
+  },
   back: `<div class="pc-card bl-back bl-back-troops"><div class="bl-back-inner"><b>⚔︎</b><span>Battle Line</span></div></div>`,
 });
 
@@ -47,6 +54,8 @@ registerPack({
   deckName: 'Tactics',
   cards: TACTICS_CARDS.map((t) => ({ face: t.face, label: tacticLabel(t.face) })),
   face: tacticHtml,
+  // tactics sort by name (all one "suit")
+  sortKeys: (face) => ({ suit: 0, rank: BY_NAME.indexOf(face) }),
   back: `<div class="pc-card bl-back bl-back-tactics"><div class="bl-back-inner"><b>✦︎</b><span>Tactics</span></div></div>`,
 });
 

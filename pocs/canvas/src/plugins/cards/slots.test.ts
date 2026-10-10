@@ -13,8 +13,8 @@ function store() {
 }
 const loose = (id: string, face: string, x = 500) => cardNode(id, x, 0, { face, faceUp: true }, 10);
 
-describe('fixed slot areas (generic)', () => {
-  const area = (layout: 'column' | 'column-up' = 'column') => groupNode('f', 0, 0, 1, { layout, fixed: true, slots: 3, max: 4, label: 'Flag 1 · A' });
+describe('table spots (generic)', () => {
+  const area = (layout: 'column' | 'column-up' = 'column') => groupNode('f', 0, 0, 1, { layout, spot: true, slots: 3, max: 4, label: 'Flag 1 · A' });
 
   it('a column fills its next free slot, cascading; sized for max; a 5th card is refused', () => {
     const s = store();
@@ -51,7 +51,7 @@ describe('fixed slot areas (generic)', () => {
     const t = store();
     t.load(parse(serialize(s.exportDoc())));
     const f = t.doc.get('f')!;
-    expect(f['x-cards']).toMatchObject({ fixed: true, slots: 3, max: 4, layout: 'column' });
+    expect(f['x-cards']).toMatchObject({ spot: true, slots: 3, max: 4, layout: 'column' });
     expect(f.label).toBe('Flag 1 · A');
   });
 });

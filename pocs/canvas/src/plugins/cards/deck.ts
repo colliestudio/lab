@@ -29,6 +29,11 @@ export interface CardField {
   order?: number;
   /** The home deck this card belongs to: "gather all" on it pulls the card back from anywhere. Always a home deck. */
   home?: string;
+  /**
+   * Only meaningful for a private (face-down) card in a blind hand: `false` = the owner sees its back
+   * too ("face down for me"); absent/true = the owner sees its face. Kept when the card moves.
+   */
+  mine?: boolean;
 }
 /**
  * How a container shows its cards: a face-down-able pile, or every card visible. `column` cascades
@@ -55,16 +60,28 @@ export interface DeckField {
   layout?: Layout;
   color?: string;
   /**
-   * A fixed spot on the table (a game's slot area: a formation, a discard pile): stays when emptied
+   * A spot on the table (a game's slot area: a formation, a discard pile): stays when emptied
    * or down to one card, and Reset keeps it.
    */
-  fixed?: true;
+  spot?: true;
   /** Slots outlined while empty (a spread-out container is at least this big). */
   slots?: number;
   /** Most cards it takes: drops beyond are refused (and it is sized for this many). */
   max?: number;
   /** Grid columns (default: about square), e.g. 13 = one suit per row. */
   cols?: number;
+  /** A hand with "See my cards" unchecked: each private card's `mine` says whether the owner sees it. */
+  blind?: true;
+  /** A hand with "Allow showing cards to table": a strip above the row for shown (face-up) cards. */
+  showing?: true;
+  /** A hand with "Hide card count": others see a generic pile, never its private cards. */
+  hideCount?: true;
+  /** The last sort (plain "Sort" repeats it): mode and ace high. */
+  sort?: { mode?: string; aceHigh?: boolean };
+  /** "Fixed frame size": the frame keeps `width` whatever the count (on anyway while the count is hidden). */
+  fixed?: true;
+  /** A fixed frame's width (cards compress to fit); default HAND_W. */
+  width?: number;
 }
 
 export function parseFace(face: string): { rank: Rank; suit: Suit } {
@@ -96,8 +113,8 @@ export const layoutOf = (n: CanvasNode): Layout => {
   const l = field(n)?.layout;
   return l === 'fan' || l === 'row' || l === 'grid' || l === 'column' || l === 'column-up' ? l : 'stack';
 };
-/** A fixed slot area (see DeckField.fixed). */
-export const isFixed = (n: CanvasNode | undefined): boolean => isDeck(n) && field(n!)?.fixed === true;
+/** A table spot (see DeckField.spot). */
+export const isSpot = (n: CanvasNode | undefined): boolean => isDeck(n) && field(n!)?.spot === true;
 /** Room left in a container with a `max`, else Infinity. */
 export function roomIn(doc: DocView, box: CanvasNode): number {
   const max = field(box)?.max;
@@ -107,11 +124,45 @@ export function roomIn(doc: DocView, box: CanvasNode): number {
 export const isStacked = (n: CanvasNode | undefined): boolean => isDeck(n) && layoutOf(n!) === 'stack';
 /** A container that lays its cards out visibly (group or hand). */
 export const isSpreadOut = (n: CanvasNode | undefined): boolean => isDeck(n) && layoutOf(n!) !== 'stack';
-/** A card sitting in someone else's hand: shown face down to `viewer`. */
-export function hiddenFrom(doc: DocView, c: CanvasNode, viewer: string): boolean {
+/** The hand a card sits in, if it's in an owned hand. */
+export function handOf(doc: DocView, c: CanvasNode): CanvasNode | undefined {
   const p = doc.parentOf(c.id);
   const h = p ? doc.get(p) : undefined;
-  return !!h && isHand(h) && !!h.owner && h.owner !== viewer;
+  return h && isHand(h) && h.owner ? h : undefined;
+}
+const deckField = (h: CanvasNode) => h[FIELD] as DeckField | undefined;
+/** Hand with "See my cards" unchecked. */
+export const isBlind = (h: CanvasNode): boolean => deckField(h)?.blind === true;
+/** Hand with "Allow showing cards to table" on. */
+export const allowsShowing = (h: CanvasNode): boolean => deckField(h)?.showing === true;
+/** Hand with "Hide card count" on. */
+export const hidesCount = (h: CanvasNode): boolean => deckField(h)?.hideCount === true;
+/** Fixed frame size: set by the owner, or implied while the count is hidden (a growing frame would show it). */
+export const hasFixedFrame = (h: CanvasNode): boolean => deckField(h)?.fixed === true || hidesCount(h);
+/**
+ * A card in a hand shown to the table (in the strip above the row): face up in a hand that allows
+ * showing. Any other card in a hand is private.
+ */
+export const shownIn = (h: CanvasNode, c: CanvasNode): boolean => allowsShowing(h) && card(c).faceUp;
+export const isShown = (doc: DocView, c: CanvasNode): boolean => {
+  const h = handOf(doc, c);
+  return !!h && shownIn(h, c);
+};
+/** Does the owner see this private hand card's face? Always, unless the hand is blind and the card is "face down for me". */
+export const ownerSees = (h: CanvasNode, c: CanvasNode): boolean => !isBlind(h) || card(c).mine !== false;
+/**
+ * In a hand, a shown card shows to everyone. A private card shows its face only to the owner (unless
+ * blind and marked face down for them, or the owner is viewing as others).
+ */
+export function hiddenFrom(doc: DocView, c: CanvasNode, viewer: string, asOthers = false): boolean {
+  const h = handOf(doc, c);
+  if (!h || shownIn(h, c)) return false;
+  return h.owner !== viewer || asOthers || !ownerSees(h, c);
+}
+/** A private card in a hand that hides its count: others get no trace of it (not even a back). */
+export function concealedFrom(doc: DocView, c: CanvasNode, viewer: string, asOthers = false): boolean {
+  const h = handOf(doc, c);
+  return !!h && hidesCount(h) && !shownIn(h, c) && (h.owner !== viewer || asOthers);
 }
 export const card = (n: CanvasNode) => n[FIELD] as CardField;
 export const packOf = (n: CanvasNode) => (field(n)?.pack as string | undefined) ?? PACK;
@@ -187,6 +238,7 @@ export function cardNode(id: string, x: number, y: number, c: Omit<CardField, 'p
   if (c.stack !== undefined) f.stack = c.stack;
   if (c.order !== undefined) f.order = c.order;
   if (c.home !== undefined) f.home = c.home;
+  if (c.mine !== undefined) f.mine = c.mine;
   return { id, type: 'text', x, y, width: CARD_W, height: CARD_H, text: faceLabel(pack, c.face), z, [FIELD]: f };
 }
 
@@ -203,12 +255,12 @@ export function groupNode(
   x: number,
   y: number,
   z: number,
-  o: { layout?: Layout; pack?: string; owner?: string; label?: string; color?: string; fixed?: boolean; slots?: number; max?: number } = {},
+  o: { layout?: Layout; pack?: string; owner?: string; label?: string; color?: string; spot?: boolean; slots?: number; max?: number } = {},
 ): CanvasNode {
   const f: DeckField = { pack: o.pack ?? PACK, deck: true };
   if (o.layout !== 'stack') f.layout = o.layout ?? 'fan';
   if (o.color) f.color = o.color;
-  if (o.fixed) f.fixed = true;
+  if (o.spot) f.spot = true;
   if (o.slots) f.slots = o.slots;
   if (o.max) f.max = o.max;
   const n: CanvasNode = { id, type: 'text', x, y, width: CARD_W, height: CARD_H, z, text: o.label ?? (o.owner ? 'Hand' : 'Group'), [FIELD]: f };

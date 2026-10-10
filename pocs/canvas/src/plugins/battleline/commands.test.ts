@@ -3,7 +3,7 @@ import * as Y from 'yjs';
 import { Store, parse, serialize, type CommandCtx } from '../../core';
 import { registerCoreCommands } from '../../core/commands';
 import { registerCardsLogic } from '../cards';
-import { card, cardsIn, isCard, isHand, isHomeDeck, packOf } from '../cards/deck';
+import { card, cardsIn, hiddenFrom, isCard, isHand, isHomeDeck, packOf } from '../cards/deck';
 import { registerBattleLineLogic } from './index';
 import { DEAL_FACE_UP, flags, formation, handOf, troopsDeck } from './commands';
 import { CLAIM_DY, TACTICS, TROOPS, flag, isFlag } from './model';
@@ -99,6 +99,9 @@ describe('battle line', () => {
     expect(handOf(s.doc, 'a')!.owner).toBe('alice');
     expect(handOf(s.doc, 'b')!.owner).toBe('bob');
     expect(handOf(s.doc, 'b')!.label).toBe("Bob's hand");
+    // private: face down; the owner sees faces, the other player backs
+    const ac = cardsIn(s.doc, handOf(s.doc, 'a')!.id);
+    expect(ac.every((c) => hiddenFrom(s.doc, c, 'bob') && !hiddenFrom(s.doc, c, 'alice'))).toBe(true);
   });
 
   it('formations: a card snaps into the next free slot; Mud makes room for a 4th, not a 5th', () => {
@@ -180,5 +183,22 @@ describe('battle line', () => {
     sync();
     expect(cardsIn(a.doc, formation(a.doc, 3, 'b')!.id).map((x) => x.id)).toEqual([c.id]);
     expect(flag(flags(a.doc)[2]).claim).toBe('b');
+  });
+});
+
+describe('battle line packs and Sort ▸', () => {
+  it('troops sort by color then value; tactics by name', async () => {
+    await import('./render');
+    const s = table();
+    s.dispatch('battleline.deal', { players: [alice], count: 7 });
+    const h = handOf(s.doc, 'a')!.id;
+    s.dispatch('cards.sort', { id: h, mode: 'suit' });
+    const order = ['r', 'o', 'y', 'g', 'b', 'p'];
+    const keys = cardsIn(s.doc, h).map((c) => { const f = card(c).face; return order.indexOf(f[0]) * 100 + Number(f.slice(1)); });
+    expect(keys).toEqual(keys.slice().sort((x, y) => x - y));
+    const tac = homeOf(s, TACTICS).id;
+    s.dispatch('cards.setLayout', { id: tac, layout: 'row' });
+    s.dispatch('cards.sort', { id: tac, mode: 'suit' });
+    expect(cardsIn(s.doc, tac).map((c) => card(c).face).slice(0, 3)).toEqual(['alexander', 'companion', 'darius']);
   });
 });

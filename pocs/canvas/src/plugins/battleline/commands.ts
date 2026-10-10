@@ -1,7 +1,7 @@
 import { isIds, isNum, pick, set, toFront, type CanvasNode, type Change, type Command, type DocView } from '../../core';
-import { shuffled } from '../cards/commands';
+import { give, shuffled } from '../cards/commands';
 import { FIELD as CARDS, card, cardNode, cardsIn, deckNode, groupNode, isHomeDeck, packOf } from '../cards/deck';
-import { slots } from '../cards/layout';
+import { HAND_W, emptyHandSize } from '../cards/layout';
 import { TACTICS_CARDS } from './model';
 import {
   CLAIM_DY,
@@ -31,11 +31,8 @@ import {
 // Pure commands (doc, args, ctx) -> changes, like every plugin. Cards stay cards-plugin data
 // (`x-cards`); `x-battleline` only marks flags and which container is which part of the line.
 
-/**
- * Facing of dealt cards. On this branch a hand shows its owner each card as it lies and others the
- * backs, so cards are dealt face up. (If hands change to "face up = shown to everyone", flip this.)
- */
-export const DEAL_FACE_UP = true;
+/** Dealt cards lie face down: in a hand that means private (its owner sees the faces, others the backs). */
+export const DEAL_FACE_UP = false;
 
 const C = (k: string) => `${CARDS}.${k}`;
 const isSide = (v: unknown): v is Side => v === 'a' || v === 'b';
@@ -68,10 +65,10 @@ export const setup: Command<{ x?: number; y?: number }> = (doc, a, ctx) => {
   for (let i = 0; i < 9; i++)
     for (const side of SIDES) {
       const p = g.formation(i, side);
-      const box = groupNode(ctx.newId(), p.x, p.y, ++z, { layout: side === 'a' ? 'column' : 'column-up', pack: LINE, fixed: true, slots: 3, max: 4, label: `Flag ${i + 1} · ${SIDE_NAME[side]}` });
+      const box = groupNode(ctx.newId(), p.x, p.y, ++z, { layout: side === 'a' ? 'column' : 'column-up', pack: LINE, spot: true, slots: 3, max: 4, label: `Flag ${i + 1} · ${SIDE_NAME[side]}` });
       add(mark(box, { role: 'formation', flag: i + 1, side }));
     }
-  const discard = groupNode(ctx.newId(), g.discard.x, g.discard.y, ++z, { layout: 'stack', pack: LINE, fixed: true, label: 'Discard' });
+  const discard = groupNode(ctx.newId(), g.discard.x, g.discard.y, ++z, { layout: 'stack', pack: LINE, spot: true, label: 'Discard' });
   add(mark({ ...discard, text: 'Discard' }, { role: 'discard' }));
 
   const deck = (pack: string, faces: string[], at: { x: number; y: number }, role: 'troops' | 'tactics') => {
@@ -97,9 +94,10 @@ export interface Seat {
 }
 
 /**
- * Deal Battle Line: `count` (default 7) troop cards to each side's hand, alternating, from the top of
- * the troop deck. A missing hand is made for the next seated player (`players`, the local player
- * first) or, with nobody left (solo), left without an owner; an ownerless hand goes to the next player.
+ * Deal Battle Line: `count` (default 7) troop cards, face down, to each side's hand, alternating,
+ * from the top of the troop deck. A missing hand is made as a private hand of the next seated player
+ * (`players`, the local player first) or, with nobody left (solo), as an ownerless group (a table
+ * spot, so it stays). An ownerless one is given to the next player, as Give to ▸ would.
  */
 export const deal: Command<{ players: Seat[]; count?: number }> = (doc, a, ctx) => {
   const deck = troopsDeck(doc);
@@ -117,17 +115,16 @@ export const deal: Command<{ players: Seat[]; count?: number }> = (doc, a, ctx) 
     if (h) {
       if (!h.owner && queue.length) {
         const p = queue.shift()!;
-        changes.push(set(h.id, 'owner', p.id), set(h.id, 'label', p.label.slice(0, 40)), set(h.id, 'text', p.label.slice(0, 40)), set(h.id, C('fixed'), undefined));
-        if (p.color) changes.push(set(h.id, C('color'), p.color));
+        const r = give(doc, { id: h.id, to: p.id, label: p.label, color: p.color }, ctx);
+        changes.push(...(Array.isArray(r) ? r : r.changes));
       }
       return { id: h.id, x: h.x, y: h.y, order: cardsIn(doc, h.id).reduce((m, x) => Math.max(m, card(x).order ?? 0), 0) };
     }
     const p = queue.shift();
-    const s = slots('fan', count, 3);
-    const at = g.hand(side, s.w, s.h);
+    const at = g.hand(side, HAND_W, emptyHandSize().h);
     const label = p ? p.label.slice(0, 40) : `Hand ${SIDE_NAME[side]}`;
-    // nobody to own it (solo): a public group that stays put like a seat
-    const node = groupNode(ctx.newId(), at.x, at.y, ++z, { layout: 'fan', pack: LINE, owner: p?.id, label, color: p?.color, fixed: !p });
+    // nobody to own it (solo): a public group that stays put like a seat (Give to ▸ hands it over)
+    const node = groupNode(ctx.newId(), at.x, at.y, ++z, { layout: 'fan', pack: LINE, owner: p?.id, label, color: p?.color, spot: !p });
     changes.push({ op: 'add', node: mark(node, { role: 'hand', side }) });
     return { id: node.id, x: node.x, y: node.y, order: 0 };
   });

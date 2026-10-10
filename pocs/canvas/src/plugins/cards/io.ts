@@ -42,8 +42,16 @@ export const repairImport: DocFilter = (doc, ctx) => {
         if (f.hand === true && typeof n.owner === 'string') d.layout ??= 'fan';
       }
       if (typeof f.color === 'string' && /^#[0-9a-f]{6}$/i.test(f.color)) d.color = f.color;
-      if (f.fixed === true) d.fixed = true;
+      if (f.spot === true) d.spot = true;
       for (const k of ['slots', 'max', 'cols'] as const) if (typeof f[k] === 'number' && Number.isInteger(f[k]) && (f[k] as number) > 0 && (f[k] as number) <= 60) d[k] = f[k] as number;
+      if (obj(f.sort)) d.sort = f.sort as DeckField['sort'];
+      if (!d.home) {
+        if (f.blind === true) d.blind = true;
+        if (f.showing === true) d.showing = true;
+        if (f.hideCount === true) d.hideCount = true;
+        if (f.fixed === true) d.fixed = true;
+        if (typeof f.width === 'number' && Number.isFinite(f.width)) d.width = f.width;
+      }
       out.push({ ...n, [FIELD]: d });
       continue;
     }
@@ -54,6 +62,7 @@ export const repairImport: DocFilter = (doc, ctx) => {
         c.order = typeof f.order === 'number' && Number.isFinite(f.order) ? f.order : 0;
       }
       if (typeof f.home === 'string') c.home = f.home;
+      if (typeof f.mine === 'boolean') c.mine = f.mine;
       out.push({ ...n, text: n.text ?? faceLabel(pack, f.face), [FIELD]: c });
       continue;
     }
@@ -73,10 +82,10 @@ export const repairImport: DocFilter = (doc, ctx) => {
     }
   }
   // an empty hand (a group with an owner) is a player's seat: keep it (Reset empties hands)
-  // a fixed slot area (formation, discard) stays too
+  // a table spot (formation, discard) stays too
   const hand = (n: CanvasNode) => typeof n.owner === 'string' && !!n.owner;
-  const fixed = (n: CanvasNode) => (n[FIELD] as DeckField).fixed === true;
-  return { ...doc, nodes: out.filter((n) => !decks.has(n.id) || used.has(n.id) || hand(n) || fixed(n)) };
+  const spot = (n: CanvasNode) => (n[FIELD] as DeckField).spot === true;
+  return { ...doc, nodes: out.filter((n) => !decks.has(n.id) || used.has(n.id) || hand(n) || spot(n)) };
 };
 
 function strip(n: CanvasNode): CanvasNode {
@@ -110,8 +119,8 @@ export const shapeExport: DocFilter = (doc: CanvasDoc) => {
     const f = n[FIELD] as DeckField;
     const spread = f.layout && f.layout !== 'stack';
     const owned = !f.home && typeof n.owner === 'string' && !!n.owner;
-    // a fixed slot area keeps its own label (e.g. "Flag 3 · A"), like a hand
-    const named = owned || (f.fixed === true && !!n.label);
+    // a table spot keeps its own label (e.g. "Flag 3 · A"), like a hand
+    const named = owned || (f.spot === true && !!n.label);
     const name = f.home ? 'Deck' : named ? (n.label ?? 'Hand') : spread ? 'Group' : 'Pile';
     const { text: _t, ...rest } = n;
     const group = { ...rest, type: 'group', label: named ? name : `${name}: ${cards.length} card${cards.length === 1 ? '' : 's'}` };
