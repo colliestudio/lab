@@ -24,6 +24,13 @@ export interface ObjectType {
    * click-to-deselect), e.g. on a locked board's surface. Default: true.
    */
   grabbable?(node: CanvasNode, down: PointerEvent, app: App): boolean;
+  /**
+   * Can a drag or an arrow-key nudge move it? Default: true. False = pinned in place (a mat's zone
+   * outside edit mode): it can still be clicked and selected, but moves of a selection leave it be.
+   */
+  movable?(node: CanvasNode, app: App): boolean;
+  /** Does a box selection pick it up? Default: true (false: a locked mat, a fixed zone). */
+  boxSelectable?(node: CanvasNode, app: App): boolean;
   /** Plain click (no drag, no Shift). `down` = the pointerdown. Return true if handled (skips double-click). */
   onClick?(node: CanvasNode, down: PointerEvent, app: App): boolean | void;
   /** A control inside the rendered object (`data-action="name"`) was pressed. Never starts a drag. */

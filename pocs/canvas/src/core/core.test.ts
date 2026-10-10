@@ -117,6 +117,23 @@ describe('riders', () => {
     expect(s.doc.visible.map((v) => v.id)).toEqual(['other', 'ghost', 'board', 'p1', 'p2']);
     expect(s.dispatch('core.front', { ids: ['board'] }).changes).toEqual([]);
   });
+  it('a rule may go by geometry: it gets every linked node in z order', () => {
+    const s = store();
+    // ride the topmost lower "mat" whose box holds the node's center
+    s.addRiderRule((node, _get, all) => {
+      if ((node as any)['x-mat']) return;
+      const cx = node.x + node.width / 2;
+      const cy = node.y + node.height / 2;
+      for (let i = all.length - 1; i >= 0; i--) {
+        const m = all[i];
+        if ((m as any)['x-mat'] && (m.z ?? 0) < (node.z ?? 0) && cx >= m.x && cx < m.x + m.width && cy >= m.y && cy < m.y + m.height) return m.id;
+      }
+    });
+    s.load({ nodes: [{ ...n('mat', 1, { 'x-mat': true }), width: 100, height: 100 }, { ...n('on', 2), x: 50, y: 50 }, { ...n('off', 3), x: 200 }], edges: [] });
+    expect(s.doc.riders('mat').map((r) => r.id)).toEqual(['on']);
+    s.dispatch('core.move', { ids: ['mat'], dx: 10, dy: 0 });
+    expect([s.doc.get('on')!.x, s.doc.get('off')!.x]).toEqual([60, 200]);
+  });
 });
 
 describe('duplicate', () => {

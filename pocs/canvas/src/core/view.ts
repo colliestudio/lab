@@ -22,6 +22,8 @@ type Gesture =
       mode?: string;
       /** A local drag (see ObjectType.dragsLocally): moves on this screen only until the drop. */
       local?: boolean;
+      /** Nothing it would move can move (ObjectType.movable): the drag does nothing. */
+      still?: boolean;
     }
   | { kind: 'marquee'; start: Pt; base: Set<string>; /** the object the press fell through (never box-selected) */ skip?: string }
   | { kind: 'pinch'; dist: number; mid: Pt };
@@ -289,7 +291,7 @@ export class View {
       store.select([id]);
     }
     const ids = this.app.selected().map((n) => n.id);
-    this.app.dispatch('core.front', { ids }, { merge: true });
+    this.app.dispatch('core.front', { ids: ids.filter((x) => this.app.canMove(x)) }, { merge: true });
     const w = this.world_(p);
     this.gesture = { kind: 'drag', ids, clickId: id, shift: e.shiftKey, down: e, start: w, applied: { x: 0, y: 0 }, moved: false };
     this.app.presence?.setHeld(this.app.publicIds(ids));
@@ -335,9 +337,13 @@ export class View {
             this.localDrag = { ids: new Set(g.ids), dx: 0, dy: 0 };
             ct.onLocalDrag?.(clicked, 'start', this.app);
           } else this.maybeSwapDragged(g);
+          // pinned objects (a mat's zones outside edit mode) stay where they are
+          g.ids = g.ids.filter((x) => this.app.canMove(x));
+          if (!g.ids.length) g.still = true;
           for (const id of g.ids) this.els.get(id)?.classList.add('cv-dragging');
           this.promote(g.ids);
         }
+        if (g.still) return;
         if (g.local && this.localDrag) {
           this.localDrag.dx = tx;
           this.localDrag.dy = ty;
@@ -368,7 +374,7 @@ export class View {
         });
         // touching by default; Alt = only objects fully inside the box
         const hits = this.app.store.doc.visible.filter((n) =>
-          n.id === g.skip || this.app.isConcealed(n)
+          n.id === g.skip || this.app.isConcealed(n) || !this.app.boxSelectable(n)
             ? false
             : e.altKey
             ? n.x >= r.x && n.x + n.width <= r.x + r.w && n.y >= r.y && n.y + n.height <= r.y + r.h
@@ -400,6 +406,7 @@ export class View {
 
     for (const id of g.ids) this.els.get(id)?.classList.remove('cv-dragging');
     this.promote([]);
+    if (g.moved && g.still) return;
     if (g.moved) {
       const found = this.findDropTarget(g, e);
       this.setDropTarget(g, undefined);
@@ -498,7 +505,8 @@ export class View {
       // nudge 1px (Shift 10px); a held-down key's repeats form one undo step
       e.preventDefault();
       const step = e.shiftKey ? 10 : 1;
-      const ids = [...store.selection];
+      const ids = [...store.selection].filter((x) => this.app.canMove(x));
+      if (!ids.length) return;
       this.app.dispatch('core.move', { ids, dx: arrow[0] * step, dy: arrow[1] * step }, { merge: e.repeat });
       this.endDrag(ids, undefined, 'keys');
       return;

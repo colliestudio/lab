@@ -140,6 +140,16 @@ export class App {
     return !!this.typeOf(n)?.concealed?.(n, { doc: this.store.doc, viewer: this.viewer });
   }
 
+  /** Can a drag / nudge move this node (ObjectType.movable)? */
+  canMove(id: string): boolean {
+    const n = this.node(id);
+    return !!n && this.typeOf(n)?.movable?.(n, this) !== false;
+  }
+  /** Does a box selection pick this node up (ObjectType.boxSelectable)? */
+  boxSelectable(n: CanvasNode): boolean {
+    return this.typeOf(n)?.boxSelectable?.(n, this) !== false;
+  }
+
   // --- helpers ---
   dispatch<A>(name: string, args: A, opts?: { merge?: boolean; undoable?: boolean }): DispatchResult {
     return this.store.dispatch(name, args, opts);

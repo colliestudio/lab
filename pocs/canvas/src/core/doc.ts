@@ -82,8 +82,11 @@ export const emptyDoc = (): CanvasDoc => ({ nodes: [], edges: [] });
 
 export const byZ = (a: CanvasNode, b: CanvasNode) => (a.z ?? 0) - (b.z ?? 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
-/** Containment rule supplied by plugins: return the id of the node that contains `node`, if any. */
-export type ParentOf = (node: CanvasNode, get: (id: string) => CanvasNode | undefined) => string | undefined;
+/**
+ * Containment rule supplied by plugins: return the id of the node that contains `node`, if any.
+ * `all` = the nodes being linked, in z order (bottom first), for rules that go by geometry.
+ */
+export type ParentOf = (node: CanvasNode, get: (id: string) => CanvasNode | undefined, all: readonly CanvasNode[]) => string | undefined;
 
 /**
  * Rider rule supplied by plugins: return the id of the node that carries `node` (e.g. a board its
@@ -135,7 +138,7 @@ function link(nodes: CanvasNode[], get: (id: string) => CanvasNode | undefined, 
   if (!rules.length) return { up, down };
   for (const n of nodes) {
     for (const rule of rules) {
-      const p = rule(n, get);
+      const p = rule(n, get, nodes);
       if (p && p !== n.id && get(p)) {
         up.set(n.id, p);
         let list = down.get(p);
