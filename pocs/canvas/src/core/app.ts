@@ -1,6 +1,6 @@
 import './core.css';
 import { registerCoreCommands } from './commands';
-import type { CanvasNode, CarrierOf, ParentOf } from './doc';
+import type { CanvasNode, CarrierOf, DuplicateRule, ParentOf } from './doc';
 import type { KeyBinding, Kit, MenuItem, ObjectType, Plugin } from './plugin';
 import { Store, type Command, type DispatchResult, type DocFilter } from './store';
 import { View } from './view';
@@ -36,6 +36,7 @@ export class App {
     // Figma: Shift+1 fit, Shift+2 selection, Shift+0 100%
     this.registerKey({ key: 'shift+0', label: 'Zoom to 100%', run: () => this.view.zoomCenter(1) });
     this.registerKey({ key: 'shift+1', label: 'Zoom to fit', run: () => this.view.fit() });
+    this.registerKey({ key: 'mod+d', label: 'Duplicate', run: () => this.dispatch('core.duplicate', { ids: [...this.store.selection] }) });
     this.registerKey({ key: 'shift+2', label: 'Zoom to selection', run: () => this.view.zoomToSelection() });
   }
 
@@ -65,6 +66,10 @@ export class App {
   /** Riders: nodes that move and come to front with their carrier, but stay separate objects. */
   registerRiderRule(rule: CarrierOf) {
     this.store.addRiderRule(rule);
+  }
+  /** Shape or refuse copies made by Duplicate (⌘D). */
+  registerDuplicateRule(rule: DuplicateRule) {
+    this.store.duplicateRules.push(rule);
   }
   registerKit(kit: Kit) {
     this.kits.push(kit);

@@ -1,5 +1,5 @@
 import * as Y from 'yjs';
-import { makeView, type CanvasDoc, type CanvasEdge, type CanvasNode, type Change, type CarrierOf, type DocView, type ParentOf } from './doc';
+import { makeView, type CanvasDoc, type CanvasEdge, type CanvasNode, type Change, type CarrierOf, type DocView, type DuplicateRule, type ParentOf } from './doc';
 
 /** Everything non-deterministic a command may use; injectable for tests / replay. */
 export interface CommandCtx {
@@ -69,6 +69,8 @@ export class Store {
   private riderRules: CarrierOf[] = [];
   readonly importFilters: DocFilter[] = [];
   readonly exportFilters: DocFilter[] = [];
+  /** How `core.duplicate` copies plugin objects (see DuplicateRule). */
+  readonly duplicateRules: DuplicateRule[] = [];
   /** Commands that upgrade older docs in place; run (not undoable) after every load. Must be idempotent. */
   readonly migrations: Command[] = [];
   selection: ReadonlySet<string> = new Set();

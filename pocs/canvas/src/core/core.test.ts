@@ -118,3 +118,18 @@ describe('riders', () => {
     expect(s.dispatch('core.front', { ids: ['board'] }).changes).toEqual([]);
   });
 });
+
+describe('duplicate', () => {
+  it('copies nodes offset on top and selects them; plugin rules shape or refuse copies', () => {
+    const s = store(parse(JSON.stringify(file)));
+    s.duplicateRules.push((n) => (n.id === 'b' ? null : undefined));
+    s.duplicateRules.push((n) => ({ ...n, text: 'copy' }));
+    const r = s.dispatch('core.duplicate', { ids: ['a', 'b'] });
+    expect(r.select).toHaveLength(1);
+    const c = s.doc.get(r.select![0])!;
+    expect(c).toMatchObject({ type: 'text', x: 24, y: 24, text: 'copy', color: '3' });
+    expect(s.doc.visible.at(-1)!.id).toBe(c.id);
+    expect([...s.selection]).toEqual([c.id]);
+    expect(s.dispatch('core.duplicate', { ids: ['b'] }).changes).toEqual([]);
+  });
+});

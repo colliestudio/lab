@@ -26,6 +26,8 @@ export function registerCardsLogic(store: Store) {
   store.importFilters.push(repairImport);
   store.exportFilters.push(shapeExport);
   store.migrations.push(commands.repairHomes as Command);
+  // a copied card would be a 53rd card of the pack: cards opt out of Duplicate
+  store.duplicateRules.push((n) => (isCardish(n) ? null : undefined));
 }
 
 /** Actions offered by a deck's tab, all aimed at that deck. */

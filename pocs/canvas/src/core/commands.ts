@@ -64,6 +64,24 @@ export function registerCoreCommands(store: Store) {
     for (const n of pick(doc, a?.ids)) walk(n.id);
     return [...out].map((id): Change => ({ op: 'del', id }));
   });
+  /** Copy nodes offset by (dx, dy) (default 24, 24) on top; plugins shape or refuse copies. Selects the copies. */
+  store.register('core.duplicate', (doc, a: { ids: string[]; dx?: number; dy?: number }, ctx) => {
+    const dx = isNum(a?.dx) ? a.dx : 24;
+    const dy = isNum(a?.dy) ? a.dy : 24;
+    const changes: Change[] = [];
+    const ids: string[] = [];
+    let z = doc.topZ;
+    for (const n of pick(doc, a?.ids)) {
+      if (doc.parentOf(n.id)) continue;
+      let copy: CanvasNode | null | undefined;
+      for (const rule of store.duplicateRules) if ((copy = rule(n, doc)) !== undefined) break;
+      if (copy === null) continue;
+      const id = ctx.newId();
+      ids.push(id);
+      changes.push({ op: 'add', node: { ...structuredClone(copy ?? n), id, x: Math.round(n.x + dx), y: Math.round(n.y + dy), z: ++z } });
+    }
+    return { changes, select: ids.length ? ids : undefined };
+  });
   store.register('core.add', (doc, a: { nodes: CanvasNode[] }) => {
     if (!Array.isArray(a?.nodes)) return [];
     return a.nodes

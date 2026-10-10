@@ -105,6 +105,12 @@ function link(nodes: CanvasNode[], get: (id: string) => CanvasNode | undefined, 
   return { up, down };
 }
 
+/**
+ * Duplicate rule supplied by plugins: return the copy's content (id/position/z are set by core),
+ * `null` to refuse copying this node, `undefined` for no opinion (next rule; default: a verbatim copy).
+ */
+export type DuplicateRule = (node: CanvasNode, doc: DocView) => CanvasNode | null | undefined;
+
 export function makeView(doc: CanvasDoc, parentRules: readonly ParentOf[] = [], riderRules: readonly CarrierOf[] = []): DocView {
   const nodes = doc.nodes.slice().sort(byZ);
   const map = new Map(nodes.map((n) => [n.id, n]));
