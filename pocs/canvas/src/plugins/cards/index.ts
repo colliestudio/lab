@@ -454,7 +454,9 @@ export const cardsPlugin: Plugin = {
         const f = node[FIELD] as { color?: string };
         if (isHand(node)) {
           const shown = cards.filter((c) => shownIn(node, c)).length;
-          return `hand:${ownerAway(app, node)}:${cards.length}:${shown}:${isBlind(node)}:${allowsShowing(node)}:${hidesCount(node)}:${hasFixedFrame(node)}:${ux.asOthers()}:${node.label}:${f.color}:${node.owner === viewer}:${layoutOf(node)}`;
+          // a count this viewer can't see stays out of the key (else the frame rebuilds on every change)
+          const count = (node.owner !== viewer || ux.asOthers()) && hidesCount(node) ? '?' : cards.length;
+          return `hand:${ownerAway(app, node)}:${count}:${shown}:${isBlind(node)}:${allowsShowing(node)}:${hidesCount(node)}:${hasFixedFrame(node)}:${ux.asOthers()}:${node.label}:${f.color}:${node.owner === viewer}:${layoutOf(node)}`;
         }
         return `${cards.length}:${isHomeDeck(node)}:${layoutOf(node)}:${node.label}:${f.color}:${node.owner === viewer}:${top ? card(top).face + card(top).faceUp : ''}`;
       },

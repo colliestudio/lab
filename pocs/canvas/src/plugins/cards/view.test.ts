@@ -47,4 +47,13 @@ describe('a hidden-count hand on another player’s screen', () => {
       expect([z.l0, z.l1]).toEqual([3, 4]);
     }
   });
+
+  it('the hand frame is not rebuilt when its hidden count changes', () => {
+    const { app, root, h } = bobsTable(2);
+    const frame = () => root.querySelector<HTMLElement>(`[data-node-id="${h}"]`)!.firstElementChild;
+    const before = frame();
+    expect(before).toBeTruthy();
+    app.dispatch('cards.drop', { target: h, ids: ['l0'] });
+    expect(frame()).toBe(before);
+  });
 });
