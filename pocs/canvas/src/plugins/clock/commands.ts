@@ -1,5 +1,5 @@
-import { isNum, set, type CanvasNode, type Change, type Command, type DocView } from '../../core';
-import { FIELD, H, W, baseOf, clock, clockNode, incOf, isClock, isSide, other, remaining, ticking, type ClockField, type Rot, type Side } from './model';
+import { isNum, set, type CanvasNode, type Change, type Command, type CommandResult, type DocView, type EventSpec } from '../../core';
+import { FIELD, H, W, baseOf, clock, clockNode, controlText, incOf, isClock, isSide, nameOf, other, remaining, ticking, type ClockField, type Rot, type Side } from './model';
 
 // Pure commands. Time comes in as `now` (the caller's clock), so they stay replayable and testable.
 // The app dispatches tap/pause/resume/flag/reset/control as not undoable: time doesn't go back.
@@ -9,6 +9,9 @@ const clockArg = (doc: DocView, id: unknown) => {
   const n = typeof id === 'string' ? doc.get(id) : undefined;
   return n && isClock(n) ? n : undefined;
 };
+/** Changes plus a log entry about clock `n` (only if something changed). Taps aren't logged: only start, pause, resume, flag fall, reset, time control. */
+const logged = (n: CanvasNode, changes: Change[], text: string, extra: Partial<EventSpec> = {}): CommandResult =>
+  changes.length ? { changes, events: [{ type: 'clock', text, targets: [n.id], ...extra }] } : { changes };
 const leftKey = (s: Side) => F(s === 0 ? 'left0' : 'left1');
 
 /** Field changes from `c` to `next` (only what differs; undefined deletes). */
@@ -42,10 +45,10 @@ export const tap: Command<{ id: string; side: Side; now: number }> = (doc, a) =>
   if (!n || !isSide(a.side) || !isNum(a.now)) return [];
   const c = clock(n);
   if (c.paused || c.flag !== undefined) return [];
-  if (c.run === undefined) return diff(n, { run: other(a.side), since: a.now });
+  if (c.run === undefined) return logged(n, diff(n, { run: other(a.side), since: a.now }), `started the clock (${nameOf(c, other(a.side))} to move)`);
   if (c.run !== a.side) return [];
   const left = remaining(c, a.side, a.now);
-  if (left <= 0) return diff(n, { [a.side === 0 ? 'left0' : 'left1']: 0, flag: a.side, since: undefined });
+  if (left <= 0) return logged(n, diff(n, { [a.side === 0 ? 'left0' : 'left1']: 0, flag: a.side, since: undefined }), `${nameOf(c, a.side)}’s time ran out`, { actor: null, key: `flag:${n.id}`, cue: 'pulse' });
   return [set(n.id, leftKey(a.side), left + incOf(c, a.side)), ...diff(n, { run: other(a.side), since: a.now })];
 };
 
@@ -55,7 +58,7 @@ export const pause: Command<{ id: string; now: number }> = (doc, a) => {
   if (!n || !isNum(a.now)) return [];
   const c = clock(n);
   if (c.run === undefined || !ticking(c, c.run)) return [];
-  return [set(n.id, leftKey(c.run), remaining(c, c.run, a.now)), set(n.id, F('paused'), true), set(n.id, F('since'), undefined)];
+  return logged(n, [set(n.id, leftKey(c.run), remaining(c, c.run, a.now)), set(n.id, F('paused'), true), set(n.id, F('since'), undefined)], 'paused the clock');
 };
 
 export const resume: Command<{ id: string; now: number }> = (doc, a) => {
@@ -63,7 +66,7 @@ export const resume: Command<{ id: string; now: number }> = (doc, a) => {
   if (!n || !isNum(a.now)) return [];
   const c = clock(n);
   if (!c.paused || c.flag !== undefined) return [];
-  return [set(n.id, F('paused'), undefined), set(n.id, F('since'), a.now)];
+  return logged(n, [set(n.id, F('paused'), undefined), set(n.id, F('since'), a.now)], 'resumed the clock');
 };
 
 /**
@@ -75,7 +78,11 @@ export const flag: Command<{ id: string; now: number }> = (doc, a) => {
   if (!n || !isNum(a.now)) return [];
   const c = clock(n);
   if (c.run === undefined || !ticking(c, c.run) || remaining(c, c.run, a.now) > 0) return [];
-  return [set(n.id, leftKey(c.run), 0), set(n.id, F('flag'), c.run), set(n.id, F('since'), undefined)];
+  return logged(n, [set(n.id, leftKey(c.run), 0), set(n.id, F('flag'), c.run), set(n.id, F('since'), undefined)], `${nameOf(c, c.run)}’s time ran out`, {
+    actor: null,
+    key: `flag:${n.id}`,
+    cue: 'pulse',
+  });
 };
 
 /** Each side back to its own starting time, nobody running. */
@@ -84,7 +91,7 @@ const fresh = (c: ClockField): Partial<ClockField> => ({ left0: baseOf(c, 0), le
 /** Both sides back to the time control, nobody running. */
 export const reset: Command<{ id: string }> = (doc, a) => {
   const n = clockArg(doc, a?.id);
-  return n ? diff(n, fresh(clock(n))) : [];
+  return n ? logged(n, diff(n, fresh(clock(n))), 'reset the clock') : [];
 };
 
 const okBase = (v: unknown): v is number => isNum(v) && v > 0 && v <= 24 * 3600_000;
@@ -104,7 +111,7 @@ export const control: Command<{ id: string; base: number; inc: number; base1?: n
     next.base1 = Math.round(a.base1!);
     next.inc1 = Math.round(a.inc1!);
   }
-  return diff(n, { base: next.base, inc: next.inc, base1: next.base1, inc1: next.inc1, ...fresh(next) });
+  return logged(n, diff(n, { base: next.base, inc: next.inc, base1: next.base1, inc1: next.inc1, ...fresh(next) }), `set the clock to ${controlText(next)}`);
 };
 
 /**

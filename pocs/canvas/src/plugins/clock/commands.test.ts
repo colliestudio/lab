@@ -179,4 +179,19 @@ describe('clock time math', () => {
     expect(clock(t.doc.get('id1')!).rot).toBe(90);
     expect(t.doc.get('id1')!.height).toBeGreaterThan(t.doc.get('id1')!.width);
   });
+
+  it('log: start, pause, resume, flag fall (by nobody), reset, time control; plain taps are not logged', () => {
+    const s = withClock(1000, 0);
+    s.actor = () => ({ id: 'a', name: 'Ann', color: '#f00' });
+    const texts = () => s.log.toArray().map((e) => (e.actor ? `${e.actor.name} ` : '') + e.text);
+    tap(s, 1, 0);
+    tap(s, 0, 100);
+    s.dispatch('clock.pause', { id: 'id1', now: 200 }, { undoable: false });
+    s.dispatch('clock.resume', { id: 'id1', now: 300 }, { undoable: false });
+    s.dispatch('clock.flag', { id: 'id1', now: 5000 }, { undoable: false });
+    s.dispatch('clock.flag', { id: 'id1', now: 5100 }, { undoable: false });
+    s.dispatch('clock.reset', { id: 'id1' }, { undoable: false });
+    s.dispatch('clock.control', { id: 'id1', base: 5 * MIN, inc: 3000 }, { undoable: false });
+    expect(texts()).toEqual(['Ann started the clock (White to move)', 'Ann paused the clock', 'Ann resumed the clock', 'Black’s time ran out', 'Ann reset the clock', 'Ann set the clock to 5+3']);
+  });
 });
