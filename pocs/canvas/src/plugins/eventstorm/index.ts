@@ -251,7 +251,7 @@ export const stormPlugin: Plugin = {
       create: (a, at) => {
         const id = a.dispatch('storm.createBoard', at).select?.[0];
         const b = id && a.node(id);
-        if (b) a.view.fit(60, [b]);
+        if (b) a.view.fit(80, [b]);
         a.store.select([]);
         a.notify('Event storm: press E to add a domain event, type, Tab for the next one');
       },
