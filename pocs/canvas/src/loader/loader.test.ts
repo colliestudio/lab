@@ -99,6 +99,9 @@ describe('policy', () => {
 });
 
 describe('render trees', () => {
+  it('nodes without a tag are divs; classes get the plugin prefix', () => {
+    expect(treeToHtml({ class: 'face', children: [1, null, 'x'] }, 'dice')).toBe('<div class="px-dice-face">1x</div>');
+  });
   it('sanitizes tags, styles, classes and text', () => {
     const html = treeToHtml(
       {
