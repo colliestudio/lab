@@ -167,7 +167,7 @@ export function createFramesPlugin(opts: FramesOptions): Plugin & { portals?: Po
         canDrop: () => false,
         onAction(node, action) {
           const room = portalRoom(node);
-          if (action === 'enter' && room) opts.enter(room);
+          if (action === 'enter' && room && room !== opts.room) opts.enter(room);
         },
         onDoubleClick(node) {
           const room = portalRoom(node);
