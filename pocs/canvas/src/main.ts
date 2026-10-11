@@ -7,6 +7,7 @@ import { chessPlugin } from './plugins/chess';
 import { clockPlugin } from './plugins/clock';
 import { battleLinePlugin } from './plugins/battleline';
 import { matsPlugin } from './plugins/mats';
+import { prototypePlugin } from './plugins/prototype';
 import { mountHelp, removeHelpNote } from './help';
 
 const ROOM = roomFromUrl();
@@ -25,6 +26,7 @@ app.use(chessPlugin);
 app.use(clockPlugin);
 app.use(battleLinePlugin);
 app.use(matsPlugin);
+app.use(prototypePlugin);
 app.store.migrations.push(removeHelpNote);
 
 
@@ -62,6 +64,10 @@ const button = (label: string, title: string, run: () => void) => {
   return b;
 };
 
+function playPrototype() {
+  app.keys.get('shift+enter')?.run(app);
+}
+
 async function doSave(saveAs = false) {
   try {
     const name = await saveFile(app.store.exportDoc(), { saveAs });
@@ -94,6 +100,7 @@ const addBtn = button('Add…', 'Put something on the table: a deck of cards, a 
     'Add to the table',
   ),
 );
+button('▶ Play', 'Play the prototype pages full screen, like a clickable prototype (⇧↵)', () => playPrototype());
 button('Open…', 'Open a .canvas file (⌘O)', doOpen);
 button('Save', 'Save as .canvas (⌘S)', () => doSave());
 button('Undo', 'Undo (⌘Z)', () => app.store.undo());
