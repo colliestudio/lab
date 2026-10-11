@@ -34,12 +34,32 @@
   border-bottom: 1px solid #ddd6c4;
   white-space: nowrap;
 }
-.es-hint {
+.es-sub {
   position: absolute;
   left: 14px;
-  top: 46px;
+  right: 14px;
+  top: 48px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.es-hint {
   font-size: 12px;
   color: #8a826d;
+}
+.es-sub button {
+  font: 600 12px system-ui, sans-serif;
+  border: 1px solid #cfc7b2;
+  background: #fff;
+  border-radius: 6px;
+  padding: 3px 8px;
+  cursor: pointer;
+  color: #333;
+}
+.es-sub button:hover {
+  background: #f0ebde;
 }
 .es-phases,
 .es-palette {

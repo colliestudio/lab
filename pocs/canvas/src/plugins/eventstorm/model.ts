@@ -89,7 +89,7 @@ export interface BoardField {
 // ---------------------------------------------------------------- geometry
 export const PAD = 40;
 /** Header band: phase switch, palette, timer. */
-export const HEAD = 70;
+export const HEAD = 84;
 /** One sticky row (tallest regular sticky + gap). */
 export const ROW = 128;
 /** A lane: two rows above the event row, the event row, two rows below. */

@@ -32,13 +32,12 @@ export function boardHtml(b: CanvasNode, o: { dotsLeft: number; now: number }): 
     `<div class="es-grip" data-grip title="${esc(b.label ?? 'Event storm')}: click for board actions, drag to move the board with everything on it">⠿ ${esc(b.label ?? 'Event storm')}</div>` +
     `<div class="es-head">` +
     `<div class="es-phases">${pills}</div>` +
-    `<div class="es-palette">${palette}</div>` +
     `<span class="es-spacer"></span>` +
     `<span class="es-dots" title="Your votes left on this board (. votes for the sticky under the mouse, , takes one back)">● ${o.dotsLeft} left</span>` +
     `<button class="es-timer${running ? ' es-running' : ''}" data-action="timer" title="Timebox: click to ${running ? 'pause' : 'start'} (right-click the board tab to set its length)">⏱ <span class="es-time">${fmt(timerLeft(t, o.now))}</span></button>` +
     `<button class="es-export" data-action="export" title="The flow as Markdown (for docs and agents)">⇩ Markdown</button>` +
     `</div>` +
-    `<div class="es-hint">${esc(PHASE_INFO[ph].hint)}</div>` +
+    `<div class="es-sub"><div class="es-palette">${palette}</div><span class="es-hint">${esc(PHASE_INFO[ph].hint)}</span></div>` +
     laneHtml +
     `</div>`
   );

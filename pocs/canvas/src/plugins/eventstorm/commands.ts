@@ -166,8 +166,8 @@ export const add: Command<{ board: string; kind: StickyKind; x?: number; y?: num
   if (after && a.kind === 'event') {
     const ev = isEvent(after) ? after : get(doc, sticky(after).on);
     if (ev) {
-      // just right of it: the pack slots it in between it and the next event
-      x = ev.x + COL / 2 + 1;
+      // timeline: just right of it (the pack slots it in between it and the next event); explore: one step right
+      x = ev.x + (enforcesTimeline(phaseOf(b)) ? COL / 2 + 1 : COL);
       y = ev.y;
     }
   } else if (after) {
