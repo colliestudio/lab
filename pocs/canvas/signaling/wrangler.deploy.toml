@@ -20,3 +20,17 @@ class_name = "SignalRoom"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["SignalRoom"]
+
+# Sandbox origin (not enabled; see ideas/sandbox-origin.md). Frames for plugins and pages are served
+# by this Worker on `<label>.<SANDBOX_HOST>`, one label per frame, chosen by host name in
+# src/index.ts. To turn it on: a wildcard host on a registrable domain of its own (cookie and
+# process isolation from the app), e.g. `*.canvas-frames.example` with a wildcard DNS record and
+# a certificate that covers it, then:
+#   routes = [{ pattern = "canvas.lab.collie.studio", custom_domain = true },
+#             { pattern = "*.canvas-frames.example/*", zone_name = "canvas-frames.example" }]
+#   [vars]
+#   SANDBOX_HOST = "canvas-frames.example"
+#   APP_ORIGINS = "https://canvas.lab.collie.studio"
+#   [assets] run_worker_first = true   (+ binding = "ASSETS" and `env.ASSETS.fetch(req)` for the app),
+#   so the app's static files are never served on a sandbox host name.
+# Build the app with VITE_SANDBOX_URL="https://{label}.canvas-frames.example".
