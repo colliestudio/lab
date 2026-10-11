@@ -168,7 +168,6 @@ function runStep(run: Scratch, s: Step, a: RunArgs, notes: string[]): 'stop' | v
           call('tap', { side: 1, now });
         } else if (c.run === undefined) call('tap', { side: 1, now }); // tapping side 1 starts side 0, like the clock's own Start
       }
-      run.events.push({ type: 'auto.clock', text: `${s.action === 'start' ? 'started' : s.action === 'pause' ? 'paused' : 'reset'} the clock`, targets: clocks.map((c) => c.id) });
       return;
     }
     case 'setText':

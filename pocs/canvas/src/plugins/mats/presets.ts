@@ -95,7 +95,7 @@ function solitaire(): Layout {
  * Tiến Lên (4 players): a strip on top for buttons, seats in two rows, and between them the deck
  * ("Main"), the pile played to (face up) and a set-aside pile (face down) for cards nobody gets.
  */
-export const TIENLEN_STRIP = 100;
+export const TIENLEN_STRIP = 124;
 function tienlen(players: Seat[]): Layout {
   const w = 1400;
   const seat = { w: 560, h: 236 };

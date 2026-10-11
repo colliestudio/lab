@@ -1,6 +1,5 @@
 import { Scratch, isNum, type CanvasNode, type Command, type Store } from '../../core';
 import type { Seat } from '../mats/presets';
-import { TIENLEN_STRIP } from '../mats/presets';
 import { freeZoneNode, isMat } from '../mats/model';
 import { W as CLOCK_W, clockNode } from '../clock/model';
 import { BUTTON_H, BUTTON_W, buttonNode, type ButtonField } from './model';
@@ -76,7 +75,7 @@ export function tienlenCommand(store: Store): Command<{ x?: number; y?: number; 
     const gap = 24;
     TIENLEN_BUTTONS.forEach((b, i) => {
       const x = m.x + 80 + i * (BUTTON_W + gap);
-      run.push([{ op: 'add', node: buttonNode(ctx.newId(), x, m.y + (TIENLEN_STRIP - BUTTON_H) / 2 + 4, ++z, b) }]);
+      run.push([{ op: 'add', node: buttonNode(ctx.newId(), x, m.y + 16, ++z, b) }]);
     });
     return { changes: run.changes, events: [{ type: 'auto.kit', text: 'added a Tiến Lên table with buttons', targets: [m.id] }], select: [] };
   };
