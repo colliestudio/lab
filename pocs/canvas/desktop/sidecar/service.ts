@@ -149,6 +149,7 @@ const service: Service = {
     if (!hit) throw new Error(`no open canvas "${ref}" (open: ${all.map((b) => b.name).join(', ') || 'none'}); use open_canvas with a path`);
     return hit;
   },
+  eval: async (b, seat, js) => (await callShell('eval', { board: b.id, ws: `ws://${base()}/b/${b.id}`, seat, js })).result,
   screenshot: async (b, seat, opts) => {
     const t0 = Date.now();
     const r = await callShell('screenshot', { board: b.id, file: b.file, ws: `ws://${base()}/b/${b.id}`, seat, ...opts }, 30_000);

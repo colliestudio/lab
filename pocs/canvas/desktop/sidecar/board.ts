@@ -149,7 +149,8 @@ export class Board {
 
   /** People in the room (browser/window presence with a user), not counting agent seats. */
   people(): string[] {
-    return [...this.awareness.getStates().values()].map((s: any) => s?.user?.name).filter(Boolean);
+    // browsers relay everyone's presence back, agents' seats included: keep people only
+    return [...this.awareness.getStates().values()].map((s: any) => s?.user).filter((u: any) => u?.name && !/^(agent|tool|file):/.test(u.id ?? '')).map((u: any) => u.name);
   }
 
   writeOut() {

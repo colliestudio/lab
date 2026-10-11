@@ -140,7 +140,13 @@ func (sh *Shell) openFile(path string) (string, error) {
 	sh.mu.Unlock()
 
 	url := fmt.Sprintf("/?bridge=ws://%s/b/%s", sh.side.Base(), id)
+	sh.mu.Lock()
+	cascade := 30 * len(sh.windows)
+	sh.mu.Unlock()
 	win := sh.app.Window.NewWithOptions(application.WebviewWindowOptions{
+		InitialPosition:  application.WindowXY,
+		X:                120 + cascade,
+		Y:                80 + cascade,
 		Name:             "board-" + id,
 		Title:            name,
 		Width:            1280,
@@ -207,12 +213,24 @@ func (sh *Shell) onServiceCall(op string, m map[string]any) (map[string]any, err
 		return nil, err
 	case "screenshot":
 		return sh.screenshot(m)
+	case "eval": // debug (CANVAS_DEBUG): JS in the seat's eye window
+		e, nw, err := sh.eyeFor(m)
+		if err != nil {
+			return nil, err
+		}
+		defer e.mu.Unlock()
+		js, _ := m["js"].(string)
+		out, err := evalJS(nw, js, 10*time.Second)
+		var v any
+		_ = json.Unmarshal([]byte(out), &v)
+		return map[string]any{"result": v}, err
 	}
 	return nil, fmt.Errorf("unknown op %q", op)
 }
 
-func (sh *Shell) screenshot(m map[string]any) (map[string]any, error) {
-	t0 := time.Now()
+// eyeFor: the seat's hidden window on a board (created on first use, resized on demand), ready to
+// render. Returns it locked.
+func (sh *Shell) eyeFor(m map[string]any) (*eye, unsafe.Pointer, error) {
 	board, _ := m["board"].(string)
 	ws, _ := m["ws"].(string)
 	seat, _ := m["seat"].(map[string]any)
@@ -228,8 +246,6 @@ func (sh *Shell) screenshot(m map[string]any) (map[string]any, error) {
 	}
 	sh.mu.Unlock()
 	e.mu.Lock()
-	defer e.mu.Unlock()
-
 	if e.win == nil {
 		e.win = sh.app.Window.NewWithOptions(application.WebviewWindowOptions{
 			Name:   "eye-" + key,
@@ -245,25 +261,35 @@ func (sh *Shell) screenshot(m map[string]any) (map[string]any, error) {
 		})
 		e.w, e.h = w, h
 		log.Printf("eye: created hidden window for %v on %s", seat["name"], board)
-	} else if e.w != w || e.h != h {
+	} else if _, sized := m["width"]; sized && (e.w != w || e.h != h) {
 		e.win.SetSize(w, h)
 		e.w, e.h = w, h
 		e.seen = false
 	}
 	nw := waitNative(e.win, 5*time.Second)
 	if nw == nil {
-		return nil, errors.New("eye window did not come up")
+		e.mu.Unlock()
+		return nil, nil, errors.New("eye window did not come up")
 	}
-	ready := false
 	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(25 * time.Millisecond) {
 		if out, err := evalJS(nw, `return !!(window.eye && window.eye.ready)`, 2*time.Second); err == nil && out == "true" {
-			ready = true
-			break
+			return e, nw, nil
 		}
 	}
-	if !ready {
-		return nil, fmt.Errorf("eye window not ready (%s)", windowState(nw))
+	e.mu.Unlock()
+	return nil, nil, fmt.Errorf("eye window not ready (%s)", windowState(nw))
+}
+
+func (sh *Shell) screenshot(m map[string]any) (map[string]any, error) {
+	t0 := time.Now()
+	board, _ := m["board"].(string)
+	seat, _ := m["seat"].(map[string]any)
+	e, nw, err := sh.eyeFor(m)
+	if err != nil {
+		return nil, err
 	}
+	defer e.mu.Unlock()
+	w := e.w
 	tReady := time.Since(t0)
 
 	cam := m["camera"]
@@ -292,7 +318,9 @@ func (sh *Shell) screenshot(m map[string]any) (map[string]any, error) {
 		}`
 	}
 	// rAF can be throttled in a hidden window: race it with a timeout
-	settle := `await new Promise((res) => { let done = false; const f = () => { if (!done) { done = true; res(); } };
+	settle := `await Promise.all([...document.querySelectorAll('iframe:not([data-loaded])')].map((f) =>
+		new Promise((res) => { f.addEventListener('load', res, { once: true }); setTimeout(res, 2000); })));
+	await new Promise((res) => { let done = false; const f = () => { if (!done) { done = true; res(); } };
 		requestAnimationFrame(() => requestAnimationFrame(f)); setTimeout(f, 60); });`
 	camOut, err := evalJS(nw, camJS+labelJS+settle+`const r = app.view.root, v = app.viewport;
 		return { x: Math.round((r.clientWidth / 2 - v.x) / v.zoom), y: Math.round((r.clientHeight / 2 - v.y) / v.zoom), zoom: +v.zoom.toFixed(3) };`, 5*time.Second)

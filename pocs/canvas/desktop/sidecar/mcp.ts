@@ -19,6 +19,7 @@ export interface Service {
   list(): unknown[];
   open(path: string, show: boolean): Promise<unknown>;
   board(ref?: string): Board;
+  eval?(b: Board, seat: { id: string; name: string }, js: string): Promise<unknown>;
   screenshot(b: Board, seat: { id: string; name: string }, opts: ShotOpts): Promise<{ png: string; width: number; height: number; camera: unknown; ms: number }>;
 }
 
@@ -177,5 +178,15 @@ export function makeMcpServer(svc: Service, actor: () => Actor) {
     }),
   );
 
+  if (process.env.CANVAS_DEBUG) {
+    server.registerTool(
+      'canvas_debug_eval',
+      { description: 'Debug: run JS (async function body) in your eye window for a board; returns JSON.', inputSchema: { board, js: z.string() } },
+      tool(async (a: { board?: string; js: string }) => {
+        const me = actor();
+        return svc.eval!(svc.board(a.board), { id: me.id, name: me.name }, a.js);
+      }),
+    );
+  }
   return server;
 }

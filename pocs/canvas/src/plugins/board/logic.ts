@@ -17,7 +17,7 @@ export const LINK_GAP = 70;
 const COL_HEAD = 44;
 
 /** Plain JSON Canvas: no other plugin's `x-` fields (a card or a mat is not a note or a column). */
-export const isPlain = (n: CanvasNode) => Object.keys(n).every((k) => !k.startsWith('x-') || k === 'x-sync');
+export const isPlain = (n: CanvasNode) => Object.keys(n).every((k) => !k.startsWith('x-') || k === 'x-sync' || k === 'x-embed');
 export const isNote = (n: CanvasNode) => (n.type === 'text' || n.type === 'link' || n.type === 'file') && isPlain(n);
 export const isColumn = (n: CanvasNode) => n.type === 'group' && isPlain(n);
 

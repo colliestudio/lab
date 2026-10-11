@@ -61,6 +61,7 @@ export const boardPlugin: Plugin = {
         if (n.type === 'link' && n['x-embed'] === true && /^https?:\/\//.test(n.url ?? '')) {
           const f = document.createElement('iframe');
           f.src = n.url!;
+          f.addEventListener('load', () => (f.dataset.loaded = '1'), { once: true });
           f.setAttribute('sandbox', 'allow-scripts');
           f.style.cssText = 'position:absolute;left:8px;right:8px;top:36px;bottom:8px;width:calc(100% - 16px);height:calc(100% - 44px);border:0;border-radius:6px;background:#fff;pointer-events:none';
           (el.firstElementChild as HTMLElement).style.position = 'relative';
