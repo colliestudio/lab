@@ -38,6 +38,9 @@ export function openTable(app: App, type: string) {
       const right = all.length ? Math.max(...all.map((n) => n.x + n.width)) + 40 : app.viewCenter().x;
       const y = all.length ? Math.min(...all.map((n) => n.y)) : app.viewCenter().y;
       app.dispatch('components.create', { type, x: right, y });
+      // the button has focus, so the change listener deferred the redraw: show the new row now
+      pending = false;
+      draw();
       requestAnimationFrame(() => box.querySelector<HTMLElement>('tbody tr:last-child .cmp-input')?.focus());
     };
     const x = h('button', 'cmp-close', '✕');

@@ -240,7 +240,7 @@ export function mountComponentsPanel(app: App, bar: HTMLElement) {
   }
 
   function draw() {
-    if (panel.hidden) return;
+    if (panel.hidden || pressing) return;
     // never redraw under the user's typing (a commit lands when the field loses focus)
     const active = document.activeElement;
     if (active && panel.contains(active) && active.matches('input:not([type=checkbox]), textarea')) return;
@@ -249,8 +249,21 @@ export function mountComponentsPanel(app: App, bar: HTMLElement) {
     const x = button('✕', () => toggle(false), 'cmp-close');
     panel.replaceChildren(x, ...(mode.kind === 'json' ? jsonView() : t ? typeView(t) : listView()));
   }
-  app.store.subscribe(() => {
+  // The JSON view is never redrawn from outside (it would drop unapplied edits and the Apply message).
+  const refresh = () => {
     if (mode.kind !== 'json') draw();
-  });
-  panel.addEventListener('focusout', () => setTimeout(draw));
+  };
+  // Never redraw between pointerdown and click: replacing the pressed button would swallow its click
+  // (e.g. a focusout redraw when leaving a field to press "Add field" or "Apply").
+  let pressing = false;
+  panel.addEventListener('pointerdown', () => (pressing = true), true);
+  const release = () => {
+    if (!pressing) return;
+    pressing = false;
+    setTimeout(refresh);
+  };
+  window.addEventListener('pointerup', release, true);
+  window.addEventListener('pointercancel', release, true);
+  app.store.subscribe(refresh);
+  panel.addEventListener('focusout', () => setTimeout(refresh));
 }
