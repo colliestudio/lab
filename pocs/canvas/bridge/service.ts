@@ -28,6 +28,8 @@ export interface ServiceOptions {
    * other than our own (CSRF / cross-site WebSocket). Non-browser clients send no Origin.
    */
   localOnly?: boolean;
+  /** More page origins allowed with localOnly (the desktop's dev mode: the vite dev server). */
+  extraOrigins?: string[];
   /** `access-control-allow-origin: *` on API replies (old bridge behaviour). */
   cors?: boolean;
   log?: Log;
@@ -142,7 +144,7 @@ export class BridgeService {
     const host = (req.headers.host ?? '').replace(/:\d+$/, '');
     if (!['127.0.0.1', 'localhost', '[::1]'].includes(host)) return false;
     const origin = req.headers.origin;
-    return !origin || origin === this.origin || origin === `http://localhost:${this.port}`;
+    return !origin || origin === this.origin || origin === `http://localhost:${this.port}` || !!this.opts.extraOrigins?.includes(origin);
   }
 
   private async route(req: IncomingMessage, res: ServerResponse) {

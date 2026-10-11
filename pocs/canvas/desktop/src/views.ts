@@ -68,7 +68,7 @@ export class AgentViews {
         partition: 'agent-views',
       },
     });
-    const url = `${this.service.origin}/?bridge=${encodeURIComponent(this.service.wsUrl(b))}&agentView=${encodeURIComponent(actor.id)}`;
+    const url = `${process.env.CANVAS_WEB_URL?.replace(/\/+$/, '') ?? this.service.origin}/?bridge=${encodeURIComponent(this.service.wsUrl(b))}&agentView=${encodeURIComponent(actor.id)}`;
     const ready = (async () => {
       await win.loadURL(url);
       // mark embedded pages as they finish loading (load doesn't bubble; capture does reach the document)

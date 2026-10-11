@@ -7,7 +7,7 @@
   "scripts": {
     "build": "node build.mjs",
     "start": "node build.mjs && electron .",
-    "dev": "node build.mjs --dev && electron .",
+    "dev": "node scripts/dev.mjs",
     "package": "node build.mjs && electron-builder --dir --mac --arm64",
     "typecheck": "tsc --noEmit -p ."
   },

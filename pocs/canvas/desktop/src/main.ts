@@ -39,6 +39,9 @@ app.enableSandbox();
 const WEB_DIR = join(__dirname, 'web');
 const windows = new Map<string, BrowserWindow>();
 let service: BridgeService;
+/** Dev: load the web app from the vite dev server (HMR) instead of the built copy. */
+const DEV_WEB = process.env.CANVAS_WEB_URL?.replace(/\/+$/, '');
+const webOrigin = () => DEV_WEB ?? service.origin;
 let views: AgentViews;
 let mcp: McpEndpoint;
 const pending: string[] = [];
@@ -141,7 +144,7 @@ function openBoard(file: string, opts: { window?: boolean } = {}): BoardFile {
       service.close(b.id);
     }
   });
-  void win.loadURL(`${service.origin}/?bridge=${encodeURIComponent(service.wsUrl(b))}`);
+  void win.loadURL(`${webOrigin()}/?bridge=${encodeURIComponent(service.wsUrl(b))}`);
   return b;
 }
 
@@ -246,7 +249,7 @@ app.on('web-contents-created', (_e, wc) => {
   });
   // the app's pages stay on the app's origin (embedded iframes navigate freely inside themselves)
   wc.on('will-navigate', (e, url) => {
-    if (!url.startsWith(service.origin + '/')) e.preventDefault();
+    if (!url.startsWith(webOrigin() + '/')) e.preventDefault();
   });
   wc.on('will-attach-webview', (e) => e.preventDefault());
 });
@@ -255,7 +258,7 @@ app.on('web-contents-created', (_e, wc) => {
 
 app.whenReady().then(async () => {
   for (const s of [session.fromPartition('persist:canvas'), session.fromPartition('agent-views')]) s.setPermissionRequestHandler((_wc, _p, cb) => cb(false));
-  service = new BridgeService({ host: '127.0.0.1', port: Number(process.env.CANVAS_PORT) || 0, staticDir: WEB_DIR, localOnly: true, log });
+  service = new BridgeService({ host: '127.0.0.1', port: Number(process.env.CANVAS_PORT) || 0, staticDir: WEB_DIR, localOnly: true, extraOrigins: DEV_WEB ? [DEV_WEB] : [], log });
   views = new AgentViews(service, log);
   mcp = new McpEndpoint({ service, views, openBoard, recent });
   service.use(mcp.handle);
