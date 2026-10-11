@@ -66,9 +66,9 @@ export function holds(doc: DocView, c: Cond): boolean {
   const nodes = resolve(doc, c.target);
   // a target that resolves to nothing counts as empty (a pile that went away when emptied)
   const empty = (n: CanvasNode) => (isCard(n) ? false : contents(doc, n).length === 0);
-  const each = nodes.length ? nodes.map(empty) : [true];
-  const isEmpty = c.match === 'any' ? each.some(Boolean) : each.every(Boolean);
-  return c.is === 'empty' ? isEmpty : !isEmpty;
+  // per match: is it so? then all / any of them ("not-empty, all" = every hand has cards)
+  const each = (nodes.length ? nodes.map(empty) : [true]).map((e) => (c.is === 'empty' ? e : !e));
+  return c.match === 'any' ? each.some(Boolean) : each.every(Boolean);
 }
 
 // ------------------------------------------------------------------ running

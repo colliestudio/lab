@@ -115,10 +115,10 @@ describe('Tiến Lên buttons', () => {
     expect(lastLog(s)).toBe('ran ▶ New round: still here; (step 1: nothing matches “Nope”)');
   });
   it('rule: "Someone went out" holds while every hand has cards, fires when one empties', () => {
-    const s = tienlen([ME]);
+    const s = tienlen();
     s.dispatch('auto.edit', { id: button(s, 'Deal Tiến Lên').id, steps: [{ do: 'deal', from: { name: 'Main' }, count: 2 }] });
-    run(s, 'Deal Tiến Lên', [ME]);
-    const seat = s.doc.nodes.find(isHand)!;
+    run(s, 'Deal Tiến Lên');
+    const seat = s.doc.nodes.find((n) => isHand(n) && n.owner === ME.id)!;
     const [a, b] = cardsIn(s.doc, seat.id);
     run(s, 'Someone went out');
     expect(lastLog(s)).toBe('ran ▶ Someone went out (nothing to do)');
