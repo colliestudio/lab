@@ -76,12 +76,20 @@ export function markdownDialog(md: string, onClose: () => void): HTMLElement {
   wrap.querySelector('textarea')!.value = md;
   wrap.addEventListener('click', async (e) => {
     const d = (e.target as HTMLElement).dataset.do;
-    if (e.target === wrap || d === 'close') {
-      wrap.remove();
-      onClose();
-    } else if (d === 'copy') {
-      await navigator.clipboard?.writeText(md).catch(() => undefined);
-      (e.target as HTMLElement).textContent = 'Copied';
+    if (e.target === wrap || d === 'close') close();
+    else if (d === 'copy') {
+      const btn = e.target as HTMLElement;
+      // navigator.clipboard needs a secure context (not plain http from another machine): fall back to execCommand
+      let ok = window.isSecureContext && !!navigator.clipboard && (await navigator.clipboard.writeText(md).then(() => true, () => false));
+      if (!ok) {
+        wrap.querySelector('textarea')!.select();
+        try {
+          ok = document.execCommand('copy');
+        } catch {
+          ok = false;
+        }
+      }
+      btn.textContent = ok ? 'Copied' : 'Select all, ⌘C';
     } else if (d === 'download') {
       const a = document.createElement('a');
       a.href = URL.createObjectURL(new Blob([md], { type: 'text/markdown' }));
@@ -89,11 +97,18 @@ export function markdownDialog(md: string, onClose: () => void): HTMLElement {
       a.click();
     }
   });
-  wrap.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      wrap.remove();
-      onClose();
-    }
-  });
+  // on window (capture): focus may still be on the board's export button when Esc comes
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key !== 'Escape') return;
+    e.preventDefault();
+    e.stopPropagation();
+    close();
+  };
+  const close = () => {
+    window.removeEventListener('keydown', onKey, true);
+    wrap.remove();
+    onClose();
+  };
+  window.addEventListener('keydown', onKey, true);
   return wrap;
 }

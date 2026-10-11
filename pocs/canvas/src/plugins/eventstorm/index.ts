@@ -179,7 +179,8 @@ export const stormPlugin: Plugin = {
       (window as any).stormMarkdown = md;
       const d = markdownDialog(md, () => app.view.root.focus());
       document.body.append(d);
-      d.querySelector('textarea')!.focus();
+      // after the click that opened it (the export button takes focus on its own press)
+      setTimeout(() => d.querySelector('textarea')?.focus());
       navigator.clipboard?.writeText(md).then(
         () => app.notify('Flow copied as Markdown'),
         () => undefined,
