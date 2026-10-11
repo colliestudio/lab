@@ -102,11 +102,10 @@ export function mountRoomStatus(app: App, room: Room, bar: HTMLElement, onLeave:
     const connecting = !sig && !everConnected && Date.now() - started < 8000;
     const n = room.connectedPeers();
     state.dataset.ok = String(sig || connecting);
-    state.textContent = `room ${room.id} · ${n} peer${n === 1 ? '' : 's'} · ${sig ? 'online' : connecting ? 'connecting…' : 'signaling offline'}`;
+    state.textContent = `${room.label ?? `room ${room.id}`} · ${n} peer${n === 1 ? '' : 's'} · ${sig ? 'online' : connecting ? 'connecting…' : 'signaling offline'}`;
     state.title = sig ? 'Connected to the signaling server' : 'Can’t reach the signaling server: changes stay local and sync when it’s back';
   };
   room.presence.onChange(draw);
-  room.provider.on('peers', draw);
   setInterval(draw, 1000);
   draw();
 }

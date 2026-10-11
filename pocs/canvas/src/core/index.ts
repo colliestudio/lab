@@ -12,4 +12,4 @@ export { Viewport } from './viewport';
 export { mountZoomControl } from './zoomControl';
 export { Presence, mountPresenceView, type PlayerInfo, type Peer } from './presence';
 export { loadPlayer, savePlayer, PALETTE, MAX_NAME, type StoredPlayer } from './player';
-export { joinRoom, signalingUrl, roomDbName, type Room } from './sync';
+export { joinRoom, joinBridge, signalingUrl, roomDbName, type Room } from './sync';

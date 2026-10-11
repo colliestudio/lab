@@ -1,4 +1,5 @@
 import { WebrtcProvider } from 'y-webrtc';
+import { WebsocketProvider } from 'y-websocket';
 import type { App } from './app';
 import { mountPresenceView, Presence, type PlayerInfo } from './presence';
 
@@ -10,7 +11,9 @@ import { mountPresenceView, Presence, type PlayerInfo } from './presence';
 
 export interface Room {
   id: string;
-  provider: WebrtcProvider;
+  provider: { destroy(): void };
+  /** How the toolbar names this connection (default: "room <id>"). */
+  label?: string;
   presence: Presence;
   /** Is the signaling WebSocket up? */
   signalingConnected(): boolean;
@@ -58,6 +61,31 @@ export function joinRoom(app: App, id: string, me: PlayerInfo, signal = signalin
     presence,
     signalingConnected: () => provider.signalingConns.some((c: { connected: boolean }) => c.connected),
     connectedPeers: () => peers,
+    leave: () => provider.destroy(),
+  };
+}
+
+/**
+ * Join a canvas bridge (bridge/server.ts): a Node process that hosts the doc for a .canvas file on
+ * disk, over WebSocket (y-websocket protocol). Agents and tools edit through it; they show up here
+ * as players. The bridge is the host and the persistence (the file), so nothing is stored locally.
+ */
+export function joinBridge(app: App, url: string, me: PlayerInfo): Room & { synced: Promise<void> } {
+  const provider = new WebsocketProvider(url.replace(/\/+$/, ''), 'canvas', app.store.ydoc);
+  const presence = new Presence(provider.awareness, me);
+  app.presence = presence;
+  app.viewer = me.id;
+  mountPresenceView(app, presence);
+  window.addEventListener('beforeunload', () => provider.destroy());
+  const synced = new Promise<void>((resolve) => provider.once('sync', () => resolve()));
+  return {
+    id: url,
+    label: `bridge ${new URL(url).host}`,
+    provider,
+    presence,
+    synced,
+    signalingConnected: () => provider.wsconnected,
+    connectedPeers: () => presence.peers().length,
     leave: () => provider.destroy(),
   };
 }
