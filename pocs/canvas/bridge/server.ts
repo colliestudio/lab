@@ -49,6 +49,10 @@ if (existsSync(file)) {
 host.store.undoManager.clear();
 
 function writeOut() {
+  // The file changed on disk since we last wrote or read it (an edit the watcher hasn't applied
+  // yet): merge it in first, never write over it. If it can't be read (invalid JSON), leave it.
+  const disk = readDisk();
+  if (disk !== undefined && disk !== lastText && !ingest(disk)) return;
   const text = host.fileText();
   if (text === lastText) return;
   const tmp = `${file}.tmp`;
@@ -74,29 +78,37 @@ host.ydoc.on('afterTransaction', (tr: Y.Transaction) => {
   }, Host.fromFile(tr.origin) ? 50 : 300);
 });
 
+function readDisk(): string | undefined {
+  try {
+    return existsSync(file) ? readFileSync(file, 'utf8') : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Apply the file's text to the live doc (3-way merge). False when it isn't valid. */
+function ingest(text: string): boolean {
+  try {
+    const line = host.applyFile(text);
+    lastText = text;
+    if (line) log(`file: ${line}`);
+    return true;
+  } catch (e) {
+    log(`file: not applied (${(e as Error).message}); fix the JSON and save again`);
+    return false;
+  }
+}
+
 // file → doc: watch the directory (editors and git replace the file instead of writing in place)
 let readTimer: ReturnType<typeof setTimeout> | undefined;
 watch(dirname(file), (_ev, name) => {
   if (name !== basename(file)) return;
   clearTimeout(readTimer);
   readTimer = setTimeout(() => {
-    if (!existsSync(file)) return;
-    let text: string;
-    try {
-      text = readFileSync(file, 'utf8');
-    } catch {
-      return;
-    }
-    if (text === lastText) return; // our own write
-    try {
-      const line = host.applyFile(text);
-      lastText = text;
-      if (line) log(`file: ${line}`);
-      // normalize the file to canonical form (after the doc settled)
-      setTimeout(writeOut, 100);
-    } catch (e) {
-      log(`file: not applied (${(e as Error).message}); fix the JSON and save again`);
-    }
+    const text = readDisk();
+    if (text === undefined || text === lastText) return; // gone, or our own write
+    // normalize the file to canonical form (after the doc settled)
+    if (ingest(text)) setTimeout(writeOut, 100);
   }, 80);
 });
 
