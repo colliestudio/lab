@@ -18,7 +18,7 @@ An event storming kit built as one plugin on the same "pieces on a table" model 
 
 ## What's built (branch `idea/eventstorm`)
 
-- `src/plugins/eventstorm/`: `model.ts` (kinds, phases, geometry, rider rule), `commands.ts` (pure: createBoard, add, text, kind, settle, tidy, phase, lanes, dots, vote, timer, detach, reset), `markdown.ts`, `render.ts`, `index.ts` (types, keys, inline editor, menus, kit, timer ticker), `storm.css`, `commands.test.ts` (12 tests).
+- `src/plugins/eventstorm/`: `model.ts` (kinds, phases, geometry, rider rule), `commands.ts` (pure: createBoard, add, text, kind, settle, tidy, phase, lanes, dots, vote, timer, detach, reset), `markdown.ts`, `render.ts`, `logic.ts` (registers commands, rider rule, reset), `index.ts` (types, keys, inline editor, menus, kit, timer ticker), `storm.css`, `commands.test.ts` (12 tests).
 - `src/main.ts`: `app.use(stormPlugin)`. `src/help.ts`: an "Event storm" group.
 - Core: **no changes**.
 - Tests: 241 pass (229 + 12). `pnpm typecheck` clean. Checked in headless Chromium against the dev server on 5213 (keys, typing, Tab chaining, phase snap, drag reorder, attach, votes, timebox, export, undo of create, Esc, fallback of shared keys to cards).
@@ -26,14 +26,14 @@ An event storming kit built as one plugin on the same "pieces on a table" model 
 ## Demo
 
 1. `cd ~/code/canvas-wt/eventstorm && pnpm exec vite --port 5213 --strictPort --host 0.0.0.0`, open it (from another Mac: `http://mini.internal:5213`).
-2. New table (or not: the board can sit next to the cards), then **Add… › Event storm board**.
-3. Pointer on the board, press **E**, type `Order placed`, **Tab**, `Payment taken`, **Tab**, `Order shipped`, **Enter**. Point lower left, **E**, `Cart checked out`, **Enter**. Point elsewhere, **Q**, `Refunds?`, **Enter**.
+2. New table (or not: the board lands in the middle of the view, on top of whatever is there; drag its tab to move it), then **Add… › Event storm board**.
+3. Pointer on the board, press **E**, type `Order placed`, **Tab**, `Payment taken`, **Tab**, `Order shipped`, **Enter**. Point lower left, **E**, `Cart checked out`, **Enter**. **Esc** (deselect: with a sticky selected, a new non-event sticky attaches to its event instead of going to the pointer), point elsewhere, **Q**, `Refunds?`, **Enter**.
 4. Click **2 Enforce the timeline**: the events snap into one sequence (Cart checked out first). ⌘Z and redo to see the chaos come back.
 5. Click **3 Commands & policies**. Click `Order placed`, press **C**, `Place order`, Enter; **A**, `Customer`, Enter. Click `Payment taken`, **X** `Stripe`, **P** `When paid, ship`.
 6. Drag `Order shipped` onto the gap between `Order placed` and `Payment taken`: it slots in, the timeline re-packs; drag `Order placed`, its command and actor follow.
 7. Point at stickies and press **.** to vote (3 per person; header shows how many are left).
 8. Click **⏱ 10:00** to start the timebox (right-click the board tab for its length, lanes, votes per person, rename).
-9. Click **⇩ Markdown**: the flow as Markdown (also copied). Open **Log** (bottom left) for who added what.
+9. Click **⇩ Markdown**: the flow as Markdown (copied right away on localhost/https; over plain http, e.g. `mini.internal`, use **Copy** in the dialog). Open **Log** (bottom left) for who added what.
 10. Swimlanes: right-click the board tab › Swimlanes… › `Customer, Shop, Warehouse`.
 
 ## What it says about the core / plugin API
@@ -47,7 +47,7 @@ Fit well:
 - **JSON Canvas**: stickies as `text` nodes stay readable in Obsidian; the round trip test keeps attachments.
 
 Got in the way / gaps:
-- **Keys are one binding per key, last wins.** E, P, R, G, Enter, `.` were taken by cards (spread, play, …) or clock. I wrapped them (`chainKey`: mine when a board is the context, else the old binding). Core should keep a list per key and run the first whose `when` passes; plugins need a "context" (which object/board the user is in) to scope keys. With many plugins (marketplace), key collisions are the first thing to break.
+- **Keys are one binding per key, last wins.** E, P, G were taken by cards (spread, play, group) and R by the clock (rotate). I wrapped them (`chainKey`: mine when a board is the context, else the old binding). Core should keep a list per key and run the first whose `when` passes; plugins need a "context" (which object/board the user is in) to scope keys. With many plugins (marketplace), key collisions are the first thing to break.
 - **No text editing in core.** Every work tool needs inline text; I built a textarea editor with capture-phase listeners to keep core's pointer/key handling off it. Core should offer an `editText(id, field)` primitive (and a "typing" mode that suspends bindings).
 - **Mats didn't fit.** Mat zones are card containers (layout, max, facing, visibility are card concepts); a sticky isn't a card and a timeline isn't a pile. What I reused from mats is the idea (a locked surface carrying pieces by geometry, a grip tab). A generic "surface with regions" (lanes, columns, slots) would serve both: mats = regions that are card containers, the storm board = regions that are lanes. **Zones/layout** helped as a model (pack = layout), but cards' layouts are derived on read for contained nodes, which would hide stickies from direct manipulation; stored positions + re-pack commands worked better for work diagrams. **Facing/privacy** were irrelevant (maybe useful later: silent brainstorming where stickies are private until revealed is exactly "a hand").
 - **No pointer position on `App`.** Kits get the view center; keys get nothing. I tracked the pointer myself. `app.view.pointer` (world) would help any "create here" key.
@@ -56,7 +56,7 @@ Got in the way / gaps:
 
 ## Fit with the big vision
 
-- **Multiplayer**: all state is synced plain fields; votes per player can't clobber; the phase lives on the board, so the facilitator switches it for everyone; timer uses the clock's skew-tolerant model. Editing is local until commit (others see text appear on Enter; live co-typing would need Y.Text). Two people dropping events at once re-pack deterministically on each peer only after their own drop; a `repairs` hook could re-pack after remote changes too (not done).
+- **Multiplayer**: all state is synced plain fields; votes per player can't clobber; the phase lives on the board, so the facilitator switches it for everyone; timer uses the clock's skew-tolerant model. Editing is local until commit (others see an empty sticky while you type, the text on Enter; live co-typing would need Y.Text). Re-pack runs only on the peer that made the change: two events added at the same moment land in the same slot, overlapping, until the next drop or **Tidy the timeline**; a `repairs` hook could re-pack after remote changes too (not done).
 - **Agent native**: the Markdown export is the read side (ordered, plain, no coordinates). The write side is already there: an agent can `app.dispatch('storm.add', { board, kind: 'event', after, text })` and the board lays itself out; commands validate args. Next: expose commands + `toMarkdown` as tools (MCP) so an agent can join a workshop as a participant (propose events, flag hotspots, answer "what's missing between X and Y").
 - **Local first / hosting**: everything is in the `.canvas` file; it opens in Obsidian as colored text cards. Git-tracked boards diff badly because positions are stored; the Markdown export could be committed alongside as the reviewable artifact.
 - **Host/secret model and marketplace security**: the plugin needs no secrets, no network, no private state. It overrides shared keys, which is a marketplace concern: a plugin shouldn't be able to silently take another's keys (core-managed key scopes). The privacy model (hiders, private log texts) would fit "silent brainstorm then reveal" without new trust.
