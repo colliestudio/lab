@@ -25,6 +25,7 @@ export class Player {
   private frame: HTMLIFrameElement | null = null;
   /** Following another player's Play (their awareness client id). */
   following: number | null = null;
+  private lastMirror = '';
   private notesOn = true;
   private onKey = (e: KeyboardEvent) => this.key(e);
   private onResize = () => this.layout();
@@ -42,7 +43,6 @@ export class Player {
       else if (m.kind === 'escape') this.close();
       else this.follow(m.target);
     });
-    aw(app)?.on('change', () => this.mirror());
   }
 
   get isOpen() {
@@ -57,6 +57,7 @@ export class Player {
     this.hist = new History(pageId);
     this.state = {};
     this.following = opts.follow ?? null;
+    this.lastMirror = '';
     if (!this.root) this.mount();
     this.show();
   }
@@ -258,8 +259,8 @@ export class Player {
     a.setLocalStateField('play', p);
   }
 
-  /** Following: go where the presenter is. */
-  private mirror() {
+  /** Following: go where the presenter is (called on awareness changes once in a room). */
+  mirror() {
     const a = aw(this.app);
     if (!a || this.following === null || !this.hist) return;
     const p = a.getStates().get(this.following)?.play as PlayState | null | undefined;
@@ -269,6 +270,9 @@ export class Player {
       this.show(false);
       return;
     }
+    const key = JSON.stringify(p);
+    if (key === this.lastMirror) return; // cursor moves etc.
+    this.lastMirror = key;
     const path = p.path.filter((id) => isPage(this.app.node(id)));
     if (!path.length) return;
     const moved = this.hist.current !== path[path.length - 1] || JSON.stringify(this.state) !== JSON.stringify(p.state);
@@ -284,7 +288,8 @@ export function mountFollowBanner(app: App, player: Player) {
   if (!a) return;
   const el = document.createElement('div');
   el.className = 'pg-banner';
-  app.view.root.append(el);
+  // outside the table: the table captures the pointer on press (a click inside it never lands)
+  document.body.append(el);
   const draw = () => {
     const presenters = [...a.getStates()].filter(([id, s]) => id !== a.clientID && s?.play && s.user);
     el.replaceChildren();
@@ -298,11 +303,14 @@ export function mountFollowBanner(app: App, player: Player) {
       row.querySelector('button')!.addEventListener('click', () => {
         player.start(s.play.page, { follow: id });
         // take their path and state right away
-        (player as any).mirror();
+        player.mirror();
       });
       el.append(row);
     }
   };
-  a.on('change', draw);
+  a.on('change', () => {
+    player.mirror();
+    draw();
+  });
   draw();
 }
