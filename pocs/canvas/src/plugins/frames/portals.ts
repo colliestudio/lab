@@ -30,7 +30,14 @@ export const webrtcConnect: Connect = (room, ydoc) => {
     peerOpts: { config: { iceServers: [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] }] } },
   });
   provider.awareness.setLocalState(null);
-  return provider;
+  // y-webrtc's destroy() leaves the provider on its signaling connection (the websocket stays open
+  // and resubscribes on reconnect); disconnect() first releases it and closes the socket if unused.
+  return {
+    destroy: () => {
+      provider.disconnect();
+      provider.destroy();
+    },
+  };
 };
 
 export interface PortalDoc {
