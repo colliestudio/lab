@@ -85,8 +85,8 @@ export async function runBot(c: Client, opts: { color: 'w' | 'b'; depth: number;
       await sleep(2000);
       continue;
     }
-    if (v.you && v.you !== name) {
-      opts.say(`someone moved me to ${v.you}; stopping`);
+    if (v.you !== name) {
+      opts.say(`I no longer hold the ${name} seat (freed or moved); stopping`);
       return;
     }
     await sleep(opts.delayMs);
