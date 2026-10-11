@@ -139,6 +139,13 @@ class Loaded {
       } else if (m.t === 'fail') {
         clearTimeout(bootTimer);
         failed(new Error(m.error));
+        if (this.status === 'running') {
+          // the sandbox died after starting (e.g. it navigated away): stop using it
+          this.status = 'failed';
+          this.error = m.error;
+          for (const [id, p] of this.pending) (clearTimeout(p.timer), p.reject(new Error(m.error)), this.pending.delete(id));
+          onNotice({ kind: 'error', text: m.error });
+        }
       } else if (m.t === 'violation') onNotice({ kind: 'denied', text: `sandbox blocked: ${m.text}` });
       else if (m.t === 'reply') {
         const p = this.pending.get(m.id);

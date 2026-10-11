@@ -12,10 +12,13 @@ const RUNTIME = runtimeSrc.replace(/^export \{ createRuntime \};?\s*$/m, '');
 function bootScript() {
   return `${RUNTIME}
 let rt;
-const post = (m) => parent.postMessage(m, '*');
+const P = parent; // captured before plugin code runs (window.parent is replaceable)
+const post = (m) => P.postMessage(m, '*');
+// leaving this document (the plugin navigated its frame): tell the host before anything else loads
+addEventListener('pagehide', () => post({ t: 'fail', error: 'left the sandbox page (navigation): stopped' }));
 addEventListener('securitypolicyviolation', (e) => post({ t: 'violation', text: e.violatedDirective + ' blocked ' + (e.blockedURI || 'inline') }));
 addEventListener('message', async (e) => {
-  if (e.source !== parent) return;
+  if (e.source !== P) return;
   const m = e.data;
   if (m && m.t === 'load') {
     try {
@@ -48,10 +51,24 @@ export const iframeTransport: MakeTransport = (manifest, source) => {
   let fn: (m: FromSandbox) => void = () => {};
   const queue: ToSandbox[] = [];
   let booted = false;
+  // The frame may navigate itself (sandbox can't forbid that, CSP has no navigate-to): the new page
+  // would have no CSP and the same contentWindow. Stop the plugin on the first sign of it.
+  let dead = false;
+  const kill = (why: string) => {
+    if (dead) return;
+    dead = true;
+    window.removeEventListener('message', onMsg);
+    frame.remove();
+    fn({ t: 'fail', error: why });
+  };
+  let loads = 0;
+  frame.addEventListener('load', () => ++loads > 1 && kill('sandbox frame navigated away: stopped'));
   const onMsg = (e: MessageEvent) => {
-    if (e.source !== frame.contentWindow) return;
+    if (dead || e.source !== frame.contentWindow) return;
+    if ((e.data as { t?: string })?.t === 'fail' && booted) return kill(String((e.data as { error?: string }).error));
     const m = e.data as FromSandbox | { t: 'boot' };
     if (m?.t === 'boot') {
+      if (booted) return;
       booted = true;
       frame.contentWindow!.postMessage({ t: 'load', source }, '*');
       for (const q of queue.splice(0)) frame.contentWindow!.postMessage(q, '*');
@@ -62,9 +79,14 @@ export const iframeTransport: MakeTransport = (manifest, source) => {
   window.addEventListener('message', onMsg);
   document.body.append(frame);
   return {
-    send: (m) => (booted ? frame.contentWindow!.postMessage(m, '*') : queue.push(m)),
+    send: (m) => {
+      if (dead) return;
+      if (booted) frame.contentWindow!.postMessage(m, '*');
+      else queue.push(m);
+    },
     onMessage: (f) => (fn = f),
     destroy: () => {
+      dead = true;
       window.removeEventListener('message', onMsg);
       frame.remove();
     },
