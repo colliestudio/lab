@@ -1,4 +1,4 @@
-// Example pages: a 4-screen signup/checkout flow, the kind of thing an agent generates.
+// Example pages: a 5-screen signup/checkout flow, the kind of thing an agent generates.
 // Links use `data-goto` (edge label or page title), fields `data-store`, values `data-show`.
 
 const STYLE = `<style>
