@@ -56,6 +56,9 @@ describe('prototype pages', () => {
     const s = seeded();
     const cols = flowOrder(s.doc).map((c) => c.map((id) => titleOf(s.doc.get(id))));
     expect(cols).toEqual([['Landing'], ['Sign up'], ['Plan'], ['Checkout'], ['Welcome']]);
+    // an unlinked page left of the start page still comes after it in the first column
+    s.dispatch('page.create', { x: -5000, y: -5000, title: 'Loose' });
+    expect(flowOrder(s.doc)[0].map((id) => titleOf(s.doc.get(id)))).toEqual(['Landing', 'Loose']);
   });
 
   it('arrange lays pages out left → right and takes notes along', () => {
@@ -164,6 +167,7 @@ describe('sandbox bridge', () => {
     expect(readMessage({ tag: TAG, kind: 'goto', target: 'Plan' })).toEqual({ kind: 'goto', target: 'Plan' });
     expect(readMessage({ tag: TAG, kind: 'goto' })).toEqual({ kind: 'goto', target: '' });
     expect(readMessage({ tag: TAG, kind: 'back' })).toEqual({ kind: 'back' });
+    expect(readMessage({ tag: TAG, kind: 'escape' })).toEqual({ kind: 'escape' });
     expect(readMessage({ tag: TAG, kind: 'set', key: 'name', value: 'Ada' })).toEqual({ kind: 'set', key: 'name', value: 'Ada' });
     expect(readMessage({ kind: 'goto', target: 'x' })).toBeUndefined();
     expect(readMessage({ tag: TAG, kind: 'eval', code: '1' })).toBeUndefined();

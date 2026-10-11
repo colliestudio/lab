@@ -13,6 +13,8 @@ export const TAG = 'canvas-page/1';
 export type PageMessage =
   | { kind: 'goto'; target: string }
   | { kind: 'back' }
+  /** Escape pressed inside the page (keys in a frame never reach the canvas): leave Play / Interact. */
+  | { kind: 'escape' }
   | { kind: 'set'; key: string; value: string };
 
 /** Validate a message from a page frame (anything else: undefined). */
@@ -26,6 +28,7 @@ export function readMessage(data: unknown): PageMessage | undefined {
     return target === undefined ? undefined : { kind: 'goto', target };
   }
   if (d.kind === 'back') return { kind: 'back' };
+  if (d.kind === 'escape') return { kind: 'escape' };
   if (d.kind === 'set') {
     const key = str(d.key, 60);
     const value = str(d.value, 2000);
@@ -59,6 +62,7 @@ const BRIDGE = (tag: string, state: Record<string, string>) => `
     if (form && !form.reportValidity()) return;
     canvas.goto(el.getAttribute('data-goto'));
   }, true);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') send({ kind: 'escape' }); }, true);
   document.addEventListener('submit', (e) => e.preventDefault(), true);
   const sync = (el) => { if (el.dataset && el.dataset.store) canvas.set(el.dataset.store, el.type === 'checkbox' ? (el.checked ? 'yes' : '') : el.value); };
   document.addEventListener('input', (e) => sync(e.target), true);

@@ -93,16 +93,22 @@ export function flowOrder(doc: DocView): string[][] {
   const all = pages(doc).sort((a, b) => a.x - b.x || a.y - b.y);
   if (!all.length) return [];
   const depth = new Map<string, number>();
+  /** Discovery order: the start page first, then pages in the order the walk reaches them. */
+  const seen: string[] = [];
+  const reach = (id: string, d: number) => {
+    depth.set(id, d);
+    seen.push(id);
+  };
   const roots = all.filter((n) => page(n).start || !incoming(doc, n.id).length);
   roots.sort((a, b) => Number(!!page(b).start) - Number(!!page(a).start));
   const queue = (roots.length ? roots : [all[0]]).map((n) => n.id);
-  for (const id of queue) depth.set(id, 0);
+  for (const id of queue) reach(id, 0);
   const visit = () => {
     while (queue.length) {
       const id = queue.shift()!;
       for (const e of outgoing(doc, id)) {
         if (depth.has(e.toNode)) continue;
-        depth.set(e.toNode, depth.get(id)! + 1);
+        reach(e.toNode, depth.get(id)! + 1);
         queue.push(e.toNode);
       }
     }
@@ -111,12 +117,12 @@ export function flowOrder(doc: DocView): string[][] {
   // pages only reachable through a cycle: start a new chain from each
   for (const n of all) {
     if (depth.has(n.id)) continue;
-    depth.set(n.id, 0);
+    reach(n.id, 0);
     queue.push(n.id);
     visit();
   }
   const cols: string[][] = [];
-  for (const n of all) (cols[depth.get(n.id)!] ??= []).push(n.id);
+  for (const id of seen) (cols[depth.get(id)!] ??= []).push(id);
   return cols.filter(Boolean);
 }
 

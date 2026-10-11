@@ -92,6 +92,10 @@ export const prototypePlugin: Plugin = {
       if (!id) return;
       if (m.kind === 'set') state[m.key] = m.value;
       else if (m.kind === 'goto') goFrom(id, m.target);
+      else if (m.kind === 'escape') {
+        setLive(id, false);
+        app.view.root.focus({ preventScroll: true });
+      }
       else if (trail.current === id && trail.back()) {
         reload(trail.current);
         app.store.select([trail.current]);

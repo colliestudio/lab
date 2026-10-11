@@ -39,6 +39,7 @@ export class Player {
         this.state[m.key] = m.value;
         this.broadcast();
       } else if (m.kind === 'back') this.back();
+      else if (m.kind === 'escape') this.close();
       else this.follow(m.target);
     });
     aw(app)?.on('change', () => this.mirror());
@@ -170,7 +171,10 @@ export class Player {
       this.frame.style.pointerEvents = 'auto';
       r.querySelector('.pg-device')!.replaceChildren(this.frame);
       this.layout();
-      this.frame.focus();
+      // focus the page once it has loaded (before that, keys stay with Play: Esc, ←)
+      const frame = this.frame;
+      (document.activeElement as HTMLElement | null)?.blur?.();
+      frame.addEventListener('load', () => frame.isConnected && frame.focus(), { once: true });
     }
     // breadcrumb
     const crumbs = r.querySelector('.pg-crumbs')!;
