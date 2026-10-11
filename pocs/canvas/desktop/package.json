@@ -8,7 +8,7 @@
     "build": "node build.mjs",
     "start": "node build.mjs && electron .",
     "dev": "node build.mjs --dev && electron .",
-    "pack": "node build.mjs && electron-builder --dir --mac --arm64",
+    "package": "node build.mjs && electron-builder --dir --mac --arm64",
     "typecheck": "tsc --noEmit -p ."
   },
   "devDependencies": {

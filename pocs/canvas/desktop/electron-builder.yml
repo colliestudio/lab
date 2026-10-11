@@ -1,0 +1,28 @@
+# Unsigned local build only: pnpm pack → dist/mac-arm64/Canvas.app
+appId: studio.collie.canvas
+productName: Canvas
+directories:
+  output: dist
+files:
+  - build/**
+  - "!build/**/*.map"
+  - package.json
+  - "!**/node_modules/**"
+asar: true
+# the stdio MCP shim runs on the app binary in Node mode: keep it a plain file
+asarUnpack:
+  - build/shim.mjs
+npmRebuild: false
+nodeGypRebuild: false
+electronLanguages: [en]
+mac:
+  target: dir
+  identity: null
+  category: public.app-category.productivity
+fileAssociations:
+  - ext: canvas
+    name: JSON Canvas
+    description: JSON Canvas board
+    role: Editor
+    rank: Default
+    mimeType: application/json
