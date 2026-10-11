@@ -880,6 +880,24 @@ function dropInHand(doc: DocView, host: CanvasNode, dropped: CanvasNode[], stayi
   return { changes, select: dropped.map((n) => n.id) };
 }
 
+/**
+ * Move cards into a container from wherever they are, also from inside other piles (no UI gesture can
+ * do that: drop and gather take what's visible). On top, in the order given; the container's facing
+ * on entry applies; a pile left with one card dissolves as usual. Takes only as many as fit (`max`).
+ * For automation steps and agents: "the rest of the deck goes to Set aside".
+ */
+export const moveInto: Command<{ target: string; ids: string[] }> = (doc, a) => {
+  const box = typeof a?.target === 'string' ? doc.get(a.target) : undefined;
+  if (!box || !isDeck(box) || !isIds(a.ids)) return [];
+  const cards = pick(doc, a.ids).filter((c) => isCard(c) && doc.parentOf(c.id) !== box.id);
+  const want = new Map(a.ids.map((id, i) => [id, i]));
+  cards.sort((p, q) => want.get(p.id)! - want.get(q.id)!);
+  const fit = cards.slice(0, Math.max(0, roomIn(doc, box)));
+  if (!fit.length) return [];
+  const ids = fit.map((c) => c.id);
+  return logged(insertInto(doc, box, fit), (after) => moveEvents(doc, after, ids));
+};
+
 /** Lay a deck out as an overlapping row, bottom card left. Removes the deck. */
 export const spread: Command<{ id: string; step?: number }> = (doc, a) => {
   const deck = typeof a?.id === 'string' ? doc.get(a.id) : undefined;
@@ -960,4 +978,4 @@ export const resetAll: Command<Record<string, never>> = (doc, _a, ctx) => {
   return changes;
 };
 
-export const commands = { addPack, dealHands, putDown, reorder, give, flip, show, seeMine, allowShowing, hideCount, fixedFrame, resizeHand, face, move, shuffle, draw, deal, gather, recall, drop, spread, setup, repairHomes, pullOut, setLayout, ungroup, sort, newHand, own, toggleStack, handLabel, migrateHands, turnInto, putOnTable, showdown, resetAll };
+export const commands = { moveInto, addPack, dealHands, putDown, reorder, give, flip, show, seeMine, allowShowing, hideCount, fixedFrame, resizeHand, face, move, shuffle, draw, deal, gather, recall, drop, spread, setup, repairHomes, pullOut, setLayout, ungroup, sort, newHand, own, toggleStack, handLabel, migrateHands, turnInto, putOnTable, showdown, resetAll };

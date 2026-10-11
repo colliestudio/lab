@@ -91,10 +91,47 @@ function solitaire(): Layout {
   return { label: 'Solitaire', color: MAT_COLORS[0].hex, w: cx(7) - gap + x0, h: 60 + top.h + 560 + 30, zones };
 }
 
+/**
+ * Tiến Lên (4 players): a strip on top for buttons, seats in two rows, and between them the deck
+ * ("Main"), the pile played to (face up) and a set-aside pile (face down) for cards nobody gets.
+ */
+export const TIENLEN_STRIP = 100;
+function tienlen(players: Seat[]): Layout {
+  const w = 1400;
+  const seat = { w: 560, h: 236 };
+  const top = TIENLEN_STRIP;
+  const midY = top + seat.h + 50;
+  const h = midY + PILE.h + 50 + seat.h + 30;
+  const xs = [80, w - 80 - seat.w];
+  const seats: Spec[] = [0, 1, 2, 3].map((i) => ({
+    kind: 'fan',
+    dx: xs[i % 2],
+    dy: i < 2 ? h - 30 - seat.h : top,
+    ...seat,
+    name: `Seat ${i + 1}`,
+    owner: players[i],
+    role: 'seat',
+  }));
+  const pile = span(6);
+  return {
+    label: 'Tiến Lên',
+    color: MAT_COLORS[3].hex,
+    w,
+    h,
+    zones: [
+      { kind: 'stack', dx: 80, dy: midY, ...PILE, name: 'Main', home: true, pack: PACK, role: 'deck' },
+      { kind: 'row', dx: (w - pile) / 2, dy: midY + 10, w: pile, h: CARD_H + 2 * PAD, name: 'Pile', enter: 'up', role: 'pile' },
+      { kind: 'stack', dx: w - 80 - PILE.w, dy: midY, ...PILE, name: 'Set aside', enter: 'down', role: 'aside' },
+      ...seats,
+    ],
+  };
+}
+
 export const PRESETS = {
   poker: { label: 'Poker table', build: poker },
   player: { label: 'Player mat', build: playerMat },
   solitaire: { label: 'Solitaire (Klondike)', build: solitaire },
+  tienlen: { label: 'Tiến Lên table', build: tienlen },
 } as const;
 export type PresetId = keyof typeof PRESETS;
 
