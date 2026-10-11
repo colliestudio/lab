@@ -114,7 +114,8 @@ addEventListener('message', (e) => {
   }
   w.postMessage(m);
 });
-P.postMessage({ t: 'boot' }, '*');
+// say hello after load, so the app's load count starts from a finished boot document
+addEventListener('load', () => P.postMessage({ t: 'boot' }, '*'), { once: true });
 })();`;
 
 // Pages: best-effort removal of WebRTC (it ignores CSP). A page can get fresh constructors from a
@@ -128,7 +129,6 @@ const onMsg = (e) => {
   if (!m || m.t !== 'render' || typeof m.html !== 'string') return;
   app = e.origin;
   removeEventListener('message', onMsg);
-  P.postMessage({ t: 'rendering' }, app);
   document.open();
   // document.open() drops window listeners: report the page's own CSP violations again
   addEventListener('securitypolicyviolation', (ev) => tell({ t: 'violation', text: ev.violatedDirective + ' blocked ' + (ev.blockedURI || 'inline') }));
@@ -136,7 +136,8 @@ const onMsg = (e) => {
   document.close();
 };
 addEventListener('message', onMsg);
-P.postMessage({ t: 'boot' }, '*');
+// say hello after load, so the app's load count starts from a finished boot document
+addEventListener('load', () => P.postMessage({ t: 'boot' }, '*'), { once: true });
 })();`;
 
 const page = (script) => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><script>${script}</script>`;
@@ -157,9 +158,11 @@ export function frameHost(opts = {}) {
   const csp = {
     worker: (connect) =>
       `default-src 'none'; script-src ${workerHash} blob:; worker-src blob:; connect-src ${connect.length ? connect.join(' ') : "'none'"}; ${common}`,
-    // pages run their own inline scripts; the boot runs first (it is the first thing in the document)
+    // pages run their own inline scripts; the boot runs first (it is the first thing in the document).
+    // `webrtc 'block'` is CSP3 but Chrome ignores it (console: unrecognized directive); kept for
+    // browsers that honour it. WebRTC in pages is otherwise only removed best-effort (see PAGE_BOOT).
     page: () =>
-      `default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:; frame-src 'none'; worker-src 'none'; ${common}`,
+      `default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:; frame-src 'none'; worker-src 'none'; webrtc 'block'; ${common}`,
   };
   const headers = (policy) => ({
     'content-type': 'text/html; charset=utf-8',
