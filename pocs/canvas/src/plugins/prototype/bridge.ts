@@ -58,7 +58,8 @@ const BRIDGE = (tag: string, state: Record<string, string>) => `
     if (!el) return;
     e.preventDefault();
     if (el.hasAttribute('data-back')) return canvas.back();
-    const form = el.closest('form');
+    // a button in a form submits it: check the form first (a plain link in the form, like "Change plan", doesn't)
+    const form = el.tagName === 'BUTTON' || el.type === 'submit' ? el.closest('form') : null;
     if (form && !form.reportValidity()) return;
     canvas.goto(el.getAttribute('data-goto'));
   }, true);
