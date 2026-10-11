@@ -24,7 +24,8 @@ function gameMenu(app: App, b: CanvasNode): MenuEntry[] {
     const s = c === 'w' ? f.white : f.black;
     const name = c === 'w' ? 'white' : 'black';
     if (s?.id === me) return { label: `Leave the ${name} seat`, run: run('chess.sit', { id, color: c, leave: true }) };
-    return { label: s ? `${name[0].toUpperCase() + name.slice(1)}: ${s.name}` : `Play ${name}`, disabled: !!s, run: run('chess.sit', { id, color: c }) };
+    if (s) return { label: `Free the ${name} seat (${s.name})`, run: run('chess.sit', { id, color: c, leave: true, force: true }) };
+    return { label: `Play ${name}`, run: run('chess.sit', { id, color: c }) };
   };
   return [
     { label: 'New game', separator: true, run: run('chess.newgame', { id }) },

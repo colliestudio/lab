@@ -165,3 +165,15 @@ describe('chess rules mode', () => {
     expect(board(a.doc.get(id)!)).toMatchObject({ result: '1-0', end: 'black resigned' });
   });
 });
+
+describe('chess seats', () => {
+  it('anyone can free a seat with force; leave alone only frees your own', () => {
+    const { a, b, id } = game();
+    b.dispatch('chess.sit', { id, color: 'b' });
+    a.dispatch('chess.sit', { id, color: 'b', leave: true });
+    expect(board(a.doc.get(id)!).black?.name).toBe('Bot');
+    a.dispatch('chess.sit', { id, color: 'b', leave: true, force: true });
+    expect(board(a.doc.get(id)!).black).toBeUndefined();
+    expect(a.log.toArray().at(-1)!.text).toBe('freed the black seat (Bot)');
+  });
+});

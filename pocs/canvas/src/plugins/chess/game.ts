@@ -152,8 +152,11 @@ export const rules: Command<{ id: string; on: boolean; turn?: Color }> = (doc, a
   return [set(b.id, F('rules'), true), set(b.id, F('turn'), turn), set(b.id, F('castling'), validCastling({ ...pos, castling: 'KQkq' }))];
 };
 
-/** Sit the acting player at a color (`leave`: stand up). Taken seats stay taken. */
-export const sit: Command<{ id: string; color: Color; leave?: boolean }> = (doc, a, ctx) => {
+/**
+ * Sit the acting player at a color (`leave`: stand up). Taken seats stay taken; `leave` + `force`
+ * frees someone else's seat (an agent that went away). No permissions yet: anyone may.
+ */
+export const sit: Command<{ id: string; color: Color; leave?: boolean; force?: boolean }> = (doc, a, ctx) => {
   const b = boardOf(doc, a?.id);
   if (!isColor(a.color)) throw new Error('color: "w" or "b"');
   const me = ctx.actor;
@@ -161,8 +164,9 @@ export const sit: Command<{ id: string; color: Color; leave?: boolean }> = (doc,
   const key = seatKey(a.color);
   const seat = board(b)[key];
   if (a.leave) {
-    if (seat?.id !== me.id) return [];
-    return { changes: [set(b.id, F(key), undefined)], events: [{ type: 'chess.seat', text: `left the ${key} seat`, targets: [b.id] }] };
+    if (!seat || (seat.id !== me.id && !a.force)) return [];
+    const text = seat.id === me.id ? `left the ${key} seat` : `freed the ${key} seat (${seat.name})`;
+    return { changes: [set(b.id, F(key), undefined)], events: [{ type: 'chess.seat', text, targets: [b.id] }] };
   }
   if (seat?.id === me.id) return [];
   if (seat) throw new Error(`${key} is taken by ${seat.name}`);

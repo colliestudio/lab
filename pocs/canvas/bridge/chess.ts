@@ -63,13 +63,18 @@ export async function runBot(c: Client, opts: { color: 'w' | 'b'; depth: number;
     if (!r.ok) throw new Error(r.error);
   };
   await sit();
+  // stand up when done or stopped, so the seat doesn't stay taken by a bot that's gone
+  const leave = () => c.cmd('chess.sit', { id, color: opts.color, leave: true }).catch(() => undefined);
+  const stop = () => void leave().then(() => process.exit(0));
+  process.once('SIGINT', stop);
+  process.once('SIGTERM', stop);
   opts.say(`seated as ${name} on board ${id} (depth ${opts.depth}); waiting for my move…`);
   for (;;) {
     const v = await waitForTurn(c, id);
     if (!v) continue;
     if (v.result) {
       opts.say(`game over: ${v.result} (${v.end}) · ${v.moves}`);
-      if (!opts.keep) return;
+      if (!opts.keep) return void (await leave());
       // wait for someone to start a new game (the result goes away), then sit again
       while ((await c.view<GameView>('chess.state', { board: id })).result) await sleep(2000);
       await sit().catch((e) => opts.say(`can't sit: ${(e as Error).message}`));
