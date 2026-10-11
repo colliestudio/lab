@@ -37,6 +37,9 @@ function suggestions(app: App): string[] {
   return [...out];
 }
 
+/** Stored steps may come from a peer or a file: a non-object entry becomes an unknown-verb row (shown as an error, removable). */
+const asSteps = (v: unknown[]): Record<string, unknown>[] => v.map((x) => (x && typeof x === 'object' && !Array.isArray(x) ? (x as Record<string, unknown>) : { do: x }));
+
 function blankStep(verb: Verb): Record<string, unknown> {
   const s: Record<string, unknown> = { do: verb };
   for (const [k, spec] of Object.entries(VERBS[verb].args)) {
@@ -48,7 +51,7 @@ function blankStep(verb: Verb): Record<string, unknown> {
 
 export function editButton(app: App, start: ButtonField): Promise<EditResult | null> {
   open?.remove();
-  const draft: Draft = structuredClone({ name: start.name, steps: start.steps as unknown as Record<string, unknown>[], trigger: start.trigger });
+  const draft: Draft = structuredClone({ name: start.name, steps: asSteps(start.steps), trigger: start.trigger });
   const listId = `au-targets-${Math.random().toString(36).slice(2)}`;
 
   return new Promise((resolve) => {
@@ -259,7 +262,7 @@ export function editButton(app: App, start: ButtonField): Promise<EditResult | n
           renderSteps();
         });
         top.append(verb);
-        const spec = VERBS[step.do as Verb];
+        const spec = typeof step.do === 'string' && Object.hasOwn(VERBS, step.do) ? VERBS[step.do as Verb] : undefined;
         if (spec) for (const [k, a] of Object.entries(spec.args)) top.append(field(step, k, a));
         const tools = h('span', 'au-tools');
         const mv = (d: number) => () => {
@@ -314,7 +317,7 @@ export function editButton(app: App, start: ButtonField): Promise<EditResult | n
         try {
           const v = JSON.parse(json.value) as Draft;
           draft.name = typeof v.name === 'string' ? v.name : draft.name;
-          draft.steps = Array.isArray(v.steps) ? v.steps : draft.steps;
+          draft.steps = Array.isArray(v.steps) ? asSteps(v.steps) : draft.steps;
           draft.trigger = v.trigger;
           name.value = draft.name;
           trig.value = draft.trigger?.on ?? 'click';

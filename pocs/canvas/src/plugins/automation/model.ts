@@ -141,7 +141,7 @@ export function validateSteps(steps: unknown): string[] {
   steps.forEach((s, i) => {
     const at = `step ${i + 1}`;
     if (!isObj(s)) return errs.push(`${at}: must be an object`);
-    const verb = VERBS[s.do as Verb];
+    const verb = typeof s.do === 'string' && Object.hasOwn(VERBS, s.do) ? VERBS[s.do as Verb] : undefined;
     if (!verb) return errs.push(`${at}: unknown "do": ${JSON.stringify(s.do)} (one of ${VERB_IDS.join(', ')})`);
     for (const k of Object.keys(s)) if (k !== 'do' && k !== 'when' && !(k in verb.args)) errs.push(`${at} (${s.do}): unknown field "${k}"`);
     for (const [k, spec] of Object.entries(verb.args)) {

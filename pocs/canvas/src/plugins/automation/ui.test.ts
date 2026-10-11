@@ -57,4 +57,11 @@ describe('automation on a table', () => {
     expect(cardsIn(app.doc, hand.id)).toHaveLength(1);
     expect(app.store.undoManager.undoStack.length).toBe(steps - 1);
   });
+  it('a button with broken stored steps (from a peer or a file) renders as broken instead of throwing', () => {
+    const app = screen('me');
+    app.kits.find((k) => k.id === 'automation.tienlen')!.create(app, { x: 0, y: 0 });
+    const b = button(app, 'Clear the pile');
+    app.store.apply([{ op: 'set', id: b.id, key: 'x-auto', value: { name: 'X', steps: [null, { do: 'shuffle' }], trigger: { on: 'enter', zone: 5 } } }]);
+    expect(app.view.boxOf(b.id)!.querySelector('.au-meta')!.textContent).toContain('broken');
+  });
 });

@@ -43,6 +43,7 @@ describe('step schema', () => {
   it('accepts the demo buttons and rejects unknown verbs, fields and bad args', () => {
     expect(validateSteps([{ do: 'shuffle', target: { name: 'Main' } }])).toEqual([]);
     expect(validateSteps([{ do: 'eval', code: 'x' }])[0]).toMatch(/unknown "do"/);
+    expect(validateSteps([{ do: 'constructor' }, { do: '__proto__' }, null])).toHaveLength(3); // no throw on inherited keys
     expect(validateSteps([{ do: 'shuffle', target: { name: 'Main' }, extra: 1 }])[0]).toMatch(/unknown field "extra"/);
     expect(validateSteps([{ do: 'deal', from: { name: 'Main' }, count: 99 }])[0]).toMatch(/count must be 1–52/);
     expect(validateSteps([{ do: 'move', what: { kind: 'dragon' }, to: { name: 'X' } }])[0]).toMatch(/kind must be/);

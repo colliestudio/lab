@@ -3,7 +3,7 @@ import type { App, CanvasNode, MenuEntry, Plugin } from '../../core';
 import { handLabelOf, seats } from '../cards';
 import { registerAutomationLogic, resolve } from './commands';
 import { editButton } from './editor';
-import { BUTTON_H, BUTTON_W, buttonOf, describeStep, isButton, targetText, type ButtonField } from './model';
+import { BUTTON_H, BUTTON_W, buttonOf, describeStep, isButton, targetText, validateSteps, validateTrigger, type ButtonField } from './model';
 
 /** Players at the table (me first): who "deal to players" deals to. */
 const players = (app: App) =>
@@ -26,9 +26,13 @@ export async function openEditor(app: App, n: CanvasNode) {
 }
 
 function buttonHtml(b: ButtonField): string {
-  const rule = b.trigger?.on === 'enter';
-  const meta = `${b.steps.length} step${b.steps.length === 1 ? '' : 's'}${rule && b.trigger?.on === 'enter' ? ` · ⚡ when a card enters ${esc(targetText(b.trigger.zone))}` : ''}`;
-  const title = esc(b.steps.map((s, i) => `${i + 1}. ${describeStep(s)}`).join('\n') || 'No steps yet');
+  // the node may come from a peer or a file: describe only what validates (describeStep trusts its input)
+  const broken = validateSteps(b.steps).length > 0 || validateTrigger(b.trigger).length > 0;
+  const rule = !broken && b.trigger?.on === 'enter';
+  const meta = broken
+    ? 'steps are broken (edit them)'
+    : `${b.steps.length} step${b.steps.length === 1 ? '' : 's'}${rule && b.trigger?.on === 'enter' ? ` · ⚡ when a card enters ${esc(targetText(b.trigger.zone))}` : ''}`;
+  const title = broken ? 'The stored steps are not valid' : esc(b.steps.map((s, i) => `${i + 1}. ${describeStep(s)}`).join('\n') || 'No steps yet');
   return `<div class="au-button${rule ? ' au-rule' : ''}" title="${title}">
     <button class="au-run" data-action="run">${rule ? '⚡' : '▶'} ${esc(b.name)}</button>
     <div class="au-meta"><span>${meta}</span><button class="au-edit" data-action="edit" title="Edit steps">✎ steps</button></div>
@@ -98,7 +102,7 @@ export const automationPlugin: Plugin = {
       for (const n of app.doc.nodes) {
         if (!isButton(n)) continue;
         const t = buttonOf(n).trigger;
-        if (t?.on !== 'enter') continue;
+        if (t?.on !== 'enter' || validateTrigger(t).length) continue;
         const zones = resolve(app.doc, t.zone);
         const hit = zones.find((z) => entered.has(z.id));
         if (hit) runButton(app, n.id, `a card entered ${targetText(t.zone)}`, true);
