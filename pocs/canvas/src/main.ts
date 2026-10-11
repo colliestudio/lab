@@ -7,6 +7,7 @@ import { chessPlugin } from './plugins/chess';
 import { clockPlugin } from './plugins/clock';
 import { battleLinePlugin } from './plugins/battleline';
 import { matsPlugin } from './plugins/mats';
+import { componentsPlugin, mountComponentsPanel } from './plugins/components';
 import { mountHelp, removeHelpNote } from './help';
 
 const ROOM = roomFromUrl();
@@ -25,6 +26,7 @@ app.use(chessPlugin);
 app.use(clockPlugin);
 app.use(battleLinePlugin);
 app.use(matsPlugin);
+app.use(componentsPlugin);
 app.store.migrations.push(removeHelpNote);
 
 
@@ -143,6 +145,7 @@ handBtn.addEventListener('click', () => {
   if (!app.presence) return newHandFor(app, { ...loadPlayer() });
   app.view.openMenu(newHandEntries(app), handBtn, 'New hand for');
 });
+mountComponentsPanel(app, bar);
 bar.append(handBtn, helpBtn, status);
 app.onNotify(flash);
 mountHelp(app, helpBtn);

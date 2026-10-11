@@ -1,0 +1,400 @@
+/* ---------------------------------------------------------------- cards */
+.cmp-card {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #fbfaf7;
+  color: #222;
+  font: 13px/1.4 system-ui, sans-serif;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  border-top: 6px solid var(--c);
+  display: flex;
+  flex-direction: column;
+}
+.cmp-card.cmp-editing {
+  overflow: visible;
+  height: auto;
+  min-height: 100%;
+  box-shadow: 0 0 0 2px var(--c), 0 10px 24px rgba(0, 0, 0, 0.4);
+  cursor: default;
+}
+.cmp-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px 6px;
+  background: color-mix(in srgb, var(--c) 12%, white);
+}
+.cmp-icon {
+  font-size: 18px;
+}
+.cmp-title {
+  flex: 1;
+  font-weight: 650;
+  font-size: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cmp-head .cmp-input {
+  flex: 1;
+  font-weight: 650;
+}
+.cmp-type {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--c);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.cmp-done {
+  border: 0;
+  border-radius: 5px;
+  padding: 3px 8px;
+  background: var(--c);
+  color: white;
+  font: 600 11px system-ui;
+  cursor: pointer;
+}
+.cmp-body {
+  padding: 4px 12px 8px;
+}
+.cmp-field {
+  margin-top: 6px;
+}
+.cmp-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #888;
+}
+.cmp-value {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cmp-value.cmp-longtext {
+  white-space: pre-wrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 6;
+  -webkit-box-orient: vertical;
+}
+.cmp-value.cmp-empty {
+  color: #bbb;
+}
+.cmp-value.cmp-enum {
+  display: inline-block;
+  padding: 0 8px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--c) 18%, white);
+  color: color-mix(in srgb, var(--c) 70%, black);
+  font-weight: 600;
+}
+.cmp-value.cmp-ref {
+  color: color-mix(in srgb, var(--c) 70%, black);
+  font-weight: 600;
+}
+.cmp-list {
+  margin: 0;
+  padding-left: 18px;
+  white-space: normal;
+}
+.cmp-img {
+  display: block;
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 50%;
+  margin-top: 2px;
+}
+.cmp-input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  padding: 3px 6px;
+  font: inherit;
+  background: white;
+  color: #222;
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+}
+textarea.cmp-input {
+  resize: vertical;
+}
+
+/* detail by zoom: mid = summary fields only; far = the title, big */
+.cmp-lod-mid .cmp-field:not([data-card]) {
+  display: none;
+}
+.cmp-lod-far .cmp-card:not(.cmp-editing) .cmp-body,
+.cmp-lod-far .cmp-card:not(.cmp-editing) .cmp-type {
+  display: none;
+}
+.cmp-lod-far .cmp-card:not(.cmp-editing) .cmp-head {
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
+  background: color-mix(in srgb, var(--c) 22%, white);
+}
+.cmp-lod-far .cmp-card:not(.cmp-editing) .cmp-icon {
+  font-size: 48px;
+}
+.cmp-lod-far .cmp-card:not(.cmp-editing) .cmp-title {
+  flex: 0;
+  font-size: 30px;
+  line-height: 1.15;
+  white-space: normal;
+  overflow: visible;
+}
+
+/* reference edges */
+.cmp-edges {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 0;
+}
+.cmp-edges line {
+  stroke: rgba(255, 255, 255, 0.6);
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+}
+.cmp-edges text {
+  fill: rgba(255, 255, 255, 0.85);
+  font: 600 12px system-ui;
+  text-anchor: middle;
+}
+
+/* ---------------------------------------------------------------- panel */
+.cmp-panel {
+  position: fixed;
+  z-index: 20;
+  right: 12px;
+  top: 12px;
+  bottom: 60px;
+  width: 380px;
+  overflow: auto;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: rgba(20, 28, 24, 0.94);
+  color: #e8efe9;
+  font: 13px/1.4 system-ui, sans-serif;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+}
+.cmp-panel[hidden] {
+  display: none;
+}
+.cmp-panel h2,
+.cmp-sheet h2 {
+  margin: 0 0 6px;
+  font-size: 16px;
+}
+.cmp-panel h3 {
+  margin: 14px 0 2px;
+  font-size: 13px;
+}
+.cmp-muted {
+  opacity: 0.6;
+  font-size: 12px;
+  margin: 4px 0;
+}
+.cmp-panel button,
+.cmp-sheet button {
+  border: 0;
+  border-radius: 6px;
+  padding: 5px 9px;
+  background: rgba(255, 255, 255, 0.13);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.cmp-panel button:hover,
+.cmp-sheet button:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+.cmp-panel button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.cmp-panel input,
+.cmp-panel select,
+.cmp-panel textarea {
+  box-sizing: border-box;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 5px;
+  padding: 4px 6px;
+  background: rgba(0, 0, 0, 0.3);
+  color: inherit;
+  font: inherit;
+  min-width: 0;
+}
+.cmp-panel input[type='checkbox'] {
+  flex: 0 0 auto;
+}
+.cmp-close {
+  float: right;
+}
+.cmp-type-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0;
+  padding: 6px 8px;
+  border-radius: 7px;
+  border-left: 5px solid var(--c);
+  background: rgba(255, 255, 255, 0.06);
+}
+.cmp-type-name {
+  flex: 1;
+  font-weight: 600;
+}
+.cmp-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin: 10px 0;
+}
+.cmp-type-meta {
+  display: flex;
+  gap: 6px;
+  margin: 8px 0;
+}
+.cmp-type-meta input:nth-child(2) {
+  flex: 1;
+}
+.cmp-icon-in {
+  width: 44px;
+  text-align: center;
+}
+.cmp-type-meta input[type='color'] {
+  width: 40px;
+  padding: 0 2px;
+}
+.cmp-field-row {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  margin: 4px 0;
+}
+.cmp-field-row > input:not([type='checkbox']) {
+  flex: 1;
+}
+.cmp-field-row select {
+  width: 92px;
+}
+.cmp-field-row .cmp-opts {
+  width: 90px;
+  flex: 0 0 90px !important;
+}
+.cmp-mini {
+  padding: 3px 6px !important;
+}
+.cmp-add {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+.cmp-danger {
+  background: rgba(200, 60, 60, 0.35) !important;
+}
+.cmp-json {
+  width: 100%;
+  min-height: 360px;
+  font: 12px/1.4 ui-monospace, monospace !important;
+}
+.cmp-json-peek pre {
+  font: 11px/1.35 ui-monospace, monospace;
+  white-space: pre-wrap;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 8px;
+  border-radius: 6px;
+}
+.cmp-inline select {
+  margin-left: 4px;
+}
+
+/* ---------------------------------------------------------------- table view, export */
+.cmp-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.45);
+}
+.cmp-sheet {
+  max-width: calc(100vw - 60px);
+  max-height: calc(100vh - 80px);
+  overflow: auto;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: #1b2420;
+  color: #e8efe9;
+  font: 13px/1.4 system-ui, sans-serif;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+.cmp-export {
+  width: 720px;
+}
+.cmp-export textarea {
+  background: rgba(0, 0, 0, 0.3);
+  color: inherit;
+  border-radius: 6px;
+  border: 0;
+  padding: 8px;
+}
+.cmp-sheet-top {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  margin-bottom: 10px;
+}
+.cmp-sheet-top .cmp-muted {
+  flex: 1;
+}
+.cmp-table {
+  border-collapse: collapse;
+}
+.cmp-table th {
+  text-align: left;
+  padding: 4px 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.75;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.cmp-table td {
+  padding: 2px 3px;
+  vertical-align: top;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.cmp-table .cmp-input {
+  min-width: 120px;
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  border-color: rgba(255, 255, 255, 0.12);
+}
+.cmp-table .cmp-k-longtext .cmp-input,
+.cmp-table .cmp-k-list .cmp-input {
+  min-width: 200px;
+}
+.cmp-table .cmp-k-number .cmp-input {
+  min-width: 70px;
+  width: 80px;
+}
+.cmp-table select.cmp-input option {
+  color: #222;
+}
