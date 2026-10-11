@@ -1,5 +1,5 @@
 import type { App, CanvasNode } from '../../core';
-import { visibleWorld } from './camera';
+import { setInsets, visibleWorld } from './camera';
 import { isFrame, isPortal, outline, type OutlineEntry } from './model';
 
 // Outline panel (top right): frames in presentation order with the portals inside them, a
@@ -25,6 +25,13 @@ export function mountOutline(app: App, hooks: OutlineHooks) {
     <canvas class="fr-ol-map" width="${MM_W * 2}" height="${MM_H * 2}" title="Click or drag to move the view"></canvas>
     <div class="fr-ol-hint">1–9 jump · [ ] prev/next · ⇧F frame selection</div>`;
   document.body.append(panel);
+  // camera moves keep frames clear of the toolbar and this panel (not while presenting: both hidden)
+  setInsets(app, () => {
+    if (document.body.classList.contains('fr-presenting')) return { top: 0, right: 0, bottom: 0, left: 0 };
+    const tb = document.getElementById('toolbar')?.getBoundingClientRect();
+    const right = panel.classList.contains('fr-folded') ? 0 : panel.getBoundingClientRect().width + 12;
+    return { top: tb ? tb.bottom : 0, right, bottom: 0, left: 0 };
+  });
   const list = panel.querySelector<HTMLElement>('.fr-ol-list')!;
   const map = panel.querySelector<HTMLCanvasElement>('.fr-ol-map')!;
   map.style.width = `${MM_W}px`;

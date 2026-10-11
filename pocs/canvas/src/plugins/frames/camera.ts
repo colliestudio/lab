@@ -3,12 +3,26 @@ import { Viewport, type App } from '../../core';
 export type Rect = { x: number; y: number; width: number; height: number };
 export type Cam = { x: number; y: number; zoom: number };
 
-/** Viewport that fits `r` into a `vw` x `vh` screen with `pad` px around it (zoom clamped). */
-export function cameraFor(r: Rect, vw: number, vh: number, pad = 40, maxZoom = Viewport.MAX): Cam {
-  const w = Math.max(1, vw - 2 * pad);
-  const h = Math.max(1, vh - 2 * pad);
+export type Insets = { top: number; right: number; bottom: number; left: number };
+const NONE: Insets = { top: 0, right: 0, bottom: 0, left: 0 };
+
+/**
+ * Viewport that fits `r` into a `vw` x `vh` screen with `pad` px around it (zoom clamped), inside
+ * `insets` (screen edges covered by panels: toolbar, outline).
+ */
+export function cameraFor(r: Rect, vw: number, vh: number, pad = 40, maxZoom = Viewport.MAX, insets: Insets = NONE): Cam {
+  const w = Math.max(1, vw - insets.left - insets.right - 2 * pad);
+  const h = Math.max(1, vh - insets.top - insets.bottom - 2 * pad);
   const zoom = Math.min(maxZoom, Math.max(Viewport.MIN, Math.min(w / r.width, h / r.height)));
-  return { x: vw / 2 - (r.x + r.width / 2) * zoom, y: vh / 2 - (r.y + r.height / 2) * zoom, zoom };
+  const cx = insets.left + (vw - insets.left - insets.right) / 2;
+  const cy = insets.top + (vh - insets.top - insets.bottom) / 2;
+  return { x: cx - (r.x + r.width / 2) * zoom, y: cy - (r.y + r.height / 2) * zoom, zoom };
+}
+
+const insetsOf = new WeakMap<App, () => Insets>();
+/** Tell camera moves which screen edges are covered (by panels that may come and go). */
+export function setInsets(app: App, fn: () => Insets) {
+  insetsOf.set(app, fn);
 }
 
 /** Rect of the world currently on screen. */
@@ -42,7 +56,7 @@ export function flyTo(app: App, r: Rect, opts: { ms?: number; pad?: number; maxZ
   const root = app.view.root;
   const vw = root.clientWidth;
   const vh = root.clientHeight;
-  const to = cameraFor(r, vw, vh, opts.pad ?? 40, opts.maxZoom ?? 2);
+  const to = cameraFor(r, vw, vh, opts.pad ?? 40, opts.maxZoom ?? 2, insetsOf.get(app)?.() ?? NONE);
   const vp = app.viewport;
   const from = { x: vp.x, y: vp.y, zoom: vp.zoom };
   const ms = opts.ms ?? 550;

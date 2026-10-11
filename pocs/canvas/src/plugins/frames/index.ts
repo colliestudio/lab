@@ -24,6 +24,16 @@ export interface FramesOptions {
  * decides again on release).
  */
 let frozen: Map<string, string> | null = null;
+/** Freeze frame membership as it is in `nodes` (until `thaw`). */
+export function freezeMembership(nodes: readonly CanvasNode[]) {
+  frozen = memberships(nodes);
+}
+/** Back to geometry; true if it was frozen (the caller should invalidate its store). */
+export function thawMembership(): boolean {
+  const was = frozen !== null;
+  frozen = null;
+  return was;
+}
 
 /** The data side (commands, rider rule). No DOM; used by tests and could run in a bridge/agent host. */
 export function registerFramesLogic(store: Store) {
@@ -66,15 +76,13 @@ export function createFramesPlugin(opts: FramesOptions): Plugin & { portals?: Po
       root.addEventListener(
         'pointerdown',
         () => {
-          frozen = memberships(app.doc.nodes);
+          freezeMembership(app.doc.nodes);
           stopFlight(app);
         },
         true,
       );
       const thaw = () => {
-        if (!frozen) return;
-        frozen = null;
-        app.store.invalidate();
+        if (thawMembership()) app.store.invalidate();
       };
       window.addEventListener('pointerup', thaw);
       window.addEventListener('pointercancel', thaw);
