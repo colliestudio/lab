@@ -55,7 +55,7 @@ From `~/code/canvas-wt/desktop-electron` (`pnpm install` done):
 | Item | Result | How measured |
 | --- | --- | --- |
 | Packaged app size | **242 MB** `.app` (Electron framework 240 MB, `app.asar` 2.2 MB); **110 MB** zipped | `du -sh`; `ditto -c -k` |
-| Idle memory, 1 window | **~317 MB** (main/bridge 125, GPU 58, network 43, renderer 91) | `app.getAppMetrics()` working set, summed, 25 s idle, plain 2-note board (`/app/metrics`) |
+| Idle memory, 1 window | **~317 MB** (main/bridge 125, GPU 58, network 43, renderer 91) | `app.getAppMetrics()` working set, summed, 25 s idle, plain 2-note board (`/app/metrics`). Working set counts shared Chromium pages in every process; by `footprint` (phys_footprint, the metric the Tauri/Wails write-ups use) the same state is **~185 MB**, +~52 MB per agent view (comparison review 2026-10-11) |
 | + 1 hidden agent view | **~405 MB** (+85–90 MB per view) | same, while an MCP session holds a view |
 | Embedded cross-site page | +~70 MB each (own OOPIF renderer), per window that shows it | process list with `localhost:5252` embeds |
 | Cold start → board visible | **2.1–2.4 s** first launch after a build / fresh profile; **0.40–0.47 s** warm. Inside the app: bridge listening 46–65 ms after main starts, window synced + painted 170–250 ms after creation | `open -a App file` timestamp → app log line written after `room.synced` + 2 rAF (`measure.sh`) |
