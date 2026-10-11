@@ -19,6 +19,8 @@ const PREV = new Set(['ArrowLeft', 'ArrowUp', 'PageUp', 'Backspace']);
 export class Presenter {
   /** Frame shown now, or null when not presenting. */
   current: string | null = null;
+  /** Slide index of `current` (where to fall back if its frame goes away). */
+  private index = 0;
   private bar: HTMLElement | null = null;
   private listeners = new Set<() => void>();
   private offDoc: (() => void) | null = null;
@@ -48,7 +50,7 @@ export class Presenter {
     this.app.store.select([]);
     // a deleted or skipped frame mid-talk: stay on the nearest slide
     this.offDoc = this.app.store.subscribe(() => {
-      if (this.current && !slides(this.app.doc).some((f) => f.id === this.current)) this.go(0, false);
+      if (this.current && !slides(this.app.doc).some((f) => f.id === this.current)) this.go(this.index, false);
       else this.paint();
     });
     this.show(list[i].id);
@@ -95,6 +97,7 @@ export class Presenter {
 
   private show(id: string, ms = 650) {
     this.current = id;
+    this.index = Math.max(0, slides(this.app.doc).findIndex((x) => x.id === id));
     const f = this.app.node(id);
     if (f) void flyTo(this.app, f, { pad: 24, maxZoom: 4, ms });
     this.app.presence?.awareness.setLocalStateField('present', this.state());
