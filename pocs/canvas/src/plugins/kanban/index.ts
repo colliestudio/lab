@@ -1,7 +1,7 @@
 import './kanban.css';
 import type { App, CanvasNode, MenuEntry, Plugin } from '../../core';
 import { askText } from '../mats/textDialog';
-import { canPick, disconnect, hostOf, localState, pickFolder, resume, resumeFolder, tabId, useDevFolder, useService } from './connect';
+import { SERVICE_OFF, canPick, disconnect, hostOf, localState, pickFolder, resume, resumeFolder, tabId, useDevFolder, useService } from './connect';
 import { registerKanbanLogic } from './logic';
 import { CARD_GAP, CARD_H, COL_GAP, COL_W, PAD, board, cardsTop, column, columnsOf, isBoard, isRef, isTask, isWeb, ref, task, web } from './model';
 import { closeTask, openTask } from './panel';
@@ -101,7 +101,7 @@ function boardMenu(app: App, b: CanvasNode): MenuEntry[] {
       items: [
         { label: 'Folder… (File System Access)', disabled: canPick() ? false : 'Chromium browsers only', run: () => pickFolder(app, b.id) },
         { label: `Dev server folder${localState(b.id).devFolder ? ` (${localState(b.id).devFolder})` : ''}`, disabled: localState(b.id).devFolder ? false : 'Start vite with KANBAN_ROOT=…', run: () => useDevFolder(app, b.id) },
-        { label: 'Backlog.md server (/backlog-api)', run: () => useService(app, b.id) },
+        { label: 'Backlog.md server (/backlog-api)', disabled: localState(b.id).service ? false : SERVICE_OFF, run: () => useService(app, b.id) },
       ],
     },
     ...(mine ? [{ label: 'Sync now', run: () => hostOf(b.id)?.cycle().then(() => app.view.render()) }, { label: 'Stop hosting in this tab', run: () => disconnect(app, b.id) }] : []),
@@ -123,7 +123,7 @@ export const kanbanPlugin: Plugin = {
       id: 'kanban.web',
       label: 'Backlog.md web UI (iframe)',
       create: async (a, at) => {
-        const url = await askText('Backlog.md web UI address', 'http://localhost:6421', 'Add', 200);
+        const url = await askText('Backlog.md web UI address (e.g. http://localhost:<port>)', '', 'Add', 200);
         if (url) a.dispatch('kanban.web', { ...at, url });
       },
     });

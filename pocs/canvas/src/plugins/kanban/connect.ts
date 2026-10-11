@@ -24,13 +24,16 @@ export const tabId: string = (() => {
 const hosts = new Map<string, BoardHost>();
 const pendingFsa = new Map<string, FileSystemDirectoryHandle>();
 let devFolder: DevFolder | null | undefined;
-let devProbe: Promise<DevFolder | null> | undefined;
+let serviceOn = false;
+let devProbe: Promise<unknown> | undefined;
+
+export const SERVICE_OFF = 'Start vite with BACKLOG_URL=http://127.0.0.1:<port> of a `backlog browser` you chose';
 
 export const canPick = () => typeof window !== 'undefined' && 'showDirectoryPicker' in window;
 
 export function localState(boardId: string): LocalState {
   const h = hosts.get(boardId);
-  return { hosting: !!h && !h.stopped, needsResume: pendingFsa.has(boardId), error: h?.error, canPick: canPick(), devFolder: devFolder?.name };
+  return { hosting: !!h && !h.stopped, needsResume: pendingFsa.has(boardId), error: h?.error, canPick: canPick(), devFolder: devFolder?.name, service: serviceOn };
 }
 
 export function hostOf(boardId: string) {
@@ -93,12 +96,15 @@ export async function pickFolder(app: App, boardId: string) {
 }
 
 export async function useDevFolder(app: App, boardId: string) {
-  const f = await probeDev();
+  await probeDev();
+  const f = devFolder;
   if (!f) return app.notify('The dev server has no folder (start it with KANBAN_ROOT=…)');
   start(app, boardId, new FilesSource(f), 'dev');
 }
 
-export function useService(app: App, boardId: string) {
+export async function useService(app: App, boardId: string) {
+  await probeDev();
+  if (!serviceOn) return app.notify(`No Backlog.md server. ${SERVICE_OFF}`);
   start(app, boardId, new ServiceSource('/backlog-api'), 'service');
 }
 
@@ -119,7 +125,10 @@ export function disconnect(app: App, boardId: string) {
 }
 
 function probeDev() {
-  devProbe ??= DevFolder.probe().then((f) => (devFolder = f));
+  devProbe ??= DevFolder.probe().then((r) => {
+    devFolder = r.folder;
+    serviceOn = r.service;
+  });
   return devProbe;
 }
 
@@ -138,7 +147,7 @@ export async function resume(app: App) {
     if (!isBoard(b) || board(b).ownerTab !== tabId || hosts.has(b.id) || pendingFsa.has(b.id)) continue;
     const kind = localStorage.getItem(`canvas-kanban:conn:${b.id}`) as Kind | null;
     if (kind === 'dev' && devFolder) start(app, b.id, new FilesSource(devFolder), 'dev');
-    else if (kind === 'service') start(app, b.id, new ServiceSource('/backlog-api'), 'service');
+    else if (kind === 'service' && serviceOn) start(app, b.id, new ServiceSource('/backlog-api'), 'service');
     else if (kind === 'fsa') {
       const h = await loadHandle(b.id).catch(() => undefined);
       if (!h) continue;

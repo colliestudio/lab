@@ -15,6 +15,8 @@ export interface LocalState {
   canPick: boolean;
   /** The dev server's folder, if it has one. */
   devFolder?: string;
+  /** The dev server proxies a Backlog.md server (BACKLOG_URL set). */
+  service?: boolean;
 }
 
 /** Same hue for the same label everywhere (board, refs, other peers). */
@@ -55,7 +57,9 @@ function sourceLine(b: CanvasNode, me: string, tab: string, s: LocalState): { te
   const connectButtons = () =>
     (s.canPick ? btn('pick', 'Open folder…', 'Pick a Backlog.md project folder (File System Access API)') : '') +
     (s.devFolder ? btn('dev', `Dev folder: ${s.devFolder}`, "The dev server's KANBAN_ROOT folder") : '') +
-    btn('service', 'Backlog server', 'A running `backlog browser`, through the /backlog-api proxy');
+    (s.service
+      ? btn('service', 'Backlog server', 'A running `backlog browser`, through the /backlog-api proxy')
+      : btn('service', 'Backlog server (off)', 'Off: start vite with BACKLOG_URL=http://127.0.0.1:<port> of a `backlog browser` you chose'));
   if (!f.source) return { text: 'Not connected. Pick where the tasks live:', buttons: connectButtons() };
   const kind = f.source === 'files' ? 'files' : 'Backlog server';
   const where = `${kind} · ${esc(f.sourceLabel ?? '')}`;
@@ -112,7 +116,7 @@ export function webHtml(url: string): string {
     `<div class="kb-web">` +
     `<div class="kb-web-bar"><span>Backlog.md web UI (iframe) · ${esc(url)}</span>` +
     `<span class="kb-web-hint">Double-click to use it · <button type="button" data-action="done">Done</button></span></div>` +
-    // allow-same-origin + allow-scripts on a different origin (localhost:6421) keeps it isolated from the canvas
+    // allow-same-origin + allow-scripts on a different origin (the Backlog.md server's port) keeps it isolated from the canvas
     `<iframe src="${esc(url)}" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" referrerpolicy="no-referrer"></iframe>` +
     `<div class="kb-web-shield"></div>` +
     `</div>`

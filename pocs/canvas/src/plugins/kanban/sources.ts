@@ -106,14 +106,15 @@ export class DevFolder implements Folder {
     readonly name: string,
     private base = '/__kanban',
   ) {}
-  static async probe(base = '/__kanban'): Promise<DevFolder | null> {
+  /** The dev server's folder (KANBAN_ROOT) and whether its /backlog-api proxy is on (BACKLOG_URL). */
+  static async probe(base = '/__kanban'): Promise<{ folder: DevFolder | null; service: boolean }> {
     try {
       const r = await fetch(`${base}/info`);
-      if (!r.ok) return null;
+      if (!r.ok) return { folder: null, service: false };
       const j = await r.json();
-      return j?.enabled ? new DevFolder(String(j.name ?? 'dev folder'), base) : null;
+      return { folder: j?.enabled ? new DevFolder(String(j.name ?? 'dev folder'), base) : null, service: !!j?.service };
     } catch {
-      return null;
+      return { folder: null, service: false };
     }
   }
   async list(dir: string): Promise<Entry[] | null> {
