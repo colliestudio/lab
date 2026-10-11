@@ -8,6 +8,7 @@ import { clockPlugin } from './plugins/clock';
 import { battleLinePlugin } from './plugins/battleline';
 import { matsPlugin } from './plugins/mats';
 import { mountHelp, removeHelpNote } from './help';
+import { mountPluginLoader } from './loader';
 
 const ROOM = roomFromUrl();
 const DB_NAME = ROOM ? roomDbName(ROOM) : 'canvas-poc';
@@ -30,7 +31,9 @@ app.store.migrations.push(removeHelpNote);
 
 function newTable() {
   resetFileHandle();
-  app.store.load({ nodes: [], edges: [] });
+  // the table's plugins stay (a room-level choice, not part of the game state)
+  const plugins = app.store.meta.get('x-plugins');
+  app.store.load({ nodes: [], edges: [], extra: plugins ? { 'x-plugins': plugins } : undefined });
   // the starter table: a shuffled deck, a wave of spades and three cards to flip (setup lays out about 940 x 400)
   app.dispatch('cards.setup', { x: -470, y: -120 });
   app.store.undoManager.clear();
@@ -148,6 +151,8 @@ app.onNotify(flash);
 mountHelp(app, helpBtn);
 mountZoomControl(app);
 mountLog(app);
+const plugins = mountPluginLoader(app, bar);
+(window as any).plugins = plugins.host;
 
 app.registerKey({ key: 'mod+s', run: () => doSave() });
 app.registerKey({ key: 'mod+shift+s', run: () => doSave(true) });
