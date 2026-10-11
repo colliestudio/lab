@@ -10,10 +10,24 @@ export function kanbanDevFolder(root = process.env.KANBAN_ROOT): Plugin {
     name: 'kanban-dev-folder',
     configureServer(server) {
       const base = root ? realpathSync(root) : undefined;
+      const within = (p: string) => !!base && (p === base || p.startsWith(base + path.sep));
       const inside = (rel: string) => {
         if (!base) return undefined;
         const p = path.resolve(base, rel || '.');
-        return p === base || p.startsWith(base + path.sep) ? p : undefined;
+        if (!within(p)) return undefined;
+        // a symlink inside the root may point outside it: check the real path of the deepest existing part
+        let real = p;
+        for (;;) {
+          try {
+            real = path.join(realpathSync(real), path.relative(real, p));
+            break;
+          } catch {
+            const up = path.dirname(real);
+            if (up === real) return undefined;
+            real = up;
+          }
+        }
+        return within(real) ? p : undefined;
       };
       server.middlewares.use('/__kanban', async (req, res) => {
         const url = new URL(req.url ?? '/', 'http://x');
