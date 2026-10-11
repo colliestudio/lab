@@ -32,14 +32,14 @@ const MAX_NODES = 2000;
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
-/** Sanitized HTML for a plugin's render tree. Unknown tags become spans; unsafe bits are dropped. */
+/** Sanitized HTML for a plugin's render tree. No tag = div, unknown tags become spans; unsafe bits are dropped. */
 export function treeToHtml(tree: RenderTree, pluginId: string): string {
   let budget = MAX_NODES;
   const walk = (t: RenderTree, depth: number): string => {
     if (t === null || t === undefined || t === false) return '';
     if (typeof t === 'string' || typeof t === 'number') return esc(String(t));
     if (typeof t !== 'object' || --budget < 0 || depth > 30) return '';
-    const tag = typeof t.tag === 'string' && TAGS.has(t.tag) ? t.tag : 'span';
+    const tag = t.tag === undefined ? 'div' : typeof t.tag === 'string' && TAGS.has(t.tag) ? t.tag : 'span';
     const attrs: string[] = [];
     const classes = typeof t.class === 'string' ? t.class.split(/\s+/).filter((c) => CLASS.test(c)) : [];
     if (classes.length) attrs.push(`class="${classes.map((c) => `px-${pluginId}-${c}`).join(' ')}"`);
