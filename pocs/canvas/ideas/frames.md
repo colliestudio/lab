@@ -79,6 +79,6 @@ Frames turn a big canvas into named places: a frame is a titled region whose con
 
 ## Effort
 
-- Built: about a day of work (plugin ~1.3k lines incl. CSS and tests, 2 small core methods).
+- Built: about a day of work (plugin ~2.3k lines incl. CSS and tests, 2 small core methods).
 - To merge into poc: small. No core conflicts expected beyond `store.ts` (two added methods) and `main.ts` (four lines).
 - Production-quality: frames + outline + present ~2–3 days more (core backdrop layer, gesture hooks, presence API, help/keys listing, touch). Portals ~1 week more with permissions, host-served snapshots, connection budget, and interactive portals.
