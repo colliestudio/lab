@@ -2,7 +2,7 @@ import { Scratch, isNum, type CanvasNode, type Command, type Store } from '../..
 import type { Seat } from '../mats/presets';
 import { freeZoneNode, isMat } from '../mats/model';
 import { W as CLOCK_W, clockNode } from '../clock/model';
-import { BUTTON_H, BUTTON_W, buttonNode, type ButtonField } from './model';
+import { BUTTON_W, buttonNode, type ButtonField } from './model';
 
 // Demo tables with buttons. Each is one command (one undo step) built from other commands.
 
