@@ -194,6 +194,24 @@ export class Store {
     this.view = null;
   }
 
+  /**
+   * Read another doc the way this app reads its own: a store over a second Y.Doc (a portal into
+   * another room) takes the containment, rider and layout rules from `from` (the app's store).
+   * Commands, repairs and migrations stay behind: such a store is for reading.
+   */
+  adoptViewRules(from: Store) {
+    this.parentRules = from.parentRules;
+    this.riderRules = from.riderRules;
+    this.layouts = from.layouts;
+    this.view = null;
+  }
+
+  /** Rules changed without a transaction (e.g. a rule that reads local state): rebuild the snapshot and redraw. */
+  invalidate() {
+    this.view = null;
+    this.emit();
+  }
+
   // ------------------------------------------------------------ commands
 
   register(name: string, cmd: Command) {
