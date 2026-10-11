@@ -45,8 +45,6 @@ export function newId(): string {
 
 export const defaultCtx: CommandCtx = { newId, random: Math.random };
 
-/** Origin of transactions made by this client's own commands (undo tracks only these). */
-const LOCAL = Symbol('local');
 /** Origin of whole-document loads (file open, new table): not undoable. */
 const LOAD = Symbol('load');
 /** Origin of local commands that can't be undone (a game clock: time doesn't go back). */
@@ -120,6 +118,11 @@ export class Store {
   private touched = new Set<string>();
 
   ctx: CommandCtx;
+  /**
+   * Origin of transactions made by this store's own commands (undo tracks only these). Per store, so
+   * several stores can share one Y.Doc with separate undo histories (the bridge: one per agent).
+   */
+  private readonly local = Symbol('local');
 
   constructor(opts: { ydoc?: Y.Doc; ctx?: CommandCtx } = {}) {
     this.ctx = opts.ctx ?? defaultCtx;
@@ -130,7 +133,7 @@ export class Store {
     this.log = this.ydoc.getArray('log');
     // captureTimeout: we decide grouping ourselves (each dispatch = one undo step unless merged)
     this.undoManager = new Y.UndoManager([this.nodes, this.edges], {
-      trackedOrigins: new Set([LOCAL]),
+      trackedOrigins: new Set([this.local]),
       captureTimeout: Number.MAX_SAFE_INTEGER,
     });
     // observers run before afterTransaction: drop the plain copies of nodes that changed
@@ -273,7 +276,7 @@ export class Store {
   }
 
   /** Apply changes in one local (undoable) transaction. */
-  apply(changes: readonly Change[], origin: unknown = LOCAL) {
+  apply(changes: readonly Change[], origin: unknown = this.local) {
     if (!changes.length) return;
     this.ydoc.transact(() => {
       for (const c of changes) this.applyOne(c);
