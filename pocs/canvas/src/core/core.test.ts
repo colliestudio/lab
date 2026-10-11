@@ -209,3 +209,27 @@ describe('snapshot cache', () => {
     expect(s.doc.get('a')).toBeUndefined();
   });
 });
+
+describe('edge changes', () => {
+  const n = (id: string) => ({ id, type: 'text', x: 0, y: 0, width: 10, height: 10 });
+  it('adds, replaces and deletes edges as one undo step each; skips edges to missing nodes', () => {
+    const s = store({ nodes: [n('a'), n('b')], edges: [] });
+    s.register('t.edges', (_d, changes) => changes);
+    s.dispatch('t.edges', [{ op: 'edge', edge: { id: 'e', fromNode: 'a', toNode: 'b', label: 'Go' } }, { op: 'edge', edge: { id: 'f', fromNode: 'a', toNode: 'zz' } }]);
+    expect(s.doc.edges).toEqual([{ id: 'e', fromNode: 'a', toNode: 'b', label: 'Go' }]);
+    s.dispatch('t.edges', [{ op: 'edge', edge: { id: 'e', fromNode: 'a', toNode: 'b', label: 'Next' } }]);
+    expect(s.doc.edges[0].label).toBe('Next');
+    s.dispatch('t.edges', [{ op: 'delEdge', id: 'e' }]);
+    expect(s.doc.edges).toEqual([]);
+    s.undo();
+    expect(s.doc.edges[0].label).toBe('Next');
+    s.undo();
+    expect(s.doc.edges[0].label).toBe('Go');
+  });
+  it('an edge added with its nodes in one dispatch lands', () => {
+    const s = store();
+    s.register('t.add', () => [{ op: 'add', node: n('a') }, { op: 'add', node: n('b') }, { op: 'edge', edge: { id: 'e', fromNode: 'a', toNode: 'b' } }]);
+    s.dispatch('t.add', {});
+    expect(s.doc.edges.length).toBe(1);
+  });
+});

@@ -289,6 +289,13 @@ export class Store {
         this.nodes.delete(c.id);
         for (const [id, e] of this.edges) if (e.fromNode === c.id || e.toNode === c.id) this.edges.delete(id);
         return;
+      case 'edge':
+        if (!this.nodes.has(c.edge.fromNode) || !this.nodes.has(c.edge.toNode)) return;
+        this.edges.set(c.edge.id, c.edge);
+        return;
+      case 'delEdge':
+        this.edges.delete(c.id);
+        return;
       case 'set': {
         // A node deleted (maybe concurrently) stays deleted: never resurrect it through a set.
         const node = this.nodes.get(c.id);
