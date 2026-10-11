@@ -31,6 +31,8 @@ const opt = (name: string) => {
 };
 const stateDir = resolve(opt('state-dir') ?? process.env.CANVAS_STATE_DIR ?? join(homedir(), 'Library/Application Support/studio.collie.canvas.spike'));
 const infoPath = join(stateDir, 'service.json');
+/** Page origins allowed to call the API / open sockets: the app's own, plus --allow-origin (dev server). */
+const ORIGINS = new Set(['tauri://localhost', ...(opt('allow-origin') ? [opt('allow-origin')!] : [])]);
 const log = (...m: unknown[]) => console.error(new Date().toISOString().slice(11, 23), ...m);
 
 if (mode === 'mcp') void shim();
@@ -161,7 +163,7 @@ function serve() {
     try {
       // loopback only, and refuse browser pages from other sites (DNS rebinding / drive-by fetches)
       const origin = req.headers.origin;
-      if (origin && origin !== 'tauri://localhost' && origin !== `http://127.0.0.1:${port}`) return reply(res, 403, { error: `origin ${origin} not allowed` });
+      if (origin && !ORIGINS.has(origin)) return reply(res, 403, { error: `origin ${origin} not allowed` });
       if (url.pathname === '/mcp') return await mcp(req, res, url);
       if (url.pathname === '/health') return reply(res, 200, { ok: true, port, pid: process.pid, boards: rooms.size, mcpSessions: sessions.size });
       if (url.pathname === '/canvases' && req.method === 'GET') return reply(res, 200, [...rooms.values()].map((r) => r.summary()));
@@ -200,7 +202,7 @@ function serve() {
     const m = (req.url ?? '').match(/^\/b\/([0-9a-f]{8})\/canvas/);
     const room = m && rooms.get(m[1]);
     const origin = req.headers.origin;
-    if (!room || (origin && origin !== 'tauri://localhost' && origin !== `http://127.0.0.1:${port}`)) {
+    if (!room || (origin && !ORIGINS.has(origin))) {
       socket.write('HTTP/1.1 404 Not Found\r\n\r\n');
       return socket.destroy();
     }

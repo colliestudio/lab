@@ -90,6 +90,8 @@ fn start_service(app: &AppHandle, state_dir: &Path) -> Result<(), String> {
     let mut child = Command::new(sidecar_path())
         .args(["serve", "--shell", "--state-dir"])
         .arg(state_dir)
+        // `tauri dev` serves the page from the Vite dev server (hot reload): let that origin in
+        .args(if cfg!(debug_assertions) { vec!["--allow-origin", "http://localhost:5260"] } else { vec![] })
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -212,7 +214,7 @@ fn board_window(app: &AppHandle, id: &str, name: &str) -> Result<(), String> {
         for _ in 0..200 {
             if let Ok(s) = snapshot::eval_js(&w, "String(!!(window.room && window.room.provider && window.room.provider.synced) && document.querySelectorAll('.cv-world > *').length)") {
                 if s != "false" && s != "0" && !s.is_empty() {
-                    log(format!("board visible: {name} ({s} elements) {} ms after window, {} ms after launch (epoch {})", t.elapsed().as_millis(), T0.get().unwrap().elapsed().as_millis(), epoch_ms()));
+                    log(format!("board visible: {name} ({s} elements) {} ms after window, {} ms after launch (epoch {}); web/gpu process {:?}", t.elapsed().as_millis(), T0.get().unwrap().elapsed().as_millis(), epoch_ms(), snapshot::web_pid(&w)));
                     return;
                 }
             }
@@ -317,12 +319,13 @@ fn agent_screenshot(app: &AppHandle, m: &Value) -> Result<Value, String> {
     let t_snap = Instant::now();
     // 1 image px per CSS px (not Retina 2x): ~4x fewer bytes and image tokens; `scale: 2` for detail
     let scale = m["scale"].as_f64().unwrap_or(1.0).clamp(0.25, 2.0);
-    let backing = win.scale_factor().unwrap_or(1.0);
+    // a hidden window isn't on a screen, so its own scale factor can read 1.0: take the screen's
+    let backing = win.primary_monitor().ok().flatten().map(|m| m.scale_factor()).unwrap_or(2.0);
     let png = snapshot::snapshot_png(&win, w * scale / backing)?;
     timings.insert("snapshotMs".into(), json!(t_snap.elapsed().as_millis()));
     timings.insert("totalMs".into(), json!(t.elapsed().as_millis()));
     let (pw, ph) = png_size(&png);
-    log(format!("screenshot {label} ({mode}): {pw}x{ph}, {} bytes, {:?}", png.len(), timings));
+    log(format!("screenshot {label} ({mode}): {pw}x{ph}, {} bytes, {:?}; web/gpu process {:?}", png.len(), timings, snapshot::web_pid(&win)));
     use base64::Engine;
     Ok(json!({ "png": base64::engine::general_purpose::STANDARD.encode(&png), "width": pw, "height": ph, "timings": timings }))
 }

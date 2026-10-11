@@ -14,7 +14,11 @@
     "deploy": "pnpm build && wrangler deploy --config signaling/wrangler.deploy.toml",
     "bridge": "tsx bridge/server.ts",
     "canvas": "tsx bridge/cli.ts",
-    "canvas-mcp": "tsx bridge/mcp.ts"
+    "canvas-mcp": "tsx bridge/mcp.ts",
+    "desktop:dev": "cd desktop && tauri dev --",
+    "desktop:build": "cd desktop && tauri build",
+    "desktop:sidecar": "node desktop/build-sidecar.mjs",
+    "desktop:service": "tsx desktop/service/main.ts"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261009.1",

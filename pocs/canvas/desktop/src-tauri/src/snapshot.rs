@@ -79,6 +79,30 @@ mod mac {
         done.join(", ")
     }
 
+    /// WebContent process of this view (SPI `_webProcessIdentifier`), for memory accounting.
+    pub unsafe fn web_pid(wk: *mut std::ffi::c_void) -> i32 {
+        use objc2::{msg_send, sel};
+        use objc2_foundation::NSObjectProtocol;
+        let wk = &*(wk as *const WKWebView);
+        if wk.respondsToSelector(sel!(_webProcessIdentifier)) {
+            msg_send![wk, _webProcessIdentifier]
+        } else {
+            -1
+        }
+    }
+
+    /// GPU process (SPI `_gpuProcessIdentifier`), shared by the app's views.
+    pub unsafe fn gpu_pid(wk: *mut std::ffi::c_void) -> i32 {
+        use objc2::{msg_send, sel};
+        use objc2_foundation::NSObjectProtocol;
+        let wk = &*(wk as *const WKWebView);
+        if wk.respondsToSelector(sel!(_gpuProcessIdentifier)) {
+            msg_send![wk, _gpuProcessIdentifier]
+        } else {
+            -1
+        }
+    }
+
     pub unsafe fn invisible(ns_window: *mut std::ffi::c_void) {
         let w = &*(ns_window as *const objc2_app_kit::NSWindow);
         w.setAlphaValue(0.0);
@@ -120,6 +144,18 @@ pub fn keep_rendering(win: &WebviewWindow) -> String {
         let _ = tx.send(unsafe { mac::keep_rendering(pv.inner()) });
     });
     rx.recv_timeout(Duration::from_secs(2)).unwrap_or_default()
+}
+
+/// (WebContent pid, GPU pid) behind this window.
+pub fn web_pid(win: &WebviewWindow) -> (i32, i32) {
+    let (tx, rx) = mpsc::channel();
+    #[cfg(target_os = "macos")]
+    let _ = win.with_webview(move |pv| {
+        let _ = tx.send(unsafe { (mac::web_pid(pv.inner()), mac::gpu_pid(pv.inner())) });
+    });
+    #[cfg(not(target_os = "macos"))]
+    let _ = (win, tx);
+    rx.recv_timeout(Duration::from_secs(2)).unwrap_or((-1, -1))
 }
 
 #[cfg(target_os = "macos")]
