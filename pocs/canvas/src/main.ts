@@ -11,6 +11,8 @@ import { boardPlugin } from './plugins/board';
 import { mountHelp, removeHelpNote } from './help';
 
 const BRIDGE = new URLSearchParams(location.search).get('bridge');
+/** Agent eye (?bridge=…&eye=<seat id>): a hidden window that renders the table for an agent's screenshots. Not a player; sees what that seat may see. */
+const EYE = BRIDGE ? new URLSearchParams(location.search).get('eye') : null;
 const ROOM = BRIDGE ? null : roomFromUrl();
 const DB_NAME = ROOM ? roomDbName(ROOM) : 'canvas-poc';
 const VIEW_KEY = 'canvas-poc:view';
@@ -171,7 +173,7 @@ window.addEventListener('drop', async (e) => {
   }
 });
 
-const view = persistViewport(app, VIEW_KEY);
+const view = EYE ? null : persistViewport(app, VIEW_KEY);
 if (BRIDGE) startBridge(BRIDGE);
 else persistLocally(app, DB_NAME).then(({ empty }) => {
   if (!ROOM) {
@@ -228,6 +230,17 @@ function startBridge(url: string) {
   const stored = loadPlayer();
   const room = joinBridge(app, url, { id: stored.id, name: stored.name, color: stored.color });
   (window as any).room = room;
+  if (EYE) {
+    room.presence.awareness.setLocalState(null); // not at the table: no cursor, not in the player list
+    app.viewer = EYE;
+    document.body.classList.add('eye');
+    const eye = ((window as any).eye = { ready: false });
+    room.synced.then(() => {
+      app.view.fit();
+      eye.ready = true;
+    });
+    return;
+  }
   mountRoomStatus(
     app,
     room,

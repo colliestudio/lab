@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleName</key><string>Canvas</string>
+  <key>CFBundleDisplayName</key><string>Canvas</string>
+  <key>CFBundleExecutable</key><string>Canvas</string>
+  <key>CFBundleIdentifier</key><string>studio.collie.canvas</string>
+  <key>CFBundleVersion</key><string>0.1.0</string>
+  <key>CFBundleShortVersionString</key><string>0.1.0</string>
+  <key>CFBundleIconFile</key><string>icons</string>
+  <key>LSMinimumSystemVersion</key><string>12.0.0</string>
+  <key>NSHighResolutionCapable</key><true/>
+  <key>NSHumanReadableCopyright</key><string>Canvas spike (Wails)</string>
+  <!-- file association: .canvas (JSON Canvas) -->
+  <key>CFBundleDocumentTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleTypeName</key><string>Canvas</string>
+      <key>CFBundleTypeRole</key><string>Editor</string>
+      <key>LSHandlerRank</key><string>Owner</string>
+      <key>CFBundleTypeIconFile</key><string>icons</string>
+      <key>LSItemContentTypes</key><array><string>studio.collie.canvas.document</string></array>
+      <key>CFBundleTypeExtensions</key><array><string>canvas</string></array>
+    </dict>
+  </array>
+  <key>UTExportedTypeDeclarations</key>
+  <array>
+    <dict>
+      <key>UTTypeIdentifier</key><string>studio.collie.canvas.document</string>
+      <key>UTTypeDescription</key><string>JSON Canvas</string>
+      <key>UTTypeConformsTo</key><array><string>public.json</string><string>public.data</string></array>
+      <key>UTTypeTagSpecification</key>
+      <dict><key>public.filename-extension</key><array><string>canvas</string></array></dict>
+    </dict>
+  </array>
+</dict>
+</plist>

@@ -232,3 +232,7 @@ body {
 #toolbar .player.me:hover {
   background: rgba(255, 255, 255, 0.24);
 }
+
+/* agent eye (?eye=): only the table, for screenshots */
+body.eye > :not(#table) { display: none !important; }
+body.eye #table { inset: 0 !important; top: 0 !important; }
