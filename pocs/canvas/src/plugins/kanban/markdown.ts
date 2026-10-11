@@ -30,13 +30,14 @@ export interface BoardConfig {
   prefix: string;
 }
 
-const FM = /^---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/;
+const FM = /^---(\r?\n)([\s\S]*?)(\r?\n---[ \t]*(?:\r?\n|$))/;
 
-/** Split into frontmatter lines and body. No frontmatter = everything is body. */
-export function splitFrontmatter(text: string): { lines: string[]; body: string } | null {
+/** Split into frontmatter lines and body. No frontmatter = everything is body. `eol` and `close`
+ * (the closing `---` line as written) let a patch keep the file's line endings byte for byte. */
+export function splitFrontmatter(text: string): { lines: string[]; body: string; eol: string; close: string } | null {
   const m = FM.exec(text);
   if (!m) return null;
-  return { lines: m[1].split(/\r?\n/), body: text.slice(m[0].length) };
+  return { lines: m[2].split(/\r?\n/), body: text.slice(m[0].length), eol: m[1], close: m[3] };
 }
 
 /** Line range [start, end) of `key` in frontmatter lines (the key line plus its indented continuation). */
@@ -150,7 +151,7 @@ export function patchTask(text: string, patch: Partial<TaskFields>, now?: Date):
   }
   if (now) put('updated_date', stamp(now));
   const body = patch.body !== undefined ? patch.body : fm.body;
-  return `---\n${lines.join('\n')}\n---\n${body}`;
+  return `---${fm.eol}${lines.join(fm.eol)}${fm.close}${body}`;
 }
 
 /** File name Backlog.md would pick: "task-12 - Some-title.md". */

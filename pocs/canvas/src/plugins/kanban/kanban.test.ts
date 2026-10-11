@@ -119,6 +119,10 @@ describe('markdown', () => {
     expect(patchTask(TASK1, { ordinal: undefined })).not.toContain('ordinal');
     // body replaced, frontmatter untouched
     expect(patchTask(TASK1, { body: '\nNew body\n' }).endsWith('---\n\nNew body\n')).toBe(true);
+    // CRLF files keep CRLF; a no-op patch is byte for byte
+    const crlf = TASK1.replace(/\n/g, '\r\n');
+    expect(patchTask(crlf, {})).toBe(crlf);
+    expect(patchTask(crlf, { status: 'In Progress' }, NOW)).toBe(patchTask(TASK1, { status: 'In Progress' }, NOW).replace(/\n/g, '\r\n'));
   });
 
   it('quotes like js-yaml, names files and ids like Backlog.md', () => {

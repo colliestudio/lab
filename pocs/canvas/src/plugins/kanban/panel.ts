@@ -82,14 +82,19 @@ export function openTask(app: App, nodeId: string) {
   });
   labels.addEventListener('change', () => edit({ labels: csv(labels.value) }));
   assignee.addEventListener('change', () => edit({ assignee: csv(assignee.value) }));
+  // a textarea turns CRLF into LF: give a CRLF file its line endings back (else focus + blur rewrites the body)
+  const bodyValue = () => {
+    const n = app.node(id);
+    return isTask(n) && task(n).body?.includes('\r\n') ? body.value.replace(/\r?\n/g, '\r\n') : body.value;
+  };
   let t: ReturnType<typeof setTimeout> | undefined;
   body.addEventListener('input', () => {
     clearTimeout(t);
-    t = setTimeout(() => edit({ body: body.value }), 500);
+    t = setTimeout(() => edit({ body: bodyValue() }), 500);
   });
   body.addEventListener('blur', () => {
     clearTimeout(t);
-    edit({ body: body.value });
+    edit({ body: bodyValue() });
   });
   q('.kb-close').addEventListener('click', closeTask);
   el.addEventListener('keydown', (e) => {
