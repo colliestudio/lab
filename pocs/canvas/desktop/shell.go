@@ -27,7 +27,29 @@ type eye struct {
 	mu   sync.Mutex
 	win  *application.WebviewWindow
 	w, h int
-	seen bool // camera set at least once
+	seen bool      // camera set at least once
+	last time.Time // last use; idle eyes close (an agent that left)
+}
+
+const eyeIdle = 5 * time.Minute
+
+// reapEyes closes eye windows no agent used for a while (each costs a WebContent process, ~60–70 MB).
+func (sh *Shell) reapEyes() {
+	for range time.Tick(30 * time.Second) {
+		sh.mu.Lock()
+		for k, e := range sh.eyes {
+			if !e.mu.TryLock() {
+				continue
+			}
+			if e.win != nil && time.Since(e.last) > eyeIdle {
+				e.win.Close()
+				delete(sh.eyes, k)
+				log.Printf("eye: closed idle %s", k)
+			}
+			e.mu.Unlock()
+		}
+		sh.mu.Unlock()
+	}
 }
 
 type Shell struct {
@@ -65,6 +87,7 @@ func newShell(home string, logw io.Writer) *Shell {
 
 func (sh *Shell) onStarted(args []string) {
 	close(sh.started)
+	go sh.reapEyes()
 	for _, f := range args {
 		sh.requestOpen(f)
 	}
@@ -183,8 +206,8 @@ func (sh *Shell) watchVisible(bw *boardWin, name string, t0 time.Time) {
 	for time.Now().Before(deadline) {
 		out, err := evalJS(nw, body, 3*time.Second)
 		if err == nil && out != "null" && out != "" {
-			log.Printf("board visible: %s nodes=%s open→visible %d ms, process start→visible %d ms (%s)",
-				name, out, time.Since(t0).Milliseconds(), time.Since(processStart).Milliseconds(), windowState(nw))
+			log.Printf("board visible: %s nodes=%s open→visible %d ms, process start→visible %d ms, at_unix_ms=%d (%s)",
+				name, out, time.Since(t0).Milliseconds(), time.Since(processStart).Milliseconds(), time.Now().UnixMilli(), windowState(nw))
 			return
 		}
 		time.Sleep(30 * time.Millisecond)
@@ -254,6 +277,8 @@ func (sh *Shell) eyeFor(m map[string]any) (*eye, unsafe.Pointer, error) {
 			Height: h,
 			URL:    fmt.Sprintf("/?bridge=%s&eye=%s", ws, seatID),
 			Hidden: os.Getenv("CANVAS_EYES_VISIBLE") == "",
+			// no title bar: the content (what gets captured) is exactly width x height
+			Frameless: true,
 			// off-screen if made visible for debugging, so it never covers people's windows
 			InitialPosition: application.WindowXY,
 			X:               -4000,
@@ -266,6 +291,7 @@ func (sh *Shell) eyeFor(m map[string]any) (*eye, unsafe.Pointer, error) {
 		e.w, e.h = w, h
 		e.seen = false
 	}
+	e.last = time.Now()
 	nw := waitNative(e.win, 5*time.Second)
 	if nw == nil {
 		e.mu.Unlock()
@@ -296,7 +322,7 @@ func (sh *Shell) screenshot(m map[string]any) (map[string]any, error) {
 	camJS := ""
 	switch c := cam.(type) {
 	case map[string]any:
-		camJS = fmt.Sprintf(`const r = app.view.root, z = %v; app.viewport.set(r.clientWidth / 2 - %v * z, r.clientHeight / 2 - %v * z, z);`, c["zoom"], c["x"], c["y"])
+		camJS = fmt.Sprintf(`{ const r = app.view.root, z = %v; app.viewport.set(r.clientWidth / 2 - %v * z, r.clientHeight / 2 - %v * z, z); }`, c["zoom"], c["x"], c["y"])
 	case string:
 		if c == "fit" || (c == "keep" && !e.seen) {
 			camJS = `app.view.fit();`
