@@ -70,7 +70,7 @@ function valueEl(doc: DocView, f: FieldDef, v: unknown): HTMLElement {
     return ul;
   }
   const text = display(doc, f, v);
-  const d = h('div', `cmp-value cmp-${f.kind}${text ? '' : ' cmp-empty'}`, text || '—');
+  const d = h('div', text ? `cmp-value cmp-${f.kind}` : 'cmp-value cmp-empty', text || '—');
   if (f.kind === 'enum' && text) d.dataset.value = text;
   if (f.kind === 'ref' && text) d.textContent = '→ ' + text;
   return d;
