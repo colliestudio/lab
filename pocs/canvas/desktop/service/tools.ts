@@ -166,9 +166,10 @@ export function canvasTools(server: McpServer, base: () => string, as: () => str
         zoom: z.number().optional(),
         width: z.number().optional().describe('view size in CSS px (default 1000)'),
         height: z.number().optional().describe('default 750'),
+        scale: z.number().optional().describe('image px per CSS px: 1 (default) or 2 for fine detail (4x the tokens)'),
       },
     },
-    tool(async ({ board: b, nodes, ...a }: { board?: string; nodes?: string[]; x?: number; y?: number; zoom?: number; width?: number; height?: number }) => {
+    tool(async ({ board: b, nodes, ...a }: { board?: string; nodes?: string[]; x?: number; y?: number; zoom?: number; width?: number; height?: number; scale?: number }) => {
       const { b: bd, c } = await bc(b);
       const ids = nodes && (await Promise.all(nodes.map((n) => c.resolve(n))));
       const r = await http(`/b/${bd.id}/screenshot`, { as: as(), nodes: ids, ...a });

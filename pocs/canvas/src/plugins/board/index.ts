@@ -26,6 +26,10 @@ export function noteHtml(text: string): string {
     .join('');
 }
 
+/** A link node with `"embed": true` shows the page live (sandboxed, no pointer input: drag moves the node). */
+const embedHtml = (url: string) =>
+  `<iframe class="bd-embed" src="${esc(url)}" sandbox="allow-scripts" referrerpolicy="no-referrer" loading="eager" style="display:block;width:100%;height:calc(100% - 2.2em);border:0;border-radius:6px;pointer-events:none;background:#fff"></iframe>`;
+
 function edit(app: App, n: CanvasNode) {
   if (isColumn(n)) {
     const v = prompt('Column name', n.label ?? '');
@@ -53,7 +57,7 @@ export const boardPlugin: Plugin = {
         const src = syncOf(n);
         el.innerHTML =
           `<div class="bd-note${c ? ' bd-colored' : ''}">` +
-          (n.type === 'link' ? `<div class="bd-title">🔗 ${esc(n.url ?? '')}</div>` : noteHtml(n.text ?? '')) +
+          (n.type === 'link' ? `<div class="bd-title">🔗 ${esc(n.url ?? '')}</div>` + ((n as { embed?: unknown }).embed === true && /^https?:/.test(n.url ?? '') ? embedHtml(n.url!) : '') : noteHtml(n.text ?? '')) +
           (src ? `<span class="bd-src" title="Synced from ${esc(src.source)}: re-sync overwrites its text">${esc(src.source)}</span>` : '') +
           `</div>`;
         if (c) (el.firstChild as HTMLElement).style.setProperty('--bd-color', c);

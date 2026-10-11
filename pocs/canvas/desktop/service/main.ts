@@ -174,7 +174,7 @@ function serve() {
         if (m[2] === '/screenshot' && req.method === 'POST') {
           const b = await readBody(req);
           const t0 = Date.now();
-          const r = await askShell('screenshot', { id: room.id, seat: String(b.as ?? 'Claude'), nodes: b.nodes, x: b.x, y: b.y, zoom: b.zoom, width: b.width ?? 1000, height: b.height ?? 750 }, 30_000);
+          const r = await askShell('screenshot', { id: room.id, seat: String(b.as ?? 'Claude'), nodes: b.nodes, x: b.x, y: b.y, zoom: b.zoom, width: b.width ?? 1000, height: b.height ?? 750, scale: b.scale }, 30_000);
           return reply(res, 200, { png: r.png, width: r.width, height: r.height, ms: Date.now() - t0, timings: r.timings });
         }
         const b = req.method === 'POST' ? await readBody(req) : undefined;
