@@ -177,3 +177,15 @@ describe('chess seats', () => {
     expect(a.log.toArray().at(-1)!.text).toBe('freed the black seat (Bot)');
   });
 });
+
+describe('new game after a promotion', () => {
+  it('starts with exactly 32 pieces (the promoted queen goes, a pawn comes back)', () => {
+    const { a, id } = game();
+    for (const m of ['h4', 'g5', 'hxg5', 'h6', 'gxh6', 'Bg7', 'hxg7', 'a6', 'gxh8=Q']) expect(a.dispatch('chess.move', { id, move: m }).error).toBeUndefined();
+    a.dispatch('chess.newgame', { id });
+    const mine = a.doc.nodes.filter((n) => isPiece(n) && piece(n).board === id);
+    expect(mine).toHaveLength(32);
+    expect(mine.every((n) => piece(n).square)).toBe(true);
+    expect(gameView(a.doc, a.doc.get(id)!).fen).toBe('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
+  });
+});

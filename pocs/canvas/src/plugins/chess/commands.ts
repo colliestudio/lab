@@ -118,7 +118,7 @@ export const create: Command<{ x: number; y: number }> = (doc, a, ctx) => {
  * strangers on the board are set aside beside it (owner's side), or with `removeExtras` are deleted (strangers that
  * belong to another live board are left for that board).
  */
-function arrange(doc: DocView, b: CanvasNode, ctx: { newId(): string }, z: number, removeExtras = false) {
+export function arrange(doc: DocView, b: CanvasNode, ctx: { newId(): string }, z: number, removeExtras = false) {
   const mine = doc.visible.filter((n) => isPiece(n) && piece(n).home === b.id);
   const liveHome = (n: CanvasNode) => !!piece(n).home && isBoard(doc.get(piece(n).home!));
   const strangers = doc.riders(b.id).filter((n) => isPiece(n) && piece(n).home !== b.id && !(removeExtras && liveHome(n)));

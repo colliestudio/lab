@@ -2,7 +2,7 @@
 import { pick } from '../../core/commands';
 import { set } from '../../core/doc';
 import type { CanvasNode, Change, Command, CommandResult, DocView, EventSpec, LogActor } from '../../core';
-import { commands as free, moveTo, slots } from './commands';
+import { arrange, commands as free, moveTo, slots } from './commands';
 import { FIELD, board, boardUnder, center, isBoard, isColor, isPiece, piece, pieceText, squareAt, squarePos, type BoardField, type Color, type SeatField } from './model';
 import { ascii, inCheck, legalMoves, outcome, parseMove, play, san, sqIndex, sqName, toFen, validCastling, type Move, type Position } from './rules';
 
@@ -132,15 +132,16 @@ export const move: Command<{ id: string; move: string }> = (doc, a, ctx) => {
 export const newgame: Command<{ id?: string; x?: number; y?: number }> = (doc, a, ctx) => {
   if (a?.id !== undefined) {
     const b = boardOf(doc, a.id);
-    const r = free.setup(doc, { id: b.id }, ctx) as CommandResult;
-    return { changes: [...r.changes, set(b.id, F('rules'), true), ...freshGame(b.id)], select: [], events: [{ type: 'chess.board', text: 'started a chess game', targets: [b.id] }] };
+    // a game starts with exactly the 32: extras (a promoted queen, spawned pieces) go
+    const { changes } = arrange(doc, b, ctx, doc.topZ, true);
+    return { changes: [...changes, set(b.id, F('rules'), true), ...freshGame(b.id)], select: [b.id], events: [{ type: 'chess.board', text: 'started a chess game', targets: [b.id] }] };
   }
   const r = free.create(doc, { x: a?.x ?? 0, y: a?.y ?? 0 }, ctx) as CommandResult;
   const changes = r.changes.map((c) =>
     c.op === 'add' && isBoard(c.node) ? { ...c, node: { ...c.node, [FIELD]: { ...board(c.node), rules: true, turn: 'w', castling: 'KQkq', half: 0, full: 1 } } } : c,
   );
   const id = changes.find((c) => c.op === 'add' && isBoard(c.node));
-  return { changes, select: [], events: id && id.op === 'add' ? [{ type: 'chess.board', text: 'started a chess game', targets: [id.node.id] }] : [] };
+  return { changes, select: id && id.op === 'add' ? [id.node.id] : [], events: id && id.op === 'add' ? [{ type: 'chess.board', text: 'started a chess game', targets: [id.node.id] }] : [] };
 };
 
 /** Rules on (from the position as it stands, `turn` to move; default white) or off (free play). */
@@ -251,10 +252,10 @@ export const place: Command<{ ids: string[]; soft?: boolean }> = (doc, a, ctx) =
 
 /** Free play's set up, plus a fresh game when the board is in rules mode. */
 export const setup: Command<{ id: string }> = (doc, a, ctx) => {
-  const r = free.setup(doc, a, ctx);
-  const res = Array.isArray(r) ? { changes: r } : r;
   const b = rulesBoard(doc, a?.id);
-  return b ? { ...res, changes: [...res.changes, ...freshGame(b.id)] } : res;
+  if (!b) return free.setup(doc, a, ctx);
+  const { changes } = arrange(doc, b, ctx, doc.topZ, true);
+  return { changes: [...changes, ...freshGame(b.id)], select: [], events: [{ type: 'chess.board', text: 'set up the chess pieces', targets: [b.id] }] };
 };
 
 /** Reset table: rules boards start a fresh game (runs with the other resets, one undo step). */
