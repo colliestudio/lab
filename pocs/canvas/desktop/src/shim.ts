@@ -54,6 +54,9 @@ local.onmessage = (m: JSONRPCMessage) => void upstream.send(m).catch((x) => err(
 upstream.onmessage = (m: JSONRPCMessage) => void local.send(m);
 upstream.onerror = (x) => err(`upstream: ${x.message}`);
 upstream.onclose = () => process.exit(0);
-local.onclose = () => void upstream.close().finally(() => process.exit(0));
+// the agent went away: end the session so its seat and views go right away
+const bye = () => void upstream.terminateSession().catch(() => {}).finally(() => upstream.close().finally(() => process.exit(0)));
+local.onclose = bye;
+process.stdin.on('end', bye);
 await upstream.start();
 await local.start();

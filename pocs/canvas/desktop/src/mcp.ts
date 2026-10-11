@@ -29,7 +29,11 @@ interface Session {
   actor: Actor;
   client: string;
   started: number;
+  last: number;
 }
+
+/** A session with no request for this long is closed (a client that died without saying bye). */
+const SESSION_IDLE_MS = 30 * 60_000;
 
 /** A board's client acting as `actor`, in-process (same interface the CLI uses over HTTP). */
 function localClient(b: BoardFile, actor: Actor): Client {
@@ -50,7 +54,13 @@ const NAMES: Record<string, string> = { 'claude-code': 'Claude', claude: 'Claude
 export class McpEndpoint {
   readonly sessions = new Map<string, Session>();
 
-  constructor(private d: Desktop) {}
+  private sweepTimer: ReturnType<typeof setInterval>;
+
+  constructor(private d: Desktop) {
+    this.sweepTimer = setInterval(() => {
+      for (const s of this.sessions.values()) if (Date.now() - s.last > SESSION_IDLE_MS) void s.transport.close();
+    }, 60_000);
+  }
 
   /** Name for a new seat: unique among live sessions ("Claude", "Claude 2", …). */
   private seatName(req: IncomingMessage, body: any): string {
@@ -79,6 +89,7 @@ export class McpEndpoint {
     }
     const known = sid ? this.sessions.get(sid) : undefined;
     if (known) {
+      known.last = Date.now();
       await known.transport.handleRequest(req, res, body);
       return true;
     }
@@ -92,7 +103,7 @@ export class McpEndpoint {
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => randomUUID(),
       onsessioninitialized: (id) => {
-        this.sessions.set(id, { transport, actor, client: String((body as any).params?.clientInfo?.name ?? ''), started: Date.now() });
+        this.sessions.set(id, { transport, actor, client: String((body as any).params?.clientInfo?.name ?? ''), started: Date.now(), last: Date.now() });
         this.d.service.log(`mcp: ${actor.name} joined (session ${id.slice(0, 8)}, client ${(body as any).params?.clientInfo?.name})`);
       },
     });
@@ -175,6 +186,7 @@ export class McpEndpoint {
   }
 
   closeAll() {
+    clearInterval(this.sweepTimer);
     for (const s of this.sessions.values()) void s.transport.close();
     this.sessions.clear();
   }
