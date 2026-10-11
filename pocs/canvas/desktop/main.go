@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -51,7 +52,7 @@ func main() {
 	app := application.New(application.Options{
 		Name:        "Canvas",
 		Description: "An expandable canvas for work and play",
-		Assets:      application.AssetOptions{Handler: application.AssetFileServerFS(assets)},
+		Assets:      application.AssetOptions{Handler: application.AssetFileServerFS(assets), Middleware: hardening},
 		Mac: application.MacOptions{
 			// stays running with no windows: it is the agents' backend too
 			ApplicationShouldTerminateAfterLastWindowClosed: false,
@@ -123,4 +124,27 @@ func readJSON(path string, v any) {
 	if b, err := os.ReadFile(path); err == nil {
 		_ = json.Unmarshal(b, v)
 	}
+}
+
+// csp for the app's pages: scripts only from the bundle, network only to the local service, embeds
+// (link nodes with x-embed) only as frames. Not applied in dev (vite HMR injects its own client).
+const csp = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; " +
+	"font-src 'self' data:; connect-src 'self' ws://127.0.0.1:*; frame-src http: https:; object-src 'none'; base-uri 'none'"
+
+// hardening: the page never calls Go (no bound services), so the Wails runtime call endpoint is
+// closed: page JS (and any in-page plugin) can't reach clipboard, dialogs, window or app methods.
+// The app talks to the page only from Go (evalJS) and to the service over its own token URL.
+func hardening(next http.Handler) http.Handler {
+	dev := os.Getenv("FRONTEND_DEVSERVER_URL") != ""
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/wails/runtime" || strings.HasPrefix(r.URL.Path, "/wails/runtime/") {
+			log.Printf("blocked runtime call from page: %s %s", r.Method, r.URL.RawQuery)
+			http.Error(w, "runtime calls are disabled", http.StatusForbidden)
+			return
+		}
+		if !dev && (r.URL.Path == "/" || strings.HasSuffix(r.URL.Path, ".html")) {
+			w.Header().Set("Content-Security-Policy", csp)
+		}
+		next.ServeHTTP(w, r)
+	})
 }
