@@ -237,7 +237,13 @@ fn agent_screenshot(app: &AppHandle, m: &Value) -> Result<Value, String> {
             let port = app.state::<Service>().port;
             // own (ephemeral) storage + a player identity of its own, so the view isn't the human
             let ident = json!({ "id": format!("view-{slug}"), "name": format!("{seat} (view)"), "color": "#9a9a9a", "named": true });
-            let init = format!("try {{ localStorage.setItem('canvas-poc:player', {}); }} catch (e) {{}}", serde_json::to_string(&ident.to_string()).unwrap());
+            // + no transitions/animations: hidden views get no animation frames, so a snapshot would
+            // catch them mid-way; the agent sees the settled state
+            let init = format!(
+                "try {{ localStorage.setItem('canvas-poc:player', {}); }} catch (e) {{}}\n\
+                 document.addEventListener('DOMContentLoaded', () => {{ const s = document.createElement('style'); s.textContent = '*, *::before, *::after {{ transition: none !important; animation: none !important; }}'; document.head.append(s); }});",
+                serde_json::to_string(&ident.to_string()).unwrap()
+            );
             let mut b = WebviewWindowBuilder::new(app, &label, board_url(port, id))
                 .title(format!("{seat}'s view"))
                 .inner_size(w, h)
@@ -247,12 +253,17 @@ fn agent_screenshot(app: &AppHandle, m: &Value) -> Result<Value, String> {
                 .focused(false);
             b = match mode.as_str() {
                 "offscreen" => b.visible(true).position(-30000.0, -30000.0),
+                "visible" => b.visible(true).position(40.0, 40.0),
                 _ => b.visible(false),
             };
             let win = b.build().map_err(|e| e.to_string())?;
             #[cfg(target_os = "macos")]
             if mode == "transparent" {
                 snapshot::make_invisible(&win);
+            }
+            #[cfg(target_os = "macos")]
+            if std::env::var("CANVAS_KEEP_RENDERING").as_deref() == Ok("1") {
+                log(format!("{label}: keep rendering: {}", snapshot::keep_rendering(&win)));
             }
             timings.insert("createMs".into(), json!(t.elapsed().as_millis()));
             win
@@ -287,12 +298,12 @@ fn agent_screenshot(app: &AppHandle, m: &Value) -> Result<Value, String> {
     let mut framed = false;
     // hidden windows get no animation frames (WebKit stops rAF for them); takeSnapshot still paints
     // the current DOM, so only rAF-driven content (animations, canvas drawing) would lag
-    for _ in 0..10 {
+    for _ in 0..if mode == "hidden" { 1 } else { 10 } {
+        thread::sleep(Duration::from_millis(16));
         if snapshot::eval_js(&win, "String(window.__cvFrame)").as_deref() == Ok("1") {
             framed = true;
             break;
         }
-        thread::sleep(Duration::from_millis(10));
     }
     timings.insert("frameMs".into(), json!(t_frame.elapsed().as_millis()));
     timings.insert("rafRan".into(), json!(framed));

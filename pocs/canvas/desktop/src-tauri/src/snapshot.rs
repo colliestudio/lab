@@ -59,6 +59,26 @@ mod mac {
         wk.takeSnapshotWithConfiguration_completionHandler(Some(&cfg), &block);
     }
 
+    /// Ask WebKit to keep a hidden/occluded view running: the public inactive-scheduling policy
+    /// (macOS 14+, timers/JS) and the private occlusion switch (rendering + rAF). Returns what took.
+    pub unsafe fn keep_rendering(wk: *mut std::ffi::c_void) -> String {
+        use objc2::{msg_send, sel};
+        use objc2_foundation::NSObjectProtocol;
+        use objc2_web_kit::WKInactiveSchedulingPolicy;
+        let wk = &*(wk as *const WKWebView);
+        let mut done = vec![];
+        let prefs = wk.configuration().preferences();
+        if prefs.respondsToSelector(sel!(setInactiveSchedulingPolicy:)) {
+            prefs.setInactiveSchedulingPolicy(WKInactiveSchedulingPolicy::None);
+            done.push("inactiveSchedulingPolicy=none");
+        }
+        if wk.respondsToSelector(sel!(_setWindowOcclusionDetectionEnabled:)) {
+            let _: () = msg_send![wk, _setWindowOcclusionDetectionEnabled: false];
+            done.push("SPI _setWindowOcclusionDetectionEnabled:NO");
+        }
+        done.join(", ")
+    }
+
     pub unsafe fn invisible(ns_window: *mut std::ffi::c_void) {
         let w = &*(ns_window as *const objc2_app_kit::NSWindow);
         w.setAlphaValue(0.0);
@@ -91,6 +111,15 @@ pub fn snapshot_png(win: &WebviewWindow, width_pt: f64) -> Result<Vec<u8>, Strin
         return Err("snapshot: macOS only in this spike".into());
     }
     rx.recv_timeout(Duration::from_secs(10)).map_err(|_| "snapshot: no image within 10 s".to_string())?
+}
+
+#[cfg(target_os = "macos")]
+pub fn keep_rendering(win: &WebviewWindow) -> String {
+    let (tx, rx) = mpsc::channel();
+    let _ = win.with_webview(move |pv| {
+        let _ = tx.send(unsafe { mac::keep_rendering(pv.inner()) });
+    });
+    rx.recv_timeout(Duration::from_secs(2)).unwrap_or_default()
 }
 
 #[cfg(target_os = "macos")]
