@@ -21,7 +21,7 @@ A kanban node on the canvas that is a view of a Backlog.md project: columns = st
   - Poll every 1.5 s; after a change, a cycle (pull, then push) 250 ms later.
 - **Source adapter** (`sources.ts`), two implementations:
   - **files**: a folder of `backlog/tasks/*.md` + `backlog.config.yml`, picked via the File System Access API (Chromium, secure origin) or the dev server's `KANBAN_ROOT` folder (`/__kanban` list/read/write, any browser). Writes patch only the changed frontmatter lines plus `updated_date`, like the CLI. New tasks get the next id past `archive/` and `completed/`.
-  - **service**: a running `backlog browser` through the Vite proxy `/backlog-api` (it sends no CORS headers). Read: `GET /api/tasks?crossBranch=false`, `/api/config`. Write: `PUT /api/tasks/:id` (title/status/labels/assignee/description), `POST /api/tasks/reorder` (taskId, targetStatus, orderedTaskIds), `POST /api/tasks` (create). Found in the 1.53 binary's route table.
+  - **service**: a running `backlog browser` through the Vite proxy `/backlog-api` (it sends no CORS headers). The proxy exists only when `BACKLOG_URL` is set (no default port); otherwise the button reads "Backlog server (off)" and says how to turn it on. Read: `GET /api/tasks?crossBranch=false`, `/api/config`. Write: `PUT /api/tasks/:id` (title/status/labels/assignee/description), `POST /api/tasks/reorder` (taskId, targetStatus, orderedTaskIds), `POST /api/tasks` (create). Found in the 1.53 binary's route table.
 - **Drags**:
   - card to another column: status change (+ ordinal only if needed)
   - card onto empty canvas: a linked ref (the card stays on the board)
@@ -37,7 +37,7 @@ A kanban node on the canvas that is a view of a Backlog.md project: columns = st
   - `sources.ts`: Files/Service sources; FSA/Dev/Mem folders
   - `connect.ts`: which tab hosts; resume after reload; FSA handle in IndexedDB
   - `render.ts`, `panel.ts`, `index.ts`, `kanban.css`
-- `vite-kanban.ts`: dev folder endpoint. `vite.config.ts`: plugin + `/backlog-api` proxy (`BACKLOG_URL`, default 6421).
+- `vite-kanban.ts`: dev folder endpoint (needs `KANBAN_ROOT`) and a guard: when vite binds beyond loopback (`--host`), `/__kanban` and `/backlog-api` answer only Host `localhost`, `127.0.0.1`, `[::1]` or `*.localhost` (the Mini dev proxy rewrites Host to `*.localhost`, so `mini.internal` still works). `vite.config.ts`: plugin + `/backlog-api` proxy, registered only when `BACKLOG_URL` is set.
 - Tests: `kanban.test.ts` (12) covers:
   - parse/patch/quoting
   - minimal diffs
@@ -48,12 +48,13 @@ A kanban node on the canvas that is a view of a Backlog.md project: columns = st
   - layout limits
   - peer edit → host write
   - service-style source that renumbers (no write loop)
-- Totals: 241 tests pass; typecheck clean.
+- `vite-kanban.test.ts` (2): loopback binds, local Host headers.
+- Totals: 243 tests pass; typecheck clean.
 - `scripts/kanban-e2e.mjs`: headless Chrome run of everything below. All 13 checks pass.
 
 ## Demo
 
-Setup (copies only; the real cs board is never written):
+Setup (copies only; never point `BACKLOG_URL` or the iframe at the real cs board on 6421):
 
 ```
 for d in /tmp/kanban-demo /tmp/kanban-svc; do mkdir -p $d; cp -R ~/workspaces/cs/backlog ~/workspaces/cs/backlog.config.yml $d/; git -C $d init -q; git -C $d add -A; git -C $d commit -qm copy; done
@@ -67,8 +68,8 @@ KANBAN_ROOT=/tmp/kanban-demo BACKLOG_URL=http://127.0.0.1:5226 pnpm exec vite --
 4. Drag a card onto empty canvas to get a linked ref. Double-click it and edit the title/body; the board card and the file follow.
 5. "+" on a column → new task → a new `task-N - Title.md`.
 6. Share → open the room link in a second tab. It shows "host: you, in another tab". Drag there; the first tab writes the file.
-7. Add another board → "Backlog server": same board via the API of the instance on 5226. Moves land in `/tmp/kanban-svc`.
-8. Add… → Backlog.md web UI (iframe), URL `http://localhost:5226`. Double-click to use it; Done / Esc / click outside to stop.
+7. Add another board → "Backlog server" (off unless vite has `BACKLOG_URL`): same board via the API of the instance on 5226. Moves land in `/tmp/kanban-svc`.
+8. Add… → Backlog.md web UI (iframe), type the URL `http://localhost:5226` (the field starts empty). Double-click to use it; Done / Esc / click outside to stop.
 9. Chromium on localhost: "Open folder…" picks any Backlog.md folder (FSA). After a reload it needs one "Reconnect folder" click.
 
 ## Native board vs iframe of `backlog browser`
@@ -109,6 +110,7 @@ The iframe is fine as a quick personal view. The native node is the one that fit
   - Collie Server: runs `BoardHost` server-side against the repo/folder or the service. The browser-tab host is a stand-in for that and has the same shape.
 - **Host model**: only the host can reach the folder/service; it shares a snapshot via Yjs and applies peers' moves. Exactly what the iframe can't do.
 - **Plugin security**: the plugin gets a folder handle (user-picked, readwrite) or a proxy URL. A real plugin system should hand out a scoped capability, e.g. "this folder" or "this origin", rather than the plugin doing `fetch`/FSA itself. The dev endpoint is confined to its root and to `.md/.yml` writes.
+- **Dev server exposure** (known gap): `/__kanban` and `/backlog-api` are unauthenticated read/write. They are off unless `KANBAN_ROOT` / `BACKLOG_URL` are set, and with `vite --host` they answer only local Host names. That stops other machines on the LAN hitting them by IP, not anything that can send a `*.localhost` Host (e.g. anyone who reaches the Mini dev proxy). The iframe is read/write through Backlog.md's own UI, to whatever URL the user types.
 
 ## Open questions
 
