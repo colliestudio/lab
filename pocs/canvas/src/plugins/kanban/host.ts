@@ -54,7 +54,8 @@ export class BoardHost {
   private schedulePush() {
     if (this.stopped || !this.pulledOnce || !this.hasDirty()) return;
     clearTimeout(this.pushTimer);
-    this.pushTimer = setTimeout(() => this.enqueue(() => this.push()), this.opts.pushDelayMs ?? 250);
+    // pull first: an outside edit of the same field since the last poll wins (as in a full cycle)
+    this.pushTimer = setTimeout(() => this.cycle(), this.opts.pushDelayMs ?? 250);
   }
 
   private enqueue(fn: () => Promise<void>): Promise<void> {

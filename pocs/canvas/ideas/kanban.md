@@ -18,7 +18,7 @@ A kanban node on the canvas that is a view of a Backlog.md project: columns = st
 - **Host**: the tab that connected the board (`ownerTab`) is the only one that talks to the source. Each cycle it pulls, then pushes:
   - pull: a source field ≠ base means an outside edit, so the source wins for that field.
   - push: a doc field ≠ base means a local edit from any peer, so it writes that field.
-  - Poll every 1.5 s; push 250 ms after a change.
+  - Poll every 1.5 s; after a change, a cycle (pull, then push) 250 ms later.
 - **Source adapter** (`sources.ts`), two implementations:
   - **files**: a folder of `backlog/tasks/*.md` + `backlog.config.yml`, picked via the File System Access API (Chromium, secure origin) or the dev server's `KANBAN_ROOT` folder (`/__kanban` list/read/write, any browser). Writes patch only the changed frontmatter lines plus `updated_date`, like the CLI. New tasks get the next id past `archive/` and `completed/`.
   - **service**: a running `backlog browser` through the Vite proxy `/backlog-api` (it sends no CORS headers). Read: `GET /api/tasks?crossBranch=false`, `/api/config`. Write: `PUT /api/tasks/:id` (title/status/labels/assignee/description), `POST /api/tasks/reorder` (taskId, targetStatus, orderedTaskIds), `POST /api/tasks` (create). Found in the 1.53 binary's route table.
