@@ -1,8 +1,8 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { chmodSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { chmodSync, mkdirSync, realpathSync, writeFileSync, rmSync } from 'node:fs';
 import { createInterface } from 'node:readline';
-import { join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { WebSocketServer } from 'ws';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
@@ -32,7 +32,14 @@ const STANDALONE = !!process.env.CANVAS_STANDALONE;
 const boards = new Map<string, Board>();
 
 function openBoard(path: string): Board {
-  const file = resolve(path.replace(/^~(?=\/)/, homedir()));
+  // one board per real file: /tmp/x and /private/tmp/x (or a symlinked dir) are the same board
+  const abs = resolve(path.replace(/^~(?=\/)/, homedir()));
+  let file = abs;
+  try {
+    file = join(realpathSync(dirname(abs)), basename(abs));
+  } catch {
+    /* the directory doesn't exist: Board creation reports it */
+  }
   const id = boardId(file);
   let b = boards.get(id);
   if (!b) {
