@@ -273,11 +273,15 @@ export class Player {
     const key = JSON.stringify(p);
     if (key === this.lastMirror) return; // cursor moves etc.
     this.lastMirror = key;
-    const path = p.path.filter((id) => isPage(this.app.node(id)));
+    // another player's awareness is untrusted: keep only page ids and string values
+    if (!Array.isArray(p.path)) return;
+    const path = p.path.filter((id) => typeof id === 'string' && isPage(this.app.node(id)));
     if (!path.length) return;
-    const moved = this.hist.current !== path[path.length - 1] || JSON.stringify(this.state) !== JSON.stringify(p.state);
+    const state: Record<string, string> = {};
+    if (p.state && typeof p.state === 'object') for (const [k, v] of Object.entries(p.state)) if (typeof v === 'string') state[k] = v;
+    const moved = this.hist.current !== path[path.length - 1] || JSON.stringify(this.state) !== JSON.stringify(state);
     this.hist.path = path;
-    this.state = { ...p.state };
+    this.state = state;
     this.show(moved);
   }
 }
