@@ -37,7 +37,7 @@ Running on the Mini now: app 5220, bridge 5230 on `/tmp/canvas-demos/agent-playe
    - `pnpm canvas chess state` (the agent's view), `pnpm canvas chess move Nf3 --as Alex` (refused if Alex isn't the white seat holder and someone is), `pnpm canvas chess wait`.
    - Two bots: free both seats in the menu, then `pnpm canvas bot chess --as "Bot W" --color white --depth 1` and `pnpm canvas bot chess --as "Bot B" --color black` in two shells: a full game in seconds, every move in the log.
 3. A real Claude as black (one LLM session, nothing else costs):
-   - free the black seat from the menu ("Free the black seat (Bot)"; the bot stops)
+   - free the black seat from the menu ("Free the black seat (Bot)"; the bot stops when it notices, within a minute)
    - `claude mcp add canvas -e CANVAS_AS=Claude -e CANVAS_BRIDGE=http://localhost:5230 -- ~/code/canvas-wt/agent-player/node_modules/.bin/tsx ~/code/canvas-wt/agent-player/bridge/mcp.ts`
    - prompt: "Sit at the chessboard as black with chess_sit, then loop: chess_wait_for_turn, pick a move from the legal list, chess_move, until the game is over."
    - Play white in the browser. Claude's cursor and log name show up like the bot's.
@@ -70,14 +70,14 @@ Restart (all detached): `cd ~/code/canvas-wt/agent-player && nohup pnpm exec vit
 
 ## Open questions
 
-- Takebacks: per-actor undo of a move after the opponent replied leaves the game fields inconsistent with a half-restored position. Should rules mode replace undo with a `chess.takeback` (undo the last move pair for both)?
+- Takebacks: per-actor undo of a move after the opponent replied leaves the game fields inconsistent with a half-restored position (tried: nothing crashes and the bot keeps playing, but the undone move stays in the history and the undoer moves again; after a recapture the captured piece doesn't come back). Should rules mode replace undo with a `chess.takeback` (undo the last move pair for both)?
 - Should seats be core (a table-level "who plays what" for any game: chess colors, card seats, battleline sides), with permissions on commands keyed to them?
 - A clock (the clock plugin exists): tie it to the turn (`turn` change → press the clock), and time out a waiting agent?
 - Draw offers, threefold repetition (needs position history), PGN export.
 
 ## Known gaps
 
-- Rules enforcement is per peer; nothing stops a raw doc edit (file edit, modified client) from making an illegal position. The next move is judged from whatever the position is.
+- Rules enforcement is per peer; nothing stops a raw doc edit (file edit, modified client) from making an illegal position. The next move is judged from whatever the position is. Same for two people moving an open (hot) seat's color at the same moment: each peer accepts its own drop, both merge.
 - Multi-piece drags on a rules board bounce back; promotion by drag is always a queen.
 - `--as` is unauthenticated: any local process can claim a seat holder's name.
 - A seated agent that dies keeps its seat until someone frees it (menu) — bots stand up on Ctrl-C/kill of the node process only (killing the `pnpm` wrapper may not forward the signal).
