@@ -197,8 +197,9 @@ export const commands: Record<string, Command> = {
 };
 
 /** Duplicate: a copied note loses its page (it lands beside it); a copied page is never the start. */
-export function duplicateRule(n: CanvasNode): CanvasNode | undefined {
-  if (isNote(n)) return { ...n, [FIELD]: { note: true } };
+export function duplicateRule(node: CanvasNode): CanvasNode | undefined {
+  const n: CanvasNode = node;
+  if (isNote(node)) return { ...n, [FIELD]: { note: true } };
   if (isPage(n) && page(n).start) {
     const { start: _s, ...f } = page(n);
     return { ...n, [FIELD]: f } as CanvasNode;
