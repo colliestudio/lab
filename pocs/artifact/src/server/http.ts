@@ -1,11 +1,14 @@
-// Shared HTTP bits: responses, the doc API (GET doc / files/<path> / comments, POST comments), viewer page + assets.
+// Shared HTTP bits: responses, the doc API (GET doc / files/<path> / comments / export, POST comments), viewer page + assets.
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import type { Comment, Doc, ViewerBoot } from "../model.ts";
+import type { CodeLevel, Comment, Doc, ViewerBoot } from "../model.ts";
+import { parseCodeLevel } from "../code-level.ts";
+import { slugify } from "../parse/index.ts";
+import { buildFromDoc, sizeReport } from "./build.ts";
 import { newComment, safePath } from "./bundle.ts";
 
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
@@ -183,6 +186,7 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, sub: 
     return true;
   }
   if (sub === "comments" && m === "GET") { sendJson(res, 200, src.comments()); return true; }
+  if (sub === "export" && m === "GET") { sendExport(req, res, src); return true; }
   if (sub === "comments" && m === "POST") {
     // JSON only: other sites can't send this content-type cross-origin without a preflight, which we never answer
     if (!/^application\/json\b/i.test(req.headers["content-type"] ?? "")) {
@@ -197,6 +201,29 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, sub: 
     return true;
   }
   return false;
+}
+
+/**
+ * `GET <api>/export?code=key|none|full`: the doc as the single offline HTML `recap build` makes (default key), as a
+ * download `<slug>.<kind>.html`. Over the build's refuse limit → 413 with the size report (no --force over HTTP).
+ */
+function sendExport(req: IncomingMessage, res: ServerResponse, src: DocSource) {
+  let code: CodeLevel;
+  try { code = parseCodeLevel(new URL(req.url ?? "/", "http://x").searchParams.get("code") ?? undefined); }
+  catch (e) { sendJson(res, 400, { error: (e as Error).message }); return; }
+  const doc = src.doc();
+  const built = buildFromDoc(doc, { read: (p) => src.file(p) }, { code });
+  const total = Buffer.byteLength(built.html);
+  const report = sizeReport(total, built.parts, code);
+  if (report.level === "refuse") { sendJson(res, 413, { error: report.lines.join("\n") }); return; }
+  const name = `${slugify(doc.title) || "doc"}.${doc.kind}.html`;
+  send(res, 200, built.html, "text/html; charset=utf-8", {
+    "content-disposition": `attachment; filename="${name}"`,
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+    "content-security-policy": "sandbox",   // a download, never rendered here
+    ...(report.level === "warn" ? { "x-recap-size-warning": report.lines.find((l) => l.startsWith("warning"))!.replace(/[^\x20-\x7e]/g, "") } : {}),
+  });
 }
 
 /** Wraps a handler: errors → 500/413 JSON instead of a crashed process. */

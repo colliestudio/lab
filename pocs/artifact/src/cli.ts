@@ -4,10 +4,12 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writ
 import { dirname, join, resolve } from "node:path";
 import { checkBundle } from "./check.ts";
 import { collect, EMPTY_BASE } from "./collect.ts";
-import { renderMarkdown } from "./md.ts";
+import { renderMarkdown, renderSummary } from "./md.ts";
+import { applyCodeLevel, parseCodeLevel } from "./code-level.ts";
+import { parseFeedback } from "./feedback.ts";
 import { loadBundle, openFiles, packFiles, zipFiles } from "./parse/index.ts";
 import { parseArgs } from "./args.ts";
-import { commentsFile, readComments } from "./server/bundle.ts";
+import { commentsFile, newComment, readComments, writeJsonAtomic } from "./server/bundle.ts";
 import { run as runServer } from "./server/index.ts";
 
 type Cmd = (args: string[]) => Promise<number>;
@@ -23,7 +25,10 @@ const USAGE = `recap <command>
   pack <dir> [-o <zip>]                  dir bundle → zip (in place unless -o)
   unpack <zip> [-o <dir>]                zip bundle → dir (in place unless -o)
   comments <bundle> [--open]             print comments (dir: comments.json; zip: <bundle>.comments.json)
-  md <bundle> [--link <url>]             GitHub comment fallback (markdown + Mermaid map)
+  comments <bundle> --import <file|->    add the comments in pasted "Copy feedback" text (from a built HTML) to them
+  md <bundle> [--section <id>] [--code none|key|full]
+                                         the doc as readable Markdown (same as the viewer's "Copy as Markdown")
+  md <bundle> --short [--link <url>]     GitHub comment fallback (headline + Mermaid map + link)
   serve | build | server | publish       viewer / hosting (src/server)
 `;
 
@@ -110,6 +115,27 @@ const commands: Record<string, Cmd> = {
   async comments(args) {
     const { pos, flags } = parseArgs(args);
     const b = await loadBundle(need(pos[0], "bundle"), { linkPlan: false });
+    if (flags.import !== undefined) {
+      const src = need(flags.import, "--import <file|->");
+      const text = src === "-" ? readFileSync(0, "utf8") : readFileSync(resolve(src), "utf8");
+      const parsed = parseFeedback(text, b.doc);
+      if (!parsed.length) throw new Error("no comments found (expected the \"Copy feedback\" text: `## 1. …` headings)");
+      const file = commentsFile(b.path);
+      const all = readComments(file, b.files);
+      const key = (c: { anchor: object; body: string }) => JSON.stringify([c.anchor, c.body.trim()]);
+      const seen = new Set(all.map(key));
+      let added = 0;
+      for (const p of parsed) {
+        const c = newComment({ anchor: p.anchor, body: p.body, author: p.author ?? "reader" });
+        if (seen.has(key(c))) continue;
+        seen.add(key(c));
+        all.push(c);
+        added++;
+      }
+      writeJsonAtomic(file, all);
+      console.log(`imported ${added} comment(s)${parsed.length - added ? `, ${parsed.length - added} already there` : ""} → ${file}`);
+      return 0;
+    }
     let list = readComments(commentsFile(b.path), b.files);
     if (flags.open === "true") list = list.filter((c) => !c.resolved);
     process.stdout.write(JSON.stringify(list, null, 2) + "\n");
@@ -119,7 +145,9 @@ const commands: Record<string, Cmd> = {
   async md(args) {
     const { pos, flags } = parseArgs(args);
     const b = await loadBundle(need(pos[0], "bundle"));
-    process.stdout.write(renderMarkdown(b.doc, { link: flags.link }));
+    if (flags.short === "true") { process.stdout.write(renderSummary(b.doc, { link: flags.link })); return 0; }
+    const doc = applyCodeLevel(b.doc, parseCodeLevel(flags.code));
+    process.stdout.write(renderMarkdown(doc, { section: flags.section }));
     return 0;
   },
 

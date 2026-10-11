@@ -35,6 +35,10 @@ const P: Record<string, string> = {
   target: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M12 12h.01",
   link: "M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1 M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1",
   layers: "M12 3l9 5-9 5-9-5z M3 13l9 5 9-5",
+  copy: "M9 9h11v11H9z M5 15H4V4h11v1",
+  ext: "M14 4h6v6 M20 4l-9 9 M18 14v6H4V6h6",
+  code: "M8 7l-5 5 5 5 M16 7l5 5-5 5",
+  download: "M12 4v11 M7 10l5 5 5-5 M5 20h14",
 };
 
 export function Icon({ name, size = 16, className }: { name: keyof typeof P | NodeKind | string; size?: number; className?: string }) {

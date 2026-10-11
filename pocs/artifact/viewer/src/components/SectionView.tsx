@@ -8,6 +8,7 @@ import { Markdown } from "./Markdown.tsx";
 import { Commentable } from "./Comments.tsx";
 import { ChangeBadge } from "./bits.tsx";
 import { Icon } from "./icons.tsx";
+import { renderMarkdown } from "../../../src/md.ts";
 import { cx, fileSections, nodeForSection, plural, sectionDomId } from "../util.ts";
 
 /** Files already shown by an explicit `diff` block (or a `code` block naming the file) somewhere. */
@@ -23,12 +24,13 @@ export function autoFiles(doc: Doc, sectionId: string) {
 }
 
 export function SectionView({ section, level, focused }: { section: Section; level: Level; focused?: boolean }) {
-  const { doc, setFocus, focus, setLevel } = useViewer();
+  const { doc, setFocus, focus, setLevel, copy } = useViewer();
   const node = nodeForSection(doc, section.id);
   const [open, setOpen] = useState(!section.mechanical || !!focused);
   const blocks = section.blocks.filter((b) => b.level <= level);
   const hidden = section.blocks.length - blocks.length;
-  const extra = useMemo(() => (level >= 4 ? autoFiles(doc, section.id) : []), [doc, section.id, level]);
+  // --code none: level 4 is the file list only (no per-file diffs to open)
+  const extra = useMemo(() => (level >= 4 && doc.codeLevel !== "none" ? autoFiles(doc, section.id) : []), [doc, section.id, level]);
   const sectionFiles = useMemo(() => {
     const fs = fileSections(doc);
     return doc.files.filter((f) => fs.get(f.path) === section.id);
@@ -60,6 +62,10 @@ export function SectionView({ section, level, focused }: { section: Section; lev
           {section.mechanical && <span className="tag">mechanical</span>}
           <span className="sec-spacer" />
           {sectionFiles.length > 0 && <span className="sec-meta muted">{plural(sectionFiles.length, "file")}</span>}
+          <button className="btn small ghost sec-copy" onClick={() => copy(renderMarkdown(doc, { section: section.id }), "Section")}
+            title="Copy this section as Markdown" aria-label={`Copy ${section.title} as Markdown`}>
+            <Icon name="copy" size={13} />
+          </button>
           {!focused && focus !== section.id && (
             <button className="btn small ghost sec-focus" onClick={() => setFocus(section.id)} title="Focus this area">
               <Icon name="target" size={13} /> Focus

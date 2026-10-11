@@ -56,3 +56,8 @@ export function fmtDate(s?: string) {
   const d = new Date(s);
   return isNaN(+d) ? s : d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
+
+export const CODE_LEVEL_LABEL_UI = {
+  key: { label: "key changes only", title: "This file carries only the code its diff and code blocks show; the file list still counts every change." },
+  none: { label: "not included", title: "This file carries no code: diff and code blocks show where the change is, not the lines." },
+} as const;

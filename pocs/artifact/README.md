@@ -9,11 +9,12 @@ Collie Studio lab prototype (task-1): local-only, format `collie-doc/0`, CLI `re
 pnpm install
 pnpm viewer:build                                   # optional: serve/build build the viewer on first use
 pnpm recap serve samples/recap-lab.review           # local viewer + comments, live reload on doc.md
-pnpm recap build samples/recap-lab.review -o x.html # one offline HTML file
+pnpm recap build samples/recap-lab.review -o x.html # one offline HTML file: how docs are shared today
+                                                    # --code key (default: only hunks blocks show) | none | full
 pnpm recap server --data ./data [--token T]         # self-hosted server (127.0.0.1 unless --host + token)
 pnpm recap publish samples/recap-lab.review --to http://127.0.0.1:<port>   # unlisted link; edit secret saved to
                                                     # .recap-publish.json next to the bundle (gitignored); re-publish: --id <id>
-pnpm recap md samples/recap-lab.review              # GitHub comment fallback (headline + Mermaid map)
+pnpm recap md samples/recap-lab.review              # the doc as Markdown (= viewer "Copy as Markdown"); --short: PR comment
 ```
 
 For agents (`skill/SKILL.md` is the full guide):
@@ -23,6 +24,8 @@ pnpm recap collect --base main -o x.review [--exclude 'samples/**']...   # chang
 # rewrite doc.md: areas, map, sections, picked hunks
 pnpm recap check x.review                            # until 0 errors (links, diff refs, demo files, budgets)
 pnpm recap serve x.review                            # look at each zoom level once
+pnpm recap build x.review -o x.html                   # share: one file; readers comment in it and "Copy feedback"
+pnpm recap comments x.review --import -              # pasted feedback → comments.json
 pnpm recap comments x.review --open                  # reader comments → edit doc.md → check
 ```
 
@@ -65,7 +68,8 @@ test/              node:test suites + fixtures
 
 - Lab POC; nothing published. `pnpm typecheck`, `pnpm test`, `recap check samples/*` clean.
 - Hosted server: unlisted ids, per-doc edit secrets, passive file types only, strict CSP; no accounts, no comment states, comments are unauthenticated.
-- Single-file builds are 3-4 MB (the viewer bundles mermaid, elk, rrweb); nothing is lazy-loaded.
+- Single-file builds: ~2.7 MB viewer (mermaid, elk, rrweb, gzipped) + code + recordings; `build` reports sizes, warns over 5 MB, refuses over 25 MB (`--force`).
+- Feedback in a single file lives in the reader's browser until they copy it; nothing syncs.
 - Recordings aren't redacted; check `.replay` files for secrets before sharing.
 - Map layout (ELK) is good up to ~12 nodes; the budget `check` enforces.
 

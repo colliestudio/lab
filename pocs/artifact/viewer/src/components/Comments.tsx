@@ -5,31 +5,27 @@ import { Icon } from "./icons.tsx";
 import { cx, fmtDate } from "../util.ts";
 
 type Anchor = Comment["anchor"];
-const same = (a: Anchor, b: Anchor) =>
+export const same = (a: Anchor, b: Anchor) =>
   (a.section ?? null) === (b.section ?? null) && (a.block ?? null) === (b.block ?? null) &&
   (a.file ?? null) === (b.file ?? null) && (a.line ?? null) === (b.line ?? null);
 
-/** Wraps a section header or block: hover shows a comment button (when an API exists); existing comments render below. */
+/**
+ * Wraps a section header or block: hover shows a comment button; existing comments render below. With an API they go
+ * to the server; in a single-file build they stay in this browser (Feedback panel).
+ */
 export function Commentable({ anchor, children, className }: { anchor: Anchor; children: ReactNode; className?: string }) {
-  const { api, comments } = useViewer();
+  const { comments } = useViewer();
   const [composing, setComposing] = useState(false);
   const mine = comments.filter((c) => same(c.anchor, anchor));
   return (
     <div className={cx("commentable", className)}>
-      {api && (
-        <button className={cx("c-btn", mine.length > 0 && "has")} title="Comment" onClick={() => setComposing(true)}>
-          <Icon name="comment" size={13} />{mine.length > 0 && <span>{mine.length}</span>}
-        </button>
-      )}
+      <button className={cx("c-btn", mine.length > 0 && "has")} title="Comment" onClick={() => setComposing(true)}>
+        <Icon name="comment" size={13} />{mine.length > 0 && <span>{mine.length}</span>}
+      </button>
       {children}
       {(mine.length > 0 || composing) && (
         <div className="c-thread">
-          {mine.map((c) => (
-            <div key={c.id} className={cx("c-item", c.resolved && "resolved")}>
-              <div className="c-meta"><b>{c.author}</b> <span>{fmtDate(c.created)}</span>{c.resolved && <span className="tag">resolved</span>}</div>
-              <div className="c-body">{c.body}</div>
-            </div>
-          ))}
+          <CommentList list={mine} />
           {composing && <Composer anchor={anchor} onDone={() => setComposing(false)} />}
         </div>
       )}
@@ -37,8 +33,27 @@ export function Commentable({ anchor, children, className }: { anchor: Anchor; c
   );
 }
 
-function Composer({ anchor, onDone }: { anchor: Anchor; onDone: () => void }) {
-  const { addComment } = useViewer();
+export function CommentList({ list }: { list: Comment[] }) {
+  const { commentMode, removeComment } = useViewer();
+  return (
+    <>
+      {list.map((c) => (
+        <div key={c.id} className={cx("c-item", c.resolved && "resolved")}>
+          <div className="c-meta">
+            <b>{c.author}</b> <span>{fmtDate(c.created)}</span>{c.resolved && <span className="tag">resolved</span>}
+            {commentMode === "local" && (
+              <button className="linklike c-del" onClick={() => removeComment(c.id)} title="Delete (only in this browser)">delete</button>
+            )}
+          </div>
+          <div className="c-body">{c.body}</div>
+        </div>
+      ))}
+    </>
+  );
+}
+
+export function Composer({ anchor, onDone }: { anchor: Anchor; onDone: () => void }) {
+  const { addComment, commentMode } = useViewer();
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -51,7 +66,7 @@ function Composer({ anchor, onDone }: { anchor: Anchor; onDone: () => void }) {
   };
   return (
     <div className="c-compose">
-      <textarea autoFocus value={body} placeholder="Leave a comment for the author…" rows={3}
+      <textarea autoFocus value={body} placeholder={commentMode === "local" ? "Comment for the author (kept in this browser; send with Copy feedback)…" : "Leave a comment for the author…"} rows={3}
         onChange={(e) => setBody(e.target.value)}
         onKeyDown={(e) => {
           e.stopPropagation();

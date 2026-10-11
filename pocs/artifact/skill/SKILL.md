@@ -84,10 +84,11 @@ One diagram per area at most. A section with only prose + diff is fine for small
 2. **Rewrite** `doc.md` (the scaffold is a file dump, not a review): areas, map, sections, picks.
 3. `recap check x.review` until clean (map ↔ sections, diff refs, demo files, budgets, one-sentence tl;dr).
 4. `recap serve x.review` and **look** at each zoom level: does level 1 (Headline) alone tell the story, does the map explain the system, does each node open the right section, do notes sit on the right lines? One fix pass.
-5. Share: `recap build x.review -o x.html` (one offline file), `recap publish x.review --to <url>` (unlisted link), `recap md x.review` (PR comment: headline + map + link).
-6. Report the path or link and the tl;dr. Nothing else.
+5. Share: `recap build x.review -o x.html`, one offline HTML file; this is how docs leave the machine for now. Default `--code key` (only the hunks your diff/code blocks show; every file still listed with counts); `--code none` when the code must not travel, `--code full` only on request. Read the size report: over 5 MB, cut (shorter recordings, `--code none`). `recap md x.review` is the same doc as Markdown, for pasting; it never replaces the HTML.
+6. Report the path and the tl;dr. Nothing else.
 
 ## Comments and updates
 
-- `recap comments x.review` → edit `doc.md` → `recap check` → resolve the comment. Answer in the doc, not in a reply thread; the doc stays standalone.
+- Readers of the HTML file comment in it and send you the "Copy feedback" text (`# Feedback: <title>`, `## 1. …` per comment). Save it with `recap comments x.review --import <file>` (or `--import -` from stdin); anchors point at section / block ids or `file:line`.
+- `recap comments x.review` → edit `doc.md` → `recap check` → resolve the comment. Answer in the doc, not in a reply thread; the doc stays standalone. Rebuild the HTML and send it back.
 - New commits on the same work unit: re-collect, keep the scope = the whole unit, keep node and section ids so comments and plan links still anchor.

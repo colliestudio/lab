@@ -1,7 +1,8 @@
 // Entry for `recap serve | build | server | publish` (src/cli.ts calls run).
 import { writeFileSync } from "node:fs";
 import { spawn } from "node:child_process";
-import { buildHtml } from "./build.ts";
+import { buildHtml, fmtBytes, sizeReport } from "./build.ts";
+import { CODE_LEVEL_LABEL, parseCodeLevel } from "../code-level.ts";
 import { startHosted } from "./hosted.ts";
 import { parseArgs } from "../args.ts";
 import { publish, savedSecret, saveRecord } from "./publish.ts";
@@ -11,7 +12,9 @@ export { buildHtml, startHosted, publish, startServe };
 
 const USAGE = `usage:
   recap serve <bundle> [--port N] [--open]
-  recap build <bundle> -o out.html
+  recap build <bundle> -o out.html [--code none|key|full] [--force]
+    --code: key (default) = only the hunks diff/code blocks show; full = all of changes.patch; none = no code
+    warns over 5 MB, refuses over 25 MB unless --force
   recap server --data <dir> [--port N] [--host H] [--token T]
   recap publish <bundle> --to <url> [--token T] [--id <id> [--secret S]]
     first publish saves the doc's edit secret to .recap-publish.json next to the bundle;
@@ -48,9 +51,16 @@ export async function run(cmd: string, args: string[]): Promise<number> {
       case "build": {
         const out = str("o") ?? str("out");
         if (!pos[0] || !out) break;
-        const { html, files } = await buildHtml(pos[0]);
+        const { html, files, parts, code, stripped } = await buildHtml(pos[0], { code: parseCodeLevel(str("code")) });
+        const total = Buffer.byteLength(html);
+        const r = sizeReport(total, parts, code);
+        if (r.level === "refuse" && flags.force !== "true") {
+          console.error(r.lines.join("\n"));
+          return 1;
+        }
         writeFileSync(out, html);
-        console.log(`wrote ${out} (${(Buffer.byteLength(html) / 1024).toFixed(0)} KB, ${files.length} file${files.length === 1 ? "" : "s"} inlined)`);
+        console.log(`wrote ${out} (${fmtBytes(total)}; code: ${stripped || code === "full" ? CODE_LEVEL_LABEL[code] : "nothing to strip"}; ${files.length} file${files.length === 1 ? "" : "s"} inlined)`);
+        console.log(r.lines.join("\n"));
         return 0;
       }
       case "server": {

@@ -63,7 +63,7 @@ export function zipReader(zip: Uint8Array, limits?: ZipLimits): BundleReader {
 }
 
 /** Bundle paths the doc points at: demo blocks, before-after shots, markdown images/links. */
-export function referencedFiles(doc: Doc, bundle: BundleReader): string[] {
+export function referencedFiles(doc: Doc, bundle: Pick<BundleReader, "read">): string[] {
   const refs = new Set<string>();
   const md: string[] = [doc.overview];
   const blocks = [{ summary: "", blocks: doc.overviewBlocks ?? [] }, ...doc.sections];

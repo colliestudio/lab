@@ -134,13 +134,40 @@ The viewer is one static web app. It receives a **Doc model** (JSON) + a way to 
 
 | mode | command | how |
 |---|---|---|
-| local | `recap serve x.review` | Node server on 127.0.0.1: viewer + `GET /api/doc`, `GET /api/files/<path>`, `GET/POST /api/comments` (writes `comments.json` in the bundle). Live reload on `doc.md` change. |
-| single file | `recap build x.review -o x.html` | one self-contained HTML: viewer + model + files inlined (base64). Opens from disk, offline, attachable. Comments are read-only. |
+| local | `recap serve x.review` | Node server on 127.0.0.1: viewer + `GET /api/doc`, `GET /api/files/<path>`, `GET/POST /api/comments` (writes `comments.json` in the bundle), `GET /api/export`. Live reload on `doc.md` change. Always the full code. |
+| single file | `recap build x.review -o x.html [--code none\|key\|full]` | one self-contained HTML: viewer + model + files inlined (base64). Opens from disk, offline, attachable. **The way docs leave the machine today.** Comments stay in the reader's browser (below). |
 | hosted / self-hosted | `recap server --data ./data` + `recap publish x.review --to <url>` | same API under `/d/<id>/…`; upload = zip; unlisted random ids; comments stored server-side. Hosted = the same server run by us. |
 
-Plus `recap md x.review` → a GitHub comment fallback: headline, risk, ask, the map as Mermaid, link.
+**Code level** (`recap build --code`, default `key`), applied to the model before anything is inlined, so stripped code is absent from the HTML:
+- `full`: every hunk of `changes.patch`.
+- `key`: only what `diff` / `code` blocks show. The file list still has every changed file with +/− counts; a file no block shows reads "not included in this file" (with a link to the file on the PR when `pr:` is a GitHub PR URL).
+- `none`: no code. `diff` / `code` blocks become placeholders: file, new-side line range, their notes, PR link. Level 4 is the file list only.
+The model records it as `doc.codeLevel`; stripped files and blocks carry `omitted: true` (blocks also `range`, files `url`). The viewer shows a badge ("code: key changes only" / "code: not included").
 
-Viewer contract (`window.__RECAP__`): `{ doc: Doc, files?: Record<path, base64>, api?: string /* base URL of the API, e.g. "/api" or "/d/abc/api" */ }`. If `files` is present use it, else fetch `${api}/files/<path>`. API under `${api}`: `GET doc`, `GET files/<path>`, `GET|POST comments`. See `src/model.ts` `ViewerBoot`.
+**Size check:** `build` prints the total and the biggest parts (viewer, code, doc, each inlined file); over 5 MB it warns, over 25 MB it refuses to write unless `--force`, with what to cut (`--code key|none`, shorter recordings; replays are always inlined without `trace.zip`).
+
+**Feedback without a server** (single file): readers comment on sections, blocks and diff lines (click a new-side line number). Comments are kept in `localStorage` per doc and version (kind, repo, title, head). The **Feedback** panel lists them and **Copy feedback** produces Markdown the reader pastes back to the author:
+
+```md
+# Feedback: <title>
+review · head 4f680ea · 2 comments
+
+## 1. <section title> › <block> › <file:line>
+anchor: section=<id> block=<id> file=<path> line=<n>
+> <one line of quoted context>
+
+<comment>
+```
+
+`recap comments x.review --import <file|->` parses that text (best effort; the `anchor:` line, else the section title in the heading) and appends the comments to `comments.json` (duplicates skipped), so the agent loop (§6) is the same as with a server. With an API (serve, server) comments go to the server as before.
+
+**Copy as Markdown:** a top-bar button (whole doc) and a per-section button copy a readable Markdown rendering (`src/md.ts`, the same as `recap md`): title, tl;dr, risk / ask / range / PR, decisions, the map as an outline (groups → areas with change and section; connections as `A → B: label`), overview, each section with its blocks (flows as Mermaid, demos as `▶ recording: caption (steps …)`, data models / APIs / steps as lists, key diffs as fenced `diff` with notes, following the code level). Markdown is a convenience for reading and pasting, not a substitute for the visual doc. Without a clipboard API (plain HTTP, some `file://` contexts) a dialog shows the text selected for ⌘C.
+
+**Download** (serve, server): a top-bar menu fetches `GET ${api}/export?code=key|none|full` (default `key`), the same single file `recap build` makes, as `<slug>.<kind>.html`. Over 25 MB the endpoint answers 413 with the size report. Not shown in the single file itself.
+
+Plus `recap md x.review --short` → a GitHub comment fallback: headline, risk, ask, the map as Mermaid, link.
+
+Viewer contract (`window.__RECAP__`): `{ doc: Doc, files?: Record<path, base64>, api?: string /* base URL of the API, e.g. "/api" or "/d/abc/api" */ }`. If `files` is present use it, else fetch `${api}/files/<path>`. API under `${api}`: `GET doc`, `GET files/<path>`, `GET|POST comments`, `GET export?code=`. See `src/model.ts` `ViewerBoot`.
 
 ## 5. CLI
 
@@ -150,8 +177,10 @@ Viewer contract (`window.__RECAP__`): `{ doc: Doc, files?: Record<path, base64>,
 | `recap check x.review` | parse + lint: map present, nodes ↔ sections linked, diff refs resolve, demo files exist, unknown YAML keys (errors), size budgets (map ≤ 12 nodes, ≤ 8 sections, diff and code blocks ≤ 150 lines), tl;dr one sentence |
 | `recap pack x.review/` / `recap unpack x.review` | dir ↔ zip |
 | `recap model x.review` | print the parsed JSON model |
-| `recap serve`, `build`, `md`, `server`, `publish` | §4 |
+| `recap comments x.review [--open]` / `--import <file\|->` | print comments / add pasted "Copy feedback" text (§4) |
+| `recap md x.review [--section <id>] [--code none\|key\|full]` / `--short [--link <url>]` | the doc as Markdown (default code level `key`) / the short GitHub comment |
+| `recap serve`, `build [--code …] [--force]`, `server`, `publish` | §4 |
 
 ## 6. Comments
 
-`comments.json`: `[{id, anchor: {section?, block?, file?, line?}, author, body, created, resolved?}]`. Anchors are section / block ids (stable: from `{#id}` or `id=` attr, else derived). The authoring agent reads them with `recap comments x.review` and resolves after editing.
+`comments.json`: `[{id, anchor: {section?, block?, file?, line?}, author, body, created, resolved?}]`. Anchors are section / block ids (stable: from `{#id}` or `id=` attr, else derived), or `file` + `line` (new-side) for a diff line. The authoring agent reads them with `recap comments x.review` and resolves after editing. Feedback from a single-file build arrives as pasted text: `recap comments x.review --import -` first.

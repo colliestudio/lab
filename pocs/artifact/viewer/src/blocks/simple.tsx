@@ -213,6 +213,32 @@ function Snippet({ title, code }: { title: string; code: string }) {
 }
 
 export function CodeBlock({ block }: { block: B<"code"> }) {
+  if (block.omitted) return <OmittedCode block={block} />;
+  return <CodeBody block={block} />;
+}
+
+function OmittedCode({ block }: { block: B<"code"> }) {
+  const { doc } = useViewer();
+  const url = block.file ? doc.files.find((f) => f.path === block.file)?.url : undefined;
+  return (
+    <figure className="codeblock">
+      <figcaption className="code-head">
+        <Icon name="file" size={13} /><span className="code-file">{block.file ?? "code"}</span><span className="tag">not included</span>
+      </figcaption>
+      <div className="diff-empty omitted">
+        {block.range ? <>Lines {block.range[0]}–{block.range[1]}: code</> : "Code"} not included in this file.
+        {url && <> <a href={url} target="_blank" rel="noreferrer">View on GitHub <Icon name="ext" size={11} /></a></>}
+        {!!block.notes?.length && (
+          <ul className="omitted-notes">
+            {[...block.notes].sort((a, b) => a.line - b.line).map((n, i) => <li key={i}><span className="muted">L{n.line}</span> <Markdown md={n.note} inline /></li>)}
+          </ul>
+        )}
+      </div>
+    </figure>
+  );
+}
+
+function CodeBody({ block }: { block: B<"code"> }) {
   const lang = block.lang ?? langOf(block.file);
   const start = block.start ?? 1;
   const lines = useMemo(() => highlightLines(block.code.replace(/\n$/, "").split("\n"), lang), [block.code, lang]);

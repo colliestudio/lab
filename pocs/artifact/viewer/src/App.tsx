@@ -10,6 +10,9 @@ import { FileTree } from "./blocks/files.tsx";
 import { FileDiff } from "./blocks/diff.tsx";
 import { Icon } from "./components/icons.tsx";
 import { Commentable } from "./components/Comments.tsx";
+import { DownloadMenu, FeedbackPanel, useCopy, useLocalComments } from "./components/Share.tsx";
+import { renderMarkdown } from "../../src/md.ts";
+import { CODE_LEVEL_LABEL_UI } from "./util.ts";
 import { BlockView } from "./blocks/index.tsx";
 import { LEVELS, cx, levelName, diffId, nodeForSection, orderedSections, plural, sectionDomId } from "./util.ts";
 
@@ -106,15 +109,19 @@ export function App({ boot }: { boot: ViewerBoot }) {
     go(2);
   }, []);
 
-  // comments
+  // comments: through the API when there is one, else kept in this browser (single-file build)
+  const commentMode = boot.api ? "api" : "local";
+  const local = useLocalComments(doc, commentMode === "local");
   const reloadComments = useCallback(() => { if (boot.api) commentsApi.list(boot.api).then(setComments, () => {}); }, [boot.api]);
   useEffect(reloadComments, [reloadComments]);
   const addComment = useCallback<ViewerCtx["addComment"]>(async (c) => {
-    if (!boot.api) return;
     const author = localStorage.getItem("recap.author") || "reader";
+    if (!boot.api) { local.add({ ...c, author }); return; }
     await commentsApi.add(boot.api, { ...c, author });
     reloadComments();
-  }, [boot.api, reloadComments]);
+  }, [boot.api, reloadComments, local.add]);
+  const [panel, setPanel] = useState(false);
+  const { copy, ui: copyUi } = useCopy();
 
   const toggleTheme = useCallback(() => {
     const next = theme === "dark" ? "light" : "dark";
@@ -140,14 +147,20 @@ export function App({ boot }: { boot: ViewerBoot }) {
     return () => window.removeEventListener("keydown", on);
   }, [level, focus, toggleTheme, setLevel, setFocus, doc.planLink]);
 
-  const ctx: ViewerCtx = { doc, getFile, level, setLevel, theme, focus, setFocus, revealFile, api: boot.api, comments, addComment };
+  const ctx: ViewerCtx = {
+    doc, getFile, level, setLevel, theme, focus, setFocus, revealFile, api: boot.api, commentMode,
+    comments: commentMode === "local" ? local.list : comments, addComment, removeComment: local.remove, copy,
+  };
   const focused = focus ? doc.sections.find((s) => s.id === focus) : undefined;
   const showOutline = level >= 3;
 
   return (
     <Ctx.Provider value={ctx}>
-      <TopBar doc={doc} theme={theme} toggleTheme={toggleTheme} overlay={overlay} setOverlay={setOverlay} />
-      <div className={cx("layout", showOutline && "with-outline", `lvl-${level}`)}>
+      <TopBar doc={doc} theme={theme} toggleTheme={toggleTheme} overlay={overlay} setOverlay={setOverlay}
+        panel={panel} setPanel={setPanel} />
+      {panel && <FeedbackPanel onClose={() => setPanel(false)} onClear={local.clear} />}
+      {copyUi}
+      <div className={cx("layout", showOutline && "with-outline", `lvl-${level}`, panel && "with-panel")}>
         {showOutline && <Outline />}
         <main className="content">
           {focused ? (
@@ -167,16 +180,22 @@ export function App({ boot }: { boot: ViewerBoot }) {
   );
 }
 
-function TopBar({ doc, theme, toggleTheme, overlay, setOverlay }: {
+function TopBar({ doc, theme, toggleTheme, overlay, setOverlay, panel, setPanel }: {
   doc: Doc; theme: Theme; toggleTheme: () => void; overlay: boolean; setOverlay: (v: boolean) => void;
+  panel: boolean; setPanel: (v: boolean) => void;
 }) {
-  const { level, setLevel } = useViewer();
+  const { level, setLevel, copy, commentMode, comments, api } = useViewer();
   return (
     <div className="topbar">
       <div className="tb-left">
         <span className="tb-mark" aria-hidden><Icon name="layers" size={14} /></span>
         <span className="tb-kind">{doc.kind === "plan" ? "VISUAL PLAN" : "VISUAL REVIEW"}</span>
         <span className="tb-title" title={doc.title}>{doc.title}</span>
+        {doc.codeLevel && doc.codeLevel !== "full" && (
+          <span className="tag code-badge" title={CODE_LEVEL_LABEL_UI[doc.codeLevel].title}>
+            <Icon name="code" size={11} /> code: {CODE_LEVEL_LABEL_UI[doc.codeLevel].label}
+          </span>
+        )}
       </div>
       <div className="zoom" role="group" aria-label="Zoom level">
         <button className="zbtn step" onClick={() => setLevel(clampLevel(level - 1))} disabled={level === 1} title="Zoom out (−)">
@@ -198,6 +217,15 @@ function TopBar({ doc, theme, toggleTheme, overlay, setOverlay }: {
         {doc.planLink && level >= 2 && (
           <button className={cx("btn small", overlay && "on")} onClick={() => setOverlay(!overlay)} title="Compare with plan (p)">
             <Icon name="target" size={13} /> vs plan
+          </button>
+        )}
+        <button className="btn small" onClick={() => copy(renderMarkdown(doc), "Markdown")} title="Copy the whole doc as Markdown">
+          <Icon name="copy" size={13} /> Copy as Markdown
+        </button>
+        {api && <DownloadMenu api={api} />}
+        {commentMode === "local" && (
+          <button className={cx("btn small", panel && "on")} onClick={() => setPanel(!panel)} title="Your comments on this doc">
+            <Icon name="comment" size={13} /> Feedback{comments.length > 0 && <span className="count">{comments.length}</span>}
           </button>
         )}
         <button className="btn icon" onClick={toggleTheme} title="Toggle theme (t)" aria-label="Toggle theme">
@@ -283,7 +311,7 @@ function AllFiles() {
       <div className="card pad">
         <FileTree entries={doc.files.map((f) => ({ path: f.path, file: f }))} />
       </div>
-      {rest.length > 0 && (
+      {rest.length > 0 && doc.codeLevel !== "none" && (
         <div className="rest-files">
           <div className="blk-label">Not covered by any area</div>
           {rest.map((f) => <FileDiff key={f.path} file={f} defaultOpen={!f.mechanical} />)}

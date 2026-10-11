@@ -7,6 +7,8 @@ export type Kind = "review" | "plan";
 /** Zoom level: 1 Headline, 2 Map, 3 Areas, 4 Code (keys 1–4). */
 export type Level = 1 | 2 | 3 | 4;
 export type Change = "added" | "changed" | "removed" | "unchanged" | "planned" | "deferred"; // deferred: plan work explicitly left for later
+/** How much code a single-file build carries (`recap build --code`): every hunk, only the ones diff/code blocks show, none. */
+export type CodeLevel = "full" | "key" | "none";
 export type NodeKind =
   | "service" | "module" | "ui" | "db" | "api" | "queue" | "job" | "external" | "config" | "doc";
 
@@ -32,6 +34,7 @@ export interface Doc {
   questions: Question[];     // collected from all `questions` blocks (shown at level 1)
   planLink?: PlanLink;       // review with `plan:` resolved (parser fills it when the plan is a local path)
   warnings: string[];        // non-fatal parse issues
+  codeLevel?: CodeLevel;     // set by `recap build --code key|none` (src/code-level.ts); absent = full
 }
 
 export interface DocMap {
@@ -76,8 +79,11 @@ export type Block =
   | (BlockBase & { type: "questions"; questions: Question[] })
   | (BlockBase & { type: "checklist"; items: string[] })
   | (BlockBase & { type: "files"; notes: Record<string, string>; paths?: string[] }) // paths: subset; default all doc.files
-  | (BlockBase & { type: "diff"; file: string; hunks: Hunk[]; notes: DiffNote[]; change: Change })
-  | (BlockBase & { type: "code"; lang?: string; file?: string; code: string; start?: number; notes?: DiffNote[] }); // start: number of the first line
+  | (BlockBase & { type: "diff"; file: string; hunks: Hunk[]; notes: DiffNote[]; change: Change } & Omitted)
+  | (BlockBase & { type: "code"; lang?: string; file?: string; code: string; start?: number; notes?: DiffNote[] } & Omitted); // start: number of the first line
+
+/** Code stripped by `--code none`: the block keeps file, notes and the new-side line range it showed. */
+export interface Omitted { omitted?: boolean; range?: [number, number] }
 
 export interface Shot {
   src?: string;              // bundle path of an image
@@ -109,6 +115,8 @@ export interface FileChange {
   binary: boolean;
   mechanical: boolean;       // lockfiles, generated, pure renames, formatting-only (heuristics)
   hunks: Hunk[];
+  omitted?: boolean;         // hunks stripped by `--code key|none` (counts kept)
+  url?: string;              // the file on the PR (GitHub `pr:`), set when omitted
 }
 
 export interface Hunk {

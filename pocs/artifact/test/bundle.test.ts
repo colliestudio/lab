@@ -85,9 +85,13 @@ test("cli pack / unpack in place, model and comments", () => {
   assert.equal(cli("model", b), before);
 });
 
-test("cli md", () => {
+test("cli md --short (GitHub comment) and md (whole doc)", () => {
   const cli = (...a: string[]) => execFileSync(process.execPath, ["--import", "tsx", join(root, "src/cli.ts"), ...a], { cwd: root, encoding: "utf8", stdio: "pipe" });
-  const md = cli("md", join(fixtures, "retries.review"), "--link", "https://example.com/d/abc");
+  const full = cli("md", join(fixtures, "retries.review"));
+  assert.match(full, /^# Review: Retry failed webhook deliveries\n/);
+  assert.match(full, /\*\*Code:\*\* key changes only/);
+  assert.match(cli("md", join(fixtures, "retries.review"), "--code", "none"), /code not included; \[view on GitHub\]\(https:\/\/github\.com\/acme\/relay\/pull\/1093\/files#diff-[0-9a-f]{64}\)/);
+  const md = cli("md", join(fixtures, "retries.review"), "--short", "--link", "https://example.com/d/abc");
   assert.match(md, /^### Review: Retry failed webhook deliveries/);
   assert.match(md, /```mermaid\nflowchart LR/);
   assert.match(md, /n_retry\["Retry scheduler"\]:::added/);

@@ -5,6 +5,7 @@ import { highlightLines } from "../highlight.ts";
 import { AddDel, ChurnBar } from "../components/bits.tsx";
 import { Icon } from "../components/icons.tsx";
 import { Markdown } from "../components/Markdown.tsx";
+import { CommentList, Composer } from "../components/Comments.tsx";
 import { cx, diffId, langOf } from "../util.ts";
 import type { B } from "./simple.tsx";
 
@@ -85,9 +86,19 @@ export function DiffView(props: {
   path: string; oldPath?: string; hunks: Hunk[]; notes?: DiffNote[]; change: Change;
   additions?: number; deletions?: number; mechanical?: boolean; binary?: boolean;
   defaultOpen?: boolean; anchorId?: string;
+  /** Code stripped by `recap build --code key|none`: show where, not what. */
+  omitted?: boolean; range?: [number, number]; url?: string;
 }) {
   const { path, oldPath, hunks, notes = [], change } = props;
+  const { comments } = useViewer();
   const [open, setOpen] = useState(props.defaultOpen ?? true);
+  const [composeLine, setComposeLine] = useState<number | null>(null);
+  // diff-line comments: anchor {file, line} (new-side line), shown in every diff of the file
+  const lineComments = useMemo(() => {
+    const m = new Map<number, typeof comments>();
+    for (const c of comments) if (c.anchor.file === path && c.anchor.line != null && !c.anchor.block) m.set(c.anchor.line, [...(m.get(c.anchor.line) ?? []), c]);
+    return m;
+  }, [comments, path]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const lang = langOf(path);
   useEffect(() => {
@@ -127,12 +138,25 @@ export function DiffView(props: {
           {path}
         </span>
         {props.mechanical && <span className="tag">mechanical</span>}
+        {props.omitted && <span className="tag">not included</span>}
         {notes.length > 0 && <span className="tag note-count"><Icon name="comment" size={11} /> {notes.length}</span>}
-        <span className="diff-stats"><AddDel add={add} del={del} /><ChurnBar add={add} del={del} /></span>
+        {!(props.omitted && props.additions === undefined) && (
+          <span className="diff-stats"><AddDel add={add} del={del} /><ChurnBar add={add} del={del} /></span>
+        )}
       </button>
       {open && (
         <div className="diff-body">
-          {props.binary ? <div className="diff-empty">Binary file</div> : hunks.length === 0 ? (
+          {props.omitted ? (
+            <div className="diff-empty omitted">
+              {props.range ? <>Lines {props.range[0]}–{props.range[1]}: code</> : "Code"} not included in this file.
+              {props.url && <> <a href={props.url} target="_blank" rel="noreferrer">View on GitHub <Icon name="ext" size={11} /></a></>}
+              {notes.length > 0 && (
+                <ul className="omitted-notes">
+                  {[...notes].sort((a, b) => a.line - b.line).map((n, i) => <li key={i}><span className="muted">L{n.line}</span> <Markdown md={n.note} inline /></li>)}
+                </ul>
+              )}
+            </div>
+          ) : props.binary ? <div className="diff-empty">Binary file</div> : hunks.length === 0 ? (
             <div className="diff-empty">No hunks</div>
           ) : (
             <table className={cx("diff-table", allAdded && "all-added")}>
@@ -144,18 +168,38 @@ export function DiffView(props: {
                       <td className="hunk-text">{h.header}</td>
                     </tr>
                     {hunkData[hi].map((r, ri) => {
-                      if (r.k === "line")
+                      if (r.k === "line") {
+                        const lc = r.t !== "-" && r.new != null ? lineComments.get(r.new) : undefined;
                         return (
-                          <tr key={ri} className={cx("dl", r.t === "+" ? "add" : r.t === "-" ? "del" : "ctx", r.noteIdx != null && "has-note")}>
-                            <td className="ln">{r.t !== "+" ? r.old : ""}</td>
-                            <td className="ln">{r.t !== "-" ? r.new : ""}</td>
-                            <td className="code-line hljs">
-                              <span className="sign">{r.t === " " ? " " : r.t === "-" ? "−" : "+"}</span>
-                              <span dangerouslySetInnerHTML={{ __html: r.html || " " }} />
-                              {r.noteIdx != null && <span className="note-marker">{r.noteIdx}</span>}
-                            </td>
-                          </tr>
+                          <Fragment key={ri}>
+                            <tr className={cx("dl", r.t === "+" ? "add" : r.t === "-" ? "del" : "ctx", r.noteIdx != null && "has-note")}>
+                              <td className="ln">{r.t !== "+" ? r.old : ""}</td>
+                              <td className={cx("ln", r.t !== "-" && r.new != null && "ln-c")}
+                                title={r.t !== "-" && r.new != null ? "Comment on this line" : undefined}
+                                onClick={r.t !== "-" && r.new != null ? () => setComposeLine(r.new!) : undefined}>
+                                {r.t !== "-" ? r.new : ""}
+                              </td>
+                              <td className="code-line hljs">
+                                <span className="sign">{r.t === " " ? " " : r.t === "-" ? "−" : "+"}</span>
+                                <span dangerouslySetInnerHTML={{ __html: r.html || " " }} />
+                                {r.noteIdx != null && <span className="note-marker">{r.noteIdx}</span>}
+                                {lc && <span className="lc-mark" title={`${lc.length} comment(s)`}><Icon name="comment" size={11} /></span>}
+                              </td>
+                            </tr>
+                            {(lc || (composeLine === r.new && r.t !== "-")) && (
+                              <tr className="dcomment">
+                                <td className="ln" colSpan={2} />
+                                <td><div className="c-thread">
+                                  {lc && <CommentList list={lc} />}
+                                  {composeLine === r.new && r.t !== "-" && (
+                                    <Composer anchor={{ file: path, line: r.new! }} onDone={() => setComposeLine(null)} />
+                                  )}
+                                </div></td>
+                              </tr>
+                            )}
+                          </Fragment>
                         );
+                      }
                       if (r.k === "note")
                         return (
                           <tr key={ri} className="dnote">
@@ -189,11 +233,11 @@ export function DiffBlock({ block }: { block: B<"diff"> }) {
   const { doc } = useViewer();
   const f = doc.files.find((x) => x.path === block.file);
   const hunks = block.hunks.length ? block.hunks : f?.hunks ?? [];
-  const whole = !block.hunks.length || block.hunks.length === f?.hunks.length;
+  const whole = !f?.omitted && (!block.hunks.length || block.hunks.length === f?.hunks.length);
   return (
     <DiffView path={block.file} oldPath={f?.oldPath} hunks={hunks} notes={block.notes} change={block.change ?? f?.change}
       additions={whole ? f?.additions : undefined} deletions={whole ? f?.deletions : undefined}
-      binary={f?.binary} mechanical={f?.mechanical} />
+      binary={f?.binary} mechanical={f?.mechanical} omitted={block.omitted} range={block.range} url={f?.url} />
   );
 }
 
@@ -201,6 +245,6 @@ export function FileDiff({ file, defaultOpen }: { file: FileChange; defaultOpen?
   return (
     <DiffView path={file.path} oldPath={file.oldPath} hunks={file.hunks} change={file.change}
       additions={file.additions} deletions={file.deletions} mechanical={file.mechanical} binary={file.binary}
-      defaultOpen={defaultOpen} />
+      defaultOpen={file.omitted ? false : defaultOpen} omitted={file.omitted} url={file.url} />
   );
 }
