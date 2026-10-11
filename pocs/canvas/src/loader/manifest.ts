@@ -1,3 +1,5 @@
+import { sha256Hex } from '../sandbox/sha256.js';
+
 // Third-party plugin manifest: what a plugin is and what it may do. Read (never executed) before
 // install, shown to the user for consent, recorded in the room so peers load the same set.
 
@@ -89,15 +91,7 @@ export async function hashSource(src: string): Promise<string> {
     const buf = await subtle.digest('SHA-256', new TextEncoder().encode(src));
     return 'sha256-' + Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, '0')).join('');
   }
-  // plain-http pages have no crypto.subtle: a weak fallback, clearly labelled
-  let h1 = 0xdeadbeef,
-    h2 = 0x41c6ce57;
-  for (let i = 0; i < src.length; i++) {
-    const ch = src.charCodeAt(i);
-    h1 = Math.imul(h1 ^ ch, 2654435761);
-    h2 = Math.imul(h2 ^ ch, 1597334677);
-  }
-  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
-  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
-  return 'weak-' + (h2 >>> 0).toString(16).padStart(8, '0') + (h1 >>> 0).toString(16).padStart(8, '0');
+  // plain-http pages (http://mini.internal:…) have no crypto.subtle: the same SHA-256 in plain JS,
+  // so pinning holds there too and both kinds of device agree on the hash
+  return 'sha256-' + sha256Hex(src);
 }
