@@ -13,6 +13,7 @@ export const NOTE_W = 260;
 export const NOTE_H = 90;
 export const COL_W = 300;
 export const GAP = 16;
+export const LINK_GAP = 70;
 const COL_HEAD = 44;
 
 /** Plain JSON Canvas: no other plugin's `x-` fields (a card or a mat is not a note or a column). */
@@ -59,7 +60,8 @@ export function freeSpot(doc: DocView, w: number, h: number, near?: string): { x
   const n = near ? doc.get(near) : undefined;
   if (n) {
     // below `near`, then further down until nothing overlaps
-    let y = n.y + n.height + GAP;
+    // room for an arrow and its label between them
+    let y = n.y + n.height + LINK_GAP;
     const hit = () => doc.visible.some((o) => o.x < n.x + w && o.x + o.width > n.x && o.y < y + h && o.y + o.height > y && !isColumn(o));
     while (hit()) y += GAP + 10;
     return { x: n.x, y };
