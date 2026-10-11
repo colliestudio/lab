@@ -8,6 +8,11 @@ export interface CommandCtx {
   random(): number;
   /** Clock for log entries (ms epoch); default Date.now. */
   now?(): number;
+  /**
+   * Who runs this command (set by `dispatch` from `Store.actor`): lets a plugin enforce seats, e.g.
+   * only the player seated as white moves white. Absent when nobody is known (tests, repairs).
+   */
+  actor?: LogActor | null;
 }
 
 export interface CommandResult {
@@ -218,7 +223,7 @@ export class Store {
     if (!cmd) return fail(`unknown command: ${name}`);
     let res: CommandResult;
     try {
-      const r = cmd(this.doc, args, this.ctx);
+      const r = cmd(this.doc, args, { ...this.ctx, actor: this.actor() });
       res = Array.isArray(r) ? { changes: r } : r;
     } catch (e) {
       return fail(`${name}: ${(e as Error).message}`);

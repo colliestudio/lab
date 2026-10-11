@@ -36,7 +36,7 @@ const boardArg = (doc: DocView, id: unknown) => {
   return b && isBoard(b) ? b : undefined;
 };
 
-type Spot = { board?: string; square?: string; x: number; y: number };
+export type Spot = { board?: string; square?: string; x: number; y: number };
 
 /**
  * Log entry for one piece put on a square of a board (free play: it says what happened, it doesn't
@@ -62,7 +62,7 @@ export function moveEvent(before: DocView, after: DocView, ids: string[]): Event
 const boardEvent = (b: CanvasNode, text: string): EventSpec[] => [{ type: 'chess.board', text, targets: [b.id] }];
 
 /** Changes that bring a piece from where it is to `to` (only fields that differ). */
-function moveTo(p: CanvasNode, to: Spot): Change[] {
+export function moveTo(p: CanvasNode, to: Spot): Change[] {
   const f = piece(p);
   const out: Change[] = [];
   if (f.board !== to.board) out.push(set(p.id, F('board'), to.board));
@@ -76,7 +76,7 @@ function moveTo(p: CanvasNode, to: Spot): Change[] {
  * Hands out free capture slots beside a board. A slot is taken if a piece (other than the `moving`
  * ones) has its center in it, or if it was handed out already. When all are full, pieces pile on the last.
  */
-function slots(doc: DocView, b: CanvasNode, moving: ReadonlySet<string>) {
+export function slots(doc: DocView, b: CanvasNode, moving: ReadonlySet<string>) {
   const taken = new Set<string>();
   const busy = doc.visible.filter((n) => isPiece(n) && !moving.has(n.id)).map(center);
   const free = (s: { x: number; y: number }) =>

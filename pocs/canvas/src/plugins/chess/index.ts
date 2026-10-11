@@ -1,23 +1,13 @@
 import './chess.css';
-import type { App, CanvasNode, Command, MenuEntry, Plugin, Store } from '../../core';
-import { commands, duplicatePiece } from './commands';
-import { repairImport, shapeExport } from './io';
-import { board, boardIdOf, isBoard, isPiece, piece, pieceName } from './model';
+import type { App, CanvasNode, MenuEntry, Plugin } from '../../core';
+import { registerChessLogic } from './logic';
+import { board, isBoard, isPiece, piece, pieceName } from './model';
 import { mountPalette, targetBoard } from './palette';
 import { boardHtml, pieceHtml } from './render';
 
 const onGrip = (down: PointerEvent) => !!(down.target as Element | null)?.closest?.('[data-grip]');
 
-/** The data side of the plugin (commands, riders, import/export). No DOM; used by tests too. */
-export function registerChessLogic(store: Store) {
-  for (const [name, cmd] of Object.entries(commands)) store.register(`chess.${name}`, cmd as Command);
-  store.addRiderRule(boardIdOf);
-  store.duplicateRules.push(duplicatePiece);
-  store.resets.push(commands.resetAll as Command);
-  store.repairs.push(commands.repair as Command);
-  store.importFilters.push(repairImport);
-  store.exportFilters.push(shapeExport);
-}
+export { registerChessLogic };
 
 /** Actions for one board (its tab menu and the right-click menu). */
 function boardMenu(app: App, b: CanvasNode, pieces: () => void): MenuEntry[] {

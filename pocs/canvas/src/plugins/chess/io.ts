@@ -24,6 +24,19 @@ export const repairImport: DocFilter = (doc) => {
       if (f.unlocked === true) b.unlocked = true;
       if (isSquare(f.from)) b.from = f.from;
       if (isSquare(f.to)) b.to = f.to;
+      if (f.rules === true) b.rules = true;
+      if (isColor(f.turn)) b.turn = f.turn;
+      if (typeof f.castling === 'string' && /^K?Q?k?q?$/.test(f.castling)) b.castling = f.castling;
+      if (isSquare(f.ep)) b.ep = f.ep;
+      if (Number.isInteger(f.half) && (f.half as number) >= 0) b.half = f.half as number;
+      if (Number.isInteger(f.full) && (f.full as number) >= 1) b.full = f.full as number;
+      if (Array.isArray(f.moves) && f.moves.every((m) => typeof m === 'string')) b.moves = f.moves as string[];
+      if (typeof f.result === 'string') b.result = f.result;
+      if (typeof f.end === 'string') b.end = f.end;
+      for (const k of ['white', 'black'] as const) {
+        const seat = f[k];
+        if (obj(seat) && typeof seat.id === 'string' && typeof seat.name === 'string') b[k] = { id: seat.id, name: seat.name };
+      }
       out.push({ ...n, width: BOARD, height: BOARD, text: n.text ?? 'Chessboard', [FIELD]: b });
       continue;
     }
