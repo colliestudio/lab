@@ -2,13 +2,43 @@ import { promises as fs, realpathSync } from 'node:fs';
 import path from 'node:path';
 import type { Plugin } from 'vite';
 
+const LOOPBACK = new Set([undefined, false, 'localhost', '127.0.0.1', '::1']);
+
+/** Does Vite's `server.host` bind to loopback only? (`--host` sets `true` = all interfaces.) */
+export const bindsLoopback = (host: string | boolean | undefined) => LOOPBACK.has(host);
+
+/** Is a request's Host header a local name? localhost, 127.0.0.1, [::1], *.localhost (the Mini dev proxy
+ * rewrites Host to `<app>.localhost`, so mini.internal still counts). Port ignored. */
+export function localHostHeader(host: string | undefined): boolean {
+  if (!host) return false;
+  const name = (host.startsWith('[') ? host.slice(0, host.indexOf(']') + 1) : host.replace(/:\d+$/, '')).toLowerCase();
+  return name === 'localhost' || name === '127.0.0.1' || name === '[::1]' || name.endsWith('.localhost');
+}
+
 // Dev only: the kanban plugin's "dev folder". KANBAN_ROOT=/some/backlog-project serves that folder to
 // the page at /__kanban (list / read / write .md and .yml files inside it), for browsers without the
 // File System Access API and for headless checks. Nothing outside the root, nothing but text files.
-export function kanbanDevFolder(root = process.env.KANBAN_ROOT): Plugin {
+// `/__kanban/info` also says whether the /backlog-api proxy is on (BACKLOG_URL set; see vite.config.ts).
+// When the server binds beyond loopback (`vite --host`), /__kanban and /backlog-api answer only requests
+// whose Host is local, so other machines on the network can't read or write through them.
+export function kanbanDevFolder(root = process.env.KANBAN_ROOT, backlogUrl = process.env.BACKLOG_URL): Plugin {
   return {
     name: 'kanban-dev-folder',
     configureServer(server) {
+      // registered here (before Vite's own middlewares), so it runs ahead of the /backlog-api proxy
+      server.middlewares.use((req, res, next) => {
+        const u = req.url ?? '';
+        if (!(u.startsWith('/__kanban') || u.startsWith('/backlog-api'))) return next();
+        const deny = (code: number, error: string) => {
+          res.statusCode = code;
+          res.setHeader('content-type', 'application/json');
+          res.end(JSON.stringify({ error }));
+        };
+        if (!bindsLoopback(server.config.server.host) && !localHostHeader(req.headers.host)) return deny(403, 'kanban dev endpoints answer only localhost / *.localhost hosts');
+        // no proxy registered: answer here rather than fall through to the SPA's index.html
+        if (u.startsWith('/backlog-api') && !backlogUrl) return deny(404, 'no Backlog.md server: start vite with BACKLOG_URL=…');
+        next();
+      });
       const base = root ? realpathSync(root) : undefined;
       const within = (p: string) => !!base && (p === base || p.startsWith(base + path.sep));
       const inside = (rel: string) => {
@@ -36,7 +66,7 @@ export function kanbanDevFolder(root = process.env.KANBAN_ROOT): Plugin {
           res.setHeader('content-type', type);
           res.end(typeof body === 'string' ? body : JSON.stringify(body));
         };
-        if (url.pathname === '/info') return send(200, { enabled: !!base, name: base ? path.basename(base) : null });
+        if (url.pathname === '/info') return send(200, { enabled: !!base, name: base ? path.basename(base) : null, service: !!backlogUrl });
         const p = inside(url.searchParams.get('path') ?? '');
         if (!p) return send(403, { error: 'outside the root (or KANBAN_ROOT unset)' });
         try {
