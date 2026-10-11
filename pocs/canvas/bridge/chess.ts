@@ -70,8 +70,17 @@ export async function runBot(c: Client, opts: { color: 'w' | 'b'; depth: number;
   process.once('SIGTERM', stop);
   opts.say(`seated as ${name} on board ${id} (depth ${opts.depth}); waiting for my move…`);
   for (;;) {
-    const v = await waitForTurn(c, id);
-    if (!v) continue;
+    const v = await waitForTurn(c, id, 60);
+    if (!v) {
+      // not my move yet: still seated? (a seat freed from the menu while the opponent thinks, then
+      // taken by someone else, never makes it my turn: stop instead of waiting at the table forever)
+      const s = await c.view<GameView>('chess.state', { board: id });
+      if (!s.result && s.you !== name) {
+        opts.say(`I no longer hold the ${name} seat (freed or moved); stopping`);
+        return;
+      }
+      continue;
+    }
     if (v.result) {
       opts.say(`game over: ${v.result} (${v.end}) · ${v.moves}`);
       if (!opts.keep) return void (await leave());
