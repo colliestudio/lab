@@ -7,6 +7,7 @@ import { chessPlugin } from './plugins/chess';
 import { clockPlugin } from './plugins/clock';
 import { battleLinePlugin } from './plugins/battleline';
 import { matsPlugin } from './plugins/mats';
+import { stormPlugin } from './plugins/eventstorm';
 import { mountHelp, removeHelpNote } from './help';
 
 const ROOM = roomFromUrl();
@@ -25,6 +26,7 @@ app.use(chessPlugin);
 app.use(clockPlugin);
 app.use(battleLinePlugin);
 app.use(matsPlugin);
+app.use(stormPlugin);
 app.store.migrations.push(removeHelpNote);
 
 
