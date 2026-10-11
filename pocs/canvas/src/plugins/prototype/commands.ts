@@ -147,7 +147,7 @@ export const commands: Record<string, Command> = {
   note: (doc, a: { x: number; y: number; text?: string; on?: string }, ctx): CommandResult => {
     if (!isNum(a?.x) || !isNum(a?.y)) return { changes: [] };
     const id = ctx.newId();
-    const on = isPage(doc.get(a.on)) ? a.on : undefined;
+    const on = a.on && isPage(doc.get(a.on)) ? a.on : undefined;
     return { changes: [{ op: 'add', node: noteNode(id, Math.round(a.x), Math.round(a.y), doc.topZ + 1, str(a.text, 2000) ?? 'Note', on) }], select: [id] };
   },
   noteText: (doc, a: { id: string; text: string }) => {
@@ -201,6 +201,6 @@ export function duplicateRule(n: CanvasNode): CanvasNode | undefined {
   if (isNote(n)) return { ...n, [FIELD]: { note: true } };
   if (isPage(n) && page(n).start) {
     const { start: _s, ...f } = page(n);
-    return { ...n, [FIELD]: f };
+    return { ...n, [FIELD]: f } as CanvasNode;
   }
 }

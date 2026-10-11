@@ -3,7 +3,7 @@ import { Store, parse, serialize, type CommandCtx } from '../../core';
 import { registerCoreCommands } from '../../core/commands';
 import { CSP, TAG, readMessage, srcdoc } from './bridge';
 import { registerPrototypeLogic } from './logic';
-import { FIELD, flowOrder, isNote, isPage, linksIn, note, page, pages, resolveLink, startPage, titleOf } from './model';
+import { FIELD, flowOrder, isNote, isPage, note, page, pages, resolveLink, startPage, titleOf } from './model';
 import { History } from './history';
 
 function ctx(): CommandCtx {
