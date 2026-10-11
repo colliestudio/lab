@@ -152,7 +152,7 @@
   position: fixed;
   z-index: 10;
   right: 12px;
-  top: 12px;
+  top: 68px; /* below the toolbar, which can run the full width in a room */
   width: 236px;
   padding: 8px;
   border-radius: 10px;
@@ -345,6 +345,7 @@ body.fr-presenting .fr-follow {
 
 /* ---- breadcrumb (in the toolbar) */
 .fr-crumbs {
+  white-space: nowrap;
   display: flex;
   align-items: center;
   gap: 6px;

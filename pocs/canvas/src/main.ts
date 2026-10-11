@@ -12,7 +12,8 @@ import { attachFollow, createFramesPlugin, enterUrl, mountBreadcrumb, trailFromU
 
 const ROOM = roomFromUrl();
 const DB_NAME = ROOM ? roomDbName(ROOM) : 'canvas-poc';
-const VIEW_KEY = 'canvas-poc:view';
+// per room: a room entered through a portal must not open at the camera of the table you came from
+const VIEW_KEY = ROOM ? `canvas-poc:view:${ROOM}` : 'canvas-poc:view';
 
 const app = new App(document.getElementById('table')!);
 // this browser's player id (also in solo play) = who "my hand" belongs to and who views the table

@@ -298,6 +298,7 @@ export class PortalViews {
       if (!rec) {
         const el = document.createElement('div');
         el.className = 'cv-node';
+        el.dataset.portalNode = n.id;
         m.world.append(el);
         m.boxes.set(n.id, (rec = { el, key: '', geo: '' }));
       }
