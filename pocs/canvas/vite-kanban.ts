@@ -27,7 +27,9 @@ export function kanbanDevFolder(root = process.env.KANBAN_ROOT): Plugin {
         if (!p) return send(403, { error: 'outside the root (or KANBAN_ROOT unset)' });
         try {
           if (url.pathname === '/list' && req.method === 'GET') {
-            const ents = await fs.readdir(p, { withFileTypes: true });
+            // a missing folder is an answer (null), not an error
+            const ents = await fs.readdir(p, { withFileTypes: true }).catch((e) => (e.code === 'ENOENT' ? null : Promise.reject(e)));
+            if (!ents) return send(200, 'null');
             const out = await Promise.all(
               ents
                 .filter((e) => !e.name.startsWith('.'))
