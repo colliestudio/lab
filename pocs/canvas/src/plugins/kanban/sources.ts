@@ -230,7 +230,10 @@ export class FilesSource implements Source {
       changed = true;
       const text = await this.folder.read(path);
       const p = text ? parseTask(text) : null;
-      this.cache.set(path, [e.stamp, p && { taskId: p.taskId, path, fields: strip(p), hashes: hashFields(strip(p)) }]);
+      // a file that stops parsing (half-written by an editor, a typo) keeps its last good version:
+      // dropping it would delete the card (and orphan its refs), then re-add it as a new node
+      const prev = this.cache.get(path)?.[1] ?? null;
+      this.cache.set(path, [e.stamp, p ? { taskId: p.taskId, path, fields: strip(p), hashes: hashFields(strip(p)) } : prev]);
     }
     for (const k of [...this.cache.keys()]) {
       if (live.has(k)) continue;

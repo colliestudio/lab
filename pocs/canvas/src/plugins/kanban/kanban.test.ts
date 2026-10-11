@@ -191,6 +191,15 @@ describe('board from a folder', () => {
     expect(t2.status).toBe('Done'); // from the file
     expect(t2.labels).toEqual(['infra']); // from the board
     expect(parseTask(f.files.get(p)!)).toMatchObject({ status: 'Done', labels: ['infra'] });
+    // a file that is half-written or broken for a moment keeps its card (same node, refs intact)
+    const before = byTask('TASK-2').id;
+    f.put(p, '---\nid: TASK-2\ntitle: half');
+    await host.cycle();
+    expect(byTask('TASK-2')?.id).toBe(before);
+    f.put(p, patchTask(f.files.get('backlog/tasks/task-1 - Buy-always-on-dev-box.md')!.replace('TASK-1', 'TASK-2'), { status: 'In Progress' }));
+    await host.cycle();
+    expect(byTask('TASK-2').id).toBe(before);
+    expect(task(byTask('TASK-2')).status).toBe('In Progress');
     // a file removed (archived) leaves the board; refs to it stay as "missing"
     s.dispatch('kanban.ref', { task: byTask('TASK-3').id, x: 900, y: 0 });
     f.files.delete('backlog/tasks/task-3 - Third.md');
