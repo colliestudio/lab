@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      lib0:
+        specifier: ^0.2.119
+        version: 0.2.119
       ws:
         specifier: ^8.22.0
         version: 8.22.0
