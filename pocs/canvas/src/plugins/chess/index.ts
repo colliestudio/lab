@@ -3,11 +3,37 @@ import type { App, CanvasNode, MenuEntry, Plugin } from '../../core';
 import { registerChessLogic } from './logic';
 import { board, isBoard, isPiece, piece, pieceName } from './model';
 import { mountPalette, targetBoard } from './palette';
-import { boardHtml, pieceHtml } from './render';
+import { boardHtml, gameHtml, pieceHtml } from './render';
 
 const onGrip = (down: PointerEvent) => !!(down.target as Element | null)?.closest?.('[data-grip]');
 
 export { registerChessLogic };
+
+/** Rules mode: new game, seats, resign, rules off. Failed commands (a taken seat) flash their reason. */
+function gameMenu(app: App, b: CanvasNode): MenuEntry[] {
+  const id = b.id;
+  const f = board(b);
+  const me = app.me().id;
+  const run = (name: string, args: unknown) => () => {
+    const r = app.dispatch(name, args);
+    if (!r.ok && r.error) alert(r.error.replace(/^chess\.\w+: /, ''));
+  };
+  if (!f.rules) return [{ label: 'Play by the rules (new game)', separator: true, run: run('chess.newgame', { id }) }];
+  const mine = f.white?.id === me ? 'w' : f.black?.id === me ? 'b' : undefined;
+  const seat = (c: 'w' | 'b'): MenuEntry => {
+    const s = c === 'w' ? f.white : f.black;
+    const name = c === 'w' ? 'white' : 'black';
+    if (s?.id === me) return { label: `Leave the ${name} seat`, run: run('chess.sit', { id, color: c, leave: true }) };
+    return { label: s ? `${name[0].toUpperCase() + name.slice(1)}: ${s.name}` : `Play ${name}`, disabled: !!s, run: run('chess.sit', { id, color: c }) };
+  };
+  return [
+    { label: 'New game', separator: true, run: run('chess.newgame', { id }) },
+    seat('w'),
+    seat('b'),
+    ...(mine && !f.result ? [{ label: 'Resign', run: run('chess.resign', { id, color: mine }) }] : []),
+    { label: 'Free play (rules off)', run: run('chess.rules', { id, on: false }) },
+  ];
+}
 
 /** Actions for one board (its tab menu and the right-click menu). */
 function boardMenu(app: App, b: CanvasNode, pieces: () => void): MenuEntry[] {
@@ -19,6 +45,7 @@ function boardMenu(app: App, b: CanvasNode, pieces: () => void): MenuEntry[] {
     { label: 'Seen from black (flipped)', checked: !!board(b).flipped, run: () => app.dispatch('chess.flip', { id }) },
     { label: 'Locked (move by the tab)', checked: locked, run: () => app.dispatch('chess.lock', { id, locked: !locked }) },
     { label: 'Pieces…', separator: true, run: pieces },
+    ...gameMenu(app, b),
   ];
 }
 
@@ -40,7 +67,7 @@ export const chessPlugin: Plugin = {
       },
       renderKey: (node) => {
         const b = board(node);
-        return `${!!b.flipped}:${!!b.unlocked}:${b.from ?? ''}:${b.to ?? ''}`;
+        return `${!!b.flipped}:${!!b.unlocked}:${b.from ?? ''}:${b.to ?? ''}:${gameHtml(b)}`;
       },
       // a locked board only moves by its tab; its surface acts like the table (box select)
       grabbable: (node, down) => onGrip(down) || !!board(node).unlocked,

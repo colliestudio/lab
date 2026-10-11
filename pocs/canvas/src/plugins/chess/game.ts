@@ -1,4 +1,7 @@
-import { pick, set, type CanvasNode, type Change, type Command, type CommandResult, type DocView, type EventSpec, type LogActor } from '../../core';
+// value imports from core modules, not the core index (it pulls in the DOM app; the bridge runs this in Node)
+import { pick } from '../../core/commands';
+import { set } from '../../core/doc';
+import type { CanvasNode, Change, Command, CommandResult, DocView, EventSpec, LogActor } from '../../core';
 import { commands as free, moveTo, slots } from './commands';
 import { FIELD, board, boardUnder, center, isBoard, isColor, isPiece, piece, pieceText, squareAt, squarePos, type BoardField, type Color, type SeatField } from './model';
 import { ascii, inCheck, legalMoves, outcome, parseMove, play, san, sqIndex, sqName, toFen, validCastling, type Move, type Position } from './rules';

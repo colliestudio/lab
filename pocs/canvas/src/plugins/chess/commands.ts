@@ -1,4 +1,7 @@
-import { isNum, pick, set, type CanvasNode, type Change, type Command, type DocView, type EventSpec } from '../../core';
+// value imports from core modules, not the core index (it pulls in the DOM app; the bridge runs this in Node)
+import { isNum, pick } from '../../core/commands';
+import { set } from '../../core/doc';
+import type { CanvasNode, Change, Command, DocView, EventSpec } from '../../core';
 import {
   BOARD,
   FIELD,
