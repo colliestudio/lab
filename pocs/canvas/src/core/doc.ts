@@ -78,6 +78,47 @@ export type Change =
 
 export const set = (id: string, key: string, value: unknown): Change => ({ op: 'set', id, key, value });
 
+/**
+ * Apply changes to a plain doc (no Y.Doc): the same rules as the store (a `set` on a missing node is
+ * dropped, `x-ns.field` reaches into a namespace, `undefined` deletes, a `del` takes its edges along).
+ * Returns a new doc; nodes that changed are new objects. Lets a command run other commands in a row.
+ */
+export function applyChanges(doc: CanvasDoc, changes: readonly Change[]): CanvasDoc {
+  const nodes = new Map(doc.nodes.map((n) => [n.id, n]));
+  let edges = doc.edges;
+  for (const c of changes) {
+    if (c.op === 'add') nodes.set(c.node.id, structuredClone(c.node));
+    else if (c.op === 'del') {
+      nodes.delete(c.id);
+      if (edges.some((e) => e.fromNode === c.id || e.toNode === c.id)) edges = edges.filter((e) => e.fromNode !== c.id && e.toNode !== c.id);
+    } else {
+      const n = nodes.get(c.id);
+      if (!n) continue;
+      const copy: Record<string, unknown> = { ...n };
+      const dot = c.key.indexOf('.');
+      if (dot < 0) {
+        if (c.value === undefined) delete copy[c.key];
+        else copy[c.key] = c.value;
+      } else {
+        const ns = c.key.slice(0, dot);
+        const field = c.key.slice(dot + 1);
+        const sub = copy[ns];
+        if (!sub || typeof sub !== 'object' || Array.isArray(sub)) {
+          if (c.value === undefined) continue;
+          copy[ns] = { [field]: c.value };
+        } else {
+          const m: Record<string, unknown> = { ...(sub as Record<string, unknown>) };
+          if (c.value === undefined) delete m[field];
+          else m[field] = c.value;
+          copy[ns] = m;
+        }
+      }
+      nodes.set(c.id, copy as unknown as CanvasNode);
+    }
+  }
+  return { nodes: [...nodes.values()], edges, extra: doc.extra };
+}
+
 export const emptyDoc = (): CanvasDoc => ({ nodes: [], edges: [] });
 
 export const byZ = (a: CanvasNode, b: CanvasNode) => (a.z ?? 0) - (b.z ?? 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);

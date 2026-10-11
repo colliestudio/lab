@@ -34,6 +34,8 @@ export interface DispatchResult extends CommandResult {
   error?: string;
 }
 
+export type DispatchListener = (name: string, args: unknown, result: DispatchResult) => void;
+
 /** Transform a plain doc on import (repair) or export (e.g. place hidden children). */
 export type DocFilter = (doc: CanvasDoc, ctx: CommandCtx) => CanvasDoc;
 
@@ -112,6 +114,7 @@ export class Store {
   selection: ReadonlySet<string> = new Set();
   private commands = new Map<string, Command>();
   private listeners = new Set<() => void>();
+  private dispatchListeners = new Set<DispatchListener>();
   private view: DocView | null = null;
   /** Plain copies of nodes, kept until that node changes (a drag rewrites one node, not all of them). */
   private json = new Map<string, CanvasNode>();
@@ -205,6 +208,26 @@ export class Store {
     return this.commands.has(name);
   }
 
+  /** A registered command, to call from another command (see `Scratch`). */
+  command(name: string): Command | undefined {
+    return this.commands.get(name);
+  }
+
+  /** The view a plain doc would have in this store (its containment, riders and layouts). */
+  viewOf(doc: CanvasDoc): DocView {
+    return makeView(doc, this.parentRules, this.layouts, this.riderRules);
+  }
+
+  /**
+   * Called after each local dispatch that changed something (not undo/redo, not remote changes):
+   * the place for "when X happens here, also do Y" (automation triggers). A listener may dispatch
+   * with `merge: true` to join the same undo step.
+   */
+  onDispatch(fn: DispatchListener) {
+    this.dispatchListeners.add(fn);
+    return () => this.dispatchListeners.delete(fn);
+  }
+
   /**
    * Run a command and apply its changes in one transaction (one undo step).
    * `merge: true` folds this into the previous undo step (e.g. the moves of one drag).
@@ -233,7 +256,16 @@ export class Store {
     const step = opts.undoable !== false && res.changes.length > 0 && !!item && (item !== top || merge) ? item : undefined;
     if (res.events) this.record(res.events, step);
     if (res.select) this.select(res.select);
-    return { ...res, ok: true };
+    const out = { ...res, ok: true };
+    if (res.changes.length || res.untracked?.length)
+      for (const fn of this.dispatchListeners) {
+        try {
+          fn(name, args, out);
+        } catch (e) {
+          console.warn(`onDispatch: ${(e as Error).message}`);
+        }
+      }
+    return out;
   }
 
   /** Log a command's events (computed against the doc after its changes); `step`: remember them on the undo step. */

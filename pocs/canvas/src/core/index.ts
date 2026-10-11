@@ -8,6 +8,7 @@ export * from './log';
 export { mountLog } from './logView';
 export { isIds, isNum, pick, raise, toFront, withRiders } from './commands';
 export type { ObjectType, KeyBinding, MenuItem, MenuEntry, MenuProvider, Kit, Plugin, RenderCtx } from './plugin';
+export { Scratch } from './scratch';
 export { Viewport } from './viewport';
 export { mountZoomControl } from './zoomControl';
 export { Presence, mountPresenceView, type PlayerInfo, type Peer } from './presence';
