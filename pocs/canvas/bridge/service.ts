@@ -1,8 +1,8 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { existsSync, readFileSync, statSync } from 'node:fs';
-import { extname, join, normalize, resolve } from 'node:path';
+import { extname, join, normalize } from 'node:path';
 import { WebSocketServer } from 'ws';
-import { BoardFile, boardId, type Log } from './board';
+import { BoardFile, boardId, canonicalPath, type Log } from './board';
 
 // The bridge as one service for many .canvas files: one HTTP + WebSocket server, one BoardFile per
 // open file. Used by `pnpm bridge <file>` (one board, legacy routes) and by the desktop app (many
@@ -119,7 +119,7 @@ export class BridgeService {
       if (all.length === 1) return all[0];
       throw new Error(all.length ? `${all.length} boards open: pass board (${all.map((b) => b.id).join(', ')})` : 'no board open: open_canvas first');
     }
-    const byId = this.boards.get(ref) ?? all.find((b) => b.file === resolve(ref));
+    const byId = this.boards.get(ref) ?? all.find((b) => b.file === canonicalPath(ref));
     if (byId) return byId;
     const r = ref.toLowerCase();
     const hits = all.filter((b) => b.name.toLowerCase().startsWith(r) || b.id.startsWith(r));

@@ -1,5 +1,5 @@
 # Unsigned local build only: pnpm pack → dist/mac-arm64/Canvas.app
-appId: studio.collie.canvas
+appId: studio.collie.canvas.electron
 productName: Canvas
 directories:
   output: dist

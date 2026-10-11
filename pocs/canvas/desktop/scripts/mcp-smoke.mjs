@@ -30,12 +30,14 @@ process.on('unhandledRejection', (e) => (console.error(e.message), process.exit(
 const text = (r) => r.content.filter((x) => x.type === 'text').map((x) => x.text).join('\n');
 console.log(text(await call('list_canvases')));
 let board;
+const tag = Date.now().toString(36).slice(-4); // unique titles per run
+const A = `Order placed ${tag}`, B = `Payment taken ${tag}`;
 if (file) board = JSON.parse(text(await call('open_canvas', { path: file }))).board;
-await call('canvas_add_node', { board, text: '# Order placed\nfrom the MCP smoke test', color: '4' });
-await call('canvas_add_node', { board, text: 'Payment taken', near: 'Order placed', color: '5' });
-await call('canvas_connect', { board, from: 'Order placed', to: 'Payment taken', label: 'then' });
-await call('canvas_add_node', { board, type: 'link', text: '', url: frameUrl, embed: true, x: 400, y: 0, width: 420, height: 300 });
-for (const target of ['board', 'Payment taken', 'board']) {
+await call('canvas_add_node', { board, text: `# ${A}\nfrom the MCP smoke test`, color: '4' });
+await call('canvas_add_node', { board, text: B, near: A, color: '5' });
+await call('canvas_connect', { board, from: A, to: B, label: 'then' });
+if (!process.env.NO_EMBED) await call('canvas_add_node', { board, type: 'link', text: '', url: frameUrl, embed: true, x: 400 + Math.round(Math.random() * 2000), y: 0, width: 420, height: 300 });
+for (const target of ['board', B, 'board']) {
   t0 = performance.now();
   const r = await call('canvas_screenshot', { board, target });
   const img = r.content.find((x) => x.type === 'image');
@@ -44,5 +46,6 @@ for (const target of ['board', 'Payment taken', 'board']) {
   console.log(`screenshot ${target}: ${t(performance.now() - t0)} round trip; ${text(r)} → ${name}`);
 }
 console.log(text(await call('canvas_log', { board, limit: 6 })));
+if (process.env.HOLD_MS) await new Promise((r) => setTimeout(r, Number(process.env.HOLD_MS)));
 await c.close();
 process.exit(0);

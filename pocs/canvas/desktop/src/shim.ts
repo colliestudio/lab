@@ -13,7 +13,7 @@ import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
 //   ELECTRON_RUN_AS_NODE=1 /Applications/Canvas.app/Contents/MacOS/Canvas …/shim.mjs
 // Starts the app (hidden, no dialog) when it isn't running. CANVAS_AS names this agent's seat.
 
-const userData = process.env.CANVAS_USER_DATA ?? join(homedir(), 'Library', 'Application Support', 'Canvas');
+const userData = process.env.CANVAS_USER_DATA ?? join(homedir(), 'Library', 'Application Support', 'Canvas Electron');
 const endpointFile = join(userData, 'endpoint.json');
 const err = (m: string) => process.stderr.write(`canvas mcp: ${m}\n`);
 

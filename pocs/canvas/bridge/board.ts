@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, watch, writeFileSync, renameSync, type FSWatcher } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync, watch, writeFileSync, renameSync, type FSWatcher } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import * as Y from 'yjs';
 import * as syncProtocol from 'y-protocols/sync';
@@ -23,10 +23,21 @@ export type Log = (...m: unknown[]) => void;
 const MSG_SYNC = 0;
 const MSG_AWARENESS = 1;
 
+/** The canonical path (symlinks resolved, e.g. /tmp → /private/tmp): one file = one board. */
+export function canonicalPath(file: string): string {
+  const abs = resolve(file);
+  try {
+    return join(realpathSync(dirname(abs)), basename(abs));
+  } catch {
+    return abs;
+  }
+}
+
 /** Stable id for a file path: readable name + short hash of the full path. */
 export function boardId(file: string): string {
+  file = canonicalPath(file);
   const slug = basename(file).replace(/\.canvas$/, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'board';
-  return `${slug.slice(0, 40)}-${createHash('sha1').update(resolve(file)).digest('hex').slice(0, 6)}`;
+  return `${slug.slice(0, 40)}-${createHash('sha1').update(file).digest('hex').slice(0, 6)}`;
 }
 
 export class BoardFile {
@@ -51,7 +62,7 @@ export class BoardFile {
     private log: Log = () => {},
     private idleMs = 3 * 60_000,
   ) {
-    this.file = resolve(file);
+    this.file = canonicalPath(file);
     this.id = boardId(this.file);
     this.name = basename(this.file);
     this.stateDir = join(dirname(this.file), '.canvas-bridge');

@@ -14,7 +14,7 @@ import { AgentViews } from './views';
 const T0 = Date.now();
 app.setName('Canvas');
 if (process.env.CANVAS_USER_DATA) app.setPath('userData', resolve(process.env.CANVAS_USER_DATA));
-else app.setPath('userData', join(app.getPath('appData'), 'Canvas'));
+else app.setPath('userData', join(app.getPath('appData'), 'Canvas Electron'));
 const USER = app.getPath('userData');
 mkdirSync(join(USER, 'logs'), { recursive: true });
 const LOG_FILE = join(USER, 'logs', 'main.log');
@@ -92,7 +92,7 @@ const CSP = (port: number) =>
 function openBoard(file: string, opts: { window?: boolean } = {}): BoardFile {
   file = resolve(file);
   const b = service.open(file);
-  addRecent(file);
+  addRecent(b.file);
   if (opts.window === false) return b;
   const existing = windows.get(b.id);
   if (existing && !existing.isDestroyed()) {
@@ -110,7 +110,7 @@ function openBoard(file: string, opts: { window?: boolean } = {}): BoardFile {
     webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false, partition: 'persist:canvas' },
   });
   windows.set(b.id, win);
-  win.setRepresentedFilename(file);
+  win.setRepresentedFilename(b.file);
   win.once('ready-to-show', () => {
     if (process.env.CANVAS_HIDE_WINDOWS !== '1') win.show();
   });
