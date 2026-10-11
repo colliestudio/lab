@@ -30,14 +30,14 @@ const CLASS = /^[a-z0-9-]+$/;
 const ACTION = /^[\w.-]{1,40}$/;
 const MAX_NODES = 2000;
 
-const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+export const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
 /** Sanitized HTML for a plugin's render tree. No tag = div, unknown tags become spans; unsafe bits are dropped. */
 export function treeToHtml(tree: RenderTree, pluginId: string): string {
   let budget = MAX_NODES;
   const walk = (t: RenderTree, depth: number): string => {
     if (t === null || t === undefined || t === false) return '';
-    if (typeof t === 'string' || typeof t === 'number') return esc(String(t));
+    if (typeof t === 'string' || typeof t === 'number') return escapeHtml(String(t));
     if (typeof t !== 'object' || --budget < 0 || depth > 30) return '';
     const tag = t.tag === undefined ? 'div' : typeof t.tag === 'string' && TAGS.has(t.tag) ? t.tag : 'span';
     const attrs: string[] = [];
@@ -48,12 +48,12 @@ export function treeToHtml(tree: RenderTree, pluginId: string): string {
         .filter(([k, v]) => STYLES.has(k) && (typeof v === 'number' || (typeof v === 'string' && SAFE_VALUE.test(v) && !/url|expression/i.test(v))))
         .map(([k, v]) => `${k}:${v}`)
         .join(';');
-      if (css) attrs.push(`style="${esc(css)}"`);
+      if (css) attrs.push(`style="${escapeHtml(css)}"`);
     }
-    if (typeof t.action === 'string' && ACTION.test(t.action)) attrs.push(`data-action="${esc(t.action)}"`);
-    if (typeof t.title === 'string') attrs.push(`title="${esc(t.title.slice(0, 200))}"`);
+    if (typeof t.action === 'string' && ACTION.test(t.action)) attrs.push(`data-action="${escapeHtml(t.action)}"`);
+    if (typeof t.title === 'string') attrs.push(`title="${escapeHtml(t.title.slice(0, 200))}"`);
     if (tag === 'button') attrs.push('type="button"');
-    const inner = (t.text !== undefined ? esc(String(t.text)) : '') + (Array.isArray(t.children) ? t.children.map((c) => walk(c, depth + 1)).join('') : '');
+    const inner = (t.text !== undefined ? escapeHtml(String(t.text)) : '') + (Array.isArray(t.children) ? t.children.map((c) => walk(c, depth + 1)).join('') : '');
     return `<${tag}${attrs.length ? ' ' + attrs.join(' ') : ''}>${inner}</${tag}>`;
   };
   return walk(tree, 0);

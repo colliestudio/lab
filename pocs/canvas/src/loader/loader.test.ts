@@ -185,6 +185,14 @@ describe('plugin host (in-process sandbox)', () => {
     expect(host.notices.at(-1)!.text).toMatch(/does not match its hash/);
   });
 
+  it('ignores room entries a peer wrote with an invalid manifest', async () => {
+    const { app, host } = setup();
+    const hash = await hashSource(DICE.source);
+    const bad = (m: object): RoomPlugin => ({ manifest: { ...DICE.manifest, ...m }, hash, source: DICE.source });
+    app.store.meta.set(META_KEY, [bad({ id: 'cards' }), bad({ id: 'a" onclick="x' }), bad({ capabilities: ['root'] }), bad({})]);
+    expect(host.roomPlugins().map((p) => p.manifest.id)).toEqual(['dice']);
+  });
+
   it('uninstall unregisters kits and types', async () => {
     const { app, host } = setup();
     await host.install(DICE.manifest, DICE.source);

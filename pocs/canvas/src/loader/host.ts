@@ -1,7 +1,7 @@
 import type { App, CanvasNode, MenuEntry } from '../core';
 import { has, hashSource, parseManifest, type Manifest } from './manifest';
 import { checkResult, nsOf, readableDoc } from './policy';
-import { treeToHtml, type RenderTree } from './tree';
+import { escapeHtml, treeToHtml, type RenderTree } from './tree';
 
 // Host side of the plugin bridge. A third-party plugin runs in a sandbox (an iframe in the browser,
 // in-process in tests) and only talks to the app through messages: the host turns what the plugin
@@ -214,7 +214,20 @@ export class PluginHost {
   /** Plugins the room uses (from the doc: synced, saved with the file). */
   roomPlugins(): RoomPlugin[] {
     const v = this.app.store.meta.get(META_KEY);
-    return Array.isArray(v) ? (v as RoomPlugin[]) : [];
+    if (!Array.isArray(v)) return [];
+    // Any peer can write this list: validate every entry as untrusted (a reserved id like `cards`
+    // would own the cards' nodes; a bad id or name would reach class names and HTML).
+    const out: RoomPlugin[] = [];
+    for (const e of v as Partial<RoomPlugin>[]) {
+      try {
+        if (!e || typeof e.hash !== 'string' || typeof e.source !== 'string') continue;
+        const manifest = parseManifest(e.manifest);
+        out.push({ manifest, hash: e.hash, source: e.source, from: typeof e.from === 'string' ? e.from : undefined, addedBy: typeof e.addedBy === 'string' ? e.addedBy : undefined });
+      } catch {
+        // invalid entries are ignored
+      }
+    }
+    return out;
   }
 
   status(id: string): Status {
@@ -312,7 +325,7 @@ export class PluginHost {
           const have = p.renders.get(n.id);
           el.classList.add('px-node');
           // a stale render beats a blank box while the new one is on its way
-          el.innerHTML = have?.html ?? `<div class="px-pending">${m.name}…</div>`;
+          el.innerHTML = have?.html ?? `<div class="px-pending">${escapeHtml(m.name)}…</div>`;
         },
         onAction: (n: CanvasNode, action: string) => {
           const cmd = t.actions?.[action];
@@ -385,7 +398,7 @@ export class PluginHost {
         this.app.view.render();
       })
       .catch((e: Error) => {
-        p.renders.set(n.id, { key, html: `<div class="px-error">${p.manifest.name}: render failed</div>` });
+        p.renders.set(n.id, { key, html: `<div class="px-error">${escapeHtml(p.manifest.name)}: render failed</div>` });
         this.notice(p.id, 'error', `render: ${e.message}`);
         this.app.view.render();
       })
