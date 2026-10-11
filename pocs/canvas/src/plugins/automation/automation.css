@@ -1,0 +1,221 @@
+.au-button {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  box-sizing: border-box;
+  border-radius: 12px;
+  background: #1f2329;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4), 0 8px 20px rgba(0, 0, 0, 0.3);
+  font-family: system-ui, sans-serif;
+}
+.au-run {
+  flex: 1;
+  border: 0;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #f2c94c, #d9a91f);
+  color: #2a2006;
+  font: 700 16px system-ui, sans-serif;
+  cursor: pointer;
+  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.au-run:active {
+  transform: translateY(1px);
+  box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.2);
+}
+.au-rule .au-run {
+  background: linear-gradient(180deg, #8ec5ff, #5a9be0);
+  color: #0b2440;
+}
+.au-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  color: #b9c0ca;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.au-meta span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.au-edit {
+  flex: none;
+  border: 0;
+  border-radius: 5px;
+  padding: 1px 6px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #e6e9ee;
+  font: 11px system-ui, sans-serif;
+  cursor: pointer;
+}
+.au-editor {
+  width: min(860px, 94vw);
+  max-height: 88vh;
+  overflow: auto;
+  padding: 16px 18px;
+  border-radius: 12px;
+  background: #fbfaf6;
+  color: #222;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
+  font: 14px system-ui, sans-serif;
+}
+.au-editor h2 {
+  margin: 0 0 10px;
+  font-size: 17px;
+}
+.au-editor input,
+.au-editor select,
+.au-editor textarea {
+  font: inherit;
+  font-size: 14px;
+  padding: 4px 6px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  background: #fff;
+}
+.au-head {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.au-name {
+  flex: 1;
+  min-width: 180px;
+  font-weight: 600;
+}
+.au-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid #ddd;
+  margin-bottom: 8px;
+}
+.au-tab {
+  border: 0;
+  background: none;
+  padding: 6px 10px;
+  font: inherit;
+  color: #666;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+.au-tab.on {
+  color: #222;
+  border-bottom-color: #d9a91f;
+}
+.au-steps {
+  margin: 0;
+  padding-left: 22px;
+}
+.au-step {
+  padding: 6px 0;
+  border-bottom: 1px dashed #e3e0d8;
+}
+.au-row,
+.au-when {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.au-when {
+  margin-top: 4px;
+  font-size: 13px;
+}
+.au-when select,
+.au-when input {
+  font-size: 12px;
+}
+.au-verb {
+  font-weight: 600;
+}
+.au-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.au-field span {
+  color: #777;
+  font-size: 12px;
+}
+.au-target {
+  width: 150px;
+}
+.au-num {
+  width: 64px;
+}
+.au-text {
+  width: 220px;
+}
+.au-tools {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 2px;
+}
+.au-icon {
+  border: 1px solid #ddd;
+  background: #fff;
+  border-radius: 5px;
+  width: 26px;
+  height: 26px;
+  cursor: pointer;
+}
+.au-icon:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.au-desc {
+  margin-top: 3px;
+  color: #6a6a6a;
+  font-size: 12px;
+  font-style: italic;
+}
+.au-add {
+  margin: 8px 0;
+}
+.au-json {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 320px;
+  font: 12px ui-monospace, Menlo, monospace !important;
+}
+.au-errors {
+  margin: 6px 0;
+  padding-left: 18px;
+  color: #b3261e;
+  font-size: 13px;
+}
+.au-errors:empty {
+  display: none;
+}
+.au-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}
+.au-btn {
+  padding: 7px 14px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  background: #fff;
+  font: 600 14px system-ui, sans-serif;
+  cursor: pointer;
+}
+.au-primary {
+  border-color: #2f6b45;
+  background: #2f6b45;
+  color: #fff;
+}
+.au-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
