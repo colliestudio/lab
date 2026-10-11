@@ -89,7 +89,8 @@ export const prototypePlugin: Plugin = {
       if (!m) return;
       const frame = [...app.view.world.querySelectorAll<HTMLIFrameElement>('iframe.pg-frame')].find((f) => f.contentWindow === e.source);
       const id = frame?.closest<HTMLElement>('[data-node-id]')?.dataset.nodeId;
-      if (!id) return;
+      // only a page you're interacting with may act: an idle thumbnail's script can't move your view
+      if (!id || !live.has(id)) return;
       if (m.kind === 'set') state[m.key] = m.value;
       else if (m.kind === 'goto') goFrom(id, m.target);
       else if (m.kind === 'escape') {
