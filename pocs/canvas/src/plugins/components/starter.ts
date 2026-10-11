@@ -65,7 +65,7 @@ export const STARTER_TYPES: ComponentType[] = [
 /** Sample instances for the starter kit: [type, local key, values, dx, dy]. Ref values name local keys. */
 export const STARTER_SAMPLES: [string, string, Values, number, number][] = [
   ['persona', 'p1', { name: 'Hana, the host', avatar: 'https://api.dicebear.com/9.x/notionists/svg?seed=Hana', role: 'Runs game night', goals: ['Set up a table in a minute', 'Nobody needs an account'], pains: ['Rules disputes', 'Lost pieces'], quote: 'If it takes longer than shuffling, I won’t use it.' }, 0, 0],
-  ['persona', 'p2', { name: 'Dev, the facilitator', avatar: 'https://api.dicebear.com/9.x/notionists/svg?seed=Dev', role: 'Runs event storming', goals: ['Capture the session as data', 'Hand results to an agent'], pains: ['Photos of sticky notes'], quote: 'The wall should be the spec.' }, 0, 380],
+  ['persona', 'p2', { name: 'Dev, the facilitator', avatar: 'https://api.dicebear.com/9.x/notionists/svg?seed=Dev', role: 'Runs event storming', goals: ['Capture the session as data', 'Hand results to an agent'], pains: ['Photos of sticky notes'], quote: 'The wall should be the spec.' }, 0, 460],
   ['story', 's1', { as: 'p1', want: 'Share a table by link', so: 'friends can join without installing anything', status: 'Done', points: 3 }, 380, 0],
   ['story', 's2', { as: 'p2', want: 'Define my own sticky types', so: 'the board matches our method', status: 'Doing', points: 5 }, 380, 260],
   ['story', 's3', { as: 'p2', want: 'Export the board as Markdown', so: 'an agent can turn it into tickets', status: 'Ready', points: 2 }, 380, 520],
