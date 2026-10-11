@@ -6,6 +6,8 @@ import { registerCoreCommands } from '../src/core/commands';
 import type { CanvasDoc, CanvasNode, Change } from '../src/core/doc';
 import type { LogActor } from '../src/core/log';
 import { registerBoardLogic } from '../src/plugins/board/logic';
+import { registerChessLogic } from '../src/plugins/chess/logic';
+import { views, type View } from './views';
 import { describeDiff, diffFile, stableSerialize } from './canonical';
 
 // The bridge's document side, without network or disk (server.ts adds those): one Y.Doc that
@@ -55,6 +57,7 @@ export class Host {
     const s = new Store({ ydoc: this.ydoc });
     registerCoreCommands(s);
     registerBoardLogic(s);
+    registerChessLogic(s);
     return s;
   }
 
@@ -100,7 +103,8 @@ export class Host {
     const seat = this.seat(actor);
     const res = seat.store.dispatch(name, args);
     const touched = [...new Set(res.changes.flatMap((c) => (c.op === 'add' ? [c.node.id] : c.op === 'set' || c.op === 'del' ? [c.id] : c.op === 'edge' ? [c.edge.fromNode, c.edge.toNode] : [])))];
-    this.point(seat, touched);
+    // a command that names what it acted on (a chess move: the piece) points there; else at what it touched
+    this.point(seat, res.select?.length ? res.select : touched);
     return { ...res, touched };
   }
 
@@ -111,6 +115,46 @@ export class Host {
     if (redo) seat.store.redo();
     else seat.store.undo();
     return (redo ? um.redoStack : um.undoStack).length < n;
+  }
+
+  /**
+   * A plugin's view of the doc for this actor (see views.ts): `chess.state` = the game as text. Reading
+   * seats the actor (keeps it at the table while it thinks or waits). Throws on bad args.
+   */
+  view(actor: Actor, name: string, args: Record<string, string | undefined>): unknown {
+    const v: View | undefined = views[name];
+    if (!v) throw new Error(`unknown view: ${name} (${Object.keys(views).join(', ')})`);
+    this.seat(actor);
+    return v(this.store.doc, args, actor);
+  }
+
+  /**
+   * Resolve when `view` gives a value (a "ready" view returns undefined until then: `chess.turn` until
+   * it's the actor's move), or with undefined after `ms`. Re-checked after every doc change.
+   */
+  wait(actor: Actor, name: string, args: Record<string, string | undefined>, ms: number): Promise<unknown> {
+    const first = this.view(actor, name, args);
+    if (first !== undefined) return Promise.resolve(first);
+    return new Promise((resolve, reject) => {
+      const done = (v: unknown, err?: Error) => {
+        clearTimeout(timer);
+        clearInterval(keep);
+        this.ydoc.off('afterTransaction', check);
+        if (err) reject(err);
+        else resolve(v);
+      };
+      const check = () => {
+        try {
+          const v = this.view(actor, name, args);
+          if (v !== undefined) done(v);
+        } catch (e) {
+          done(undefined, e as Error);
+        }
+      };
+      const timer = setTimeout(() => done(undefined), ms);
+      const keep = setInterval(() => this.seat(actor), 30_000); // waiting is being at the table
+      this.ydoc.on('afterTransaction', check);
+    });
   }
 
   /** Show the actor's cursor on (the middle of) the first node it touched, and select them. */

@@ -2,6 +2,8 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { client } from './client';
+import { COLORS, gameText, playMove, waitForTurn } from './chess';
+import type { GameView } from '../src/plugins/chess/game';
 
 // MCP server: the same operations as the CLI, as tools, so a Claude agent can read the board and
 // add/move/link nodes live while people watch (it is seated as a player: cursor, log name, undo).
@@ -105,6 +107,74 @@ server.registerTool(
   'canvas_log',
   { description: 'Recent events on the canvas: who did what (people, agents, the file, tools).', inputSchema: { limit: z.number().optional() } },
   tool(async (a: { limit?: number }) => (await c.log(a.limit ?? 20)).map((e) => `${e.time.slice(11, 19)} ${e.actor ?? '—'} ${e.text}`).join('\n')),
+);
+
+// ---------------------------------------------------------------- chess: play a game as a seat
+// The game-level view (not raw nodes): state as text, a move by notation, and a blocking wait for
+// your turn. Moves go through the chess plugin's commands, so a person watching sees your cursor go
+// to the piece and the log say "<you> played Black Nf6"; illegal or out-of-turn moves are refused.
+
+const boardArg = z.string().optional().describe('board id; only needed when the table has several chessboards');
+
+server.registerTool(
+  'chess_state',
+  {
+    description:
+      'The chess game on the table: picture (uppercase = white, white at the bottom), whose move, seats, your color, move history, legal moves (SAN) and FEN.',
+    inputSchema: { board: boardArg },
+  },
+  tool(async (a: { board?: string }) => gameText(await c.view<GameView>('chess.state', { board: a.board }))),
+);
+
+server.registerTool(
+  'chess_sit',
+  { description: 'Take a seat at a color (white or black): from then on only you move that color. `leave` stands up.', inputSchema: { color: z.enum(['white', 'black']), leave: z.boolean().optional(), board: boardArg } },
+  tool(async (a: { color: string; leave?: boolean; board?: string }) => {
+    const id = a.board ?? (await c.view<GameView>('chess.state')).board;
+    await cmd('chess.sit', { id, color: COLORS[a.color], leave: a.leave });
+    return gameText(await c.view<GameView>('chess.state', { board: id }));
+  }),
+);
+
+server.registerTool(
+  'chess_new_game',
+  { description: 'Start a new game by the rules: the board’s pieces go back to the start (or a new set appears if there is no board). Seats are kept.', inputSchema: { board: boardArg } },
+  tool(async (a: { board?: string }) => {
+    const id = a.board ?? (await c.view<GameView>('chess.state').then((v) => v.board, () => undefined));
+    await cmd('chess.newgame', id ? { id } : { x: 0, y: 0 });
+    return gameText(await c.view<GameView>('chess.state', { board: id }));
+  }),
+);
+
+server.registerTool(
+  'chess_move',
+  {
+    description: 'Play your move: SAN (Nf3, exd5, O-O, e8=Q) or UCI (e2e4, e7e8q). Refused with the reason (and the legal moves) if illegal or not your turn. Returns the game after it.',
+    inputSchema: { move: z.string(), board: boardArg },
+  },
+  tool(async (a: { move: string; board?: string }) => gameText(await playMove(c, a.move, a.board))),
+);
+
+server.registerTool(
+  'chess_wait_for_turn',
+  {
+    description: 'Block until it is your move (or the game ended), then return the game. Use after chess_move to wait for the opponent. Returns "still waiting" after timeout_s (default 240); call again.',
+    inputSchema: { board: boardArg, timeout_s: z.number().optional() },
+  },
+  tool(async (a: { board?: string; timeout_s?: number }) => {
+    const v = await waitForTurn(c, a.board, a.timeout_s ?? 240);
+    return v ? gameText(v) : 'still waiting for the opponent; call chess_wait_for_turn again';
+  }),
+);
+
+server.registerTool(
+  'chess_resign',
+  { description: 'Resign the game for your color.', inputSchema: { board: boardArg } },
+  tool(async (a: { board?: string }) => {
+    const id = a.board ?? (await c.view<GameView>('chess.state')).board;
+    await cmd('chess.resign', { id });
+    return gameText(await c.view<GameView>('chess.state', { board: id }));
+  }),
 );
 
 await server.connect(new StdioServerTransport());

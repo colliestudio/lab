@@ -232,6 +232,19 @@ async function api(req: IncomingMessage, res: ServerResponse) {
     if (req.method === 'GET' && url.pathname === '/status') {
       return reply(200, { file, port, nodes: host.store.nodes.size, edges: host.store.edges.size, browsers: conns.size, actors: host.seated() });
     }
+    const viewMatch = req.method === 'GET' && /^\/(view|wait)\/([\w.-]+)$/.exec(url.pathname);
+    if (viewMatch) {
+      const q = Object.fromEntries(url.searchParams) as Record<string, string | undefined>;
+      const actor = actorOf({ as: q.as, kind: q.kind }, req);
+      try {
+        if (viewMatch[1] === 'view') return reply(200, host.view(actor, viewMatch[2], q));
+        const ms = Math.min(Math.max(Number(q.timeout ?? 50), 1), 290) * 1000;
+        const v = await host.wait(actor, viewMatch[2], q, ms);
+        return reply(200, v === undefined ? { waiting: true, error: `still not ready after ${ms / 1000}s; wait again` } : v);
+      } catch (e) {
+        return reply(400, { error: (e as Error).message });
+      }
+    }
     if (req.method === 'POST' && url.pathname === '/cmd') {
       const b = await body(req);
       const actor = actorOf(b, req);
@@ -245,7 +258,7 @@ async function api(req: IncomingMessage, res: ServerResponse) {
       const done = host.undo(actor, url.pathname === '/redo');
       return reply(200, { ok: done, error: done ? undefined : `nothing to ${url.pathname.slice(1)} for ${actor.name} (each actor undoes only its own steps, while it stays seated)` });
     }
-    reply(404, { error: 'GET /doc /query /log /status; POST /cmd {as,name,args} /undo {as} /redo {as}' });
+    reply(404, { error: 'GET /doc /query /log /status /view/<name> /wait/<name>?timeout=S; POST /cmd {as,name,args} /undo {as} /redo {as}' });
   } catch (e) {
     reply(500, { error: (e as Error).message });
   }

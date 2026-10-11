@@ -12,9 +12,15 @@ export interface Client {
   undo(redo?: boolean): Promise<{ ok: boolean; error?: string }>;
   log(limit?: number): Promise<{ time: string; actor: string | null; text: string }[]>;
   status(): Promise<unknown>;
+  /** A plugin view as this actor (e.g. chess.state); throws its error. */
+  view<T = any>(name: string, args?: Record<string, string | undefined>): Promise<T>;
+  /** Long-poll a view until it's ready (e.g. chess.turn); `{waiting: true}` after `timeoutS`. */
+  wait<T = any>(name: string, args?: Record<string, string | undefined>, timeoutS?: number): Promise<T | { waiting: true }>;
   /** Node id for an id or a title (see resolveNode). */
   resolve(ref: string): Promise<string>;
 }
+
+const qs = (o: Record<string, string | undefined>) => new URLSearchParams(Object.entries(o).filter((e): e is [string, string] => e[1] !== undefined));
 
 export function client(opts: { url?: string; as?: string; kind?: 'agent' | 'tool' } = {}): Client {
   const base = (opts.url ?? process.env.CANVAS_BRIDGE ?? 'http://localhost:5222').replace(/\/+$/, '');
@@ -38,6 +44,16 @@ export function client(opts: { url?: string; as?: string; kind?: 'agent' | 'tool
     undo: (redo = false) => json(redo ? '/redo' : '/undo', { body: { as, kind } }),
     log: (limit = 20) => json(`/log?limit=${limit}`),
     status: () => json('/status'),
+    view: async (name, args = {}) => {
+      const r = await json(`/view/${name}?${qs({ ...args, as, kind })}`);
+      if (r?.error) throw new Error(r.error);
+      return r;
+    },
+    wait: async (name, args = {}, timeoutS = 50) => {
+      const r = await json(`/wait/${name}?${qs({ ...args, as, kind, timeout: String(timeoutS) })}`);
+      if (r?.error && !r.waiting) throw new Error(r.error);
+      return r;
+    },
     resolve: async (ref) => resolveNode(await (async () => parse(await req('/doc')))(), ref).id,
   };
 }

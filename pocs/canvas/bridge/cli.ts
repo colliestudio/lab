@@ -2,6 +2,8 @@ import { execFileSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import { client } from './client';
 import { parseBacklog } from './backlog';
+import { COLORS, gameText, playMove, runBot, waitForTurn } from './chess';
+import type { GameView } from '../src/plugins/chess/game';
 
 // canvas: edit a live canvas from the shell (agents, scripts, people). Talks to the bridge.
 //   pnpm canvas <command> [args] [--as NAME] [--bridge URL]
@@ -25,6 +27,16 @@ const HELP = `canvas: read and edit a live canvas through the bridge
   cmd NAME [JSON]                         any registered command (board.*, core.*)
   sync-backlog [--dir PATH] [-- backlog filters…]   Backlog.md tasks → columns (re-runnable)
 
+  chess state [--json]                    the game: board, turn, seats, legal moves, FEN
+  chess new [--x X --y Y]                 new game on the board (or a new set with rules on)
+  chess sit white|black [--leave]         take (or leave) a seat: only you move that color
+  chess move MOVE                         e2e4, e7e8q, Nf3, O-O … (fails with the legal list)
+  chess wait [--timeout S]                block until it's your move (or the game ended)
+  chess resign
+  bot chess [--color black] [--depth 2] [--delay 600] [--keep]
+                                          built-in opponent: sits, waits, moves (as --as, default "Bot")
+  chess commands take --board ID when there is more than one board
+
   --as NAME     who you are on the board (default $CANVAS_AS or "Claude")
   --bridge URL  default $CANVAS_BRIDGE or http://localhost:5222`;
 
@@ -47,7 +59,8 @@ for (let i = 0; i < argv.length; i++) {
 }
 const [command, ...params] = pos;
 const isTool = command === 'sync-backlog';
-const c = client({ url: flags.bridge, as: flags.as ?? (isTool ? 'Backlog.md' : undefined), kind: isTool ? 'tool' : 'agent' });
+const isBot = command === 'bot';
+const c = client({ url: flags.bridge, as: flags.as ?? (isTool ? 'Backlog.md' : isBot ? 'Bot' : undefined), kind: isTool ? 'tool' : 'agent' });
 const num = (k: string) => (flags[k] !== undefined ? Number(flags[k]) : undefined);
 
 async function run(name: string, args: unknown) {
@@ -141,8 +154,53 @@ async function main() {
       const log = await c.log(1);
       return console.log(r.changed ? log[0]?.text : `backlog: ${input.items.length} tasks, board already up to date`);
     }
+    case 'chess':
+      return chess(params[0], params.slice(1));
+    case 'bot': {
+      if (params[0] !== 'chess') throw new Error('bot: only `bot chess` so far');
+      const color = COLORS[flags.color ?? 'black'];
+      if (!color) throw new Error('--color white|black');
+      return runBot(c, { color, depth: num('depth') ?? 2, board: flags.board, delayMs: num('delay') ?? 600, keep: !!flags.keep, say: (m) => console.log(`${new Date().toISOString().slice(11, 19)} ${m}`) });
+    }
     default:
       throw new Error(`unknown command: ${command}\n\n${HELP}`);
+  }
+}
+
+async function chess(sub: string | undefined, args: string[]) {
+  const board = flags.board;
+  const show = (v: GameView) => console.log(flags.json ? JSON.stringify(v, null, 2) : gameText(v));
+  switch (sub) {
+    case undefined:
+    case 'state':
+      return show(await c.view<GameView>('chess.state', { board }));
+    case 'new': {
+      const existing = board ?? (await c.view<GameView>('chess.state').then((v) => v.board, () => undefined));
+      await run('chess.newgame', existing ? { id: existing } : { x: num('x') ?? 0, y: num('y') ?? 0 });
+      return show(await c.view<GameView>('chess.state', { board: existing }));
+    }
+    case 'sit': {
+      const color = COLORS[args[0] ?? ''];
+      if (!color) throw new Error('chess sit white|black');
+      const id = board ?? (await c.view<GameView>('chess.state')).board;
+      await run('chess.sit', { id, color, leave: !!flags.leave });
+      return show(await c.view<GameView>('chess.state', { board: id }));
+    }
+    case 'move':
+      if (!args[0]) throw new Error('chess move MOVE (e2e4, Nf3, O-O…)');
+      return show(await playMove(c, args[0], board));
+    case 'wait': {
+      const v = await waitForTurn(c, board, num('timeout') ?? 290);
+      if (!v) throw new Error('timed out: still not your move');
+      return show(v);
+    }
+    case 'resign': {
+      const id = board ?? (await c.view<GameView>('chess.state')).board;
+      await run('chess.resign', { id });
+      return show(await c.view<GameView>('chess.state', { board: id }));
+    }
+    default:
+      throw new Error(`unknown chess command: ${sub}`);
   }
 }
 
