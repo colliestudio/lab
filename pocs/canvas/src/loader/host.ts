@@ -34,6 +34,8 @@ export interface DeclMenu {
   max?: number;
   /** Put the entry in a submenu of this name. */
   group?: string;
+  /** Ask the user for a line of text first (the host shows the prompt); passed as `args.input`. */
+  prompt?: string;
   args?: Record<string, unknown>;
 }
 export interface Decl {
@@ -344,7 +346,16 @@ export class PluginHost {
         const entries: MenuEntry[] = [];
         const groups = new Map<string, MenuEntry[]>();
         for (const e of menu.filter(fits)) {
-          const entry: MenuEntry = { label: e.label, run: () => void this.run(m.id, e.command, { ...e.args, ids, at: app.viewCenter() }) };
+          const run = () => {
+            let input: string | undefined;
+            if (e.prompt) {
+              const v = prompt(e.prompt, sel.length === 1 ? (sel[0].text ?? '') : '');
+              if (v === null) return;
+              input = v;
+            }
+            void this.run(m.id, e.command, { ...e.args, ids, at: app.viewCenter(), input });
+          };
+          const entry: MenuEntry = { label: e.label, run };
           if (!e.group) entries.push(entry);
           else {
             let g = groups.get(e.group);

@@ -21,6 +21,7 @@ function createRuntime(plugin, post) {
       min: m.min,
       max: m.max,
       group: str(m.group),
+      prompt: str(m.prompt),
       args: m.args ? JSON.parse(JSON.stringify(m.args)) : undefined,
     })),
   };

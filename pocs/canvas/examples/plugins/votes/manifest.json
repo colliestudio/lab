@@ -1,0 +1,8 @@
+{
+  "id": "votes",
+  "name": "Sticky votes",
+  "version": "0.1.0",
+  "description": "Sticky notes everyone can upvote (one vote per player), sortable by votes. For retros and event storming.",
+  "main": "plugin.js",
+  "capabilities": ["nodes:write", "ui:kit", "ui:menu", "log:write", "network:none"]
+}

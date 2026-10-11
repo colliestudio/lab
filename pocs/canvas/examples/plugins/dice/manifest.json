@@ -1,0 +1,8 @@
+{
+  "id": "dice",
+  "name": "Dice",
+  "version": "0.1.0",
+  "description": "Dice anyone can roll. Also has a 'Sandbox tests' menu that tries things it is not allowed to do.",
+  "main": "plugin.js",
+  "capabilities": ["nodes:write", "ui:kit", "ui:menu", "log:write", "network:none"]
+}
