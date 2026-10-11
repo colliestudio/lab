@@ -42,3 +42,16 @@
   color: #fff;
   font: 600 15px system-ui, sans-serif;
 }
+.bd-embed {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 8px 8px;
+}
+.bd-embed iframe {
+  flex: 1;
+  width: 100%;
+  border: 0;
+  border-radius: 4px;
+  background: #fff;
+  pointer-events: none;
+}

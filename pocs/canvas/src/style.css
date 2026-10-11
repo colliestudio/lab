@@ -232,3 +232,9 @@ body {
 #toolbar .player.me:hover {
   background: rgba(255, 255, 255, 0.24);
 }
+/* desktop app: hidden agent view windows (?agentView=) show the table only */
+.agent-view #toolbar,
+.agent-view .cv-zoom,
+.agent-view .cv-log {
+  display: none !important;
+}
