@@ -101,7 +101,7 @@ export function mountPluginPanel(host: PluginHost, bar: HTMLElement) {
         const allow = h('button', 'pp-allow', 'Allow on this device');
         allow.addEventListener('click', () => {
           const caps = m.capabilities.map((c) => `  • ${capText(c)}`).join('\n');
-          if (confirm(`Run "${m.name}" (added by ${p.addedBy ?? 'someone'}) on this device?\n\nIt asks to:\n${caps}`)) void host.approve(p.hash);
+          if (confirm(`Run "${m.name}" (added by ${p.addedBy ?? 'someone'}) on this device?\n\nIt asks to:\n${caps}`)) void host.approve(p);
         });
         actions.append(allow);
       }

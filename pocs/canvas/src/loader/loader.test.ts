@@ -8,7 +8,7 @@ import diceManifest from '../../examples/plugins/dice/manifest.json?raw';
 import votesSrc from '../../examples/plugins/votes/plugin.js?raw';
 import votesManifest from '../../examples/plugins/votes/manifest.json?raw';
 import { createRuntime } from './runtime.js';
-import { inProcessTransport, META_KEY, PluginHost, memoryApprovals, type RoomPlugin } from './host';
+import { approvalKey, inProcessTransport, META_KEY, PluginHost, memoryApprovals, type RoomPlugin } from './host';
 import { hashSource, parseManifest } from './manifest';
 import { checkResult, readableDoc } from './policy';
 import { treeToHtml } from './tree';
@@ -168,17 +168,33 @@ describe('plugin host (in-process sandbox)', () => {
     await b.host.sync();
     expect(b.host.status('votes')).toBe('awaiting approval');
     expect(b.app.kits.some((k) => k.id.startsWith('votes.'))).toBe(false);
-    await b.host.approve(b.host.roomPlugins()[0].hash);
+    await b.host.approve(b.host.roomPlugins()[0]);
     expect(b.host.status('votes')).toBe('running');
     const note = b.app.doc.nodes.find((n) => n['x-votes'])!;
     await b.host.run('votes', 'vote', { ids: [note.id] });
     expect(Object.keys((b.app.node(note.id)!['x-votes'] as { by: object }).by)).toEqual(['bob']);
   });
 
+  it('asks again when a peer changes the capabilities of approved code', async () => {
+    const a = setup('alice');
+    await a.host.install(DICE.manifest, DICE.source);
+    const b = setup('bob');
+    const Y = await import('yjs');
+    Y.applyUpdate(b.app.store.ydoc, Y.encodeStateAsUpdate(a.app.store.ydoc));
+    await b.host.approve(b.host.roomPlugins()[0]);
+    expect(b.host.status('dice')).toBe('running');
+    const [e] = a.host.roomPlugins();
+    a.app.store.meta.set(META_KEY, [{ ...e, manifest: { ...e.manifest, capabilities: [...e.manifest.capabilities.filter((c) => c !== 'network:none'), 'network:https://evil.example'] } }]);
+    Y.applyUpdate(b.app.store.ydoc, Y.encodeStateAsUpdate(a.app.store.ydoc));
+    await b.host.sync();
+    expect(b.host.loaded.has('dice')).toBe(false);
+    expect(b.host.status('dice')).toBe('awaiting approval');
+  });
+
   it('refuses code that does not match the pinned hash', async () => {
     const { app, host } = setup();
     const entry: RoomPlugin = { manifest: parseManifest(DICE.manifest), hash: await hashSource(DICE.source), source: DICE.source + '\n// tampered' };
-    host.approvals.add(entry.hash);
+    host.approvals.add(approvalKey(entry));
     app.store.meta.set(META_KEY, [entry]);
     await host.sync();
     expect(host.loaded.has('dice')).toBe(false);

@@ -94,6 +94,13 @@ export interface Approvals {
   add(hash: string): void;
   remove(hash: string): void;
 }
+/**
+ * What a device approves: the code hash plus the id and capabilities it runs with. Any peer can edit
+ * the room's manifest, so a change of capabilities (say adding network:https://evil.example) has to
+ * ask again, not ride on the approval of the same code.
+ */
+export const approvalKey = (e: Pick<RoomPlugin, 'hash' | 'manifest'>) => `${e.hash} ${e.manifest.id} ${[...e.manifest.capabilities].sort().join(',')}`;
+
 export function memoryApprovals(): Approvals {
   const s = new Set<string>();
   return { has: (h) => s.has(h), add: (h) => void s.add(h), remove: (h) => void s.delete(h) };
@@ -234,7 +241,7 @@ export class PluginHost {
     const p = this.loaded.get(id);
     if (p) return p.status;
     const e = this.roomPlugins().find((r) => r.manifest.id === id);
-    return e && !this.approvals.has(e.hash) ? 'awaiting approval' : 'loading';
+    return e && !this.approvals.has(approvalKey(e)) ? 'awaiting approval' : 'loading';
   }
 
   /**
@@ -245,7 +252,7 @@ export class PluginHost {
     const manifest = parseManifest(manifestJson);
     const hash = await hashSource(source);
     const entry: RoomPlugin = { manifest, hash, source, from, addedBy: this.app.me().name };
-    this.approvals.add(hash);
+    this.approvals.add(approvalKey(entry));
     const list = this.roomPlugins().filter((p) => p.manifest.id !== manifest.id);
     this.app.store.ydoc.transact(() => this.app.store.meta.set(META_KEY, [...list, entry]));
     await this.sync();
@@ -259,8 +266,8 @@ export class PluginHost {
   }
 
   /** This device agrees to run a plugin the room lists. */
-  approve(hash: string) {
-    this.approvals.add(hash);
+  approve(entry: RoomPlugin) {
+    this.approvals.add(approvalKey(entry));
     return this.sync();
   }
 
@@ -271,9 +278,10 @@ export class PluginHost {
   }
 
   private async reconcile() {
-    const want = new Map(this.roomPlugins().filter((p) => this.approvals.has(p.hash)).map((p) => [p.manifest.id, p]));
+    const want = new Map(this.roomPlugins().filter((p) => this.approvals.has(approvalKey(p))).map((p) => [p.manifest.id, p]));
     for (const [id, p] of this.loaded) {
-      if (want.get(id)?.hash === p.entry.hash) continue;
+      const w = want.get(id);
+      if (w && approvalKey(w) === approvalKey(p.entry)) continue;
       p.destroy();
       this.loaded.delete(id);
       this.notice(id, 'info', 'unloaded');
