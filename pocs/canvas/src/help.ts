@@ -159,6 +159,19 @@ const GROUPS: [string, [string, string][]][] = [
     ],
   ],
   [
+    'Event storm',
+    [
+      ['Add… › Event storm board', 'A board with a phase switch, sticky palette, votes left, a timebox and a Markdown export'],
+      ['E (pointer on the board)', 'New domain event where the pointer is; type, Enter to finish, Tab for the next event to its right, Esc to drop it'],
+      ['Q / C / A / P / R / X / G', 'Hotspot / command / actor / policy / read model / external system / aggregate (offered by phase). With an event selected it attaches to that event'],
+      ['Phase buttons', 'Chaotic exploration (events anywhere) → Enforce the timeline (events snap into one sequence) → Commands & policies → Aggregates'],
+      ['Drag an event', 'Reorder: drop it between two others; what is attached comes along. Drop a sticky in an event’s column to attach it'],
+      ['. / ,', 'Vote for / take a vote back from the sticky under the pointer (budget per person, right-click the board tab to change)'],
+      ['Double-click, Enter', 'Edit a sticky’s words'],
+      ['⇩ Markdown', 'The flow as an ordered list of events with their commands, policies…; also window.storm.markdown()'],
+    ],
+  ],
+  [
     'Menus',
     [
       ['Hover or click “… ▸”', 'Open a submenu'],
