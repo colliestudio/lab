@@ -1,0 +1,153 @@
+import { execFileSync } from 'node:child_process';
+import { homedir } from 'node:os';
+import { client } from './client';
+import { parseBacklog } from './backlog';
+
+// canvas: edit a live canvas from the shell (agents, scripts, people). Talks to the bridge.
+//   pnpm canvas <command> [args] [--as NAME] [--bridge URL]
+// Nodes are named by id or by title (unique prefix/substring is enough).
+
+const HELP = `canvas: read and edit a live canvas through the bridge
+
+  status                                  file, counts, who is seated
+  list [--type T] [--column C] [--json]   nodes, one per line
+  query [--type T] [--text S] [--column C] [--ext x-NS]   JSON
+  show                                    the .canvas file text
+  add-node TEXT [--column C] [--near N] [--x X --y Y] [--color 1-6|#hex] [--url U]
+  add-column LABEL [--x X --y Y]
+  update N [--text T] [--label L] [--color C|none]
+  move N (--x X --y Y | --dx DX --dy DY | --column C)
+  connect FROM TO [--label L]
+  disconnect FROM TO
+  rm N [N…]
+  undo | redo                             your own last step (per --as)
+  log [-n 20]
+  cmd NAME [JSON]                         any registered command (board.*, core.*)
+  sync-backlog [--dir PATH] [-- backlog filters…]   Backlog.md tasks → columns (re-runnable)
+
+  --as NAME     who you are on the board (default $CANVAS_AS or "Claude")
+  --bridge URL  default $CANVAS_BRIDGE or http://localhost:5222`;
+
+const argv = process.argv.slice(2);
+const flags: Record<string, string> = {};
+const pos: string[] = [];
+let rest: string[] = [];
+for (let i = 0; i < argv.length; i++) {
+  const a = argv[i];
+  if (a === '--') {
+    rest = argv.slice(i + 1);
+    break;
+  }
+  if (a.startsWith('--')) {
+    const next = argv[i + 1];
+    if (next === undefined || next.startsWith('--')) flags[a.slice(2)] = 'true';
+    else flags[a.slice(2)] = argv[++i];
+  } else if (a === '-n') flags.n = argv[++i];
+  else pos.push(a);
+}
+const [command, ...params] = pos;
+const isTool = command === 'sync-backlog';
+const c = client({ url: flags.bridge, as: flags.as ?? (isTool ? 'Backlog.md' : undefined), kind: isTool ? 'tool' : 'agent' });
+const num = (k: string) => (flags[k] !== undefined ? Number(flags[k]) : undefined);
+
+async function run(name: string, args: unknown) {
+  const r = await c.cmd(name, args);
+  if (!r.ok) throw new Error(r.error ?? 'failed');
+  if (!r.changed) console.log('(no change)');
+  return r;
+}
+
+async function main() {
+  switch (command) {
+    case undefined:
+    case 'help':
+    case '--help':
+      return console.log(HELP);
+    case 'status':
+      return console.log(JSON.stringify(await c.status(), null, 2));
+    case 'show':
+      return process.stdout.write(JSON.stringify(await c.doc(), null, '\t') + '\n');
+    case 'list': {
+      const ns = await c.query({ type: flags.type, column: flags.column, text: flags.text });
+      if (flags.json) return console.log(JSON.stringify(ns, null, 2));
+      for (const n of ns) {
+        const t = (n.text ?? '').split('\n')[0];
+        const links = n.links?.map((l) => `→${l.to}${l.label ? `(${l.label})` : ''}`).join(' ') ?? '';
+        console.log(`${n.id.padEnd(18)} ${n.type.padEnd(6)} ${String(Math.round(n.x)).padStart(6)},${String(Math.round(n.y)).padEnd(6)} ${n.column ? `[${n.column}] ` : ''}${t}${links ? '  ' + links : ''}`);
+      }
+      return;
+    }
+    case 'query':
+      return console.log(JSON.stringify(await c.query({ type: flags.type, text: flags.text, column: flags.column, ext: flags.ext }), null, 2));
+    case 'add-node': {
+      const text = params.join(' ').replace(/\\n/g, '\n');
+      const r = await run('board.add', {
+        type: flags.url ? 'link' : 'text',
+        text,
+        url: flags.url,
+        color: flags.color,
+        x: num('x'),
+        y: num('y'),
+        near: flags.near && (await c.resolve(flags.near)),
+        column: flags.column && (await c.resolve(flags.column)),
+      });
+      return console.log(r.select?.[0] ?? '');
+    }
+    case 'add-column': {
+      const r = await run('board.add', { type: 'group', label: params.join(' '), x: num('x'), y: num('y') });
+      return console.log(r.select?.[0] ?? '');
+    }
+    case 'update': {
+      const id = await c.resolve(params[0]);
+      await run('board.update', { id, text: flags.text?.replace(/\\n/g, '\n'), label: flags.label, color: flags.color === 'none' ? null : flags.color });
+      return console.log(id);
+    }
+    case 'move': {
+      const id = await c.resolve(params[0]);
+      await run('board.update', { id, x: num('x'), y: num('y'), dx: num('dx'), dy: num('dy'), column: flags.column && (await c.resolve(flags.column)) });
+      return console.log(id);
+    }
+    case 'connect': {
+      const [from, to] = await Promise.all([c.resolve(params[0]), c.resolve(params[1])]);
+      await run('board.connect', { from, to, label: flags.label });
+      return console.log(`${from} → ${to}`);
+    }
+    case 'disconnect': {
+      const [from, to] = await Promise.all([c.resolve(params[0]), c.resolve(params[1])]);
+      return void (await run('board.disconnect', { from, to }));
+    }
+    case 'rm': {
+      const ids = await Promise.all(params.map((p) => c.resolve(p)));
+      return void (await run('board.remove', { ids }));
+    }
+    case 'undo':
+    case 'redo': {
+      const r = await c.undo(command === 'redo');
+      if (!r.ok) throw new Error(r.error);
+      return console.log(`${command} done`);
+    }
+    case 'log':
+      for (const e of await c.log(num('n') ?? 20)) console.log(`${e.time.slice(11, 19)}  ${e.actor ?? '—'} ${e.text}`);
+      return;
+    case 'cmd':
+      return console.log(JSON.stringify(await c.cmd(params[0], params[1] ? JSON.parse(params[1]) : {}), null, 2));
+    case 'sync-backlog': {
+      const dir = (flags.dir ?? `${homedir()}/workspaces/cs`).replace(/^~/, homedir());
+      const text = execFileSync('backlog', ['task', 'list', '--plain', ...rest], { cwd: dir, encoding: 'utf8' });
+      const input = parseBacklog(text);
+      if (!input.items.length) throw new Error(`no tasks parsed from \`backlog task list --plain\` in ${dir}`);
+      const at = num('x') !== undefined ? { x: num('x')!, y: num('y') ?? 0 } : undefined;
+      const r = await run('board.sync', { ...input, at });
+      const log = await c.log(1);
+      return console.log(r.changed ? log[0]?.text : `backlog: ${input.items.length} tasks, board already up to date`);
+    }
+    default:
+      throw new Error(`unknown command: ${command}\n\n${HELP}`);
+  }
+}
+
+main().catch((e) => {
+  console.error(`canvas: ${(e as Error).message}`);
+  process.exit(1);
+});
+
