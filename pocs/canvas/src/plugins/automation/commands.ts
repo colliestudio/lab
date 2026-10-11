@@ -211,8 +211,12 @@ export function runCommand(store: Store): Command<RunArgs> {
     for (const [i, s] of steps.entries()) {
       if (s.when && !holds(run.doc, s.when)) continue;
       const before = notes.length;
-      if (runStep(run, s, a, notes) === 'stop') break;
+      const failed = run.failures.length;
+      const r = runStep(run, s, a, notes);
+      // a command that threw changed nothing; say so instead of skipping it silently
+      for (const f of run.failures.slice(failed)) notes.push(`failed: ${f}`);
       for (let k = before; k < notes.length; k++) notes[k] = `step ${i + 1}: ${notes[k]}`;
+      if (r === 'stop') break;
     }
     const told = run.events.map((e) => e.text);
     const body = [...told, ...notes.map((n) => `(${n})`)].join('; ');

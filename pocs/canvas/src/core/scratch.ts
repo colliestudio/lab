@@ -17,6 +17,8 @@ export class Scratch {
   readonly untracked: Change[] = [];
   /** Events the calls reported (computed against the doc right after each call). */
   readonly events: EventSpec[] = [];
+  /** Calls that failed (unknown command or a throw), for the caller to report. */
+  readonly failures: string[] = [];
 
   constructor(
     private store: Store,
@@ -38,13 +40,13 @@ export class Scratch {
    */
   call(name: string, args: unknown, opts: { untracked?: boolean } = {}): { ok: boolean; error?: string; result?: CommandResult } {
     const cmd = this.store.command(name);
-    if (!cmd) return { ok: false, error: `unknown command: ${name}` };
+    if (!cmd) return this.fail(`unknown command: ${name}`);
     let res: CommandResult;
     try {
       const r = cmd(this.doc, args, this.ctx);
       res = Array.isArray(r) ? { changes: r } : r;
     } catch (e) {
-      return { ok: false, error: `${name}: ${(e as Error).message}` };
+      return this.fail(`${name}: ${(e as Error).message}`);
     }
     const all = [...(res.untracked ?? []), ...res.changes];
     if (all.length) {
@@ -64,6 +66,11 @@ export class Scratch {
       }
     }
     return { ok: true, result: res };
+  }
+
+  private fail(error: string) {
+    this.failures.push(error);
+    return { ok: false, error };
   }
 
   /** Apply changes of the caller's own (not from a command). */

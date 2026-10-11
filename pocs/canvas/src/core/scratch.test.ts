@@ -46,7 +46,12 @@ describe('Scratch', () => {
     const s = store();
     const run = new Scratch(s, s.doc, s.ctx);
     expect(run.call('nope', {}).ok).toBe(false);
+    s.register('test.throws', () => {
+      throw new Error('boom');
+    });
+    expect(run.call('test.throws', {}).error).toBe('test.throws: boom');
     expect(run.changes).toEqual([]);
+    expect(run.failures).toEqual(['unknown command: nope', 'test.throws: boom']);
   });
 });
 
