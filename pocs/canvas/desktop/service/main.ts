@@ -1,8 +1,8 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { createHash, randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync, unlinkSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { WebSocketServer } from 'ws';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -57,7 +57,11 @@ function serve() {
 
   const boardId = (file: string) => createHash('sha1').update(file).digest('hex').slice(0, 8);
   function open(fileArg: string): Room {
-    const file = resolve(fileArg);
+    // one board per real file (/tmp vs /private/tmp, symlinked dirs): resolve the directory
+    let file = resolve(fileArg);
+    try {
+      file = join(realpathSync(dirname(file)), basename(file));
+    } catch {}
     if (!file.endsWith('.canvas')) throw new Error(`not a .canvas file: ${file}`);
     const id = boardId(file);
     let r = rooms.get(id);

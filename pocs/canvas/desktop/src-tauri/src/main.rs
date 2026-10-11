@@ -27,6 +27,8 @@ use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 
 static T0: OnceLock<Instant> = OnceLock::new();
 static LOG: OnceLock<Mutex<Option<std::fs::File>>> = OnceLock::new();
+/// Files asked for before the service was up (Finder's open event can beat setup); None once ready.
+static EARLY_OPENS: Mutex<Option<Vec<String>>> = Mutex::new(Some(Vec::new()));
 
 fn log(msg: impl AsRef<str>) {
     let ms = T0.get().map(|t| t.elapsed().as_millis()).unwrap_or(0);
@@ -169,6 +171,11 @@ fn board_url(port: u16, id: &str) -> WebviewUrl {
 }
 
 fn open_file(app: &AppHandle, file: &str) {
+    if let Some(q) = EARLY_OPENS.lock().unwrap().as_mut() {
+        log(format!("open {file}: queued until the service is up"));
+        q.push(file.to_string());
+        return;
+    }
     let svc = app.state::<Service>();
     match svc.request("open", json!({ "file": file })) {
         Ok(r) => {
@@ -480,7 +487,8 @@ fn main() {
                 e
             })?;
             log(format!("connect command: {}", mcp_command()));
-            for f in &cli_files {
+            let early = EARLY_OPENS.lock().unwrap().take().unwrap_or_default();
+            for f in cli_files.iter().chain(early.iter()) {
                 let (app2, f) = (app.handle().clone(), f.clone());
                 thread::spawn(move || open_file(&app2, &f));
             }

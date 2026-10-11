@@ -35,7 +35,7 @@ await build({
 console.log(`bundle: ${mb(join(out, 'service.cjs'))} in ${Date.now() - t0} ms`);
 
 if (runtime === 'bun') {
-  run('bun', ['build', '--compile', '--minify', join(out, 'service.cjs'), '--outfile', target]);
+  run(process.env.BUN ?? 'bun', ['build', '--compile', '--minify', join(out, 'service.cjs'), '--outfile', target]);
 } else {
   const blob = join(out, 'sea-prep.blob');
   writeFileSync(join(out, 'sea-config.json'), JSON.stringify({ main: join(out, 'service.cjs'), output: blob, disableExperimentalSEAWarning: true, useCodeCache: true }));
