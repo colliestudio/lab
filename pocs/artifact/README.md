@@ -68,3 +68,7 @@ test/              node:test suites + fixtures
 - Single-file builds are 3-4 MB (the viewer bundles mermaid, elk, rrweb); nothing is lazy-loaded.
 - Recordings aren't redacted; check `.replay` files for secrets before sharing.
 - Map layout (ELK) is good up to ~12 nodes; the budget `check` enforces.
+
+## Installed copies
+
+The dogfood VMs (`acme-ws`, `other-ws`) run copies of this repo and its skill. After changing code or `skill/SKILL.md`, run `bin/recap-sync` from the cs workspace root. Inventory: cs `workspace` skill § Installed outside this workspace.
