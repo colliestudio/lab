@@ -116,3 +116,4 @@ html[data-present] .h-main, html[data-present] .h-main[data-width] { max-width: 
 .h-tag { font-size: 10.5px; padding: 0 0.5em; border-radius: 999px; width: fit-content; } .h-tag.ok { background: var(--collie-color-success-subtle); color: var(--collie-color-fg-success); } .h-tag.diff { background: var(--collie-color-warning-subtle); color: var(--collie-color-fg-warning); }
 .h-summary-slide { display: none; margin-top: 2rem; } html[data-present] .h-summary-slide { display: block; }
 html[data-present] .h-summary-slide .h-decisions li { font-size: 1.05rem; }
+.h-pop-actions { display: flex; gap: 0.4rem; margin-top: 0.3rem; padding-top: 0.5rem; border-top: 1px solid var(--collie-color-border-subtle); } .h-pop-actions .h-btn { padding: 0.2em 0.6em; font-size: var(--collie-text-xs); }

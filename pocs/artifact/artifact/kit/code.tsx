@@ -16,9 +16,9 @@ const Html = ({ html }: { html: string }) => <span dangerouslySetInnerHTML={{ __
  * Source lines. Give `code` (or a string child) or `file="evidence/x.ts"`; `ranges="1-10,30-40"` shows only those lines
  * (gaps are marked), `highlight="5,7-8"` marks lines, `start` is the first line's number for inline `code`.
  */
-export function Code({ code, file, lang, ranges, highlight, title, path, href, notes, start = 1, children, id }: {
+export function Code({ code, file, lang, ranges, highlight, title, path, href, notes, start = 1, children, id, collapsed }: {
   code?: string; file?: string; lang?: string; ranges?: string | [number, number][]; highlight?: string | number[];
-  title?: ReactNode; path?: string; href?: string; notes?: Record<number | string, ReactNode>; start?: number; children?: string; id?: string;
+  title?: ReactNode; path?: string; href?: string; notes?: Record<number | string, ReactNode>; start?: number; children?: string; id?: string; collapsed?: boolean;
 }) {
   const text = (code ?? children ?? (file ? getEvidence(file, "text").text : "")).replace(/\n$/, "");
   const language = lang ?? langOf(path ?? file ?? (typeof title === "string" ? title : undefined));
@@ -40,7 +40,7 @@ export function Code({ code, file, lang, ranges, highlight, title, path, href, n
   const shown = html.map((h, i) => ({ h, n: start + i })).filter((l) => !want || want.includes(l.n));
   const label = `Code: ${typeof (title ?? path ?? file) === "string" ? (title ?? path ?? file) : "snippet"} (${shown.length} lines)`;
   return (
-    <Heavy label={label}>
+    <Heavy label={label} collapsed={collapsed}>
     <figure className={cx("a-code", wrap && "wrap")} data-c="code" data-aid={id}>
       {(title || path || file || long) && (
         <figcaption className="a-code-title"><span>{href ? <a href={href} target="_blank" rel="noreferrer">{title ?? path ?? file}</a> : title ?? path ?? file}</span>
@@ -145,8 +145,8 @@ function DRow({ r, notes }: { r: { t: string; old?: number; nw?: number; html: s
  * A diff from evidence: `patch="evidence/x.patch"`; `file` (path or suffix, or an array) picks files, `hunks="1,3"` picks hunks
  * (1-based), `notes={{12: "why"}}` annotates new-side lines. Parsed at build time; the raw patch is not in the output.
  */
-export function Diff({ patch, file, hunks, notes, wrap = true }: {
-  patch: string | PatchFile[]; file?: string | string[]; hunks?: string | number[]; notes?: Record<number | string, ReactNode>; wrap?: boolean;
+export function Diff({ patch, file, hunks, notes, wrap = true, collapsed }: {
+  patch: string | PatchFile[]; file?: string | string[]; hunks?: string | number[]; notes?: Record<number | string, ReactNode>; wrap?: boolean; collapsed?: boolean;
 }) {
   const all = typeof patch === "string" ? getEvidence(patch, "patch").files : patch;
   const want = file == null ? null : Array.isArray(file) ? file : [file];
@@ -154,5 +154,5 @@ export function Diff({ patch, file, hunks, notes, wrap = true }: {
   if (want && !files.length) throw new Error(`Diff: no file matching ${want.join(", ")} in ${typeof patch === "string" ? patch : "patch"}`);
   const hs = parseNums(hunks as string);
   const nLines = files.reduce((a, f) => a + f.hunks.reduce((b, h) => b + h.lines.length, 0), 0);
-  return <Heavy label={`Diff: ${files.map((f) => f.path.split("/").pop()).join(", ")} (${nLines} lines)`}><div className={cx("a-diffs", !wrap && "nowrap")}>{files.map((f) => <FileDiff key={f.path} f={f} hunks={hs} notes={notes} />)}</div></Heavy>;
+  return <Heavy collapsed={collapsed} label={`Diff: ${files.map((f) => f.path.split("/").pop()).join(", ")} (${nLines} lines)`}><div className={cx("a-diffs", !wrap && "nowrap")}>{files.map((f) => <FileDiff key={f.path} f={f} hunks={hs} notes={notes} />)}</div></Heavy>;
 }

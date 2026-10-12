@@ -52,19 +52,13 @@ async function pageSource(): Promise<string> {
   return shell(meta.title, document.getElementById("a-css")?.textContent ?? "", document.getElementById("a-js")?.textContent ?? "");
 }
 const canDownload = meta.host?.download ?? meta.download ?? true;
-const SHORTCUTS: [string, string][] = [["p", "Present: ← → or space step, ↑ ↓ scroll, Esc leaves"], ["c", "Add a comment: opens the drawer, then click any element"], ["1–4", "Detail level (pages that use it)"], ["?", "This list"], ["Esc", "Close dialogs, leave comment mode"]];
-const DETAIL = ["Headline", "Key", "Supporting", "Everything"];
-const DETAIL_HELP = ["sections show only their title and lead", "nested sections collapse; diffs, code, big tables and recordings become stubs", "everything except Depth level 4", "everything"];
+const SHORTCUTS: [string, string][] = [["p", "Present: ← → or space step, ↑ ↓ scroll, Esc leaves"], ["c", "Add a comment: opens the drawer, then click any element"], ["?", "This list"], ["Esc", "Close dialogs, leave comment mode"]];
 const typing = (e: KeyboardEvent) => { const t = e.target as HTMLElement; return t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName); };
 
 export function Host({ children }: { children: ReactNode }) {
   const content = useRef<HTMLElement>(null);
   const { items, active } = useOutline(content);
   const [dark, setDark] = useState(document.documentElement.dataset.theme === "midnight");
-  const [depthUsed, setDepthUsed] = useState(false);
-  const [depth, setDepth] = useState<number>(meta.depth ?? 4);
-  const [toast, setToast] = useState("");
-  const [depthCounts, setDepthCounts] = useState<Record<number, number>>({});
   const [mode, setMode] = useState(false);          // comment mode
   const [open, setOpen] = useState<Anchor | null>(null);
   const [panel, setPanel] = useState(false);
@@ -87,10 +81,6 @@ export function Host({ children }: { children: ReactNode }) {
   useEffect(() => {
     const el = content.current!;
     const scan = () => {
-      const counts: Record<number, number> = {};
-      for (const n of [2, 3, 4]) counts[n] = el.querySelectorAll(`[data-depth-level="${n}"]`).length;
-      setDepthUsed(!!el.querySelector('[data-section], [data-depth-level="2"], [data-depth-level="3"], [data-depth-level="4"]')); // sections collapse by themselves: no tagging needed
-      setDepthCounts((p) => (JSON.stringify(p) === JSON.stringify(counts) ? p : counts));
       const next = [...el.querySelectorAll<HTMLElement>('[data-c="decision"]')].map((d) => ({ id: d.dataset.did ?? d.id, question: d.dataset.q ?? "", recommended: d.dataset.rec || undefined, owner: d.dataset.owner }));
       setRawRows((p) => (JSON.stringify(p) === JSON.stringify(next) ? p : next));
     };
@@ -99,28 +89,6 @@ export function Host({ children }: { children: ReactNode }) {
     mo.observe(el, { childList: true, subtree: true });
     return () => mo.disconnect();
   }, []);
-  useEffect(() => { document.documentElement.dataset.depth = String(depth); }, [depth]);
-  const changeDepth = useCallback((n: number) => {
-    // a level change forgets the manual opens; then say what collapsed (counted after the DOM has updated)
-    document.querySelectorAll("[data-open]").forEach((e) => e.removeAttribute("data-open"));
-    document.documentElement.dataset.depth = String(n);
-    document.documentElement.setAttribute("data-depth-anim", "");
-    setTimeout(() => document.documentElement.removeAttribute("data-depth-anim"), 600);
-    setDepth(n);
-    const el = content.current;
-    const vis = (e: Element) => getComputedStyle(e).display !== "none";
-    const collapsed = el ? [...el.querySelectorAll(".a-sec-more, .a-heavy-stub")].filter(vis).length : 0;
-    const hiddenTagged = el ? [...el.querySelectorAll<HTMLElement>("[data-depth-level]")].filter((e) => Number(e.dataset.depthLevel) > n && !e.parentElement?.closest("[data-depth-level]")).length : 0;
-    const total = collapsed + hiddenTagged;
-    setToast(n >= 4 ? `Detail ${n} (${DETAIL[n - 1]}): everything shown` : `Detail ${n} (${DETAIL[n - 1]}): ${total ? `${plural(total, "item")} collapsed; click a stub to open it` : "nothing to collapse on this page"}`);
-    clearTimeout((changeDepth as unknown as { t?: number }).t);
-    (changeDepth as unknown as { t?: number }).t = window.setTimeout(() => setToast(""), 2600);
-  }, []);
-  useEffect(() => {
-    const f = (e: Event) => changeDepth(Number((e as CustomEvent).detail));
-    addEventListener("artifact-depth", f);
-    return () => removeEventListener("artifact-depth", f);
-  }, [changeDepth]);
   const setTheme = (d: boolean) => {
     setDark(d); localStorage.setItem("artifact-theme", d ? "dark" : "light");
     if (d) document.documentElement.dataset.theme = "midnight"; else delete document.documentElement.dataset.theme;
@@ -135,20 +103,19 @@ export function Host({ children }: { children: ReactNode }) {
     return () => { clearInterval(t); removeEventListener("scroll", f); removeEventListener("resize", f); };
   }, [present.active]);
 
-  // keys: 1-4 depth, c comment mode, p present
+  // keys: c comment mode, p present, ? shortcuts
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
       if (typing(e) || e.metaKey || e.ctrlKey || e.altKey) return;
       if (present.active) return;
-      if (depthUsed && /^[1-4]$/.test(e.key)) changeDepth(Number(e.key));
-      else if (e.key === "c") setMode((m) => { if (!m) { setPanel(true); setTab("comments"); } return !m; });
+      if (e.key === "c") setMode((m) => { if (!m) { setPanel(true); setTab("comments"); } return !m; });
       else if (e.key === "p") present.start();
       else if (e.key === "?") setHelp((h) => !h);
       else if (e.key === "Escape") { setMode(false); setOpen(null); setHelp(false); }
     };
     addEventListener("keydown", k);
     return () => removeEventListener("keydown", k);
-  }, [depthUsed, present.active, present.start, changeDepth]);
+  }, [present.active, present.start]);
 
   // comment mode: hover outline + click to comment
   const hover = useRef<HTMLElement | null>(null);
@@ -194,12 +161,15 @@ export function Host({ children }: { children: ReactNode }) {
     const open = () => {
       const id = decodeURIComponent(location.hash.slice(1));
       const t = id ? document.getElementById(id) : null;
-      for (let e = t; e; e = e.parentElement) if (e.matches?.(".a-section, .a-heavy")) e.setAttribute("data-open", "");
+      for (let e = t; e; e = e.parentElement) { if (e.matches?.(".a-section")) e.removeAttribute("data-folded"); if (e.matches?.(".a-heavy")) e.setAttribute("data-open", ""); if (e.tagName === "DETAILS") (e as HTMLDetailsElement).open = true; }
     };
     addEventListener("hashchange", open);
     document.addEventListener("click", (e) => { const h = (e.target as HTMLElement).closest?.('a[href^="#"]')?.getAttribute("href"); if (h && h.length > 1) setTimeout(open, 0); });
     return () => removeEventListener("hashchange", open);
   }, []);
+
+  /** Fold or unfold every Section (the "?" panel). */
+  const foldAll = (fold: boolean) => document.querySelectorAll(".a-section").forEach((s) => s.toggleAttribute("data-folded", fold));
 
   const download = useCallback(async () => {
     const blob = new Blob([await pageSource()], { type: "text/html" });
@@ -233,14 +203,6 @@ export function Host({ children }: { children: ReactNode }) {
       <div className="h-bar" role="toolbar" aria-label="Page tools">
         <span className="h-bar-title">{meta.title}</span>
         <span className="h-spacer" />
-        {depthUsed && (
-          <span className="h-group" title="How much detail to show">
-            <span className="h-label">Detail</span>
-            <span className="h-seg">
-              {[1, 2, 3, 4].map((n) => <button key={n} aria-pressed={depth === n} onClick={() => changeDepth(n)} title={`${n} · ${DETAIL[n - 1]} (key ${n}): ${DETAIL_HELP[n - 1]}`}>{n}</button>)}
-            </span>
-          </span>
-        )}
         <button className="h-btn" onClick={() => setPanel(!panel)} aria-pressed={panel} title="Feedback: answer the decisions and leave comments, then copy it all back to the author">{feedbackLabel}</button>
         <button className="h-btn" onClick={() => present.start()} title="Present (p): walk through the sections full screen">Present</button>
         <button className="h-btn" aria-pressed={!outlineOff} onClick={() => { setOutlineOff(!outlineOff); localStorage.setItem("artifact-outline", outlineOff ? "on" : "off"); }} title="Show or hide the outline on the left">Outline</button>
@@ -250,8 +212,11 @@ export function Host({ children }: { children: ReactNode }) {
         {help && (
           <div className="h-pop" role="dialog" aria-label="Keyboard shortcuts">
             <b>Shortcuts</b>
-            {SHORTCUTS.filter(([k]) => k !== "1–4" || depthUsed).map(([k, d]) => <div key={k}><kbd>{k}</kbd><span>{d}</span></div>)}
-            {depthUsed && <div className="a-muted">Detail: {DETAIL.map((d, i) => `${i + 1} ${d}`).join(" · ")}. Click a collapsed stub to open it.</div>}
+            {SHORTCUTS.map(([k, d]) => <div key={k}><kbd>{k}</kbd><span>{d}</span></div>)}
+            <div className="h-pop-actions">
+              <button className="h-btn" onClick={() => foldAll(true)} title="Fold every section to its heading">Fold all</button>
+              <button className="h-btn" onClick={() => foldAll(false)}>Unfold all</button>
+            </div>
           </div>
         )}
       </div>
@@ -300,7 +265,6 @@ export function Host({ children }: { children: ReactNode }) {
           onCopyComments={() => copyText(feedbackMarkdown(meta.title, cm.list), "comments")} onCopyDecisions={() => copyText(decisionsMd(), "decisions")} onCopyAll={() => copyText(allMd(), "all")}
           onClearAnswers={am.clear} onJumpDecision={jumpDecision} onClose={() => { setPanel(false); setMode(false); }} />}
       </div>
-      {toast && <div className="h-toast" role="status">{toast}</div>}
       {open && <Composer anchor={open} onCancel={() => setOpen(null)} onSave={(body) => { cm.add(open, body); setOpen(null); }} existing={cm.list.filter((c) => c.anchor.id === open.id)} />}
       {present.active && (
         <div className="h-present-bar" data-slide={present.state.slide} data-slides={present.state.slides} data-step={present.state.step} data-steps={present.state.steps}>

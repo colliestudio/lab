@@ -14,8 +14,8 @@ const cmp = (a: unknown, b: unknown) =>
   typeof a === "number" && typeof b === "number" ? a - b : String(a ?? "").localeCompare(String(b ?? ""), undefined, { numeric: true });
 
 /** Sortable table. `columns` are keys or {key,label,render,align,sort}; a row with `href` links its first cell. */
-export function Table<R extends Row = Row>({ columns, rows, sortable = true, dense, id, initialSort }: {
-  columns: (string | Column<R>)[]; rows: R[]; sortable?: boolean; dense?: boolean; id?: string; initialSort?: { key: string; desc?: boolean };
+export function Table<R extends Row = Row>({ columns, rows, sortable = true, dense, id, initialSort, collapsed }: {
+  columns: (string | Column<R>)[]; rows: R[]; sortable?: boolean; dense?: boolean; id?: string; initialSort?: { key: string; desc?: boolean }; collapsed?: boolean;
 }) {
   const cols: Column<R>[] = columns.map((c) => (typeof c === "string" ? { key: c, label: cap(c) } : { label: cap(c.key), ...c }));
   const [sort, setSort] = useState<{ key: string; desc: boolean } | null>(initialSort ? { key: initialSort.key, desc: !!initialSort.desc } : null);
@@ -49,7 +49,7 @@ export function Table<R extends Row = Row>({ columns, rows, sortable = true, den
       </table>
     </div>
   );
-  return rows.length > 8 ? <Heavy label={`Table (${rows.length} rows)`}>{tbl}</Heavy> : tbl;
+  return <Heavy collapsed={collapsed} label={`Table (${rows.length} rows)`}>{tbl}</Heavy>;
 }
 
 /** An image from evidence (inlined at build), a data URL or an http URL. */

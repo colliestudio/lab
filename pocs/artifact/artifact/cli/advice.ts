@@ -27,7 +27,7 @@ const words = (s: string) => s.toLowerCase().match(/[a-z0-9][a-z0-9'-]{3,}/g) ??
 
 export interface Advice { warnings: string[]; stats: { screens: number } }
 
-export function advise(html: string, meta: Pick<Meta, "summary" | "depth">): Advice {
+export function advise(html: string, meta: Pick<Meta, "summary">): Advice {
   const root = parseHtml(html);
   const out: string[] = [];
   const all = [...walk(root)];
@@ -48,12 +48,12 @@ export function advise(html: string, meta: Pick<Meta, "summary" | "depth">): Adv
   const heavy = [...walk(body)].filter((n) => ["figure", "svg"].includes(n.tag) || ["map", "chart", "diff", "code", "replay", "flow", "gallery", "scorecard", "riskmatrix"].includes(attr(n, "data-c") ?? "")).length;
   const rows = [...walk(body)].filter((n) => n.tag === "tr").length;
   const screens = Math.round((nw / 300 + heavy * 0.5 + rows * 0.04) * 10) / 10;
-  if (screens > 6 && (meta.depth ?? 4) >= 4) out.push(`long page (about ${screens} screens): set "depth": 2 in artifact.json and put detail in <Depth level={3|4}>, or cut`);
+  if (screens > 6) out.push(`long page (about ${screens} screens): put supporting detail in <More>, fold sections, or cut`);
 
   // 3. big table outside <Depth>
   for (const t of all.filter((n) => n.tag === "table" && !attr(n, "class")?.includes("a-diff"))) {
     const r = [...walk(t)].filter((n) => n.tag === "tr").length - 1;
-    if (r > 20 && !inside(t, (a) => attr(a, "data-depth-level") != null && attr(a, "data-depth-level") !== "1")) out.push(`a table with ${r} rows is outside <Depth>: wrap it in <Depth level={4}> or cut it to the rows that matter`);
+    if (r > 20 && !inside(t, (a) => (attr(a, "class") ?? "").split(" ").includes("a-more")) && !attr(t.parent ?? t, "class")?.includes("a-heavy-body")) out.push(`a table with ${r} rows is open on the page: wrap it in <More label="…"> (or give the Table \`collapsed\`), or cut it to the rows that matter`);
   }
 
   // 4. a slide that shows nothing at step 0 (only its heading)

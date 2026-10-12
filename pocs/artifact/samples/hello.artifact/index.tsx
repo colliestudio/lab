@@ -1,5 +1,5 @@
 import {
-  Badge, Callout, Card, CardGrid, Img, Chart, Checklist, Code, Compare, Decision, Depth, Diff, Flow, Grid, Lanes, Map, PR, Questions,
+  Badge, Callout, Card, CardGrid, Img, Chart, Checklist, Code, Compare, Decision, More, Diff, Flow, Grid, Lanes, Map, PR, Questions,
   Replay, When, Stages, TimeAxis, Stats, Scorecard, Facts, Actions, RiskMatrix, Gallery, DecisionIndex, Section, Source, Stale, Status, Step, Steps, Table, Tab, Tabs, Timeline, useData,
 } from "artifact";
 
@@ -141,10 +141,11 @@ export default function Hello() {
         ]} />
       </Section>
 
-      <Section id="detail" title="Detail levels (optional)">
-        <Depth level={1}><p>Press 1 to 4 to show less or more. Level 1 is always visible.</p></Depth>
-        <Depth level={3}><Callout tone="neutral">Level 3 and deeper hides when you pick 1 or 2.</Callout></Depth>
-        <Depth level={4}><Checklist items={[{ text: "Tabs", done: true }, { text: "Present mode", done: true, note: "press p" }, { text: "MDX", status: "todo" }]} /></Depth>
+      <Section id="folding" title="Folding and detail" lead="Click any heading to fold its section. Detail the reader can skip goes in More.">
+        <p>The chevron appears when you hover a heading; Fold all / Unfold all live in the ? panel.</p>
+        <More label="Checklist of what shipped">
+          <Checklist items={[{ text: "Tabs", done: true }, { text: "Present mode", done: true, note: "press p" }, { text: "MDX", status: "todo" }]} />
+        </More>
       </Section>
 
       <Section id="plan" title="Plan and timeline">

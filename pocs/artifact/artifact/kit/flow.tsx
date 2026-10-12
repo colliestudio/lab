@@ -26,7 +26,7 @@ function themeVars() {
 }
 
 /** A Mermaid diagram (flowchart, sequence, state, ER…): `<Flow chart={"graph LR; A-->B"} />` or the text as a child. Loads mermaid lazily. */
-export function Flow({ chart, children, caption, id }: { chart?: string; children?: string; caption?: string; id?: string }) {
+export function Flow({ chart, children, caption, id, collapsed }: { chart?: string; children?: string; caption?: string; id?: string; collapsed?: boolean }) {
   const src = (chart ?? children ?? "").trim();
   const theme = useTheme();
   const rid = "m" + useId().replace(/[^a-zA-Z0-9]/g, "");
@@ -51,7 +51,7 @@ export function Flow({ chart, children, caption, id }: { chart?: string; childre
     return () => { live = false; };
   }, [src, theme, rid]);
   return (
-    <Heavy label="Diagram">
+    <Heavy collapsed={collapsed} label="Diagram">
     <figure className="a-flow" data-c="flow" data-aid={id}>
       {err ? <div className="a-map-err"><b>Diagram error</b><pre>{err}</pre><pre>{src}</pre></div>
         : svg ? <div className="a-flow-svg" dangerouslySetInnerHTML={{ __html: svg }} /> : <div className="a-muted">Rendering diagram…</div>}

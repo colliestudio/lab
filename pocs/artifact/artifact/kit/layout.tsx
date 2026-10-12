@@ -11,10 +11,11 @@ export function Page({ children, width = "normal" }: { children: ReactNode; widt
 }
 
 /**
- * Something heavy (diff, code, big table, recording, diagram) that collapses to a one-line stub at detail levels 1-2;
- * click the stub to open it. Used by the kit's own heavy components.
+ * Wrapper the kit's heavy components (Diff, Code, Table, Replay, Flow) use: open by default; with `collapsed` the block
+ * starts as a one-line stub that opens on click.
  */
-export function Heavy({ label, children }: { label: ReactNode; children?: ReactNode }) {
+export function Heavy({ label, collapsed, children }: { label: ReactNode; collapsed?: boolean; children?: ReactNode }) {
+  if (!collapsed) return <>{children}</>;
   return (
     <div className="a-heavy">
       <button className="a-heavy-stub" onClick={(e) => e.currentTarget.parentElement?.toggleAttribute("data-open")}>
@@ -25,20 +26,27 @@ export function Heavy({ label, children }: { label: ReactNode; children?: ReactN
   );
 }
 
-/** A titled part of the page. Feeds the outline and present mode; nest Sections for sub-headings. */
+/**
+ * A titled part of the page. Feeds the outline and present mode; nest Sections for sub-headings. Clicking the heading
+ * folds or unfolds the section (a quiet chevron shows on hover); present mode always shows everything.
+ */
 export function Section({ id, title, children, lead }: { id?: string; title: ReactNode; children?: ReactNode; lead?: ReactNode }) {
   const level = useContext(LevelCtx);
   const text = typeof title === "string" ? title : "";
   const sid = id ?? (slug(text) || "section");
   const H = (`h${Math.min(level + 1, 5)}`) as "h2";
+  const fold = (e: React.SyntheticEvent<HTMLElement>) => {
+    if ((e.target as HTMLElement).closest(".a-perma")) return; // the permalink is a link, not a fold button
+    e.currentTarget.closest("section")?.toggleAttribute("data-folded");
+  };
   return (
     <LevelCtx.Provider value={level + 1}>
       <section id={sid} className="a-section" data-section={sid} data-title={text || sid} data-level={level}>
-        <H className="a-h"><a href={`#${sid}`}>{title}</a></H>
+        <H className="a-h" tabIndex={0} role="button" title="Click to fold or unfold" onClick={fold}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fold(e); } }}>
+          <span className="a-chev" aria-hidden />{title}<a className="a-perma" href={`#${sid}`} aria-label="Link to this section">#</a>
+        </H>
         {lead && <p className="a-lead">{lead}</p>}
-        <button className="a-sec-more" onClick={(e) => e.currentTarget.closest("section")?.toggleAttribute("data-open")}>
-          <span className="show">▸ Show {Children.count(children)} hidden</span><span className="hide">▾ Hide</span>
-        </button>
         <div className="a-section-body">{children}</div>
       </section>
     </LevelCtx.Provider>
@@ -296,18 +304,19 @@ export function Step({ children }: { children?: ReactNode }) {
   return <div data-step>{children}</div>;
 }
 
-/** Opt-in zoom: content tagged with a depth level (1 = headline … 4 = detail); the reader's 1–4 keys hide deeper levels. */
-export function Depth({ level, children, inline }: { level: 1 | 2 | 3 | 4; children?: ReactNode; inline?: boolean }) {
-  const T = inline ? "span" : "div";
-  // where this content is hidden, a stub says so; clicking it shows that level
-  const stub = level > 1 && (
-    <T className="a-depth-stub" data-depth-stub={level} role="button" tabIndex={0} title={`Show detail level ${level}`}
-      onClick={() => window.dispatchEvent(new CustomEvent("artifact-depth", { detail: level }))}
-      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") window.dispatchEvent(new CustomEvent("artifact-depth", { detail: level })); }}>
-      {inline ? "…" : `▸ more at detail ${level}`}
-    </T>
+/** A quiet "▸ more" disclosure for detail the reader can skip: `<More label="Method and sources">…</More>`. */
+export function More({ label = "more", children, open }: { label?: ReactNode; children?: ReactNode; open?: boolean }) {
+  return (
+    <details className="a-more" data-c="more" open={open}>
+      <summary>{label}</summary>
+      <div className="a-more-body">{children}</div>
+    </details>
   );
-  return <><T data-depth-level={level}>{children}</T>{stub}</>;
+}
+
+/** @deprecated Use `<More>`. `level` is ignored. */
+export function Depth({ children, label }: { level?: 1 | 2 | 3 | 4; children?: ReactNode; inline?: boolean; label?: ReactNode }) {
+  return <More label={label}>{children}</More>;
 }
 
 /** A claim that may have drifted: says X, now Y. */

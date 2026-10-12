@@ -20,8 +20,6 @@
 h2.a-h { font-size: var(--collie-text-xl); padding-bottom: var(--collie-space-100); border-bottom: 1px solid var(--a-line); }
 h3.a-h { font-size: var(--collie-text-lg); }
 h4.a-h, h5.a-h { font-size: var(--collie-text-md); }
-.a-h a { color: inherit; text-decoration: none; }
-.a-h a:hover::after { content: " #"; color: var(--a-muted); font-weight: 400; }
 .a-lead { font-size: 1.1em; color: var(--a-muted); margin-top: 0; }
 
 .a-stack { display: flex; }
@@ -113,8 +111,7 @@ a.a-source:hover { border-color: var(--collie-color-border-accent); }
 .a-stale s { color: var(--a-muted); text-decoration-color: var(--collie-color-critical-solid); }
 
 /* depth, step (present) */
-html:not([data-present])[data-depth="1"] [data-depth-level="2"], html:not([data-present])[data-depth="1"] [data-depth-level="3"], html:not([data-present])[data-depth="1"] [data-depth-level="4"],
-html:not([data-present])[data-depth="2"] [data-depth-level="3"], html:not([data-present])[data-depth="2"] [data-depth-level="4"], html:not([data-present])[data-depth="3"] [data-depth-level="4"] { display: none !important; }
+
 [data-present-hidden] { display: none !important; }
 
 /* table */
@@ -345,17 +342,6 @@ a.a-stat:hover { border-color: var(--collie-color-border-accent); }
 .a-ta-ev.bar.tone-neutral { background: var(--collie-color-neutral-solid); border-color: var(--collie-color-neutral-solid); color: var(--collie-color-fg-on-neutral); }
 .a-ta-ev { z-index: 4; }
 
-/* depth stubs: shown only where their content is hidden */
-.a-depth-stub { display: none; cursor: pointer; color: var(--a-muted); font-size: var(--collie-text-xs); }
-div.a-depth-stub { margin: 0.4rem 0; padding: 0.25rem 0.6rem; border: 1px dashed var(--a-line); border-radius: var(--collie-radius-sm); } .a-depth-stub:hover { color: var(--collie-color-fg-accent); border-color: var(--collie-color-border-accent); }
-html[data-depth="1"] div.a-depth-stub:is([data-depth-stub="2"], [data-depth-stub="3"], [data-depth-stub="4"]),
-html[data-depth="2"] div.a-depth-stub:is([data-depth-stub="3"], [data-depth-stub="4"]),
-html[data-depth="3"] div.a-depth-stub[data-depth-stub="4"] { display: block; }
-html[data-depth="1"] span.a-depth-stub:is([data-depth-stub="2"], [data-depth-stub="3"], [data-depth-stub="4"]),
-html[data-depth="2"] span.a-depth-stub:is([data-depth-stub="3"], [data-depth-stub="4"]),
-html[data-depth="3"] span.a-depth-stub[data-depth-stub="4"] { display: inline; }
-html[data-present] .a-depth-stub { display: none !important; }
-.h-toast { position: fixed; bottom: 1.2rem; left: 50%; transform: translateX(-50%); z-index: 60; background: var(--collie-color-fg); color: var(--collie-color-canvas); padding: 0.45rem 0.9rem; border-radius: 999px; font-size: var(--collie-text-sm); box-shadow: var(--collie-shadow-overlay); max-width: 90vw; }
 
 .a-ta-head { grid-column: 1 / -1; margin-bottom: 0.4rem; }
 .a-ta.broken .a-ta-tz { margin-top: 2rem; }
@@ -387,22 +373,19 @@ html[data-present] .a-depth-stub { display: none !important; }
 .a-decision-other { display: inline-flex; gap: 0.3rem; } .a-decision-other input, .a-decision-more textarea { font: inherit; font-size: var(--collie-text-sm); padding: 0.25em 0.6em; border: 1px solid var(--collie-color-border); border-radius: 6px; background: var(--collie-color-canvas); color: inherit; min-width: 14rem; }
 .a-decision-more textarea { width: 100%; }
 
-/* automatic outline zoom (Detail 1-4): driven by structure, not by tags. 1 = sections collapse to title + lead (+ a first callout/stats);
-   2 = nested sections collapse, heavy blocks become one-line stubs; 3 = everything but Depth 4; 4 = everything. Present mode ignores it. */
-.a-sec-more, .a-heavy-stub { display: none; font: inherit; font-size: var(--collie-text-sm); cursor: pointer; text-align: left; color: var(--collie-color-fg-accent); background: var(--collie-color-accent-subtle); border: 1px solid var(--collie-color-border-accent); border-radius: 999px; padding: 0.15em 0.8em; margin: 0.2rem 0 0.4rem; }
-.a-heavy-stub { width: 100%; border-radius: var(--collie-radius-sm); border-style: dashed; background: var(--a-soft); color: var(--a-muted); padding: 0.35em 0.8em; margin: 0.3rem 0; }
-.a-sec-more:hover, .a-heavy-stub:hover { border-color: var(--collie-color-accent-solid); color: var(--collie-color-fg-accent); }
-.a-sec-more .hide, .a-heavy-stub .hide, [data-open] > .a-sec-more .show, [data-open] > .a-heavy-stub .show { display: none; } [data-open] > .a-sec-more .hide, [data-open] > .a-heavy-stub .hide { display: inline; }
-html:not([data-present])[data-depth="1"] .a-section .a-sec-more { display: inline-flex; }
-html:not([data-present])[data-depth="2"] .a-section:not([data-level="1"]) .a-sec-more { display: inline-flex; }
-html:not([data-present])[data-depth="1"] .a-section:not([data-open]) > .a-section-body > :not(:is([data-c="callout"], [data-c="stats"]):first-child),
-html:not([data-present])[data-depth="2"] .a-section:not([data-level="1"]):not([data-open]) > .a-section-body > :not(:is([data-c="callout"], [data-c="stats"]):first-child) { display: none; }
-html:not([data-present])[data-depth="1"] .a-heavy-stub, html:not([data-present])[data-depth="2"] .a-heavy-stub { display: block; }
-html:not([data-present])[data-depth="1"] .a-heavy:not([data-open]) > .a-heavy-body, html:not([data-present])[data-depth="2"] .a-heavy:not([data-open]) > .a-heavy-body { display: none; }
-html:not([data-present])[data-depth="1"] .a-section:not([data-open]) > .a-h a::before, html:not([data-present])[data-depth="2"] .a-section:not([data-level="1"]):not([data-open]) > .a-h a::before { content: "▸ "; color: var(--a-muted); }
-html:not([data-present])[data-depth="1"] .a-section:not([data-open]), html:not([data-present])[data-depth="2"] .a-section:not([data-level="1"]):not([data-open]) { margin-block: var(--collie-space-100); }
-@keyframes a-reveal { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
-@keyframes a-flash { from { background: var(--collie-color-accent-subtle); } to { background: transparent; } }
-html[data-depth-anim] .a-section-body > *, html[data-depth-anim] .a-heavy-body { animation: a-reveal 0.4s ease both; }
-html[data-depth-anim] .a-sec-more, html[data-depth-anim] .a-heavy-stub { animation: a-reveal 0.4s ease both; }
-html[data-depth-anim] .a-section { animation: a-flash 0.6s ease; }
+/* folding: section headings fold on click; More is a quiet disclosure; collapsed heavy blocks are one-line stubs */
+.a-h { cursor: pointer; position: relative; }
+.a-chev { display: inline-block; width: 1em; margin-left: -1.1em; margin-right: 0.1em; color: var(--a-muted); opacity: 0; transition: opacity .15s; font-size: 0.7em; vertical-align: 0.1em; }
+.a-chev::before { content: "▾"; }
+.a-h:hover .a-chev, .a-h:focus-visible .a-chev { opacity: 0.8; }
+.a-section[data-folded] > .a-h .a-chev { opacity: 0.9; } .a-section[data-folded] > .a-h .a-chev::before { content: "▸"; }
+.a-section[data-folded] > .a-section-body { display: none; }
+.a-perma { opacity: 0; margin-left: 0.4em; font-weight: 400; font-size: 0.7em; color: var(--a-muted); text-decoration: none; } .a-h:hover .a-perma { opacity: 0.7; } .a-perma:hover { opacity: 1; color: var(--collie-color-fg-accent); }
+html[data-present] .a-section[data-folded] > .a-section-body { display: block; } html[data-present] .a-chev, html[data-present] .a-perma { display: none; }
+.a-more { margin: 0.6rem 0; } .a-more > summary { cursor: pointer; color: var(--a-muted); font-size: var(--collie-text-sm); list-style: none; width: fit-content; padding: 0.1em 0; }
+.a-more > summary::-webkit-details-marker { display: none; } .a-more > summary::before { content: "▸ "; } .a-more[open] > summary::before { content: "▾ "; } .a-more > summary:hover { color: var(--collie-color-fg-accent); }
+.a-more-body { margin-top: 0.4rem; padding-left: 0.9rem; border-left: 2px solid var(--a-line); }
+.a-heavy-stub { display: block; width: 100%; text-align: left; font: inherit; font-size: var(--collie-text-sm); cursor: pointer; color: var(--a-muted); background: var(--a-soft); border: 1px dashed var(--a-line); border-radius: var(--collie-radius-sm); padding: 0.35em 0.8em; margin: 0.3rem 0; }
+.a-heavy-stub:hover { border-color: var(--collie-color-border-accent); color: var(--collie-color-fg-accent); }
+.a-heavy-stub .hide, [data-open] > .a-heavy-stub .show { display: none; } [data-open] > .a-heavy-stub .hide { display: inline; }
+.a-heavy:not([data-open]) > .a-heavy-body { display: none; }

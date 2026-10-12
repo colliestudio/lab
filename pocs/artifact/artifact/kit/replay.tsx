@@ -31,7 +31,7 @@ const LIST_W = 240, GAP = 12, SIDE = 560, MAX_H = 440;
 const fmt = (ms: number) => `${Math.max(0, ms / 1000).toFixed(1)}s`;
 
 /** A Collie Demo recording (evidence/*.replay) with its steps; click a step to seek. `steps={[2,3]}` (1-based) limits list and playback. */
-export function Replay({ src, steps: only, caption, id }: { src: string; steps?: number[]; caption?: ReactNode; id?: string }) {
+export function Replay({ src, steps: only, caption, id, collapsed }: { src: string; steps?: number[]; caption?: ReactNode; id?: string; collapsed?: boolean }) {
   const box = useRef<HTMLDivElement>(null), stage = useRef<HTMLDivElement>(null), player = useRef<Player>(undefined);
   const rec = useMemo(() => load(getEvidence(src, "replay").b64), [src]);
   const [now, setNow] = useState(0);
@@ -69,7 +69,7 @@ export function Replay({ src, steps: only, caption, id }: { src: string; steps?:
   const active = shown.reduce<number>((a, s, i) => (s.rel <= now + 60 ? i : a), -1);
   const side = hasScreen && (box.current?.clientWidth ?? 720) >= SIDE;
   return (
-    <Heavy label={`Recording: ${src.split("/").pop()}`}>
+    <Heavy collapsed={collapsed} label={`Recording: ${src.split("/").pop()}`}>
     <figure className="a-replay" data-c="replay" data-aid={id}>
       {caption && <figcaption>{caption}</figcaption>}
       <div ref={box} style={{ display: "flex", gap: GAP, alignItems: "flex-start", flexDirection: side ? "row" : "column" }}>

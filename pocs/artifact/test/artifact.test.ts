@@ -398,12 +398,12 @@ export default () => <Timeline items={[{ when: "Mon", lane: "you", title: "A" },
   } finally { cleanup(d); }
 });
 
-test("artifact.json depth and header are accepted", async () => {
+test("artifact.json header is accepted; a leftover depth key is ignored", async () => {
   const d = fixture(`export default () => <p>x</p>;`);
   writeFileSync(join(d, "artifact.json"), JSON.stringify({ title: "T", kind: "k", audience: "a", summary: "s", depth: 2, header: "full" }));
   try {
     const r = await buildArtifact(d);
-    assert.equal(r.collected.registry.meta.depth, 2);
+    assert.equal((r.collected.registry.meta as { depth?: number }).depth, 2, "kept as data, never used");
     assert.equal(r.collected.registry.meta.header, "full");
   } finally { cleanup(d); }
 });
@@ -461,12 +461,12 @@ import { gitBranches } from "../artifact/cli/gather.ts";
 
 test("check advice: summary repeat, long page, big table, empty slide", async () => {
   const rows = Array.from({ length: 25 }, (_, i) => ({ name: "row " + i }));
-  const d = fixture(`import { Callout, Section, Step, Table, Depth } from "artifact";
+  const d = fixture(`import { Callout, Section, Step, Table, More } from "artifact";
 export default () => <>
   <Callout>The kit builds artifacts as one HTML file from index tsx and components</Callout>
   <Section id="a" title="Steps only"><Step><p>hidden at step zero</p></Step></Section>
   <Section id="b" title="Big"><Table columns={["name"]} rows={${JSON.stringify(rows)}} /></Section>
-  <Section id="c" title="Fine"><Depth level={4}><Table columns={["name"]} rows={${JSON.stringify(rows)}} /></Depth></Section>
+  <Section id="c" title="Fine"><More label="all rows"><Table columns={["name"]} rows={${JSON.stringify(rows)}} /></More></Section>
 </>;`);
   writeFileSync(join(d, "artifact.json"), JSON.stringify({ title: "T", kind: "k", audience: "a", summary: "The kit builds artifacts as one HTML file from index tsx and components." }));
   try {
@@ -475,10 +475,10 @@ export default () => <>
     const w = rep.warnings.join("\n");
     assert.match(w, /first Callout repeats the summary/);
     assert.match(w, /slide "Steps only" is empty at step 0/);
-    assert.equal((w.match(/a table with 25 rows/g) ?? []).length, 1, "only the table outside Depth");
+    assert.equal((w.match(/a table with 25 rows/g) ?? []).length, 1, "only the table outside More");
     const long = advise(`<div class="a-content">${"<p>" + "word ".repeat(2600) + "</p>"}</div>`, {});
     assert.match(long.warnings.join(), /long page/);
-    assert.deepEqual(advise(`<div class="a-content">${"<p>" + "word ".repeat(2600) + "</p>"}</div>`, { depth: 2 }).warnings, []);
+    assert.deepEqual(advise(`<div class="a-content">${"<p>" + "word ".repeat(2600) + "</p>"}</div>`, {}).warnings.length, 1);
   } finally { cleanup(d); }
 });
 
@@ -740,7 +740,7 @@ export default () => <><Section title="One"><Walk /></Section><Section title="Tw
   } finally { cleanup(d); }
 });
 
-test("Download saves the same single HTML file; settings can turn it off; Detail control follows Depth content", async (t) => {
+test("Download saves the same single HTML file; settings can turn it off; the bar has no Detail control", async (t) => {
   const { findChrome } = await import("../artifact/cli/shot.ts");
   let exe: string;
   try { exe = await findChrome(); } catch { return t.skip("no Chromium available"); }
@@ -750,12 +750,12 @@ test("Download saves the same single HTML file; settings can turn it off; Detail
     writeFileSync(join(d, "artifact.json"), JSON.stringify({ title: "My Great Page", kind: "k", audience: "a", summary: "s", ...metaExtra }));
     return d;
   };
-  const withDepth = mk(`import { Section, Depth } from "artifact"; export default () => <Section title="A"><p>top</p><Depth level={3}><p>DEEP</p></Depth></Section>;`);
-  const plain = mk(`import { Depth } from "artifact"; export default () => <div><Depth level={1}><p>only headline</p></Depth></div>;`, { host: { download: false } });
+  const first = mk(`import { Section } from "artifact"; export default () => <Section title="A"><p>top</p></Section>;`);
+  const plain = mk(`export default () => <div><p>no sections</p></div>;`, { host: { download: false } });
   const b = await chromium.launch({ executablePath: exe });
   try {
-    const out = join(withDepth, "../d.html");
-    const built = (await buildArtifact(withDepth)).html;
+    const out = join(first, "../d.html");
+    const built = (await buildArtifact(first)).html;
     writeFileSync(out, built);
     const ctx = await b.newContext({ acceptDownloads: true });
     const p = await ctx.newPage();
@@ -763,25 +763,20 @@ test("Download saves the same single HTML file; settings can turn it off; Detail
     await p.waitForSelector(".a-content");
     const [dl] = await Promise.all([p.waitForEvent("download"), p.getByRole("button", { name: "Download" }).click()]);
     assert.equal(dl.suggestedFilename(), "my-great-page.html");
-    const path = await dl.path();
-    assert.equal(readFileSync(path, "utf8"), built, "byte-identical to the built file (rebuilt from its own style/script text under file://)");
-    // Detail control: toast + stub
+    assert.equal(readFileSync(await dl.path(), "utf8"), built, "byte-identical to the built file (rebuilt from its own style/script text under file://)");
+    assert.equal(await p.locator(".h-seg").count(), 0, "no Detail control");
     await p.keyboard.press("2");
-    assert.match(await p.locator(".h-toast").innerText(), /Detail 2 \(Key\): 1 item collapsed/);
-    assert.ok(await p.locator('div.a-depth-stub[data-depth-stub="3"]').isVisible(), "a stub marks the hidden block");
-    await p.locator('div.a-depth-stub[data-depth-stub="3"]').click();
-    assert.ok(await p.getByText("DEEP").isVisible());
-    // no Depth content at level 2+ → no Detail control; download disabled by settings
+    assert.equal(await p.locator(".h-toast").count(), 0, "the 1-4 keys do nothing");
     const out2 = join(plain, "../p.html");
     writeFileSync(out2, (await buildArtifact(plain)).html);
     const p2 = await ctx.newPage();
     await p2.goto("file://" + out2);
     await p2.waitForSelector(".a-content");
-    assert.equal(await p2.locator(".h-seg").count(), 0);
     assert.equal(await p2.getByRole("button", { name: "Download" }).count(), 0);
     await p2.keyboard.press("?");
     assert.ok(await p2.locator(".h-pop").isVisible());
-  } finally { await b.close(); cleanup(withDepth); cleanup(plain); }
+    assert.doesNotMatch(await p2.locator(".h-pop").innerText(), /Detail/);
+  } finally { await b.close(); cleanup(first); cleanup(plain); }
 });
 
 test("time axis: midnight ticks show the date; break gets a label; usePresentSteps reports active", async () => {
@@ -939,44 +934,54 @@ export default () => <><Section title="One"><Decision id="d1" question="Ship now
   } finally { cleanup(d); }
 });
 
-test("Detail levels zoom the outline: level 1 is much shorter than 4, heavy blocks stub at 2, manual opens reset", async (t) => {
+test("folding: heading click folds a section, Fold all / Unfold all in the ? panel, More discloses, collapsed blocks are stubs, present shows everything", async (t) => {
   const { findChrome } = await import("../artifact/cli/shot.ts");
   let exe: string;
   try { exe = await findChrome(); } catch { return t.skip("no Chromium available"); }
   const { chromium } = await import("playwright-core");
-  const out = join(mkdtempSync(join(tmpdir(), "art-detail-")), "hello.html");
+  const d = fixture(`import { Section, More, Code, Table } from "artifact";
+export default () => <><Section title="One" lead="lead one"><p id="p1">BODY-ONE</p><Section title="Inner"><p>INNER-BODY</p></Section>
+<More label="Method"><p>HIDDEN-DETAIL</p></More>
+<Code code="a b" collapsed /><Table columns={["name"]} rows={[{ name: "ROW" }]} collapsed /></Section><Section title="Two"><p>BODY-TWO</p></Section></>;`);
+  const out = join(d, "../fold.html");
   try {
-    writeFileSync(out, (await buildArtifact("samples/hello.artifact")).html);
+    const built = await buildArtifact(d);
+    assert.deepEqual(built.errors.map((e) => e.text), []);
+    writeFileSync(out, built.html);
     const b = await chromium.launch({ executablePath: exe });
     try {
       const p = await (await b.newContext({ viewport: { width: 1280, height: 900 } })).newPage();
       await p.goto("file://" + out);
       await p.waitForSelector(".a-content");
-      await p.waitForTimeout(500);
-      const height = async () => p.evaluate(() => document.documentElement.scrollHeight);
-      const h = {} as Record<number, number>;
-      for (const n of [4, 3, 2, 1]) { await p.keyboard.press(String(n)); await p.waitForTimeout(700); h[n] = await height(); }
-      assert.ok(h[1] < h[4] * 0.5, `level 1 (${h[1]}px) is much shorter than level 4 (${h[4]}px)`);
-      assert.ok(h[2] < h[4] && h[1] < h[2] && h[3] <= h[4], JSON.stringify(h));
-      assert.match(await p.locator(".h-toast").innerText(), /Detail 1 \(Headline\): \d+ items? collapsed/);
-      // level 1: a collapsed section opens on click, alone
-      const secs = p.locator(".a-section[data-level='1']");
-      const before = await secs.nth(1).evaluate((e) => e.getBoundingClientRect().height);
-      await secs.nth(1).locator(":scope > .a-sec-more").click();
-      assert.ok((await secs.nth(1).evaluate((e) => e.getBoundingClientRect().height)) > before + 50, "the opened section grows");
-      assert.equal(await p.locator("[data-open]").count(), 1);
-      // level 2: heavy blocks are stubs that expand on click; a level change forgets manual opens
-      await p.keyboard.press("2"); await p.waitForTimeout(700);
-      assert.equal(await p.locator("[data-open]").count(), 0, "manual opens reset on a level change");
-      const stub = p.locator(".a-heavy-stub:visible").first();
-      assert.match(await stub.innerText(), /^▸ (Diagram|Diff|Code|Table|Recording)/);
-      await stub.click();
-      assert.equal(await p.locator(".a-heavy[data-open]").count(), 1);
-      // present mode ignores detail
-      await p.keyboard.press("1"); await p.waitForTimeout(500);
+      assert.ok(await p.locator("#p1").isVisible());
+      assert.equal(await p.locator(".h-seg").count(), 0);
+      await p.locator('h2.a-h:has-text("One")').first().click();
+      assert.ok(!(await p.locator("#p1").isVisible()), "heading click folds the section");
+      assert.ok(await p.getByText("lead one").isVisible(), "the lead stays");
+      await p.locator('h2.a-h:has-text("One")').first().click();
+      assert.ok(await p.locator("#p1").isVisible(), "and unfolds it");
+      // More: closed until clicked
+      assert.ok(!(await p.getByText("HIDDEN-DETAIL").isVisible()));
+      await p.getByText("Method").click();
+      assert.ok(await p.getByText("HIDDEN-DETAIL").isVisible());
+      // collapsed heavy blocks: stubs, open on click; the long table stays open without `collapsed`
+      assert.match(await p.locator(".a-heavy-stub").first().innerText(), /^▸ Code:/);
+      assert.ok(!(await p.getByText("ROW", { exact: true }).isVisible()));
+      await p.locator(".a-heavy-stub").nth(1).click();
+      assert.ok(await p.getByText("ROW", { exact: true }).isVisible());
+      // Fold all / Unfold all live only in the ? panel
+      assert.equal(await p.locator(".h-bar").getByRole("button", { name: /fold all/i }).count(), 0);
+      await p.keyboard.press("?");
+      await p.getByRole("button", { name: "Fold all", exact: true }).click();
+      assert.ok(!(await p.locator("#p1").isVisible()) && !(await p.getByText("BODY-TWO").isVisible()));
+      await p.getByRole("button", { name: "Unfold all" }).click();
+      assert.ok(await p.getByText("BODY-TWO").isVisible());
+      // present mode shows everything even when folded
+      await p.getByRole("button", { name: "Fold all", exact: true }).click();
+      await p.keyboard.press("Escape");
       await p.keyboard.press("p"); await p.waitForSelector(".h-present-bar");
       await p.keyboard.press("ArrowRight");
-      assert.equal(await p.locator(".a-sec-more:visible").count(), 0, "no collapse stubs while presenting");
+      assert.ok(await p.locator("#p1").isVisible(), "present ignores folds");
     } finally { await b.close(); }
-  } finally { rmSync(join(out, ".."), { recursive: true, force: true }); }
+  } finally { cleanup(d); }
 });
