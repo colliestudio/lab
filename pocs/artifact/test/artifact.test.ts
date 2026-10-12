@@ -1095,3 +1095,45 @@ test("check renders every page and names the page of an error", async () => {
     void s;
   } finally { cleanup(d); }
 });
+
+test("tour: present across the pages of artifact.json tour, in order, forwards and back", async (t) => {
+  const { findChrome } = await import("../artifact/cli/shot.ts");
+  let exe: string;
+  try { exe = await findChrome(); } catch { return t.skip("no Chromium available"); }
+  const { chromium } = await import("playwright-core");
+  const out = join(mkdtempSync(join(tmpdir(), "art-tour-")), "j.html");
+  try {
+    writeFileSync(out, (await buildArtifact("samples/journeys.artifact")).html);
+    const b = await chromium.launch({ executablePath: exe });
+    try {
+      const p = await (await b.newContext({ viewport: { width: 1280, height: 900 } })).newPage();
+      await p.goto("file://" + out);
+      await p.waitForSelector(".a-pagecards");
+      // plain Present = the current page only
+      await p.keyboard.press("p"); await p.waitForSelector(".h-present-bar");
+      assert.match(await p.locator(".h-present-label").innerText(), /^1\/\d+/);
+      for (let i = 0; i < 12; i++) await p.keyboard.press("ArrowRight");
+      assert.equal(await p.evaluate(() => location.hash), "", "the end of the page does not move on");
+      await p.keyboard.press("Escape");
+      // Tour
+      await p.getByRole("button", { name: "Tour" }).click();
+      await p.waitForSelector(".h-present-bar");
+      const label = () => p.locator(".h-present-label").innerText();
+      assert.match(await label(), /^1\/4 Shop journeys/);
+      const seen = new Set<string>();
+      for (let i = 0; i < 40; i++) {
+        seen.add(await p.evaluate(() => location.hash));
+        if (!(await p.locator(".h-present-bar").count())) break;
+        await p.keyboard.press("ArrowRight"); await p.waitForTimeout(120);
+      }
+      assert.deepEqual([...seen].filter(Boolean).sort(), ["#/checkout", "#/limits", "#/returns"], [...seen].join());
+      assert.equal(await p.locator(".h-present-bar").count(), 0, "the tour ends after the last page");
+      // backwards across a page edge
+      await p.evaluate(() => { location.hash = "#/returns"; });
+      await p.waitForFunction(() => document.querySelector("h1")?.textContent === "Returns");
+      await p.getByRole("button", { name: "Tour" }).click();
+      await p.waitForFunction(() => location.hash === "" || location.hash === "#/");
+      await p.waitForSelector(".h-present-bar");
+    } finally { await b.close(); }
+  } finally { rmSync(join(out, ".."), { recursive: true, force: true }); }
+});

@@ -105,8 +105,31 @@ export function Host() {
   const [tab, setTab] = useState<"decisions" | "comments">("decisions");
   const summary = useRef<HTMLElement>(null);
   const lastPage = useRef(route.page);
+  useEffect(() => {
+    // a page change: a tour continues (or starts) on the new page; presenting anything else ends at the page change
+    const pend = tourRef.current.pending;
+    if (!pend && !present.active) return;
+    const t = setTimeout(() => {
+      if (present.active) present.stop();
+      if (tourRef.current.on && pend) { tourRef.current.pending = null; present.start(pend === "last" ? 9999 : 0); }
+      else tourRef.current.on = false;
+    }, 60);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page.id]);
   const head = useRef<HTMLElement>(null);
-  const present = usePresent(content, head, meta.title, summary);
+  // tour: artifact.json "tour": ["home", "a", "b"] presents across pages in order
+  const tourIds = useMemo(() => (meta.tour ?? []).filter((id) => !!pageById(id)), []);
+  const hasTour = tourIds.length > 1;
+  const tourRef = useRef<{ on: boolean; pending: "first" | "last" | null }>({ on: false, pending: null });
+  const goTour = (dir: 1 | -1) => {
+    const i = tourIds.indexOf(page.id);
+    const nextId = tourIds[i + dir];
+    if (i < 0 || !nextId) { if (dir === 1) { tourRef.current.on = false; present.stop(); } return; } // past the end: leave
+    tourRef.current.pending = dir === 1 ? "first" : "last";
+    location.hash = hrefFor(nextId);
+  };
+  const present = usePresent(content, head, page.title, summary, (dir) => { if (tourRef.current.on) goTour(dir); });
 
   useEffect(() => { document.title = page.id === HOME ? meta.title : `${page.title} · ${meta.title}`; }, [page]);
   // hash routes: #/page and #/page/section; a plain #anchor stays an in-page anchor and never changes the page
@@ -156,7 +179,7 @@ export function Host() {
       if (typing(e) || e.metaKey || e.ctrlKey || e.altKey) return;
       if (present.active) return;
       if (e.key === "c") setMode((m) => { if (!m) { setPanel(true); setTab("comments"); } return !m; });
-      else if (e.key === "p") present.start();
+      else if (e.key === "p") { tourRef.current.on = false; present.start(); }
       else if (e.key === "?") setHelp((h) => !h);
       else if (e.key === "Escape") { setMode(false); setOpen(null); setHelp(false); }
     };
@@ -257,7 +280,8 @@ export function Host() {
         )}
         <span className="h-spacer" />
         <button className="h-btn" onClick={() => setPanel(!panel)} aria-pressed={panel} title="Feedback: answer the decisions and leave comments, then copy it all back to the author">{feedbackLabel}</button>
-        <button className="h-btn" onClick={() => present.start()} title="Present (p): walk through the sections full screen">Present</button>
+        <button className="h-btn" onClick={() => { tourRef.current.on = false; present.start(); }} title="Present (p): walk through this page full screen">Present</button>
+        {hasTour && <button className="h-btn" onClick={() => { tourRef.current.on = true; if (page.id === tourIds[0]) present.start(); else { tourRef.current.pending = "first"; location.hash = hrefFor(tourIds[0]); } }} title="Tour: present the pages in the author's order">Tour</button>}
         <button className="h-btn" aria-pressed={!outlineOff} onClick={() => { setOutlineOff(!outlineOff); localStorage.setItem("artifact-outline", outlineOff ? "on" : "off"); }} title="Show or hide the outline on the left">Outline</button>
         <button className="h-btn" onClick={() => setTheme(!dark)} title="Switch between the light and dark theme">{dark ? "Light" : "Dark"}</button>
         {canDownload && <button className="h-btn" onClick={download} title="Save this page as one self-contained HTML file">Download</button>}
@@ -325,7 +349,7 @@ export function Host() {
             <PresentCtx.Provider value={present.state}><article className="a-content" ref={content} data-page={page.id}><Boundary key={page.id}><page.Component /></Boundary></article></PresentCtx.Provider>
           </FeedbackCtx.Provider>
           {isMulti() && <PageNav current={page.id} />}
-          {rows.length > 0 && (
+          {rows.length > 0 && (!tourRef.current.on || page.id === tourIds[tourIds.length - 1]) && (
             <section className="h-summary-slide" ref={summary} data-title="Summary">
               <h2 className="a-h">Summary: {decided}/{rows.length} decided</h2>
               <DecisionList rows={rows} onJump={jumpDecision} />
@@ -344,7 +368,7 @@ export function Host() {
       {present.active && (
         <div className="h-present-bar" data-slide={present.state.slide} data-slides={present.state.slides} data-step={present.state.step} data-steps={present.state.steps}>
           <button onClick={present.prev}>←</button>
-          <span className="h-present-label">{present.label}</span>
+          <span className="h-present-label">{tourRef.current.on ? `${tourIds.indexOf(page.id) + 1}/${tourIds.length} ${page.title} · ` : ""}{present.label}</span>
           {more && <span className="h-more-hint h-present-hint" title="This slide continues below: scroll or press ↓">↓ more</span>}
           <button onClick={present.next}>→</button>
           <button onClick={present.stop}>Exit</button>

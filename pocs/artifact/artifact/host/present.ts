@@ -11,11 +11,12 @@ const stepsOf = (s?: Slide) => (s ? s.els.flatMap((e) => (e.hasAttribute("data-s
  * [data-present-hidden] (css); the content's React state is never touched.
  * Keys: → space PageDown Enter next; ← PageUp Backspace back; ↑/↓ scroll a tall slide; Esc or p leaves.
  */
-export function usePresent(root: React.RefObject<HTMLElement | null>, head: React.RefObject<HTMLElement | null>, title: string, summary?: React.RefObject<HTMLElement | null>) {
+export function usePresent(root: React.RefObject<HTMLElement | null>, head: React.RefObject<HTMLElement | null>, title: string, summary?: React.RefObject<HTMLElement | null>, onEdge?: (dir: 1 | -1) => void) {
   const [active, setActive] = useState(false);
   const [pos, setPos] = useState({ slide: 0, step: 0 });
   const [count, setCount] = useState(0);
   const posRef = useRef(pos); posRef.current = pos;
+  const edge = useRef(onEdge); edge.current = onEdge;
 
   const slides = useCallback((): Slide[] => {
     const out: Slide[] = head.current ? [{ els: [head.current], title }] : [];
@@ -63,6 +64,7 @@ export function usePresent(root: React.RefObject<HTMLElement | null>, head: Reac
     let next = { slide, step };
     if (dir === 1) next = step < n ? { slide, step: step + 1 } : slide < ss.length - 1 ? { slide: slide + 1, step: 0 } : next;
     else next = step > 0 ? { slide, step: step - 1 } : slide > 0 ? { slide: slide - 1, step: stepsOf(ss[slide - 1]).length } : next;
+    if (next.slide === slide && next.step === step) { edge.current?.(dir); return; } // the end of this page: a tour moves on
     const sameSlide = next.slide === slide;
     setPos(next); apply(next, sameSlide ? (dir === 1 ? "step" : "none") : "top");
   }, [slides, apply]);
