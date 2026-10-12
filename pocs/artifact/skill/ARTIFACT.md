@@ -5,7 +5,7 @@ description: Make an artifact: a page that shows what you did, found or propose 
 
 # artifact
 
-An artifact is a directory `x.artifact/`. You write the page; the kit gives you parts (`skill/COMPONENTS.md` lists them with props); the host (outline, present mode, feedback drawer) wraps it. You pick the structure: nothing here is a required shape.
+An artifact is a directory `x.artifact/`. You write the page; the kit gives you parts (`COMPONENTS.md` next to this file lists them with props); the host (outline, present mode, feedback drawer) wraps it. You pick the structure: nothing here is a required shape.
 
 ```
 x.artifact/
