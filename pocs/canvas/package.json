@@ -12,7 +12,8 @@
     "test": "vitest run",
     "preview": "vite preview --port 5190 --strictPort",
     "deploy": "pnpm build && wrangler deploy --config signaling/wrangler.deploy.toml",
-    "dev:sandbox": "node sandbox/server.mjs --port 5227"
+    "dev:sandbox": "node sandbox/server.mjs --port 5227",
+    "test:leak": "node scripts/page-leak.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261009.1",
