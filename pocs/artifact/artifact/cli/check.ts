@@ -4,6 +4,9 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { buildArtifact, findEntry, fmtBytes, formatMessages, renderStatic, repoRoot } from "./build.ts";
 
+// A render that needs the browser (not a bug in the artifact): the error text starts with one of these ReferenceErrors.
+const BROWSER_ONLY = /^ReferenceError: (window|document|navigator|self|HTMLElement|localStorage|sessionStorage|matchMedia|location|requestAnimationFrame|ResizeObserver|MutationObserver|IntersectionObserver|CSS) is not defined/;
+
 export const WARN_BYTES = 5e6, MAX_BYTES = 25e6;
 export interface Report { errors: string[]; warnings: string[]; info: string[]; bytes: number }
 
@@ -38,6 +41,7 @@ export async function check(dir: string, opts: { types?: boolean } = {}): Promis
   if (r.warnings.length) rep.warnings.push(await formatMessages(r.warnings, "warning"));
   const { meta } = r.collected.registry;
   for (const k of ["kind", "audience", "summary"] as const) if (!meta[k]) rep.warnings.push(`artifact.json: no ${k} (readers see the header; say who it's for)`);
+  for (const u of r.collected.unsafe) rep.errors.push(`evidence path leaves evidence/: ${u} (paths must stay inside evidence/, no .. or symlinks elsewhere)`);
   for (const m of r.collected.missing) rep.errors.push(`missing evidence: ${m} (referenced in the source, not in evidence/)`);
   for (const u of r.collected.unreferenced) rep.warnings.push(`unused evidence: ${u} (never mentioned in the source, so not inlined)`);
   rep.bytes = r.bytes;
@@ -47,7 +51,7 @@ export async function check(dir: string, opts: { types?: boolean } = {}): Promis
     if (opts.types !== false) for (const l of typecheck(dir)) rep.errors.push(l);
     const s = await renderStatic(dir);
     if ("error" in s) {
-      if (!/window|document|navigator|self|HTMLElement/.test(s.error)) rep.errors.push(`render error: ${s.error}`);
+      if (!BROWSER_ONLY.test(s.error)) rep.errors.push(`render error: ${s.error}`);
     } else {
       const ids = [...s.html.matchAll(/data-section="([^"]+)"/g)].map((m) => m[1]);
       const dup = ids.filter((x, i) => ids.indexOf(x) !== i);

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { meta, type Source as Src } from "../kit/registry.ts";
 import { Badge, Source } from "../kit/layout.tsx";
 import { fmtDate, plural } from "../kit/util.ts";
-import { useComments, Composer, CommentsPanel, feedbackMarkdown, anchorFor, type Anchor } from "./comments.tsx";
+import { useComments, Composer, CommentsPanel, feedbackMarkdown, anchorFor, findAnchor, type Anchor } from "./comments.tsx";
 import { usePresent } from "./present.ts";
 
 interface OutlineItem { id: string; title: string; level: number }
@@ -115,7 +115,7 @@ export function Host({ children }: { children: ReactNode }) {
     const el = content.current!;
     const mark = () => {
       el.querySelectorAll("[data-commented]").forEach((n) => n.removeAttribute("data-commented"));
-      for (const c of cm.list) { const t = el.querySelector(`[data-hid="${CSS.escape(c.anchor.id)}"]`) ?? findById(el, c.anchor.id); t?.setAttribute("data-commented", ""); }
+      for (const c of cm.list) { findAnchor(el, c.anchor.id)?.setAttribute("data-commented", ""); }
     };
     mark();
     const mo = new MutationObserver(() => { mo.disconnect(); mark(); mo.observe(el, { childList: true, subtree: true }); });
@@ -180,10 +180,4 @@ export function Host({ children }: { children: ReactNode }) {
       )}
     </div>
   );
-}
-
-function findById(root: HTMLElement, id: string): Element | null {
-  for (const e of root.querySelectorAll<HTMLElement>("[data-aid],[data-section]")) if ((e.dataset.aid ?? e.dataset.section) === id) return e;
-  for (const e of root.querySelectorAll<HTMLElement>("*")) if (e.dataset.hid === id) return e;
-  return null;
 }

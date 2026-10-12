@@ -15,9 +15,13 @@ export function usePresent(root: React.RefObject<HTMLElement | null>) {
     let c = root.current as HTMLElement | null;
     while (c && c.children.length === 1 && !(c.children[0] as HTMLElement).dataset.section) c = c.children[0] as HTMLElement;
     if (!c) return [];
+    // a page wrapped in one Section: its child Sections are the slides (heading and lead text come first as one slide)
+    const only = [...c.children].filter((e) => (e as HTMLElement).dataset.section);
+    if (only.length === 1 && c.children.length === 1 && only[0].querySelector(":scope > [data-section]")) c = only[0] as HTMLElement;
+    const wrapped = c.dataset.section ? c.dataset.title : undefined;
     const out: { els: HTMLElement[]; title: string }[] = [];
     let loose: HTMLElement[] = [];
-    const flush = () => { if (loose.length) out.push({ els: loose, title: loose.length && out.length === 0 ? "Intro" : "More" }); loose = []; };
+    const flush = () => { if (loose.length) out.push({ els: loose, title: out.length === 0 ? wrapped ?? "Intro" : "More" }); loose = []; };
     for (const e of Array.from(c.children) as HTMLElement[]) {
       if (e.dataset.section) { flush(); out.push({ els: [e], title: e.dataset.title ?? "" }); }
       else loose.push(e);

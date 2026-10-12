@@ -42,7 +42,8 @@ export async function main(argv: string[]): Promise<number> {
       const r = await buildArtifact(dir);
       if (r.errors.length) { console.error(await formatMessages(r.errors, "error")); return 1; }
       for (const m of r.collected.missing) console.error(`error: missing evidence ${m}`);
-      if (r.collected.missing.length) return 1;
+      for (const u of r.collected.unsafe) console.error(`error: evidence path leaves evidence/: ${u}`);
+      if (r.collected.missing.length || r.collected.unsafe.length) return 1;
       if (r.bytes > MAX_BYTES && !values.force) { console.error(`output is ${fmtBytes(r.bytes)}, over ${fmtBytes(MAX_BYTES)}; trim evidence or --force`); return 1; }
       mkdirSync(dirname(resolve(out)), { recursive: true });
       writeFileSync(out, r.html);
@@ -52,7 +53,9 @@ export async function main(argv: string[]): Promise<number> {
       return 0;
     }
     case "dev": {
-      const s = await dev(dir, values.port ? Number(values.port) : 4177, values.host);
+      const port = values.port ? Number(values.port) : 4177;
+      if (!Number.isInteger(port) || port < 0 || port > 65535) { console.error(`bad --port ${values.port}`); return 2; }
+      const s = await dev(dir, port, values.host);
       console.log(`serving http://${s.host}:${s.port}   (on the Mini: http://mini.internal:${s.port})`);
       await new Promise(() => {});
       return 0;

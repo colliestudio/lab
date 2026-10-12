@@ -22,12 +22,17 @@ export async function dev(dir: string, port: number, host = "127.0.0.1") {
     } else {
       page = r.html;
       for (const m of r.collected.missing) console.warn(`warning: missing evidence ${m}`);
+      for (const u of r.collected.unsafe) console.warn(`warning: evidence path leaves evidence/: ${u}`);
       console.log(`built ${fmtBytes(r.bytes)} in ${Date.now() - t} ms`);
     }
     for (const c of clients) c.write("data: reload\n\n");
   }));
   await rebuild();
+  const ALLOWED_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]", "mini.internal"]);
   const server = createServer((req, res) => {
+    // DNS rebinding guard: a page on another origin can point its hostname at 127.0.0.1 and read what we serve
+    const hostName = (req.headers.host ?? "").replace(/:\d+$/, "").toLowerCase();
+    if (!ALLOWED_HOSTS.has(hostName)) { res.writeHead(403, { "content-type": "text/plain" }); return res.end("forbidden host"); }
     if (req.url === "/__events") {
       res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" });
       res.write("retry: 500\n\n");

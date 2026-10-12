@@ -3,6 +3,7 @@
 import * as esbuild from "esbuild";
 import mdx from "@mdx-js/esbuild";
 import { existsSync, readFileSync } from "node:fs";
+import { createRequire as cr } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { collect, IMAGE_MIME, slimReplay, type Collected } from "./evidence.ts";
@@ -166,5 +167,4 @@ export async function renderStatic(dir: string): Promise<{ html: string } | { er
     return { html };
   } catch (e) { return { error: String((e as Error)?.stack ?? e).split("\n").slice(0, 6).join("\n") }; }
 }
-import { createRequire as cr } from "node:module";
 function createRequire() { const req = cr(join(repoRoot, "package.json")); return (id: string) => req(id); }

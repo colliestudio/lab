@@ -108,7 +108,7 @@ const STATUS: Record<string, { tone: Tone; label: string }> = {
 };
 /** A state pill: ok, done, merged, warn, risk, stale, blocked, failed, todo, open, planned, doing, review, info… (unknown words show as is). */
 export function Status({ s, label, children }: { s: string; label?: ReactNode; children?: ReactNode }) {
-  const d = STATUS[s.toLowerCase()] ?? { tone: "neutral" as Tone, label: s };
+  const d = STATUS[String(s ?? "").toLowerCase()] ?? { tone: "neutral" as Tone, label: String(s ?? "") };
   return <span className={cx("a-status", `tone-${d.tone}`)} data-status={s}><i />{children ?? label ?? d.label}</span>;
 }
 export const statusTone = (s?: string): Tone => (s ? STATUS[s.toLowerCase()]?.tone ?? "neutral" : "neutral");

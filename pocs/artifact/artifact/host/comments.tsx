@@ -7,21 +7,34 @@ export interface Comment { id: string; anchor: { id: string; label: string; exce
 const SEL = "[data-aid], [data-c], [data-section] > .a-h, p, li, pre, blockquote, h1, h2, h3, h4, figure, tr, td, th";
 const short = (s: string, n = 70) => { const t = s.replace(/\s+/g, " ").trim(); return t.length > n ? t.slice(0, n - 1) + "…" : t; };
 
+function idFor(node: HTMLElement, root: HTMLElement): string {
+  const explicit = node.dataset.aid ?? node.dataset.section;
+  if (explicit) return explicit;
+  const sec = node.closest<HTMLElement>("[data-section]");
+  const kind = node.dataset.c ?? node.tagName.toLowerCase();
+  const same = [...(sec ?? root).querySelectorAll<HTMLElement>(node.dataset.c ? `[data-c="${node.dataset.c}"]` : node.tagName)];
+  return `${sec?.dataset.section ?? "page"}/${kind}-${same.indexOf(node) + 1}`;
+}
+
+const anchorNode = (el: HTMLElement) => (el.matches("[data-section] > .a-h") ? el.parentElement! : el); // a section's heading anchors the section
+
 /** The element a click means (closest candidate) and a stable id for it: its own `id`/data-aid, else section + tag + position. */
 export function anchorFor(target: HTMLElement, root: HTMLElement): Anchor | null {
   const el = target.closest<HTMLElement>(SEL);
   if (!el || !root.contains(el)) return null;
-  const node = el.matches("[data-section] > .a-h") ? el.parentElement! : el; // a section's heading anchors the section
-  const explicit = node.dataset.aid ?? node.dataset.section;
-  const kind = node.dataset.c ?? node.tagName.toLowerCase();
-  let id = explicit;
-  if (!id) {
-    const sec = node.closest<HTMLElement>("[data-section]");
-    const same = [...(sec ?? root).querySelectorAll<HTMLElement>(node.dataset.c ? `[data-c="${node.dataset.c}"]` : node.tagName)];
-    id = `${sec?.dataset.section ?? "page"}/${kind}-${same.indexOf(node) + 1}`;
-    node.dataset.hid = id;
-  }
+  const node = anchorNode(el);
+  const id = idFor(node, root);
   return { id, label: id, excerpt: short(node.textContent ?? ""), el: node };
+}
+
+/** The element an anchor id points at (also after a reload, when auto ids have to be recomputed). */
+export function findAnchor(root: HTMLElement, id: string): HTMLElement | null {
+  for (const e of root.querySelectorAll<HTMLElement>("[data-aid],[data-section]")) if ((e.dataset.aid ?? e.dataset.section) === id) return e;
+  for (const e of root.querySelectorAll<HTMLElement>(SEL)) {
+    const n = anchorNode(e);
+    if (!n.dataset.aid && !n.dataset.section && idFor(n, root) === id) return n;
+  }
+  return null;
 }
 
 export function useComments(key: string) {
@@ -67,7 +80,7 @@ export function CommentsPanel({ cm, onClose }: { cm: ReturnType<typeof useCommen
       {cm.list.length === 0 && <p className="a-muted">Nothing yet. Turn on Comment, then click any element.</p>}
       {cm.list.map((c) => (
         <div key={c.id} className="h-note">
-          <button className="h-note-on" onClick={() => { const e = document.querySelector(`[data-hid="${CSS.escape(c.anchor.id)}"], [data-aid="${CSS.escape(c.anchor.id)}"], [data-section="${CSS.escape(c.anchor.id)}"]`); e?.scrollIntoView({ block: "center", behavior: "smooth" }); }}>{c.anchor.id}</button>
+          <button className="h-note-on" onClick={() => { const root = document.querySelector<HTMLElement>(".a-content"); (root && findAnchor(root, c.anchor.id))?.scrollIntoView({ block: "center", behavior: "smooth" }); }}>{c.anchor.id}</button>
           <div>{c.body}</div>
           <button className="h-note-del" onClick={() => cm.remove(c.id)}>Delete</button>
         </div>

@@ -230,3 +230,96 @@ Some **markdown** with a list:
     assert.ok("html" in s && /<strong>markdown<\/strong>/.test(s.html) && s.html.includes("watch out"), JSON.stringify(s).slice(0, 300));
   } finally { cleanup(d); }
 });
+
+import { symlinkSync } from "node:fs";
+
+test("evidence cannot escape evidence/: .. in code, .. in data, symlink out", async () => {
+  const d = fixture(`import { Code } from "artifact"; export default () => <Code file="evidence/../../secret.txt" />;`, (dir) => {
+    writeFileSync(join(dir, "../secret.txt"), "TOP-SECRET-OUTSIDE");
+    symlinkSync(join(dir, "../secret.txt"), join(dir, "evidence/link.txt"));
+  });
+  try {
+    let r = await buildArtifact(d);
+    assert.doesNotMatch(r.html, /TOP-SECRET-OUTSIDE|VE9QLVNFQ1JFVC1PVVRTSURF/);
+    assert.deepEqual(r.collected.unsafe, ["evidence/../../secret.txt"]);
+    assert.ok((await check(d, { types: false })).errors.some((e) => e.includes("leaves evidence/")));
+    // via a data file: whole-string value
+    writeFileSync(join(d, "data/d.json"), JSON.stringify({ f: "evidence/../../secret.txt" }));
+    writeFileSync(join(d, "index.tsx"), `export default () => <p>x</p>;`);
+    r = await buildArtifact(d);
+    assert.doesNotMatch(r.html, /TOP-SECRET-OUTSIDE/);
+    assert.deepEqual(r.collected.unsafe, ["evidence/../../secret.txt"]);
+    // via a symlink inside evidence/
+    writeFileSync(join(d, "data/d.json"), "{}");
+    writeFileSync(join(d, "index.tsx"), `import { Code } from "artifact"; export default () => <Code file="evidence/link.txt" />;`);
+    r = await buildArtifact(d);
+    assert.doesNotMatch(r.html, /TOP-SECRET-OUTSIDE/);
+    assert.deepEqual(r.collected.unsafe, ["evidence/link.txt"]);
+  } finally { cleanup(d); }
+});
+
+test("paths mentioned in data or prose are not references", async () => {
+  const d = fixture(`// see evidence/in-a-comment-nope.png\nexport default () => <p>{"vault/work/evidence/also-nope.png"} samples/x.artifact/evidence/after-v2.svg</p>;`, (dir) => {
+    writeFileSync(join(dir, "data/d.json"), JSON.stringify({ files: ["samples/hello.artifact/evidence/after-v2.svg"], note: "see evidence/foo for more" }));
+  });
+  try {
+    const r = await buildArtifact(d);
+    assert.deepEqual(r.collected.missing, []);
+    assert.deepEqual(r.collected.unsafe, []);
+  } finally { cleanup(d); }
+});
+
+test("a whole-string evidence path in data is a reference", async () => {
+  const d = fixture(`import { Img, useData } from "artifact"; export default () => <Img src={useData<{ img: string }>("d").img} />;`, (dir) => {
+    writeFileSync(join(dir, "data/d.json"), JSON.stringify({ img: "evidence/shot.png" }));
+  });
+  try {
+    const r = await buildArtifact(d);
+    assert.deepEqual(Object.keys(r.collected.registry.evidence), ["evidence/shot.png"]);
+  } finally { cleanup(d); }
+});
+
+test("check: a missing data file is a real error; browser-only ReferenceErrors are not", async () => {
+  let d = fixture(`import { useData } from "artifact"; export default () => <p>{String(useData("documents"))}</p>;`);
+  try { assert.ok((await check(d, { types: false })).errors.some((e) => e.includes("render error") && e.includes("data/documents.json"))); } finally { cleanup(d); }
+  d = fixture(`export default () => <p>{String(window.innerWidth)}</p>;`);
+  try { assert.deepEqual((await check(d, { types: false })).errors, []); } finally { cleanup(d); }
+  // a directory named like a browser global must not hide errors
+  const root = mkdtempSync(join(tmpdir(), "art-doc-"));
+  try {
+    const nested = join(root, "document-self-window.artifact");
+    mkdirSync(join(nested, "data"), { recursive: true });
+    writeFileSync(join(nested, "artifact.json"), JSON.stringify({ title: "T", kind: "k", audience: "a", summary: "s" }));
+    writeFileSync(join(nested, "index.tsx"), `export default function A() { throw new Error("boom"); }`);
+    assert.ok((await check(nested, { types: false })).errors.some((e) => e.includes("boom")));
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("dev: rejects a foreign Host header, accepts localhost", async () => {
+  const d = fixture(INDEX);
+  const log = console.log; console.log = () => {};
+  try {
+    const s = await dev(d, 0);
+    try {
+      const { request } = await import("node:http");
+      const get = (host: string) => new Promise<number>((ok, bad) => {
+        const q = request({ host: "127.0.0.1", port: s.port, path: "/", headers: { host } }, (res) => { res.resume(); ok(res.statusCode ?? 0); });
+        q.on("error", bad); q.end();
+      });
+      assert.equal(await get("evil.example.com"), 403);
+      assert.equal(await get(`evil.example.com:${s.port}`), 403);
+      assert.equal(await get(`localhost:${s.port}`), 200);
+      assert.equal(await get(`mini.internal:${s.port}`), 200);
+      assert.equal(await get(`[::1]:${s.port}`), 200);
+    } finally { await s.close(); }
+  } finally { console.log = log; cleanup(d); }
+});
+
+test("patch pruning reads file= only at the tag's own level", () => {
+  const src = `<Diff patch="evidence/a.patch" notes={{3: "see file='other.ts'"}} file="real.ts" />`;
+  assert.deepEqual(neededFiles(src, "evidence/a.patch"), ["real.ts"]);
+  const src2 = `<Diff notes={{3: "patch='evidence/a.patch'"}} patch="evidence/b.patch" file="x.ts" />`;
+  assert.equal(neededFiles(src2, "evidence/a.patch"), null);
+  assert.deepEqual(neededFiles(`<Diff patch="evidence/a.patch" file={["a.ts", "b.ts"]} />`, "evidence/a.patch"), ["a.ts", "b.ts"]);
+  assert.equal(neededFiles(`<Diff patch="evidence/a.patch" file={pick} />`, "evidence/a.patch"), null);
+});

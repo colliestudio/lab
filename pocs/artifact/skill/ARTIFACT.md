@@ -15,9 +15,11 @@ x.artifact/
   evidence/       *.patch  *.replay  images  source files: cited by path, inlined at build
 ```
 
+Run the CLI as `artifact <cmd>` when it is on your PATH (`bin/recap-sync` links it), else `node <recap-lab>/bin/artifact.js <cmd>`. Examples with `artifact`:
+
 ```sh
 artifact new notes/status-1012 --kind status   # scaffold with a small example
-artifact dev notes/status-1012.artifact        # live reload on 127.0.0.1:4177 (Mini: http://mini.internal:4177)
+artifact dev notes/status-1012.artifact        # live reload at http://127.0.0.1:4177 (loopback only; use your own proxy/forward to view elsewhere; --port N)
 artifact check notes/status-1012.artifact      # errors: bundle, types, render, missing evidence, size
 artifact build notes/status-1012.artifact -o status.html   # one file, share it
 ```
@@ -55,7 +57,7 @@ Opt-in: `<Depth level={1..4}>` content shown by the reader's 1–4 keys (1 = hea
 
 ## Evidence
 
-Reference files by string literal, `evidence/x.patch` (git diff output), `evidence/x.replay` (Collie Demo), `evidence/x.png`, source files for `<Code>`. The build inlines what you reference, parses patches (the raw patch is not in the output), re-zips replays without trace.zip, and turns images into data URIs. `import shot from "./evidence/x.png"` also works. Build fails on missing evidence; `check` warns about unused files. Recordings are not redacted: check for secrets before sharing.
+Reference files by string literal, `evidence/x.patch` (git diff output), `evidence/x.replay` (Collie Demo), `evidence/x.png`, source files for `<Code>`. The build inlines what you reference, parses patches (the raw patch is not in the output), re-zips replays without trace.zip, and turns images into data URIs. `import shot from "./evidence/x.png"` also works. Evidence paths must stay inside `evidence/` (no `..`, no symlinks out). Only string literals starting at `evidence/` count as references (`"evidence/x.png"`, or a whole-string value in `data/*.json`). Build fails on missing evidence; `check` warns about unused files. Recordings are not redacted: check for secrets before sharing.
 
 ## Three shapes (examples, not templates)
 
