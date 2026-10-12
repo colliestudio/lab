@@ -7,6 +7,7 @@ import { chessPlugin } from './plugins/chess';
 import { clockPlugin } from './plugins/clock';
 import { battleLinePlugin } from './plugins/battleline';
 import { matsPlugin } from './plugins/mats';
+import { stormPlugin } from './plugins/eventstorm';
 import { mountHelp, removeHelpNote } from './help';
 import { attachFollow, createFramesPlugin, portalsEnabled, enterUrl, mountBreadcrumb, trailFromUrl } from './plugins/frames';
 
@@ -27,6 +28,7 @@ app.use(chessPlugin);
 app.use(clockPlugin);
 app.use(battleLinePlugin);
 app.use(matsPlugin);
+app.use(stormPlugin);
 // last: its rider rule (frame membership) must come after the others (a piece rides its board, the board its frame)
 const TRAIL = trailFromUrl();
 const frames = createFramesPlugin({ room: ROOM, portals: portalsEnabled(), enter: (room) => (location.href = enterUrl(room, ROOM, TRAIL)) });
