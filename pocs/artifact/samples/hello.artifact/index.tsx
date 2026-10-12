@@ -1,6 +1,6 @@
 import {
   Badge, Callout, Card, CardGrid, Img, Chart, Checklist, Code, Compare, Decision, More, Diff, Flow, Grid, Lanes, Map, PR, Questions,
-  Replay, When, Stages, TimeAxis, Stats, Scorecard, Facts, Actions, RiskMatrix, Gallery, DecisionIndex, Section, Source, Stale, Status, Step, Steps, Table, Tab, Tabs, Timeline, useData,
+  Replay, Walkthrough, When, Stages, TimeAxis, Stats, Scorecard, Facts, Actions, RiskMatrix, Gallery, DecisionIndex, Section, Source, Stale, Status, Step, Steps, Table, Tab, Tabs, Timeline, useData,
 } from "artifact";
 
 type Pr = { n: number; title: string; state: string; checks: string; owner: string; stack: [number, number]; href: string };
@@ -82,6 +82,25 @@ export default function Hello() {
           { label: "Before", src: "evidence/before.svg", aside: <p>The fixed viewer.</p> },
           { label: "After", src: "evidence/after.svg", aside: <p>Free-form.</p>, caption: "One at a time, with a detail pane" },
         ]} />
+      </Section>
+
+      <Section id="walk" title="One request, step by step" lead="Switch scenarios with the tabs; ↑/↓ move between steps, ←/→ between scenarios.">
+        <Walkthrough
+          states={["QUEUED", "SENDING", "SENT", "FAILED"]}
+          scenarios={[
+            { id: "bug", label: "Today (bug)", steps: [
+              { title: "Request queued", when: "10:00", who: "client", state: "QUEUED", body: "The client submits; nothing has been sent yet." },
+              { title: "Worker sends it", when: "10:01", who: "worker", state: "SENDING", body: "The first attempt times out after 30 s." },
+              { title: "Retry gives up", when: "10:03", who: "worker", state: "FAILED", tone: "bad", body: "The retry budget is zero, so the request fails and nobody is told.", note: "error: retry budget exhausted (0/0)" },
+            ] },
+            { id: "fix", label: "Fix A: retry twice", steps: [
+              { title: "Request queued", when: "10:00", who: "client", state: "QUEUED", body: "Same as today." },
+              { title: "Worker sends it", when: "10:01", who: "worker", state: "SENDING", body: "The first attempt times out after 30 s." },
+              { title: "Second attempt succeeds", when: "10:02", who: "worker", state: "SENT", tone: "good", body: "The retry goes through." },
+            ] },
+          ]}
+          visual={(step) => <Card title={`Request row: ${step.state}`}><Facts items={[["status", step.state ?? ""], ["last attempt", String(step.when ?? "")]]} /></Card>}
+        />
       </Section>
 
       <Section id="stages" title="Three releases, same questions">

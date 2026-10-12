@@ -4,6 +4,7 @@ export * from "./decide.tsx";
 export { Decision, When } from "./decision.tsx";
 export { useAnswer, useAnswers, type Answer } from "./feedback.ts";
 export { TimeAxis, type TimeEvent, type TimeBand } from "./timeaxis.tsx";
+export { Walkthrough, type WalkStep, type WalkScenario } from "./walkthrough.tsx";
 export { Table, Img, Compare, Chart, type Column, type CompareItem } from "./data.tsx";
 export { Code, Diff } from "./code.tsx";
 export { Map, type MapNodeIn, type MapEdgeIn } from "./map.tsx";

@@ -985,3 +985,54 @@ export default () => <><Section title="One" lead="lead one"><p id="p1">BODY-ONE<
     } finally { await b.close(); }
   } finally { cleanup(d); }
 });
+
+test("Walkthrough: scenarios, steps, state rail, keyboard; present stays in sync; plain buttons let the slide step; no negative svg width", async (t) => {
+  const { findChrome } = await import("../artifact/cli/shot.ts");
+  let exe: string;
+  try { exe = await findChrome(); } catch { return t.skip("no Chromium available"); }
+  const { chromium } = await import("playwright-core");
+  const d = fixture(`import { Section, Walkthrough, More, Map } from "artifact";
+export default () => <><Section title="Walk"><Walkthrough states={["A", "B", "C"]} scenarios={[
+  { label: "Bug", steps: [{ title: "First", state: "A", body: "BODY-1" }, { title: "Second", state: "B", body: "BODY-2", tone: "bad" }, { title: "Third", state: "C", body: "BODY-3" }] },
+  { label: "Fix", steps: [{ title: "Only", state: "A", body: "FIX-BODY" }, { title: "Done", state: "C", body: "FIX-DONE" }] }]}
+  visual={(s) => <b className="vis">VISUAL {s.state}</b>} /></Section>
+<Section title="Hidden map"><More label="map"><Map nodes={[{ id: "a", label: "A" }, { id: "b", label: "B" }]} edges={[{ from: "a", to: "b" }]} /></More></Section></>;`);
+  const out = join(d, "../walk.html");
+  try {
+    writeFileSync(out, (await buildArtifact(d)).html);
+    const b = await chromium.launch({ executablePath: exe });
+    try {
+      const p = await (await b.newContext({ viewport: { width: 1280, height: 900 } })).newPage();
+      const errs: string[] = [];
+      p.on("console", (m) => { if (m.type() === "error") errs.push(m.text()); });
+      p.on("pageerror", (e) => errs.push(e.message));
+      await p.goto("file://" + out);
+      await p.waitForSelector(".a-walk");
+      await p.waitForTimeout(600);
+      assert.deepEqual(errs.filter((e) => /negative|width/i.test(e)), [], "no negative svg width from a hidden map");
+      assert.match(await p.locator(".a-walk-body h4").innerText(), /^1\. First/);
+      assert.ok(await p.getByText("VISUAL A").isVisible());
+      await p.locator(".a-walk").focus();
+      await p.keyboard.press("ArrowDown");
+      assert.match(await p.locator(".a-walk-body h4").innerText(), /^2\. Second/);
+      assert.equal(await p.locator(".a-walk-pill.now").innerText(), "B");
+      assert.ok(await p.locator(".a-walk-pill.now.bad").count() === 1);
+      await p.keyboard.press("ArrowRight");
+      assert.ok(await p.getByText("FIX-DONE").isVisible(), "← → switch scenarios, keeping the step position");
+      await p.getByRole("tab", { name: "Bug" }).click();
+      // present: each step is a present step; clicking a step keeps the counter in sync
+      await p.keyboard.press("Escape");
+      await p.keyboard.press("p"); await p.waitForSelector(".h-present-bar");
+      await p.keyboard.press("ArrowRight");               // slide 2 = the walk
+      await p.locator(".a-walk-steps li").nth(2).locator("button").click();
+      assert.equal(await p.locator(".h-present-bar").getAttribute("data-step"), "2", "a click moved the slide's step counter");
+      await p.keyboard.press("ArrowLeft");
+      assert.equal(await p.locator(".h-present-bar").getAttribute("data-step"), "1");
+      await p.waitForFunction(() => /^2\. Second/.test(document.querySelector(".a-walk-body h4")?.textContent ?? ""));
+      // a plain button inside a slide does not swallow Space: the click blurs it, so Space steps
+      await p.locator(".a-walk-tabs button").nth(1).click();
+      await p.keyboard.press("Space");
+      assert.equal(await p.locator(".h-present-bar").getAttribute("data-step"), "2");
+    } finally { await b.close(); }
+  } finally { cleanup(d); }
+});

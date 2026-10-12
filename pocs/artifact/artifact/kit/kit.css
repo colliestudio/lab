@@ -389,3 +389,29 @@ html[data-present] .a-section[data-folded] > .a-section-body { display: block; }
 .a-heavy-stub:hover { border-color: var(--collie-color-border-accent); color: var(--collie-color-fg-accent); }
 .a-heavy-stub .hide, [data-open] > .a-heavy-stub .show { display: none; } [data-open] > .a-heavy-stub .hide { display: inline; }
 .a-heavy:not([data-open]) > .a-heavy-body { display: none; }
+
+/* walkthrough */
+.a-walk { border: 1px solid var(--a-line); border-radius: var(--a-radius); background: var(--a-card); padding: 1rem; margin: var(--collie-space-150) 0; outline: none; }
+.a-walk:focus-visible { box-shadow: 0 0 0 2px var(--collie-color-accent-subtle); }
+.a-walk-tabs { display: flex; gap: .4rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.a-walk-tabs button { font: inherit; font-size: var(--collie-text-sm); padding: .3rem .8rem; border-radius: 999px; border: 1px solid var(--collie-color-border); background: transparent; color: var(--collie-color-fg); cursor: pointer; }
+.a-walk-tabs button[aria-selected="true"] { background: var(--collie-color-accent-solid); color: var(--collie-color-fg-on-accent); border-color: transparent; }
+.a-walk-grid { display: grid; grid-template-columns: minmax(13rem, 18rem) minmax(0, 1fr); gap: 1.25rem; }
+@media (max-width: 760px) { .a-walk-grid { grid-template-columns: minmax(0, 1fr); } }
+.a-walk-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .3rem; }
+.a-walk-steps button { width: 100%; text-align: left; font: inherit; font-size: var(--collie-text-sm); display: grid; grid-template-columns: 1.5rem 1fr; gap: .4rem; align-items: start; padding: .45rem .55rem; border-radius: 8px; border: 1px solid transparent; background: transparent; color: inherit; cursor: pointer; }
+.a-walk-steps button:hover { background: var(--collie-color-neutral-subtle); }
+.a-walk-steps button.on { border-color: var(--collie-color-border-accent); background: var(--collie-color-accent-subtle); }
+.a-walk-steps .n { width: 1.4rem; height: 1.4rem; border-radius: 50%; display: grid; place-items: center; font-size: .75rem; font-weight: 700; background: var(--collie-color-neutral-subtle); color: var(--collie-color-fg-muted); }
+.a-walk-steps .bad .n { background: var(--collie-color-critical-solid); color: var(--collie-color-fg-on-critical); } .a-walk-steps .good .n { background: var(--collie-color-success-solid); color: var(--collie-color-fg-on-success); } .a-walk-steps .warn .n { background: var(--collie-color-warning-solid); color: var(--collie-color-fg-on-warning); }
+.a-walk-steps .when { display: block; color: var(--collie-color-fg-muted); font-size: .75rem; }
+.a-walk-rail { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem; margin-bottom: .9rem; }
+.a-walk-railitem { display: contents; } .a-walk-arrow { color: var(--collie-color-fg-muted); font-size: .8rem; }
+.a-walk-pill { font-size: .72rem; font-weight: 600; padding: .3rem .5rem; border-radius: 6px; border: 1px solid var(--collie-color-border-subtle); color: var(--collie-color-fg-muted); }
+.a-walk-pill.past { color: var(--collie-color-fg); background: var(--collie-color-neutral-subtle); }
+.a-walk-pill.now { color: var(--collie-color-fg-on-accent); background: var(--collie-color-accent-solid); border-color: transparent; } .a-walk-pill.now.bad { background: var(--collie-color-critical-solid); color: var(--collie-color-fg-on-critical); }
+.a-walk-visual { margin-bottom: .9rem; }
+.a-walk-body h4 { margin: 0 0 .25rem; font-size: 1.05rem; } .a-walk-meta { color: var(--collie-color-fg-muted); font-size: .8rem; margin-bottom: .5rem; } .a-walk-body p { margin: .3rem 0; }
+.a-walk-note { margin-top: .5rem; font-family: var(--a-mono); font-size: .78rem; padding: .4rem .6rem; border-radius: 6px; background: var(--collie-color-critical-subtle); border: 1px solid var(--collie-color-border-critical); }
+.a-walk-nav { display: flex; gap: .5rem; align-items: center; margin-top: .9rem; }
+.a-walk-nav button { font: inherit; font-size: var(--collie-text-sm); padding: .3rem .8rem; border-radius: 6px; border: 1px solid var(--collie-color-border); background: var(--collie-color-surface); color: inherit; cursor: pointer; } .a-walk-nav button:disabled { opacity: .4; cursor: default; }

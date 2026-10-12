@@ -78,6 +78,17 @@ export function usePresent(root: React.RefObject<HTMLElement | null>, head: Reac
     return true;
   }, [slides, apply]);
 
+  /** A component moved its own step: reveal `k` steps from the marker `el` on the current slide. */
+  const setStepFor = useCallback((el: Element, k: number) => {
+    const ss = slides();
+    const slide = posRef.current.slide;
+    const all = stepsOf(ss[slide]);
+    const first = all.indexOf(el as HTMLElement);
+    if (first < 0) return;
+    const next = { slide, step: Math.max(0, Math.min(all.length, first + k)) };
+    setPos(next); apply(next, "none");
+  }, [slides, apply]);
+
   const startAt = useCallback((slide = 0) => {
     const ss = slides();
     if (ss.length < 1) return;
@@ -96,7 +107,8 @@ export function usePresent(root: React.RefObject<HTMLElement | null>, head: Reac
     const k = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
       if (e.metaKey || e.ctrlKey || e.altKey || t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
-      if ((e.key === " " || e.key === "Enter") && t.closest("button, a, [role=radio]")) return; // answering a decision, not stepping
+      // Space/Enter belong to the control only where it consumes them (decision options, links, disclosure summaries); plain buttons let the slide step
+      if ((e.key === " " || e.key === "Enter") && t.closest("[role=radio], a[href], summary")) return;
       if (["ArrowRight", "PageDown", " ", "Enter"].includes(e.key)) { e.preventDefault(); go(1); }
       else if (["ArrowLeft", "PageUp", "Backspace"].includes(e.key)) { e.preventDefault(); go(-1); }
       else if (e.key === "Escape" || e.key === "p") stop();
@@ -107,12 +119,15 @@ export function usePresent(root: React.RefObject<HTMLElement | null>, head: Reac
       const t = id ? document.getElementById(decodeURIComponent(id)) : null;
       if (t && goTo(t)) e.preventDefault();
     };
+    // after a click on a plain button inside a slide, drop focus so → / Space keep stepping
+    const blur = (e: MouseEvent) => { const b = (e.target as HTMLElement).closest?.("button"); if (b && !b.closest("[role=radio]")) setTimeout(() => b.blur(), 0); };
     addEventListener("keydown", k);
     document.addEventListener("click", link, true);
-    return () => { removeEventListener("keydown", k); document.removeEventListener("click", link, true); };
+    document.addEventListener("click", blur);
+    return () => { removeEventListener("keydown", k); document.removeEventListener("click", link, true); document.removeEventListener("click", blur); };
   }, [active, go, goTo, stop]);
 
   const ss = active ? slides() : [];
-  const state: PresentState = { active, slide: pos.slide, slides: count, step: pos.step, steps: active ? stepsOf(ss[pos.slide]).length : 0 };
+  const state: PresentState = { active, slide: pos.slide, slides: count, step: pos.step, steps: active ? stepsOf(ss[pos.slide]).length : 0, setStepFor };
   return { active, start: startAt, stop, next: () => go(1), prev: () => go(-1), label: active ? `${pos.slide + 1}/${count} ${ss[pos.slide]?.title ?? ""}` : "", state, goTo };
 }

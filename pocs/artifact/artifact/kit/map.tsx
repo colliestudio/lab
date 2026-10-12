@@ -48,7 +48,7 @@ export function Map({ nodes, edges = [], groups = [], direction = "auto", focus,
   useEffect(() => {
     const el = wrap.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => setW(el.clientWidth - 8));
+    const ro = new ResizeObserver(() => setW(Math.max(0, el.clientWidth - 8))); // 0 while hidden: never negative
     ro.observe(el);
     return () => ro.disconnect();
   }, [both]);
@@ -69,7 +69,7 @@ export function Map({ nodes, edges = [], groups = [], direction = "auto", focus,
   if (err) return <div className="a-map-err">Map layout failed: {err}</div>;
   if (!both) return <div className="a-map" ref={wrap} style={{ height: 160 }} data-c="map" data-aid={id} />;
   const maxH = Math.min(present.active ? vh * 0.62 : height, vh * 0.8);
-  const scale = (l: Layout) => Math.min((w || 900) / l.w, maxH / l.h, 1);
+  const scale = (l: Layout) => Math.min((w > 0 ? w : 900) / l.w, maxH / l.h, 1);
   const lay = direction === "right" ? both.right : direction === "down" ? both.down
     : scale(both.right) < 0.85 && scale(both.down) > scale(both.right) + 0.1 ? both.down : both.right;
 
