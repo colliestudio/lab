@@ -57,7 +57,7 @@ export function mountChat(app: App, bar: HTMLElement, key: string, parent: HTMLE
   const input = el('textarea', 'cv-chat-input');
   input.rows = 1;
   input.maxLength = 2000;
-  input.placeholder = 'Say something… (@name to mention)';
+  input.placeholder = 'Say something…';
   const attachBtn = el('button', 'cv-chat-pin', '📍︎');
   attachBtn.type = 'button';
   attachBtn.title = 'Point this message at the selected node';
