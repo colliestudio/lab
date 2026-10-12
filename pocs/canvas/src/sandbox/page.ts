@@ -8,6 +8,8 @@ import { openFrame } from './client';
 // guard.
 
 export const TAG = 'canvas-page/1';
+/** Fired on a page's frame element when the user pressed Escape inside it (the frame host reports it; the page can't fake it). */
+export const PAGE_ESCAPE = 'page-escape';
 
 const BRIDGE = (tag: string, state: Record<string, string>) => `
 (() => {
@@ -29,7 +31,6 @@ const BRIDGE = (tag: string, state: Record<string, string>) => `
     if (form && !form.reportValidity()) return;
     canvas.goto(el.getAttribute('data-goto'));
   }, true);
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') send({ kind: 'escape' }); }, true);
   document.addEventListener('submit', (e) => e.preventDefault(), true);
   const sync = (el) => { if (el.dataset && el.dataset.store) canvas.set(el.dataset.store, el.type === 'checkbox' ? (el.checked ? 'yes' : '') : el.value); };
   document.addEventListener('input', (e) => sync(e.target), true);
@@ -76,14 +77,19 @@ export function sandboxPage(html: string, opts: { state?: Record<string, string>
     onNote({ t: 'navigated' });
     sf.destroy(); // a page that got away is not ours any more
   });
+  const escapeKey = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('');
   sf.onMessage((d) => {
-    const m = d as { t?: string } | null;
+    const m = d as { t?: string; key?: unknown } | null;
     if (m && typeof m === 'object' && typeof m.t === 'string') {
+      if (m.t === 'escape') {
+        if (m.key === escapeKey) sf.frame.dispatchEvent(new Event(PAGE_ESCAPE));
+        return;
+      }
       if (m.t === 'boot' && !booted) {
         booted = true;
         // document.open() + close() in the frame fires load once more: expected, once
         sf.allowLoad();
-        sf.send({ t: 'render', html: doc });
+        sf.send({ t: 'render', html: doc, key: escapeKey });
       }
       else if (m.t === 'blocked' || m.t === 'violation' || m.t === 'unguarded') onNote(m as HostNote);
       return;

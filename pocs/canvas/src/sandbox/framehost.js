@@ -19,8 +19,8 @@
 
 import { sha256Base64 } from './sha256.js';
 
-/** Who may embed sandbox frames in dev: any port on localhost / 127.0.0.1 / mini.internal (+ subdomains). */
-export const DEV_APP_ORIGINS = ['http://localhost:*', 'http://*.localhost:*', 'http://127.0.0.1:*', 'http://mini.internal:*', 'http://*.mini.internal:*'];
+/** Who may embed sandbox frames in dev: any port on localhost / 127.0.0.1 / mini.internal, not their subdomains (those are the sandbox frames themselves). */
+export const DEV_APP_ORIGINS = ['http://localhost:*', 'http://127.0.0.1:*', 'http://mini.internal:*'];
 
 export const PERMISSIONS_POLICY = [
   'accelerometer',
@@ -120,6 +120,8 @@ addEventListener('load', () => P.postMessage({ t: 'boot' }, '*'), { once: true }
 
 // Pages: best-effort removal of WebRTC (it ignores CSP). A page can get fresh constructors from a
 // same-origin child frame (about:blank, window[0]), so this stops casual use, not a determined page.
+// Escape: keys typed in a frame never reach the app, so the boot reports a real Escape (isTrusted: a
+// page can't fake one) with the key the app sent along with the HTML, which page scripts never see.
 const PAGE_BOOT = (appRes) => `(() => {
 ${PRELUDE(appRes)}
 for (const k of ['RTCPeerConnection', 'webkitRTCPeerConnection', 'RTCDataChannel', 'RTCSessionDescription', 'RTCIceCandidate', 'RTCRtpSender', 'RTCRtpReceiver']) try { delete window[k]; } catch {}
@@ -128,10 +130,12 @@ const onMsg = (e) => {
   const m = e.data;
   if (!m || m.t !== 'render' || typeof m.html !== 'string') return;
   app = e.origin;
+  const key = typeof m.key === 'string' ? m.key : null;
   removeEventListener('message', onMsg);
   document.open();
   // document.open() drops window listeners: report the page's own CSP violations again
   addEventListener('securitypolicyviolation', (ev) => tell({ t: 'violation', text: ev.violatedDirective + ' blocked ' + (ev.blockedURI || 'inline') }));
+  addEventListener('keydown', (ev) => { if (key && ev.isTrusted && ev.key === 'Escape') tell({ t: 'escape', key }); }, true);
   document.write(m.html);
   document.close();
 };

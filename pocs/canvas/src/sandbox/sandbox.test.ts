@@ -57,6 +57,17 @@ describe('frame host', () => {
     expect(p).toContain('sandbox allow-scripts allow-same-origin');
     expect(host.pageBoot).toContain("navigation.addEventListener('navigate'");
   });
+  it('page frame: Escape is reported only for a real key press, with the key the app sent', () => {
+    expect(host.pageBoot).toContain("ev.isTrusted && ev.key === 'Escape'");
+    expect(host.pageBoot).toContain("typeof m.key === 'string'");
+  });
+  it('dev: sandbox frames are not allowed to embed frames (no wildcard subdomains)', () => {
+    expect(DEV_APP_ORIGINS.some((o) => o.includes('*.'))).toBe(false);
+    const re = DEV_APP_ORIGINS.map((o) => new RegExp(originRegex(o)));
+    expect(re.some((r) => r.test('http://p-abc.mini.internal:5292'))).toBe(false);
+    expect(re.some((r) => r.test('http://p-abc.localhost:5292'))).toBe(false);
+    expect(re.some((r) => r.test('http://mini.internal:5291'))).toBe(true);
+  });
   it('unknown paths 404; app origins configurable', () => {
     expect(host.serve('/nope').status).toBe(404);
     const prod = frameHost({ appOrigins: ['https://canvas.lab.collie.studio'] });

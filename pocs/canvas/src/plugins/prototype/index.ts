@@ -1,6 +1,6 @@
 import './prototype.css';
 import type { CanvasNode, MenuEntry, Plugin } from '../../core';
-import { fromFrame, pageFrame, readMessage } from './bridge';
+import { PAGE_ESCAPE, fromFrame, pageFrame, readMessage } from './bridge';
 import { NOTE_H, autoLinkChanges } from './commands';
 import { mountEdges, type EdgeLayer } from './edges';
 import { editNote, editPage } from './editor';
@@ -43,7 +43,14 @@ export const prototypePlugin: Plugin = {
     };
     const frameOf = (n: CanvasNode) => {
       const f = page(n);
-      return pageFrame(f.html, f.vw, docHeight(n), n.width / f.vw, state);
+      const frame = pageFrame(f.html, f.vw, docHeight(n), n.width / f.vw, state);
+      // Escape typed inside an interactive page stops interacting (keys in a frame never reach the canvas)
+      frame.addEventListener(PAGE_ESCAPE, () => {
+        if (!live.has(n.id)) return;
+        setLive(n.id, false);
+        app.view.root.focus({ preventScroll: true });
+      });
+      return frame;
     };
     /** Show the page from its start again (with the current session state): a fresh frame, never a navigation of the old one. */
     const reload = (id: string) => {
@@ -98,10 +105,6 @@ export const prototypePlugin: Plugin = {
       if (!id || !live.has(id)) return;
       if (m.kind === 'set') state[m.key] = m.value;
       else if (m.kind === 'goto') goFrom(id, m.target);
-      else if (m.kind === 'escape') {
-        setLive(id, false);
-        app.view.root.focus({ preventScroll: true });
-      }
       else if (trail.current === id && trail.back()) {
         reload(trail.current);
         app.store.select([trail.current]);

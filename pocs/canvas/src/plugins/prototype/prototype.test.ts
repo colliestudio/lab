@@ -176,7 +176,8 @@ describe('sandbox bridge', () => {
     expect(readMessage({ tag: TAG, kind: 'goto', target: 'Plan' })).toEqual({ kind: 'goto', target: 'Plan' });
     expect(readMessage({ tag: TAG, kind: 'goto' })).toEqual({ kind: 'goto', target: '' });
     expect(readMessage({ tag: TAG, kind: 'back' })).toEqual({ kind: 'back' });
-    expect(readMessage({ tag: TAG, kind: 'escape' })).toEqual({ kind: 'escape' });
+    // Escape is not a page message any more: a page could close Play with it. The frame host reports a real key press.
+    expect(readMessage({ tag: TAG, kind: 'escape' })).toBeUndefined();
     expect(readMessage({ tag: TAG, kind: 'set', key: 'name', value: 'Ada' })).toEqual({ kind: 'set', key: 'name', value: 'Ada' });
     expect(readMessage({ kind: 'goto', target: 'x' })).toBeUndefined();
     expect(readMessage({ tag: TAG, kind: 'eval', code: '1' })).toBeUndefined();
