@@ -15,6 +15,7 @@ export function parseBridgeArgs(argv: string[]): BridgeArgs {
   const files: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
+    if (a.startsWith('-') && !a.startsWith('--') && a.length > 1) throw new Error(`unknown option ${a} (options: --port, --host, --allow-origin)`);
     if (!a.startsWith('--')) {
       files.push(a);
       continue;

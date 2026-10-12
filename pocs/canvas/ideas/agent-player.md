@@ -31,7 +31,7 @@ Branch `idea/agent-player` (from `idea/agent-bridge`), worktree `~/code/canvas-w
 ## Takeback (and no undo in a rules game)
 
 - `chess.takeback {id}` (CLI `canvas chess takeback`, MCP `chess_takeback`, board menu "Take back my last move"): seated, it goes back to just before your last move (your move and the reply); not seated at an open board, the last move. It replays the SAN record (`moves`, from the standard start, or from `start` when rules were turned on mid-game) and puts the pieces, captured pieces, promoted pieces (back to pawns), castling rights, en passant, counters, last-move highlight and result as they were, as one step. If the pieces no longer match the record (moved by hand), it refuses and says so. Not seated while both seats are taken: refused.
-- Undo of any step that touched a rules board or its pieces is refused with "use takeback", in the browser (the toolbar says why), the CLI and MCP. This is a core hook (`Store.undoGuards`), so other games can guard their own state. Free-play boards undo as before.
+- Undo of a step that changed only rules-board nodes (a move, a bounced drag, a seat) is not done: that step is skipped, dropped from the actor's undo history, and the player is told "use takeback" (browser toolbar, CLI/MCP error when nothing else was undone). Steps below it stay reachable: add a note, play e4, undo: the e4 step is skipped and the note goes. A mixed step (table reset, a multi-select drag with a note) is undone whole: it restores everything it changed together, rules boards included, and `core.reset` is always undone whole (the Reset dialog promises that). This is a core hook (`Store.undoGuards`, a per-node predicate), so other games can guard their own state. Free-play boards undo as before.
 
 ## Demo
 
@@ -86,7 +86,7 @@ Restart (all detached): `cd ~/code/canvas-wt/agent-player && nohup pnpm exec vit
 - Rules enforcement is per peer; nothing stops a raw doc edit (file edit, modified client) from making an illegal position. The next move is judged from whatever the position is. Same for two people moving an open (hot) seat's color at the same moment: each peer accepts its own drop, both merge.
 - Multi-piece drags on a rules board bounce back; promotion by drag is always a queen.
 - Takeback asks nobody (a bot cannot object, a person is not asked), and the board must still match its record: a rules game whose pieces were rearranged by hand (free play in between, then rules on) restarts the record, so earlier moves cannot be taken back.
-- Undo is refused for every step touching a rules board, including a bounced illegal drag or a drag of a captured piece: there is no per-gesture undo in a game, only takeback.
+- Undo skips every step that only touches a rules board, including a bounced illegal drag: there is no per-gesture undo in a game, only takeback. A mixed step undone after the opponent moved could still leave the game record behind the pieces (takeback refuses then, since pieces and record no longer match).
 - `--as` is unauthenticated: any local process can claim a seat holder's name.
 - A seated agent that dies keeps its seat until someone frees it (menu) — bots stand up on Ctrl-C/kill of the node process only (killing the `pnpm` wrapper may not forward the signal).
 - Long waits are long-polls of ≤290 s; MCP clients may time out a tool call sooner; `chess_wait_for_turn` defaults to 240 s and says "call again".

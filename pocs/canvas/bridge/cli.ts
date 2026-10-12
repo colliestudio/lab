@@ -46,6 +46,10 @@ const HELP = `canvas: read and edit a live canvas through the bridge
   --as NAME     who you are on the board (default $CANVAS_AS or "Claude")
   --bridge URL  default $CANVAS_BRIDGE or http://localhost:5222`;
 
+process.stdout.on('error', (e: NodeJS.ErrnoException) => {
+  if (e.code === 'EPIPE') process.exit(0); // `canvas list | head`
+  throw e;
+});
 const argv = process.argv.slice(2);
 const flags: Record<string, string> = {};
 const pos: string[] = [];

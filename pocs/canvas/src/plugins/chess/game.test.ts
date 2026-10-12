@@ -133,6 +133,31 @@ describe('chess rules mode', () => {
     expect(board(a.doc.get(id)!).turn).toBe('w');
   });
 
+  describe('undo around a rules game', () => {
+    const note = { id: 'n1', type: 'text', x: 5000, y: 0, width: 100, height: 50, text: 'hi' };
+    it('a chess step is skipped, so undo still reaches the steps below it', () => {
+      const { a, id } = game();
+      a.dispatch('core.add', { nodes: [note] });
+      a.dispatch('chess.move', { id, move: 'e4' });
+      const told: string[] = [];
+      a.onUndoRefused = (w) => told.push(w);
+      expect(a.undo()).toBe(true); // skips e4 (says why), undoes the note
+      expect(told[0]).toMatch(/takeback/);
+      expect(a.doc.get('n1')).toBeUndefined();
+      expect(board(a.doc.get(id)!).moves).toEqual(['e4']);
+      expect(a.undo()).toBe(false);
+    });
+    it('reset table is undone whole, rules board included', () => {
+      const { a, id } = game();
+      a.dispatch('chess.move', { id, move: 'e4' });
+      a.dispatch('core.reset', {});
+      expect(board(a.doc.get(id)!).moves).toBeUndefined();
+      expect(a.undo()).toBe(true);
+      expect(board(a.doc.get(id)!).moves).toEqual(['e4']);
+      expect(piece(at(a, id, 'e4')!).piece).toBe('P');
+    });
+  });
+
   describe('takeback', () => {
     const play = (s: Store, id: string, ...ms: string[]) => ms.forEach((m) => expect(s.dispatch('chess.move', { id, move: m }).ok).toBe(true));
     const sans = (s: Store, id: string) => board(s.doc.get(id)!).moves;

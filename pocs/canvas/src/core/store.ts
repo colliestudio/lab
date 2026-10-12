@@ -62,6 +62,8 @@ const REPAIR = Symbol('repair');
 const STEP_EVENTS = 'events';
 /** Undo stack item meta: ids of the nodes the step changed (for `undoGuards`). */
 const STEP_IDS = 'ids';
+/** Undo stack item meta: the step restores a whole table (reset), whatever it touched. */
+const STEP_WHOLE = 'whole';
 type StepEvent = { text: string; targets?: string[] };
 
 type YNode = Y.Map<unknown>;
@@ -113,11 +115,12 @@ export class Store {
    */
   readonly repairs: Command<{ ids: string[]; undo: boolean }>[] = [];
   /**
-   * A plugin can refuse to undo a step that touched nodes it keeps consistent itself (a chess game:
-   * undoing one side's move after the other replied leaves the game fields wrong). Return the reason,
-   * shown to the player, or undefined to allow.
+   * A plugin can guard nodes it keeps consistent itself (a chess game: undoing one side's move after
+   * the other replied leaves the game fields wrong). Return the reason (shown to the player) for a
+   * guarded node. An undo whose top step changed only guarded nodes skips that step and goes on to
+   * the one below; `core.reset` is always undone whole.
    */
-  readonly undoGuards: ((ids: string[], doc: DocView) => string | undefined)[] = [];
+  readonly undoGuards: ((id: string, doc: DocView) => string | undefined)[] = [];
   /** Told why an undo/redo was refused (the app shows it). */
   onUndoRefused?: (reason: string) => void;
   /** Commands that upgrade older docs in place; run (not undoable) after every load. Must be idempotent. */
@@ -257,6 +260,7 @@ export class Store {
       }
       item.meta.set(STEP_IDS, [...ids]);
     }
+    if (name === 'core.reset' && item && (item !== top || merge)) item.meta.set(STEP_WHOLE, true);
     if (res.events) this.record(res.events, step);
     if (res.select) this.select(res.select);
     return { ...res, ok: true };
@@ -433,16 +437,24 @@ export class Store {
   redo(): boolean {
     return this.step('redo');
   }
-  /** Why the next undo/redo is refused by a plugin (see `undoGuards`), if it is. */
-  undoBlocked(kind: 'undo' | 'redo' = 'undo'): string | undefined {
-    const top = (kind === 'undo' ? this.undoManager.undoStack : this.undoManager.redoStack).at(-1);
-    const ids = top?.meta.get(STEP_IDS) as string[] | undefined;
-    if (!ids?.length) return;
-    for (const g of this.undoGuards) {
-      const why = g(ids, this.doc);
-      if (why) return why;
+  /**
+   * Why a step is not undoable (see `undoGuards`), if it is. Only a step whose every changed node is
+   * guarded counts: a step that also changed other things (a table reset) is restored as a whole.
+   */
+  private guardedStep(item: { meta: Map<string, unknown> } | undefined): string | undefined {
+    const ids = item?.meta.get(STEP_IDS) as string[] | undefined;
+    if (!ids?.length || item?.meta.get(STEP_WHOLE)) return;
+    let why: string | undefined;
+    for (const id of ids) {
+      const w = this.undoGuards.map((g) => g(id, this.doc)).find(Boolean);
+      if (!w) return;
+      why ??= w;
     }
-    return;
+    return why;
+  }
+  /** Why the next undo/redo would skip the top step, if it would. */
+  undoBlocked(kind: 'undo' | 'redo' = 'undo'): string | undefined {
+    return this.guardedStep((kind === 'undo' ? this.undoManager.undoStack : this.undoManager.redoStack).at(-1));
   }
   /**
    * Undoes exactly the top step. Yjs would pop on until a step changes something, so a step whose
@@ -452,11 +464,14 @@ export class Store {
   private step(kind: 'undo' | 'redo'): boolean {
     const um = this.undoManager;
     const [from, to] = kind === 'undo' ? [um.undoStack, um.redoStack] : [um.redoStack, um.undoStack];
-    const blocked = this.undoBlocked(kind);
-    if (blocked) {
-      this.onUndoRefused?.(blocked);
-      return false;
+    // Steps a plugin guards are skipped (dropped from this history), so they don't block the ones below.
+    let skipped: string | undefined;
+    for (let top = from.at(-1), why = this.guardedStep(top); top && why; top = from.at(-1), why = this.guardedStep(top)) {
+      skipped ??= why;
+      from.pop();
     }
+    if (skipped) this.onUndoRefused?.(skipped);
+    if (!from.length) return false;
     const events = from.at(-1)?.meta.get(STEP_EVENTS) as StepEvent[] | undefined;
     const stepIds = from.at(-1)?.meta.get(STEP_IDS);
     let done = false;

@@ -15,13 +15,10 @@ export function registerChessLogic(store: Store) {
   store.resets.push(commands.resetAll as Command, resetGames as Command);
   store.repairs.push(commands.repair as Command);
   // undo can't be trusted in a rules game: once the other side has moved, it restores the pieces but not the game record
-  store.undoGuards.push((ids, doc) => {
-    for (const id of ids) {
-      const n = doc.get(id);
-      const b = n && (isBoard(n) ? n : isPiece(n) ? doc.get(piece(n).board ?? '') : undefined);
-      if (b && isBoard(b) && board(b).rules) return 'Undo is off in a chess game (it would leave the game record wrong): use takeback (chess.takeback)';
-    }
-    return undefined;
+  store.undoGuards.push((id, doc) => {
+    const n = doc.get(id);
+    const b = n && (isBoard(n) ? n : isPiece(n) ? doc.get(piece(n).board ?? '') : undefined);
+    return b && isBoard(b) && board(b).rules ? 'Undo is off in a chess game (it would leave the game record wrong): use takeback (chess.takeback)' : undefined;
   });
   store.importFilters.push(repairImport);
   store.exportFilters.push(shapeExport);

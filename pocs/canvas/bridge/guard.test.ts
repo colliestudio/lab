@@ -56,6 +56,7 @@ describe('parseBridgeArgs', () => {
     expect(() => parseBridgeArgs(['--host', '--port', '1'])).toThrow(/needs a value/);
     expect(() => parseBridgeArgs(['--prot', '1'])).toThrow(/unknown option/);
     expect(() => parseBridgeArgs(['a', 'b'])).toThrow(/one file/);
+    expect(() => parseBridgeArgs(['-p', '1'])).toThrow(/unknown option -p/);
     expect(() => parseBridgeArgs(['--port', 'x'])).toThrow(/not a port/);
     expect(() => parseBridgeArgs(['--host='])).toThrow(/needs a value/); // would bind every interface
     expect(() => parseBridgeArgs(['--port='])).toThrow(/needs a value/);
