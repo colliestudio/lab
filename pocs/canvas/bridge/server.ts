@@ -18,10 +18,11 @@ import { queryNodes } from './query';
 //  - <dir>/.canvas-bridge/<name>.ystate keeps the Yjs history across restarts (so open tabs and
 //    the restarted bridge agree on identity); delete it any time, the file wins.
 //
-// Usage: tsx bridge/server.ts <file.canvas> [--port 5222]
+// Usage: tsx bridge/server.ts <file.canvas> [--port 5222] [--host 127.0.0.1]  (default: all interfaces)
 
 const args = process.argv.slice(2);
 const file = resolve(args.find((a) => !a.startsWith('--')) ?? 'board.canvas');
+const hostArg = args.includes('--host') ? args[args.indexOf('--host') + 1] : undefined;
 const port = Number(args[args.indexOf('--port') + 1]) || Number(process.env.CANVAS_BRIDGE_PORT) || 5222;
 const stateDir = join(dirname(file), '.canvas-bridge');
 const statePath = join(stateDir, `${basename(file)}.ystate`);
@@ -264,7 +265,7 @@ async function api(req: IncomingMessage, res: ServerResponse) {
   }
 }
 
-http.listen(port, () => log(`canvas bridge: ${file} on http://localhost:${port} (browsers: ?bridge=ws://localhost:${port})`));
+http.listen(port, hostArg, () => log(`canvas bridge: ${file} on http://localhost:${port} (browsers: ?bridge=ws://localhost:${port})`));
 const stop = () => {
   clearTimeout(writeTimer);
   writeOut();

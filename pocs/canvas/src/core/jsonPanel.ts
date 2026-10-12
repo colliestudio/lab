@@ -23,6 +23,7 @@ const AUTO_DELAY = 900;
 const FOLLOW_DELAY = 120;
 
 const setMarks = StateEffect.define<{ from: number; to: number }[]>();
+/** The selected nodes' blocks: a tinted band over each of their lines. */
 const marks = StateField.define<DecorationSet>({
   create: () => Decoration.none,
   update(deco, tr) {
@@ -30,7 +31,9 @@ const marks = StateField.define<DecorationSet>({
     for (const e of tr.effects) {
       if (!e.is(setMarks)) continue;
       const b = new RangeSetBuilder<Decoration>();
-      for (const r of e.value.slice().sort((a, c) => a.from - c.from)) b.add(r.from, r.to, Decoration.mark({ class: 'jp-selected' }));
+      const lines = new Set<number>();
+      for (const r of e.value) for (let l = tr.state.doc.lineAt(r.from).number; l <= tr.state.doc.lineAt(r.to).number; l++) lines.add(l);
+      for (const l of [...lines].sort((a, c) => a - c)) b.add(tr.state.doc.line(l).from, tr.state.doc.line(l).from, Decoration.line({ class: 'jp-selected' }));
       deco = b.finish();
     }
     return deco;
@@ -288,6 +291,7 @@ export function mountJsonPanel(app: App, table: HTMLElement, onToggle?: (open: b
     ]),
     EditorView.updateListener.of((u) => {
       if (u.docChanged && from === 'user') {
+        flashMsg = '';
         validate();
         clearTimeout(autoTimer);
         if (auto.checked) autoTimer = setTimeout(() => !errorMsg && dirty() && doApply(), AUTO_DELAY);
@@ -308,10 +312,15 @@ export function mountJsonPanel(app: App, table: HTMLElement, onToggle?: (open: b
   // keep key presses in the editor out of the canvas' shortcuts (Delete would delete the selected node!)
   for (const type of ['keydown', 'keyup', 'keypress'] as const) root.addEventListener(type, (e) => e.stopPropagation());
 
+  /** Room for the panel: the canvas and the toolbar stop where it starts. */
+  const dock = (w: number) => {
+    table.style.right = w ? `${w}px` : '';
+    document.documentElement.style.setProperty('--jp-w', `${w}px`);
+  };
   const setWidth = (w: number) => {
     const width = Math.round(Math.min(Math.max(w, 280), window.innerWidth * 0.8));
     root.style.width = `${width}px`;
-    if (!root.hidden) table.style.right = `${width}px`;
+    if (!root.hidden) dock(width);
     localStorage.setItem(WIDTH_KEY, String(width));
   };
   grip.addEventListener('pointerdown', (e) => {
@@ -334,7 +343,7 @@ export function mountJsonPanel(app: App, table: HTMLElement, onToggle?: (open: b
     open() {
       if (!root.hidden) return;
       root.hidden = false;
-      table.style.right = root.style.width;
+      dock(parseInt(root.style.width));
       localStorage.setItem(OPEN_KEY, '1');
       if (!opened || !dirty()) show(session.refresh());
       opened = true;
@@ -345,7 +354,7 @@ export function mountJsonPanel(app: App, table: HTMLElement, onToggle?: (open: b
     close() {
       if (root.hidden) return;
       root.hidden = true;
-      table.style.right = '';
+      dock(0);
       localStorage.setItem(OPEN_KEY, '0');
       app.view.root.focus();
       onToggle?.(false);

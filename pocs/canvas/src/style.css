@@ -19,6 +19,9 @@ body {
   display: flex;
   gap: 6px;
   align-items: center;
+  flex-wrap: wrap;
+  max-width: calc(100vw - var(--jp-w, 0px) - 24px);
+  box-sizing: border-box;
   padding: 6px;
   border-radius: 10px;
   background: rgba(15, 25, 20, 0.75);

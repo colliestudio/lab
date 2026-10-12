@@ -85,9 +85,8 @@
 .jp-host .cm-scroller {
   overflow: auto;
 }
-.jp-selected {
-  background: rgba(255, 210, 90, 0.18);
-  box-shadow: 0 0 0 1px rgba(255, 210, 90, 0.35);
+.jp-host .jp-selected {
+  background: rgba(255, 210, 90, 0.16);
 }
 .jp-status {
   padding: 6px 10px;
