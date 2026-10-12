@@ -484,7 +484,7 @@ export function Host() {
         </main>
         {panel && <FeedbackPanel cm={cm} rows={rows} tab={rows.length ? tab : "comments"} setTab={setTab} mode={mode} onMode={() => setMode(!mode)} copied={copied}
           onCopyComments={() => copyText(commentsMd(), "comments")} onCopyDecisions={() => copyText(decisionsMd(), "decisions")} onCopyAll={() => copyText(allMd(), "all")}
-          onClearAnswers={am.clear} onJumpDecision={jumpDecision} onJumpComment={jumpComment} onHover={setHoverC} pageTitle={(id) => (id ? pageById(id)?.title : undefined)} onClose={() => { setPanel(false); setMode(false); }} />}
+          onClearAnswers={am.clear} onEditNote={(r, n) => am.editNote(r.id, n)} onJumpDecision={jumpDecision} onJumpComment={jumpComment} onHover={setHoverC} pageTitle={(id) => (id ? pageById(id)?.title : undefined)} onClose={() => { setPanel(false); setMode(false); }} />}
       </div>
       {bare && !present.active && (
         <>

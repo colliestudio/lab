@@ -12,6 +12,8 @@ export interface Answer {
   /** the chosen option was the recommended one */
   rec?: boolean;
   at: string;
+  /** when the reader changed an earlier answer (set by the host) */
+  edited?: string;
 }
 export interface FeedbackCtxValue {
   /** true when a host collects answers; without one (static render) decisions show as plain lists */

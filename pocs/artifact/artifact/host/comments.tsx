@@ -10,7 +10,7 @@ import { contextOf, labelFor, norm, textOf, textRange, whereFor } from "./anchor
  */
 export interface StoredAnchor { id: string; label: string; excerpt: string; page?: string; where?: string; quote?: string; before?: string; after?: string }
 export interface Anchor extends Omit<StoredAnchor, "page"> { el: HTMLElement; range?: Range }
-export interface Comment { id: string; anchor: StoredAnchor; body: string; created: string }
+export interface Comment { id: string; anchor: StoredAnchor; body: string; created: string; /** set when the text was changed after it was written */ edited?: string }
 
 const SEL = "[data-aid], [data-c], [data-section] > .a-h, p, li, pre, blockquote, h1, h2, h3, h4, figure, tr, td, th";
 const short = (s: string, n = 70) => { const t = s.replace(/\s+/g, " ").trim(); return t.length > n ? t.slice(0, n - 1) + "…" : t; };
@@ -115,8 +115,16 @@ export function findAnchor(root: HTMLElement, id: string): HTMLElement | null {
  * supply its own object (set `window.artifactComments` before the page script runs). Answer methods are optional there
  * (missing ones fall back to local storage).
  */
-export interface CommentStore { list(): Comment[]; add(c: Comment): void; remove(id: string): void; clear(): void }
-export interface AnswerStore { answers(): Record<string, Answer>; setAnswer(id: string, a: Answer | null): void; clearAnswers(): void }
+export interface CommentStore {
+  list(): Comment[]; add(c: Comment): void; remove(id: string): void; clear(): void;
+  /** change a comment in place (its anchor, id and position stay); a backend implements it as a PATCH */
+  update(id: string, patch: Partial<Pick<Comment, "body" | "edited">>): void;
+}
+export interface AnswerStore {
+  answers(): Record<string, Answer>; setAnswer(id: string, a: Answer | null): void; clearAnswers(): void;
+  /** change part of an existing answer (the note, the choice); no-op when there is none */
+  updateAnswer(id: string, patch: Partial<Answer>): void;
+}
 export type FeedbackStore = CommentStore & AnswerStore;
 
 export function localCommentStore(key: string): FeedbackStore {
@@ -125,17 +133,22 @@ export function localCommentStore(key: string): FeedbackStore {
   const save = (l: Comment[]) => localStorage.setItem(k, JSON.stringify(l));
   const loadA = (): Record<string, Answer> => { try { return JSON.parse(localStorage.getItem(ak) ?? "{}"); } catch { return {}; } };
   return {
-    list: load, add: (c) => save([...load(), c]), remove: (id) => save(load().filter((c) => c.id !== id)), clear: () => localStorage.removeItem(k),
+    list: load, add: (c) => save([...load(), c]), update: (id, patch) => save(load().map((c) => (c.id === id ? { ...c, ...patch } : c))), remove: (id) => save(load().filter((c) => c.id !== id)), clear: () => localStorage.removeItem(k),
     answers: loadA,
     setAnswer: (id, a) => { const m = loadA(); if (a) m[id] = a; else delete m[id]; localStorage.setItem(ak, JSON.stringify(m)); },
     clearAnswers: () => localStorage.removeItem(ak),
+    updateAnswer: (id, patch) => { const m = loadA(); if (m[id]) { m[id] = { ...m[id], ...patch }; localStorage.setItem(ak, JSON.stringify(m)); } },
   };
 }
 
 export function makeStore(key: string): FeedbackStore {
   const local = localCommentStore(key);
   const custom = (window as unknown as { artifactComments?: Partial<FeedbackStore> }).artifactComments;
-  return { ...local, ...(custom ?? {}) } as FeedbackStore;
+  const store = { ...local, ...(custom ?? {}) } as FeedbackStore;
+  // a backend written before edits existed: rewrite through the methods it has (the comment moves to the end of its list)
+  if (custom && !custom.update) store.update = (id, patch) => { const c = store.list().find((x) => x.id === id); if (c) { store.remove(id); store.add({ ...c, ...patch }); } };
+  if (custom && !custom.updateAnswer) store.updateAnswer = (id, patch) => { const a = store.answers()[id]; if (a) store.setAnswer(id, { ...a, ...patch }); };
+  return store;
 }
 
 export function useComments(store: FeedbackStore) {
@@ -147,16 +160,25 @@ export function useComments(store: FeedbackStore) {
       store.add({ id: "c" + Date.now().toString(36), anchor: { ...rest, ...(page ? { page } : {}) }, body, created: new Date().toISOString() });
       setList(store.list());
     },
+    edit: (id: string, body: string) => { store.update(id, { body, edited: new Date().toISOString() }); setList(store.list()); },
     remove: (id: string) => { store.remove(id); setList(store.list()); },
     clear: () => { store.clear(); setList(store.list()); },
   };
 }
 
+const changed = (a: Answer, b: Answer) => a.choice !== b.choice || a.label !== b.label || (a.custom ?? "") !== (b.custom ?? "") || (a.note ?? "") !== (b.note ?? "");
+
 export function useAnswerState(store: FeedbackStore) {
   const [answers, setAnswers] = useState<Record<string, Answer>>(() => store.answers());
   return {
     answers,
-    answer: (id: string, a: Answer | null) => { store.setAnswer(id, a); setAnswers(store.answers()); },
+    // answering again with something different is an edit: the reader sees "edited" and the earlier mark is kept
+    answer: (id: string, a: Answer | null) => {
+      const prev = store.answers()[id];
+      const next = a && prev ? { ...a, ...(prev.edited ? { edited: prev.edited } : {}), ...(changed(prev, a) ? { edited: new Date().toISOString() } : {}) } : a;
+      store.setAnswer(id, next); setAnswers(store.answers());
+    },
+    editNote: (id: string, note: string) => { store.updateAnswer(id, { note: note.trim() || undefined, edited: new Date().toISOString() }); setAnswers(store.answers()); },
     clear: () => { store.clearAnswers(); setAnswers(store.answers()); },
   };
 }
@@ -193,8 +215,25 @@ export function Composer({ anchor, onSave, onCancel, existing, pageTitle }: { an
     </div>, document.body);
 }
 
+/** A small inline editor: Save (⌘↵) / Cancel (Esc). An empty note is allowed (it removes it); `required` blocks empty text. */
+function Editor({ initial, label, rows = 3, required, onSave, onCancel }: { initial: string; label: string; rows?: number; required?: boolean; onSave: (t: string) => void; onCancel: () => void }) {
+  const [t, setT] = useState(initial);
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => { const e = ref.current; if (e) { e.focus(); e.setSelectionRange(e.value.length, e.value.length); } }, []);
+  const ok = !required || !!t.trim();
+  return (
+    <div className="h-editor">
+      <textarea ref={ref} value={t} rows={rows} aria-label={label}
+        onChange={(e) => setT(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && ok) onSave(t.trim()); if (e.key === "Escape") { e.stopPropagation(); onCancel(); } }} />
+      <div className="h-composer-actions"><button onClick={onCancel}>Cancel</button><button className="primary" disabled={!ok} onClick={() => onSave(t.trim())}>Save (⌘↵)</button></div>
+    </div>
+  );
+}
+
 /** Every decision with its answer: question, the choice, recommended or not, the note. Used in the drawer and on the Summary slide. */
-export function DecisionList({ rows, onJump }: { rows: DecisionRow[]; onJump?: (r: DecisionRow) => void }) {
+export function DecisionList({ rows, onJump, onEditNote }: { rows: DecisionRow[]; onJump?: (r: DecisionRow) => void; onEditNote?: (r: DecisionRow, note: string) => void }) {
+  const [editing, setEditing] = useState<string | null>(null);
   const multi = new Set(rows.map((r) => r.page).filter(Boolean)).size > 1;
   return (
     <ol className="h-decisions">
@@ -209,7 +248,16 @@ export function DecisionList({ rows, onJump }: { rows: DecisionRow[]; onJump?: (
               <div className="h-d-a">
                 <b>{a.choice === "unsure" ? "Not sure / discuss" : a.choice === "other" ? `Own answer: ${a.custom ?? a.label}` : a.label}</b>
                 {a.choice !== "unsure" && a.choice !== "other" && <span className={a.rec ? "h-tag ok" : "h-tag diff"}>{a.rec ? "recommended" : r.recommended ? "differs from the recommendation" : "chosen"}</span>}
-                {a.note && <div className="a-muted">Note: {a.note}</div>}
+                {editing === r.id ? (
+                  <Editor initial={a.note ?? ""} label="Note" rows={2} onSave={(t) => { onEditNote?.(r, t); setEditing(null); }} onCancel={() => setEditing(null)} />
+                ) : a.note && <div className="a-muted">Note: {a.note}</div>}
+                {a.edited && <span className="h-edited" title={`Edited ${new Date(a.edited).toLocaleString()}`}>edited</span>}
+                {onEditNote && editing !== r.id && (
+                  <div className="h-row-actions">
+                    <button className="h-link" onClick={() => setEditing(r.id)}>{a.note ? "Edit note" : "Add note"}</button>
+                    <button className="h-link" onClick={() => onJump?.(r)} title="Go to the decision to change the choice">Change answer</button>
+                  </div>
+                )}
               </div>
             ) : <div className="h-d-a a-muted">not decided{r.recommended ? ` · recommended: ${r.recommended}` : ""}</div>}
           </li>
@@ -219,13 +267,14 @@ export function DecisionList({ rows, onJump }: { rows: DecisionRow[]; onJump?: (
   );
 }
 
-export function FeedbackPanel({ cm, rows, tab, setTab, mode, onMode, copied, onCopyComments, onCopyDecisions, onCopyAll, onClearAnswers, onJumpDecision, onJumpComment, onHover, pageTitle, onClose }: {
+export function FeedbackPanel({ cm, rows, tab, setTab, mode, onMode, copied, onCopyComments, onCopyDecisions, onCopyAll, onClearAnswers, onEditNote, onJumpDecision, onJumpComment, onHover, pageTitle, onClose }: {
   cm: ReturnType<typeof useComments>; rows: DecisionRow[]; tab: "decisions" | "comments"; setTab: (t: "decisions" | "comments") => void;
   mode: boolean; onMode: () => void; copied: string; onCopyComments: () => void; onCopyDecisions: () => void; onCopyAll: () => void;
-  onClearAnswers: () => void; onJumpDecision: (r: DecisionRow) => void; onJumpComment: (c: Comment) => void; onHover: (c: Comment | null) => void; pageTitle: (id?: string) => string | undefined; onClose: () => void;
+  onClearAnswers: () => void; onEditNote: (r: DecisionRow, note: string) => void; onJumpDecision: (r: DecisionRow) => void; onJumpComment: (c: Comment) => void; onHover: (c: Comment | null) => void; pageTitle: (id?: string) => string | undefined; onClose: () => void;
 }) {
   const [sure, setSure] = useState<"" | "comments" | "answers">("");
   useEffect(() => { if (!sure) return; const t = setTimeout(() => setSure(""), 3000); return () => clearTimeout(t); }, [sure]);
+  const [editing, setEditing] = useState<string | null>(null);
   const decided = rows.filter((r) => r.answer).length;
   return (
     <aside className="h-panel" aria-label="Feedback">
@@ -236,21 +285,24 @@ export function FeedbackPanel({ cm, rows, tab, setTab, mode, onMode, copied, onC
       </div>
       {tab === "decisions" && rows.length > 0 ? (
         <>
-          <div className="h-panel-actions">
+          <div className="h-panel-actions h-panel-fixed">
             <button className="h-btn" disabled={!decided} onClick={onCopyDecisions} title="Copy every decision and its answer as Markdown to paste back to the author or agent">{copied === "decisions" ? "Copied" : "Copy decisions"}</button>
             <button className="h-btn" disabled={!decided && !cm.list.length} onClick={onCopyAll} title="Copy decisions and comments together">{copied === "all" ? "Copied" : "Copy all feedback"}</button>
             <button className="h-btn" disabled={!decided} onClick={() => { if (sure === "answers") { onClearAnswers(); setSure(""); } else setSure("answers"); }}>{sure === "answers" ? "Click again to clear" : "Clear answers"}</button>
           </div>
-          <DecisionList rows={rows} onJump={onJumpDecision} />
+          <div className="h-panel-body" tabIndex={0} role="region" aria-label="Decisions">
+            <DecisionList rows={rows} onJump={onJumpDecision} onEditNote={onEditNote} />
+          </div>
         </>
       ) : (
         <>
-          <div className="h-panel-actions">
+          <div className="h-panel-actions h-panel-fixed">
             <button className="h-btn" aria-pressed={mode} onClick={onMode} title="Comment mode (c): click any element on the page to leave a comment">{mode ? "Click an element…" : "Add comment"}</button>
             <button className="h-btn" onClick={onCopyComments} disabled={!cm.list.length} title="Copy all comments as Markdown to paste back to the author or agent">{copied === "comments" ? "Copied" : "Copy comments"}</button>
             {rows.length > 0 && <button className="h-btn" onClick={onCopyAll} disabled={!decided && !cm.list.length} title="Copy decisions and comments together">{copied === "all" ? "Copied" : "Copy all feedback"}</button>}
             <button className="h-btn" disabled={!cm.list.length} onClick={() => { if (sure === "comments") { cm.clear(); setSure(""); } else setSure("comments"); }} title="Delete every comment on this page (stored in this browser)">{sure === "comments" ? "Click again to clear" : "Clear all"}</button>
           </div>
+          <div className="h-panel-body" tabIndex={0} role="region" aria-label="Comments">
           {cm.list.length === 0 && <p className="a-muted">Nothing yet. Select text or alt-click anything on the page to comment.</p>}
           {cm.list.map((c, i) => {
             const d = describe(c.anchor, undefined);
@@ -259,11 +311,20 @@ export function FeedbackPanel({ cm, rows, tab, setTab, mode, onMode, copied, onC
                 {c.anchor.page && c.anchor.page !== cm.list[i - 1]?.anchor.page && <div className="h-pagehead">{pageTitle(c.anchor.page) ?? c.anchor.page}</div>}
                 {d.crumb && <div className="h-note-crumb">{d.crumb}</div>}
                 <button className="h-note-on" onClick={() => onJumpComment(c)} title="Show it on the page">{d.quote ? <q>{short(d.quote, 120)}</q> : d.main}</button>
-                <div>{c.body}</div>
-                <button className="h-note-del" onClick={() => cm.remove(c.id)}>Delete</button>
+                {editing === c.id
+                  ? <Editor initial={c.body} label="Comment" required onSave={(t) => { if (t !== c.body.trim()) cm.edit(c.id, t); setEditing(null); }} onCancel={() => setEditing(null)} />
+                  : <div className="h-note-body">{c.body}</div>}
+                {editing !== c.id && (
+                  <div className="h-row-actions">
+                    {c.edited && <span className="h-edited" title={`Edited ${new Date(c.edited).toLocaleString()}`}>edited</span>}
+                    <button className="h-link" onClick={() => setEditing(c.id)}>Edit</button>
+                    <button className="h-link" onClick={() => cm.remove(c.id)}>Delete</button>
+                  </div>
+                )}
               </div>
             );
           })}
+          </div>
         </>
       )}
     </aside>
