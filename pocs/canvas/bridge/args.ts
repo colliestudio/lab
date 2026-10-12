@@ -23,10 +23,11 @@ export function parseBridgeArgs(argv: string[]): BridgeArgs {
     const name = a.slice(2, eq < 0 ? undefined : eq);
     if (!VALUE_FLAGS.has(name)) throw new Error(`unknown option --${name} (options: --port, --host, --allow-origin)`);
     const value = eq < 0 ? argv[++i] : a.slice(eq + 1);
-    if (value === undefined || (eq < 0 && value.startsWith('--'))) throw new Error(`--${name} needs a value`);
+    // empty counts as missing: `--host=` would otherwise bind every interface
+    if (!value || (eq < 0 && value.startsWith('--'))) throw new Error(`--${name} needs a value`);
     if (name === 'port') {
       const n = Number(value);
-      if (!Number.isInteger(n) || n < 0 || n > 65535) throw new Error(`--port: "${value}" is not a port`);
+      if (!/^\d+$/.test(value) || n > 65535) throw new Error(`--port: "${value}" is not a port`);
       out.port = n;
     } else if (name === 'host') out.host = value;
     else out.allowOrigins.push(value);
