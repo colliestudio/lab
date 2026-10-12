@@ -513,3 +513,35 @@ test("images are eager (inlined data URIs gain nothing from lazy) and as-of is s
     assert.match(fmtAsOf("2026-10-12T13:18:00Z", "Asia/Bangkok"), /20:18/);
   } finally { cleanup(d); }
 });
+
+test("inline script escaping keeps regex literals with the u flag valid (JSX highlighting)", async () => {
+  const { page } = await import("../artifact/cli/build.ts");
+  const html = page("t", "a{}", `globalThis.__r = [/<!--/u.test("<!--"), "</script>".length, "<!--".length].join();`);
+  assert.equal(html.match(/<\/script>/g)?.length, 1, "only the closing tag");
+  assert.doesNotMatch(html, /<!--/);
+  const js = html.slice(html.indexOf("<script>") + 8, html.lastIndexOf("</script>"));
+  new Function(js)();
+  assert.equal((globalThis as unknown as { __r: string }).__r, "true,9,4");
+});
+
+test("JSX evidence is highlighted in the built page (browser)", async (t) => {
+  const { findChrome } = await import("../artifact/cli/shot.ts");
+  let exe: string;
+  try { exe = await findChrome(); } catch { return t.skip("no Chromium available"); }
+  const { chromium } = await import("playwright-core");
+  const d = fixture(`import { Code } from "artifact"; export default () => <Code file="evidence/x.tsx" />;`, (dir) => {
+    writeFileSync(join(dir, "evidence/x.tsx"), `export const A = () => (\n  <>\n    <Dialog render={<Button tone="critical" />}>\n      <Text>hi &amp; bye</Text>\n    </Dialog>\n  </>\n);\n`);
+  });
+  const out = join(d, "../a.html");
+  try {
+    writeFileSync(out, (await buildArtifact(d)).html);
+    const b = await chromium.launch({ executablePath: exe });
+    try {
+      const p = await b.newPage();
+      await p.goto("file://" + out);
+      await p.waitForSelector(".a-ln");
+      assert.ok(await p.locator('.a-ln [class*="hljs-"]').count() > 5, "tokens are coloured");
+      assert.equal(await p.locator(".a-ln").count(), 7);
+    } finally { await b.close(); }
+  } finally { cleanup(d); }
+});

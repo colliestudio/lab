@@ -86,12 +86,15 @@ const options = (dir: string, state: { dir: string }, o: BuildOpts): esbuild.Bui
   legalComments: "none",
 });
 
-const esc = (s: string) => s.replace(/<\/(script|style)/gi, "<\\/$1").replace(/<!--/g, "<\\!--");
+// `</script` and `<!--` would end or confuse the inline <script>. \x3C is the same character in strings and in regex
+// literals (even with the u flag, where the old `<\!--` spelling is a syntax error: it broke highlight.js's JSX grammar).
+const escJs = (s: string) => s.replace(/<(\/script|!--)/gi, "\\x3C$1");
+const escCss = (s: string) => s.replace(/<\/style/gi, "\\3C /style");
 export const htmlEscape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
 
 export function page(title: string, css: string, js: string, extra = ""): string {
   return `<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">` +
-    `<title>${htmlEscape(title)}</title><style>${esc(css)}</style></head><body><div id="root"></div>${extra}<script>${esc(js)}</script></body></html>\n`;
+    `<title>${htmlEscape(title)}</title><style>${escCss(css)}</style></head><body><div id="root"></div>${extra}<script>${escJs(js)}</script></body></html>\n`;
 }
 
 function parts(meta: esbuild.Metafile): { name: string; bytes: number }[] {
