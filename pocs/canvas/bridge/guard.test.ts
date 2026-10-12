@@ -27,6 +27,17 @@ describe('guard', () => {
     expect(g.check({}, 'GET')).toMatch(/Host/);
     expect(makeGuard({ port: 1 }).check({ host: 'mini.internal:1' }, 'GET')).toMatch(/Host/);
   });
+  it('refuses a browser request from another site that carries no Origin (an <img> or <script> GET)', () => {
+    expect(g.check({ host: 'localhost:5285', 'sec-fetch-site': 'cross-site' }, 'GET')).toMatch(/cross-site/);
+    expect(g.check({ host: 'localhost:5285', 'sec-fetch-site': 'same-site' }, 'GET')).toMatch(/same-site/); // another local app
+    expect(g.check({ host: 'localhost:5285', 'sec-fetch-site': 'none' }, 'GET')).toBeUndefined(); // typed into the address bar
+    expect(g.check({ host: 'mini.internal:5285', origin: 'http://mini.internal:5284', 'sec-fetch-site': 'same-site' }, 'GET')).toBeUndefined();
+  });
+  it('--allow-origin takes http(s) origins only: "null" never matches', () => {
+    const n = makeGuard({ port: 1, allowOrigins: ['null', 'file://', 'HTTP://App.Example:8080/'] });
+    expect(n.check({ host: 'localhost:1', origin: 'null' }, 'GET')).toMatch(/Origin/);
+    expect(n.check({ host: 'app.example:1', origin: 'http://app.example:8080' }, 'GET')).toBeUndefined();
+  });
   it('requires JSON on POST', () => {
     expect(g.check({ host: 'localhost:5285', 'content-type': 'text/plain' }, 'POST')).toMatch(/json/);
     expect(g.check({ host: 'localhost:5285' }, 'POST')).toMatch(/json/);

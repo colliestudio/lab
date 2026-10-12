@@ -35,6 +35,7 @@ The bridge binds `127.0.0.1` (`--host` to change) and answers only requests a lo
 
 - **Host** must be `localhost`, `127.0.0.1` or `[::1]` (or the host of an `--allow-origin`): a DNS name rebound to 127.0.0.1 is refused.
 - **Origin**, when the request has one (browsers always send it, also on WebSocket), must be the bridge's own origin or one given with `--allow-origin URL` (repeatable, or `$CANVAS_ALLOW_ORIGIN`, comma separated). Anything else gets `403` on every route, reads included (the document and the chat are private). CLI, MCP and curl send no Origin and pass.
+- **No Origin, but from a browser**: an `<img>` or `<script>` GET from another site sends no Origin; browsers mark it `Sec-Fetch-Site: cross-site` (or `same-site` from another local port), and it is refused (reads seat the actor and mark its chat as read). A URL typed into the address bar (`none`) still works.
 - **POST** needs `content-type: application/json`, which a cross-site form or a no-cors `fetch` cannot send.
 - No CORS headers at all: the browser app only uses the WebSocket.
 - Refusals are logged with the origin, so a missing `--allow-origin` shows in the bridge log.
