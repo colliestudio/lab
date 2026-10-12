@@ -143,7 +143,11 @@ export function withTransition(update: () => void, o: TransitionOpts = {}): Prom
     flushSync(update);
     if (src || o.morph != null) {
       const to = morphEls(key).find((e) => e !== src);
-      if (to) { nameIt(to); vars("to-", to); }
+      if (to) {
+        // one name per snapshot: a source that is still on the page (a card under its sheet) hands the name to the target
+        if (src?.isConnected) { const i = named.findIndex(([el]) => el === src); if (i >= 0) { const [, prev] = named.splice(i, 1)[0]; if (prev) (src as HTMLElement).style.setProperty("view-transition-name", prev); else (src as HTMLElement).style.removeProperty("view-transition-name"); } }
+        nameIt(to); vars("to-", to);
+      }
     }
     warnDuplicates();
   };

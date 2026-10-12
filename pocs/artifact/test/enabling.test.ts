@@ -27,6 +27,7 @@ export default function Layout({ children }: { children?: ReactNode }) {
         <button id="to-b" onClick={() => navigate("item-b")}>to b</button>
         <button id="home-f" onClick={() => navigate("home", { params: { f: "zzz" } })}>home f</button>
         <button id="home-restore" onClick={() => navigate("home", { restore: true })}>home restore</button>
+        <button id="sheet-open" onClick={() => navigate("home", { params: { sheet: "1" }, morph: "m-b" })}>sheet</button>
         <button id="morph-b" onClick={() => navigate("item-b", { morph: "m-b" })}>morph b</button>
         <button id="back-home" onClick={() => navigate("home", { direction: "back", morph: "m-b" })}>back home</button>
         <output id="route">{JSON.stringify({ page: r.page, params: r.params, previous: r.previous ?? null, dir: r.direction ?? null, restore: !!r.restore })}</output>
@@ -36,15 +37,17 @@ export default function Layout({ children }: { children?: ReactNode }) {
   );
 }
 `,
-  "index.tsx": `import { Morph, Slide, Section, Table, Callout, usePresentSteps, NoSteps, Step, usePages } from "artifact";
+  "index.tsx": `import { Morph, Slide, Section, Table, Callout, usePresentSteps, NoSteps, Step, usePages, useRoute } from "artifact";
 import { useEffect } from "react";
 function Steps() { const { step, current, markers } = usePresentSteps(2, 0); return <p id="steps">{markers}<span id="sv">step {step} current {String(current)}</span></p>; }
 export default function Home() {
   useEffect(() => { const l: (string | undefined)[] = []; (window as any).navLog = l; new MutationObserver(() => l.push(document.documentElement.dataset.navDir)).observe(document.documentElement, { attributes: true, attributeFilter: ["data-nav-dir"] }); }, []);
   const pages = usePages();
+  const sheet = useRoute().params.sheet;
   return (
     <div>
       <h1>Home</h1>
+      {sheet && <Morph name="m-b" when={false}><div id="sheet" style={{ position: "fixed", inset: 40, background: "#eee", zIndex: 3 }}>sheet</div></Morph>}
       <p id="pages">{pages.map((p) => p.id).join(",")}</p>
       <Slide id="s-one" title="First slide"><h2 id="zzz">Slide one</h2><Steps /><NoSteps><Step><span id="nostep">inner</span></Step></NoSteps></Slide>
       <Slide id="s-two" title="Second slide"><Steps /><p id="two">two</p></Slide>
@@ -178,6 +181,14 @@ test("route params are state, not scroll targets; navigate morph is one-shot wit
     assert.ok(during.seen.some((s) => s.endsWith("|forward")), "the card is named while it transitions: " + during.seen.filter((x, i, a) => a.indexOf(x) === i).join(","));
     assert.equal(during.left, 0, "no name left behind");
     assert.equal(during.dir, null); assert.equal(during.x, "");
+    // a card that stays on the page under its sheet hands the name over: one name per snapshot, no warning
+    await p.goto(p.url().split("#")[0] + "#/");
+    await p.waitForSelector("#card-b");
+    await p.click("#sheet-open");
+    await p.waitForSelector("#sheet");
+    await p.waitForTimeout(900);
+    assert.equal(await p.evaluate(`[...document.querySelectorAll("*")].filter((e) => e.style.viewTransitionName === "m-b").length`), 0);
+    assert.deepEqual((await route(p)).params, { sheet: "1" });
     // browser back reports direction "back" and previous
     await p.goBack();
     await p.waitForFunction(() => document.querySelector("#pages"));
@@ -388,4 +399,120 @@ test("categorical colour tokens exist for both themes; shot defaults to reduced 
       assert.deepEqual(paths.map((x) => x.split("/").pop()).sort(), ["x-home-light.png", "x-item-a-light.png", "x-item-b-light.png", "x-item-c-light.png"]);
     } finally { cleanup(d2); }
   } finally { console.warn = warn; rmSync(out, { recursive: true, force: true }); cleanup(d); }
+});
+
+test("release samples build, check ok and use the new primitives (zoom, sheets, story, deck) in a real browser", async (t) => {
+  for (const n of ["zoom", "story", "launch", "deck"]) {
+    const rep = await check(`samples/release-${n}.artifact`, { types: n === "deck" });
+    assert.deepEqual(rep.errors, [], n);
+  }
+  const b = await browser(t); if (!b) return;
+  const load = async (n: string, w = 1280) => {
+    const built = await buildArtifact(`samples/release-${n}.artifact`);
+    const dir = mkdtempSync(join(tmpdir(), "art-rel-"));
+    writeFileSync(join(dir, "a.html"), built.html);
+    const p = await (await b.newContext({ viewport: { width: w, height: 800 } })).newPage();
+    const errs: string[] = []; p.on("pageerror", (e) => errs.push(e.message)); p.on("console", (m) => { if (m.type() === "warning" && /view-transition/.test(m.text())) errs.push(m.text()); });
+    await p.goto("file://" + join(dir, "a.html"));
+    return { p, errs, dir };
+  };
+  try {
+    // zoom: 29 routes from one module; zoom in names one tile; Esc zooms out and lights the tile we came from
+    let r = await load("zoom");
+    await r.p.waitForSelector(".zb-tile"); await r.p.waitForTimeout(300);
+    assert.equal(await r.p.evaluate(() => (window as unknown as { __artifactPages: string[] }).__artifactPages.length), 29);
+    await r.p.locator('[data-tile="map-fit"]').click();
+    await r.p.waitForSelector(".zf-title"); await r.p.waitForTimeout(800);
+    await r.p.keyboard.press("Escape");
+    await r.p.waitForSelector(".zb-tile"); await r.p.waitForTimeout(800);
+    assert.equal(await r.p.evaluate(() => document.querySelector("[data-lit]")?.getAttribute("data-tile")), "map-fit");
+    assert.deepEqual(r.errs, []);
+    // launch: ?sheet= opens a sheet without scrolling; Esc closes; no name left behind
+    r = await load("launch");
+    await r.p.waitForSelector(".l-card");
+    await r.p.locator("#card-walkthrough").scrollIntoViewIfNeeded();
+    const y = await r.p.evaluate(() => scrollY);
+    await r.p.locator("#card-walkthrough").click();
+    await r.p.waitForSelector(".l-sheet"); await r.p.waitForTimeout(700);
+    assert.equal(await r.p.evaluate(() => location.hash), "#/home?sheet=walkthrough");
+    assert.ok(Math.abs((await r.p.evaluate(() => scrollY)) - y) < 4, "the param is not a scroll target");
+    await r.p.keyboard.press("Escape");
+    await r.p.waitForFunction(() => !document.querySelector(".l-sheet")); await r.p.waitForTimeout(700);
+    assert.equal(await r.p.evaluate(`[...document.querySelectorAll("*")].filter((e) => e.style.viewTransitionName).length`), 0);
+    assert.deepEqual(r.errs, []);
+    // story: back from the deep-dive page restores the scroll
+    r = await load("story");
+    await r.p.waitForSelector(".st-hero"); await r.p.waitForTimeout(300);
+    await r.p.evaluate(() => scrollTo(0, 2600)); await r.p.waitForTimeout(300);
+    await r.p.locator("#rounds-link").evaluate((e) => (e as HTMLElement).click());
+    await r.p.waitForSelector(".rd-back"); await r.p.waitForTimeout(500);
+    await r.p.keyboard.press("Escape");
+    await r.p.waitForSelector(".st-hero"); await r.p.waitForTimeout(1400);
+    assert.ok(Math.abs((await r.p.evaluate(() => scrollY)) - 2600) < 6);
+    assert.deepEqual(r.errs, []);
+    // deck: one frame for 32 routes; p runs the deck (no kit present bar); the notes drawer survives page changes
+    r = await load("deck");
+    await r.p.waitForSelector(".deck"); await r.p.waitForTimeout(300);
+    await r.p.keyboard.press("n");
+    await r.p.keyboard.press("ArrowRight");
+    await r.p.waitForFunction(() => location.hash === "#/numbers"); await r.p.waitForTimeout(600);
+    assert.equal(await r.p.locator(".d-notes[data-open]").count(), 1, "layout state survives the route change");
+    await r.p.keyboard.press("p"); await r.p.waitForTimeout(300);
+    assert.equal(await r.p.evaluate(() => document.documentElement.hasAttribute("data-deck-present")), true);
+    assert.equal(await r.p.locator(".h-present-bar").count(), 0);
+    await r.p.keyboard.press("Escape");
+    await r.p.keyboard.press("Escape"); await r.p.waitForSelector(".o-root"); await r.p.waitForTimeout(400);
+    await r.p.locator('.o-tile[data-id="gallery"]').click();
+    await r.p.waitForFunction(() => location.hash === "#/gallery"); await r.p.waitForTimeout(700);
+    assert.equal(await r.p.locator(".o-root").count(), 0);
+    assert.deepEqual(r.errs, []);
+  } finally { await b.close(); }
+});
+
+test("text selection comments work inside sheets, slides, Code lines, Table cells and Callouts (both shells)", async (t) => {
+  const b = await browser(t); if (!b) return;
+  const pick = async (p: import("playwright-core").Page, sel: string, word: string) => {
+    await p.locator(sel).first().scrollIntoViewIfNeeded();
+    await p.evaluate(`((sel, word) => {
+      const el = document.querySelector(sel);
+      const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      for (let n = w.nextNode(); n; n = w.nextNode()) {
+        const i = n.data.indexOf(word);
+        if (i >= 0) { const r = document.createRange(); r.setStart(n, i); r.setEnd(n, i + word.length); const s = getSelection(); s.removeAllRanges(); s.addRange(r); document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true })); return; }
+      }
+      throw new Error("no text " + word + " in " + sel);
+    })(${JSON.stringify(sel)}, ${JSON.stringify(word)})`);
+    await p.locator(".h-selbtn").click();
+    const on = await p.locator(".h-composer-on").innerText();
+    assert.ok(on.includes(word) && !/nth-of-type|:scope/.test(on), on);
+    await p.locator(".h-composer textarea").fill("c " + word);
+    await p.keyboard.press("Meta+Enter");
+    await p.waitForFunction(() => ((CSS as unknown as { highlights: Map<string, { size: number }> }).highlights.get("a-comment")?.size ?? 0) >= 1);
+  };
+  const build = async (dir: string) => { const f = join(mkdtempSync(join(tmpdir(), "art-sel-")), "a.html"); writeFileSync(f, (await buildArtifact(dir)).html); return f; };
+  try {
+    // launch: a sheet
+    let f = await build("samples/release-launch.artifact");
+    let p = await (await b.newContext({ viewport: { width: 1280, height: 800 } })).newPage();
+    await p.goto("file://" + f + "#/home?sheet=walkthrough");
+    await p.waitForSelector(".l-sheet");
+    const txt = await p.locator(".l-sheet h2, .l-sheet h1").first().innerText();
+    await pick(p, ".l-sheet h2, .l-sheet h1", txt.split(/\s+/)[0]);
+    // deck: the slide headline
+    f = await build("samples/release-deck.artifact");
+    p = await (await b.newContext({ viewport: { width: 1280, height: 800 } })).newPage();
+    await p.goto("file://" + f + "#/numbers");
+    await p.waitForSelector(".s-head");
+    await pick(p, ".s-head", (await p.locator(".s-head").first().innerText()).split(/\s+/)[0]);
+    // doc shell: Code line, Table cell, Callout
+    f = await build("samples/hello.artifact");
+    p = await (await b.newContext({ viewport: { width: 1280, height: 900 } })).newPage();
+    await p.goto("file://" + f);
+    await p.waitForSelector(".a-content");
+    for (const sel of [".a-diff tr:nth-child(4) td:last-child", "td", ".a-callout"]) {
+      const text = (await p.locator(sel).first().innerText()).match(/[A-Za-z]{4,}/)?.[0];
+      assert.ok(text, sel);
+      await pick(p, sel, text!);
+    }
+  } finally { await b.close(); }
 });

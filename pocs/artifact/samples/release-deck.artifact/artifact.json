@@ -1,0 +1,10 @@
+{
+  "title": "artifact kit 0.1",
+  "kind": "release notes",
+  "audience": "Alex, deciding which layout the kit should offer",
+  "summary": "Agents write the page, the kit gives them the parts, and the reader gets one HTML file to read, present and answer. A keynote you can click around in.",
+  "shell": "bare",
+  "present": "artifact",
+  "created": "2026-10-13",
+  "sources": [{ "label": "release.json (task-5 rounds 1–13)", "kind": "file", "from": "local/artifacts/_release-notes-data" }]
+}

@@ -7,15 +7,18 @@ description: Make an artifact: a page that shows what you did, found or propose 
 
 An artifact is a directory `x.artifact/`. You write the page; the kit gives you parts (`COMPONENTS.md` next to this file lists them with props); the host adds the feedback layer (comments, decisions, present, download). You pick the structure and the layout: nothing here is a required shape.
 
+**Default: a plain, quiet page.** Most artifacts (review, status, investigation) are one calm column: a clear headline, the evidence, the decisions. Reach for a rich experience (§ Experiences) only when the content earns it (many peers to explore, a release or launch, something Alex presents) or when asked.
+
 ```
 x.artifact/
   artifact.json   {"title","kind","audience","summary","sources":[...],"created"}   kind is a free label
   index.tsx       default export = the page (or index.mdx: Markdown + the same components)
+  layout.tsx      optional: a Layout that wraps every page and stays mounted (see Pages)
   data/*.json     import prs from "./data/prs.json"   or   useData("prs")
   evidence/       *.patch  *.replay  images  source files: cited by path, inlined at build
 ```
 
-`artifact.json` also takes `shell` ("bare" for new artifacts, see Shell; "doc" = the older layout, the default when absent), `tour` (page ids to present in order, see Pages), `asOf` (ISO gather time, shown in the header) with `timeZone` (default UTC), `repo` (a local path: `check` warns about cited commits that are on no remote branch), `width` ("wide"|"full"), `header` ("full"), `host: {"download": false}`. `audience` is shown as written. `summary` is printed large under the title and is slide 1 when presenting: make it your headline and don't restate it in a Callout.
+`artifact.json` also takes `shell` ("bare" for new artifacts, see Shell; "doc" = the older layout, the default when absent), `tour` (page ids to present in order, see Pages), `asOf` (ISO gather time, shown in the header) with `timeZone` (default UTC), `repo` (a local path: `check` warns about cited commits that are on no remote branch), `width` ("wide"|"full"), `header` ("full"), `host: {"download": false}`, `present` ("artifact" = you run present mode, see COMPONENTS.md). `audience` is shown as written. `summary` is printed large under the title and is slide 1 when presenting: make it your headline and don't restate it in a Callout.
 
 ## Commands
 
@@ -31,7 +34,7 @@ artifact capture http://127.0.0.1:5211 -o <dir>/evidence/app.jpg --selector main
 artifact gather gh-prs <dir> --repos owner/a,owner/b --since ISO   # → data/gh-prs.json; also board --workspaces a,b; git-log --repo p --ref origin/main [--branches 'idea/*' --base main]; trim with --fields / --count
 ```
 
-Loop: write, `check` until ok, `shot` and look at the PNGs (both themes; `--page id|all`; `--present 2,3|all` is 1-based like the file numbers and shoots every step; `--split --height 800` cuts a tall page; `--no-chrome` hides the host bar), fix, build.
+Loop: write, `check` until ok, `shot` and look at the PNGs (both themes; `--page id|all`; `--present 2,3|all` is 1-based like the file numbers and shoots every step; `--split --height 800` cuts a tall page; `--no-chrome` hides the host bar; shots run with reduced motion so count-ups and transitions are settled, `--motion` keeps them), fix, build.
 
 ## Taste (guidance, not rules)
 
@@ -43,20 +46,24 @@ Loop: write, `check` until ok, `shot` and look at the PNGs (both themes; `--page
 - **Don't overload.** Pick the 5 things that matter; put skippable detail in `<More label="…">` or leave it out. One map beats three tables. `check` warns about long pages and 20+ row tables outside `<More>`.
 - **Decisions are explicit** (`<Decision>` with your recommendation and owner), used when they carry something, not by habit. The host header is optional too.
 - Prefer real evidence (`<Diff>`, `<Replay>`, screenshots) over describing it; pick hunks, never paste whole patches.
-- Use `<Section>` for every part you want in the outline and in present mode (content outside Sections becomes loose "intro" slides). Readers can fold any Section by clicking its heading; Fold all / Unfold all are in the "?" panel. Heavy blocks stay open unless you set `collapsed`.
+- Use `<Section>` for every part you want in the outline and in present mode (content outside Sections becomes loose "intro" slides); `<Slide id title>` is the same marker with no heading, for your own markup. Readers can fold any Section by clicking its heading; Fold all / Unfold all are in the "?" panel. Heavy blocks stay open unless you set `collapsed`.
 
 ## Shell: the feedback layer; layout is yours
 
 The shell is only what every artifact shares: comments, decisions and answers, the Feedback drawer with copy, Download, shortcuts, present plumbing. It shows one tiny corner button (bottom-right, faint until hover) with a menu. Everything visible is yours: `artifact new` scaffolds `"shell": "bare"`, a blank full-viewport page with no header, outline, page nav or width limit. Build the experience the story wants (a board, a scroll story, sheets, a deck) and let readers move through it your way.
 
-- Comments work on anything: alt-click an element, or select text and press Comment (or `c`, then click). Anchors are your `id`/`data-aid`, else a CSS path, plus the quoted text and the page id; commented elements get a small dot. Give key elements an `id` for stable anchors. Sections still anchor by id.
-- Navigation: `usePages()`, `useRoute()`, `navigate(id, {anchor})`, `<Link>`, `<Morph name>` (COMPONENTS.md). Page changes use a view transition unless the reader prefers reduced motion.
-- Present mode and `<Step>` / `usePresentSteps` still work; Sections (or loose elements) are the slides.
+- Comments work on anything, in both shells: select text and press the Comment button that appears by the selection, or alt-click an element (or `c`, then click). Readers see where a comment is ("Page › Section", then the quoted words or a label like `table cell "3"`, `image: alt`, `Decision: question`); a saved quote is highlighted on its exact words (re-found by quote and context after a reload), hovering a comment in the drawer shows its target, clicking it jumps there, and copied feedback reads `- [Page › Section] on "quoted text": comment`. The CSS path / id stays hidden re-anchoring data: give key elements an `id` or `data-aid` so it survives edits.
+- Navigation: `usePages()`, `useRoute()` (`{page, anchor, params, previous, direction}`), `navigate(id, {anchor, params, morph, direction, transition, restore})`, `<Link>`, `<Morph>`, `withTransition(fn, opts)` (COMPONENTS.md). Page changes use a view transition unless the reader prefers reduced motion; name exactly one element pair with `morph`, tell CSS the motion with `direction` / `html[data-nav-type]` (or `:active-view-transition-type()`).
+- Present mode and `<Step>` / `usePresentSteps` still work; Sections and `<Slide>`s (or loose elements) are the slides. To own present mode (a deck, a stage) call `usePresentControl(start)`; `openFeedback()`, `download()`, `startPresent()`, `toggleTheme()` are exported for your own buttons.
 - `"shell": "doc"` (or no `shell`) keeps the older layout: header, outline, grouped page nav, prev/next, page select. Use it for plain reading documents; pick bare when the layout is part of the point. `shot` and `check` work in both.
 
 ## Pages (multi-page artifacts)
 
-Put `pages/<id>.tsx` files next to `index.tsx` (home). Each exports a default component and optionally `export const page = { title, group, order, summary, status, thumb }`. In the doc shell the left nav lists pages by `group`, the current page's Sections sit under it and each page ends with Previous / Next; in bare you build the nav yourself from `usePages()`. Routes are hash links (`#/id`, `#/id/section`), so it is still one HTML file and Back works. Put `<PageCards />` on the home page and link across with `<Link to="id#section">`. Comments and decisions work across pages (the drawer groups them by page; copied output names the page), and `"tour": ["home", "a", "b"]` in artifact.json adds a Tour button that presents all of them in order. `check` renders every page; `shot --page id|all`.
+Put `pages/<id>.tsx` files next to `index.tsx` (home). Each exports a default component and optionally `export const page = { title, group, order, summary, status, thumb }`. In the doc shell the left nav lists pages by `group`, the current page's Sections sit under it and each page ends with Previous / Next; in bare you build the nav yourself from `usePages()`. Routes are hash links (`#/id`, `#/id/section`, `#/id?k=v`), so it is still one HTML file and Back works. `?k=v` params (`navigate(id, {params})`, `useRoute().params`) are state the host never scrolls to: use them for an open sheet, a filter, a tab. Put `<PageCards />` on the home page and link across with `<Link to="id#section">`. Comments and decisions work across pages (the drawer groups them by page; copied output names the page), and `"tour": ["home", "a", "b"]` in artifact.json adds a Tour button that presents all of them in order. `check` renders every page; `shot --page id|all`.
+
+- **Many pages from data:** one file `pages/[id].tsx` with `export const pages = (data) => data.items.map((i) => ({id: i.id, title: i.title, group, order, ...anything}))` (or a plain array) renders one route per entry; the component gets `{id, page}` (`PageProps`). `usePages`, tour, check, `shot --page all` and feedback see every route. Ids must be unique (`check` fails on a clash).
+- **Persistent frame:** `layout.tsx` (default export, or `export const Layout` in index.tsx) wraps every page and stays mounted across routes, so a deck frame, rail or overlay keeps its state. Mark fixed UI inside it `data-chrome` so present mode does not treat it as a slide.
+- **Scroll:** a new page starts at the top; Back (or `navigate(id, {restore: true})`) puts the page's scroll position back, after the host's own scrolling and while late layout settles.
 
 **Use pages** for several items or journeys, different audiences, or anything over about 3 screens with natural parts (a recap with one page per round, a demo with a page per journey). **Stay on one page** for one story that reads top to bottom: Sections and `<More>` are enough, and one page needs no nav.
 
@@ -67,6 +74,15 @@ Reference files by string literal: `evidence/x.patch` (git diff output), `x.repl
 ## Custom components and CSS
 
 Write components inline or next to `index.tsx`; `import "./mine.css"` bundles a stylesheet. Use the tokens so both themes work: `var(--collie-color-fg|fg-muted|canvas|surface|border-subtle|accent-subtle|success-subtle|…)`, `--a-card`, `--a-line`, `--a-muted`, `--a-radius`, `--collie-space-*`. Files you cite under `evidence/` are not typechecked. Present-mode hooks for your components are in COMPONENTS.md.
+
+## Experiences (when the content earns one)
+
+The shell is feedback only, so the layout can be anything; the four release samples are patterns that mix (a story can open sheets, a map can become a deck). Same content, any of them. Read the sample, copy what you need.
+
+- **Zoom map** (`samples/release-zoom.artifact`): many peers to explore. `pages/[id].tsx` from data, tiles are `<Morph when={false}>`, `navigate(id, {morph, transition: "zoom-in"})` and back with `direction: "back"`, `useRoute().previous` lights the tile you came from.
+- **Story** (`samples/release-story.artifact`): a narrative with demos. One scrolling page, `<Slide>` per chapter, `usePresentSteps` for beats, `navigate(..., {restore: true})` back from a deep-dive page.
+- **Sheets** (`samples/release-launch.artifact`): a launch or catalog. A bento of cards; `?sheet=<id>` param opens a full-screen sheet, `data-morph` on card and sheet, `<NoSteps>` around live previews, `usePresentSteps().current` to step sheets in present mode.
+- **Deck** (`samples/release-deck.artifact`): something Alex presents. `layout.tsx` frame, one page per slide from `pages/[id].tsx`, `withTransition` with `direction`, `usePresentControl` + `"present": "artifact"` so `p` runs the deck.
 
 ## Three shapes (examples, not templates)
 

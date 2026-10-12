@@ -310,11 +310,11 @@ export function Step({ children }: { children?: ReactNode }) {
  * Use it to turn your own markup into slides: `<Slide id="intro" title="Where we are">…</Slide>`. `id` must be unique
  * and non-empty (it defaults to the title's slug); `className` is yours.
  */
-export function Slide({ id, title, children, className }: { id?: string; title?: string; children?: ReactNode; className?: string }) {
+export function Slide({ id, title, children, className, ...rest }: { id?: string; title?: string; children?: ReactNode; className?: string } & Omit<React.HTMLAttributes<HTMLElement>, "id" | "title">) {
   const level = useContext(LevelCtx);
   const sid = id || slug(title ?? "");
   if (!sid && typeof console !== "undefined") console.warn("[artifact] <Slide> needs an id or a title: present mode skips a slide without an id");
-  return <section id={sid || undefined} className={cx("a-slide", className)} data-section={sid} data-title={title || sid} data-level={level}>{children}</section>;
+  return <section {...rest} id={sid || undefined} className={cx("a-slide", className)} data-section={sid} data-title={title || sid} data-level={level}>{children}</section>;
 }
 
 /** A quiet "▸ more" disclosure for detail the reader can skip: `<More label="Method and sources">…</More>`. */

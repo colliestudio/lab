@@ -4,7 +4,8 @@ import { basename, join, resolve } from "node:path";
 const TEMPLATE = `import { meta, Section, Callout, Grid, Card, Status, Table, Steps, Questions, Source, useData } from "artifact";
 
 // artifact.json has "shell": "bare": this page is blank and yours (the host adds only comments, decisions and a corner menu).
-// Lay it out however fits the story; here, a plain centred column. Big picture first; cite where facts came from.
+// The default is a calm single column like this one: headline, evidence, decisions. Go richer (map, story, sheets, deck;
+// see ARTIFACT.md § Experiences) only when the content earns it. Big picture first; cite where facts came from.
 export default function Artifact() {
   const items = useData<{ name: string; status: string; owner: string }[]>("items");
   return (

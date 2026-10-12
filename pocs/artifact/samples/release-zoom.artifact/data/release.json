@@ -1,0 +1,1182 @@
+{
+  "product": "artifact kit",
+  "version": "0.1.0",
+  "date": "2026-10-13",
+  "headline": "Agents write the page, the kit gives them the parts, and the reader gets one HTML file to read, present and answer.",
+  "intro": "v0.1 is the first cut of the artifact kit: a toolbox an agent uses to show what it did, found or proposes. The agent writes each page as TSX with the kit's components, the host adds an outline, present mode and a feedback drawer, and `artifact build` turns it into one self-contained HTML file. It grew over 13 rounds on Oct 12–13, each round driven by friction from real demo pages and by Alex's feedback.",
+  "shotsNote": "Every `shot` path is `evidence/<file>.jpg`: copy screens/* into your artifact's evidence/ and the paths resolve. Screens are 1280 px wide JPEGs of the existing demos (http://mini.internal:5412/artifacts/<name>.html).",
+  "themes": [
+    {
+      "id": "authoring",
+      "title": "Write the page",
+      "oneLiner": "An artifact is a directory: TSX (or MDX), data and evidence. The agent picks the structure."
+    },
+    {
+      "id": "reading",
+      "title": "Read and present",
+      "oneLiner": "The host wraps every page with an outline, present mode, folding and a one-file download."
+    },
+    {
+      "id": "decisions",
+      "title": "Decide and give feedback",
+      "oneLiner": "Readers answer decisions on the page, leave comments, and copy it all back to the agent in one paste."
+    },
+    {
+      "id": "technical",
+      "title": "Show the evidence",
+      "oneLiner": "Maps, real diffs, code with notes, time axes and step-by-step walks instead of prose."
+    },
+    {
+      "id": "cli",
+      "title": "CLI and evidence",
+      "oneLiner": "new, dev, check, build, plus shot, capture and gather so agents can collect data and look at their own output."
+    },
+    {
+      "id": "multipage",
+      "title": "Multi-page",
+      "oneLiner": "Several pages in the same single HTML: hash routes, grouped nav, page cards and a tour."
+    }
+  ],
+  "rounds": [
+    {
+      "round": "1",
+      "date": "2026-10-12",
+      "summary": "Kit, host chrome and CLI built; kit review fixed (evidence containment, check render filter, dev Host allowlist).",
+      "tests": 88,
+      "commits": [
+        "4d22d0a",
+        "4d1a97e",
+        "3ba8d81",
+        "62504e0",
+        "91c4cb0",
+        "17b9a82"
+      ]
+    },
+    {
+      "round": "2",
+      "date": "2026-10-12",
+      "summary": "From the first demos' friction: Map fits its column, present-mode fixes, Scorecard, Actions, Facts, RiskMatrix, Gallery, DecisionIndex, `artifact shot`.",
+      "tests": 93,
+      "commits": [
+        "6b08448",
+        "a26e5b9",
+        "bf881b4"
+      ]
+    },
+    {
+      "round": "3–4",
+      "date": "2026-10-12",
+      "summary": "Gallery tiles, Stats, image lightbox, compact header, capture, gather, check advice.",
+      "tests": 102,
+      "commits": [
+        "2850034",
+        "d747fbd",
+        "d178788",
+        "d002e67"
+      ]
+    },
+    {
+      "round": "5–6",
+      "date": "2026-10-12",
+      "summary": "JSX highlighting bug fixed, present mode on wide pages fixed, Timeline bucket/group/compact, gather --fields/--count.",
+      "tests": 111,
+      "commits": [
+        "4b13fa7",
+        "78fff6a",
+        "7cd80b6"
+      ]
+    },
+    {
+      "round": "7",
+      "date": "2026-10-12",
+      "summary": "For the investigation page: TimeAxis, usePresentSteps, shot --split.",
+      "tests": 115,
+      "commits": [
+        "48bf7b0"
+      ]
+    },
+    {
+      "round": "8–10",
+      "date": "2026-10-12",
+      "summary": "Download, one Feedback drawer (comments + decisions), the decision walk (answerable Decision + When), Stages, Detail 1–4.",
+      "tests": 122,
+      "commits": [
+        "07f2012",
+        "7a14ad0",
+        "c724063",
+        "f0092dd"
+      ]
+    },
+    {
+      "round": "11",
+      "date": "2026-10-12",
+      "summary": "Detail 1–4 removed; sections fold on heading click; <More> replaces <Depth>.",
+      "commits": [
+        "7b958f3"
+      ]
+    },
+    {
+      "round": "12",
+      "date": "2026-10-12",
+      "summary": "Walkthrough; present-mode step sync for custom components; guide split into ARTIFACT.md + COMPONENTS.md.",
+      "tests": 123,
+      "commits": [
+        "e38f8fe",
+        "85df6ca"
+      ]
+    },
+    {
+      "round": "13",
+      "date": "2026-10-13",
+      "summary": "Multi-page artifacts: pages as hash routes, grouped nav, PageCards, Link, prev/next, tour, feedback across pages.",
+      "tests": 128,
+      "commits": [
+        "2c2256f",
+        "ec214e5",
+        "083b5e0"
+      ]
+    }
+  ],
+  "features": [
+    {
+      "id": "artifact-dir",
+      "title": "Artifacts are directories the agent writes",
+      "theme": "authoring",
+      "oneLiner": "`x.artifact/` holds artifact.json, index.tsx (or .mdx), data/*.json and evidence/. Kind is a free label; no shape is required.",
+      "why": "Alex (Oct 12): the recap POC was too structured (fixed kinds, zoom levels 1–4, a block list). Ship a toolbox and let each artifact pick its own structure and flow.",
+      "how": "x.artifact/\n  artifact.json   {\"title\",\"kind\",\"audience\",\"summary\",\"sources\":[...]}\n  index.tsx       export default () => <Section title=\"Do first\">…</Section>\n  data/*.json     useData(\"prs\")\n  evidence/       *.patch *.replay images source files",
+      "demo": {
+        "kind": "live",
+        "components": [
+          "Section",
+          "Callout"
+        ],
+        "props": {
+          "Section": {
+            "id": "what",
+            "title": "What changed",
+            "lead": "One claim per picture."
+          },
+          "Callout": {
+            "tone": "info",
+            "title": "Kind is a free label"
+          }
+        }
+      },
+      "round": 1,
+      "roundLabel": "1",
+      "commits": [
+        "4d22d0a",
+        "4d1a97e",
+        "91c4cb0"
+      ],
+      "status": "new"
+    },
+    {
+      "id": "data-evidence",
+      "title": "Data and evidence inlined at build",
+      "theme": "authoring",
+      "oneLiner": "`useData(\"name\")` reads data/name.json; patches, replays, images and source files under evidence/ are inlined when cited, unused ones are left out.",
+      "why": "The output is the thing people share, so it has to carry its own proof. The run-recap builder hit `evidence/${id}.jpg` failing check; template literals now act as a glob over evidence/.",
+      "how": "const prs = useData(\"gh-prs\");\n<Img src={`evidence/${d.id}.jpg`} />   // glob over evidence/",
+      "demo": {
+        "kind": "none"
+      },
+      "round": 1,
+      "roundLabel": "1",
+      "commits": [
+        "4d1a97e",
+        "6b08448",
+        "7cd80b6"
+      ],
+      "status": "new"
+    },
+    {
+      "id": "status-blocks",
+      "title": "Status building blocks: Stats, Actions, Facts, PR, Ago",
+      "theme": "authoring",
+      "oneLiner": "A stat row, a ranked do-first list with effort and recommendation, key/value facts, PR chips with conflict and age.",
+      "why": "The status page builder wrote its own ActionQueue, Facts and useAgo; the canvas-run builder wrote its own Stats. Porting the status page to the kit removed 120 lines.",
+      "how": "<Stats items={[{ value: 1, label: \"place agents are blocked on you\", tone: \"critical\" }]} />\n<Actions items={[{ title: \"Review the ideas synthesis\", why: \"…\", effort: \"30–60 min\", owner: \"Alex\", rec: \"…\" }]} />",
+      "demo": {
+        "kind": "live",
+        "components": [
+          "Stats"
+        ],
+        "props": {
+          "Stats": {
+            "items": [
+              {
+                "value": 13,
+                "label": "rounds"
+              },
+              {
+                "value": 128,
+                "label": "kit tests"
+              },
+              {
+                "value": 46,
+                "label": "components"
+              },
+              {
+                "value": "−389",
+                "label": "custom lines removed by porting",
+                "tone": "success",
+                "sub": "4 demos"
+              }
+            ]
+          }
+        },
+        "shot": "evidence/status-blocks.jpg",
+        "shotFrom": "status.html"
+      },
+      "round": 2,
+      "roundLabel": "2",
+      "commits": [
+        "bf881b4",
+        "2850034"
+      ],
+      "status": "new"
+    },
+    {
+      "id": "present-mode",
+      "title": "Present mode",
+      "theme": "reading",
+      "oneLiner": "Press p: a title slide from the summary, then → / ← through Sections and <Step>s, ↑/↓ to scroll a tall slide, a \"↓ more\" hint.",
+      "why": "Builders found the headline never appeared as a slide, revealed steps landed below the fold, and wide pages collapsed every slide to a narrow column; each was fixed in a later round.",
+      "how": "<Section title=\"Trace\">\n  <Step>hop 2</Step>\n  <Step>hop 3</Step>\n</Section>",
+      "demo": {
+        "kind": "shot",
+        "shot": "evidence/present-mode.jpg",
+        "shotFrom": "task-5-run.html, slide 2"
+      },
+      "round": 1,
+      "roundLabel": "1",
+      "commits": [
+        "62504e0",
+        "a26e5b9",
+        "78fff6a",
+        "7cd80b6"
+      ],
+      "status": "new"
+    },
+    {
+      "id": "present-hooks",
+      "title": "Present steps for custom components",
+      "theme": "authoring",
+      "oneLiner": "`usePresentSteps(n)` gives a component its own step counter that stays in sync with → / Space and with clicks.",
+      "why": "The Collie UI explainer counted hidden step markers with a MutationObserver; the investigation page needed 5 empty <Step>s and then drifted out of sync after a click.",
+      "how": "const { step, setStep, active, markers } = usePresentSteps(5);\nreturn <>{markers}<Panel i={step} onPick={setStep} /></>;",
+      "demo": {
+        "kind": "none"
+      },
+      "round": 7,
+      "roundLabel": "7",
+      "commits": [
+        "48bf7b0",
+        "e38f8fe"
+      ],
+      "status": "new"
+    },
+    {
+      "id": "compact-header",
+      "title": "Compact header, sources behind one button",
+      "theme": "reading",
+      "oneLiner": "Title, summary and an as-of time; header sources collapse into \"Sources (n)\".",
+      "why": "With 8–10 sources the header pushed the first decision below the fold on three demo pages.",
+      "how": "// artifact.json\n{ \"title\": \"…\", \"summary\": \"…\", \"asOf\": \"2026-10-12T13:45:00Z\", \"timeZone\": \"Asia/Ho_Chi_Minh\", \"sources\": [ … ] }",
+      "demo": {
+        "kind": "shot",
+        "shot": "evidence/pages.jpg",
+        "shotFrom": "canvas-run-pages.html (header: as-of, Sources (8))"
+      },
+      "round": 3,
+      "roundLabel": "3–4",
+      "commits": [
+        "a26e5b9",
+        "d747fbd"
+      ],
+      "status": "new"
+    },
+    {
+      "id": "folding-more",
+      "title": "Quiet folding and <More>",
+      "theme": "reading",
+      "oneLiner": "Click any section heading to fold it; authors put skippable detail in `<More label>`; Fold all / Unfold all sit in the ? panel.",
+      "why": "Replaces Detail 1–4 (see removed). Alex: zoom levels take a lot of attention and don't deserve it.",
+      "how": "<More label=\"Method\">…</More>",
+      "demo": {
+        "kind": "live",
+        "components": [
+          "Section",
+          "More"
+        ],
+        "props": {
+          "Section": {
+            "title": "Fixed findings"
+          },
+          "More": {
+            "label": "All 35 fixed findings"
+          }
+        }
+      },
+      "round": 11,
+      "roundLabel": "11",
+      "commits": [
+        "7b958f3"
+      ],
+      "status": "new"
+    },
+    {
+      "id": "download",
+      "title": "Download the same single file",
+      "theme": "reading",
+      "oneLiner": "A Download button in the host bar saves the page as one self-contained HTML file.",
+      "why": "Sharing is a single HTML file for now (decision Oct 11); the reader should be able to pass it on from the page itself.",
+      "how": "// on by default; artifact.json { \"host\": { \"download\": false } } hides it",
+      "demo": {
+        "kind": "none"
+      },
+      "round": 8,
+      "roundLabel": "8–10",
+      "commits": [
+        "07f2012"
+      ],
+      "status": "new"
+    },
+    {
+      "id": "gallery",
+      "title": "Gallery: tiles with drill-down, variants, lightbox",
+      "theme": "reading",
+      "oneLiner": "Tiles with thumb, status and badges; click one and its detail opens below. Or one variant at a time with an aside. Images open in a lightbox.",
+      "why": "A run recap of 16 branches is a gallery with drill-down; the canvas-run builder wrote ~80 lines for it and the Collie UI builder wrote its own theme switcher. Both ported to <Gallery>.",
+      "how": "<Gallery layout=\"tiles\" items={demos.map((d) => ({ label: d.title, thumb: d.shot, status: d.verdict, badges: [d.kind], detail: <Detail d={d} /> }))} />",
+      "demo": {
+        "kind": "shot",
+        "shot": "evidence/gallery.jpg",
+        "shotFrom": "task-5-run.html § The four demos"
+      },
+      "round": 2,
+      "roundLabel": "2",
+      "commits": [
+        "bf881b4",
+        "2850034"
+      ],
+      "status": "new"
+    },
+    {
+      "id": "decision-walk",
+      "title": "Decision walk: answer on the page",
+      "theme": "decisions",
+      "oneLiner": "Readers answer each <Decision> (an option, their own, or \"not sure / discuss\", plus a note); <When> shows follow-ups by answer; present mode ends on a summary slide.",
+      "why": "Alex (Oct 12): interactive decisions, an async \"grill me\" for a batch of decisions when the reader is away from chat.",
+      "how": "<DecisionIndex />\n<Decision id=\"d1\" question=\"Start idea 11?\" options={[{ label: \"Go, after merge steps 1–3\" }, { label: \"Not now\" }]} recommend={0} owner=\"Alex\" why=\"…\" />\n<When decision=\"d1\" is=\"a\">…follow-up Decision…</When>",
+      "demo": {
+        "kind": "live",
+        "components": [
+          "Decision"
+        ],
+        "props": {
+          "Decision": {
+            "id": "d-shape",
+            "question": "Which experience should become the kit's layout?",
+            "options": [
+              {
+                "label": "Spatial zoom board"
+              },
+              {
+                "label": "Scrollytelling with a sticky live demo"
+              },
+              {
+                "label": "Product-launch sheets"
+              },
+              {
+                "label": "Cinematic deck"
+              }
+            ],
+            "owner": "Alex"
+          }
+        },
+        "shot": "evidence/decision-walk.jpg",
+        "shotFrom": "canvas-proposal.html § Decisions for you"
+      },
+      "round": 8,
+      "roundLabel": "8–10",
+      "commits": [
+        "bf881b4",
+        "c724063"
+      ],
+      "status": "new"
+    },
+    {
+      "id": "feedback-drawer",
+      "title": "One Feedback drawer",
+      "theme": "decisions",
+      "oneLiner": "Decisions (with progress, \"2/5 decided\") and comments on any element in one drawer; Copy decisions or Copy all feedback gives Markdown with element ids for the agent.",
+      "why": "Alex (Oct 12): one drawer to list, add and copy feedback; stored in the browser for now behind a storage interface, persisted by a hosted server later.",
+      "how": "// host feature: press c to comment on any element; the drawer's Copy all feedback → paste back to the agent",
+      "demo": {
+        "kind": "shot",
+        "shot": "evidence/feedback-drawer.jpg",
+        "shotFrom": "canvas-run-pages.html, two decisions answered"
+      },
+      "round": 8,
+      "roundLabel": "8–10",
+      "commits": [
+        "7a14ad0",
+        "c724063"
+      ],
+      "status": "improved"
+    },
+    {
+      "id": "scorecard",
+      "title": "Scorecard and RiskMatrix",
+      "theme": "decisions",
+      "oneLiner": "Options × weighted criteria with a grade per cell and a recommended column; likelihood × impact grid with chips that link to the mitigation table.",
+      "why": "The canvas proposal builder wrote both by hand (~60 lines); the audit counted ~25 \"compare X vs Y\" asks. Porting the proposal removed 131 lines.",
+      "how": "<Scorecard options={[\"Electron 44\", \"Tauri v2\"]} rows={[{ name: \"Capture code\", weight: \"med\", cells: [{ grade: \"best\", text: \"capturePage, built in\" }, { grade: \"weak\", text: \"~150 lines objc2, macOS only\" }] }]} recommend={0} />",
+      "demo": {
+        "kind": "live",
+        "components": [
+          "Scorecard"
+        ],
+        "props": {
+          "Scorecard": {
+            "options": [
+              {
+                "name": "Electron 44",
+                "sub": "bundled Chromium, Node main"
+              },
+              {
+                "name": "Tauri v2",
+                "sub": "OS webview, Rust + Node sidecar"
+              },
+              {
+                "name": "Wails v3",
+                "sub": "OS webview, Go + bun sidecar"
+              }
+            ],
+            "rows": [
+              {
+                "name": "Capture code",
+                "weight": "med",
+                "cells": [
+                  {
+                    "grade": "best",
+                    "text": "capturePage, built in"
+                  },
+                  {
+                    "grade": "weak",
+                    "text": "~150 lines objc2, macOS only"
+                  },
+                  {
+                    "grade": "weak",
+                    "text": "cgo + Obj-C, macOS only"
+                  }
+                ]
+              },
+              {
+                "name": "Screenshot, warm, via MCP",
+                "weight": "med",
+                "cells": [
+                  {
+                    "grade": "best",
+                    "text": "~96 ms"
+                  },
+                  {
+                    "grade": "best",
+                    "text": "92–113 ms"
+                  },
+                  {
+                    "grade": "weak",
+                    "text": "185–190 ms"
+                  }
+                ]
+              },
+              {
+                "name": "Maturity",
+                "weight": "med",
+                "cells": [
+                  {
+                    "grade": "best",
+                    "text": "stable"
+                  },
+                  {
+                    "grade": "best",
+                    "text": "stable since 2.0 (Oct 2024)"
+                  },
+                  {
+                    "grade": "bad",
+                    "text": "beta (v3.0.0-beta.28)"
+                  }
+                ]
+              }
+            ],
+            "recommend": 0
+          }
+        },
+        "shot": "evidence/scorecard.jpg",
+        "shotFrom": "canvas-proposal.html § Shell options"
+      },
+      "round": 2,
+      "roundLabel": "2",
+      "commits": [
+        "bf881b4"
+      ],
+      "status": "new"
+    },
+    {
+      "id": "map-fit",
+      "title": "Map fits its column",
+      "theme": "technical",
+      "oneLiner": "Grouped node graph that fits width and height, with Fit / 100% / zoom / drag, click-to-focus notes and nodes that link to sections.",
+      "why": "In the first demos the map scrolled sideways or clipped the plan's goal nodes; check now warns when the fit scale drops under 65%.",
+      "how": "<Map nodes={[{ id: \"m3\", label: \"Merge steps 1–3\", group: \"core\", state: \"risk\", note: \"…\" }]} edges={[{ from: \"m3\", to: \"merge\" }]} groups={[{ id: \"core\", label: \"Core\" }]} />",
+      "demo": {
+        "kind": "live",
+        "components": [
+          "Map"
+        ],
+        "props": {
+          "Map": {
+            "nodes": [
+              {
+                "id": "src",
+                "label": "x.artifact (TSX, data, evidence)",
+                "group": "author",
+                "state": "done"
+              },
+              {
+                "id": "check",
+                "label": "artifact check",
+                "group": "cli",
+                "state": "done"
+              },
+              {
+                "id": "shot",
+                "label": "artifact shot",
+                "group": "cli",
+                "state": "done"
+              },
+              {
+                "id": "build",
+                "label": "artifact build",
+                "group": "cli",
+                "state": "done"
+              },
+              {
+                "id": "html",
+                "label": "one HTML file",
+                "group": "reader",
+                "state": "done"
+              },
+              {
+                "id": "fb",
+                "label": "Copy all feedback",
+                "group": "reader",
+                "state": "done"
+              }
+            ],
+            "edges": [
+              {
+                "from": "src",
+                "to": "check"
+              },
+              {
+                "from": "check",
+                "to": "shot"
+              },
+              {
+                "from": "shot",
+                "to": "build"
+              },
+              {
+                "from": "build",
+                "to": "html"
+              },
+              {
+                "from": "html",
+                "to": "fb"
+              }
+            ],
+            "groups": [
+              {
+                "id": "author",
+                "label": "Agent"
+              },
+              {
+                "id": "cli",
+                "label": "CLI"
+              },
+              {
+                "id": "reader",
+                "label": "Reader"
+              }
+            ],
+            "height": 360
+          }
+        },
+        "shot": "evidence/map-fit.jpg",
+        "shotFrom": "canvas-run-pages.html#/merge-plan"
+      },
+      "round": 2,
+      "roundLabel": "2",
+      "commits": [
+        "a26e5b9",
+        "d002e67",
+        "78fff6a"
+      ],
+      "status": "improved"
+    },
+    {
+      "id": "code-notes",
+      "title": "Code and diffs with notes",
+      "theme": "technical",
+      "oneLiner": "<Diff> picks hunks from a real patch; <Code> shows line ranges with \"N lines hidden\" gaps; both take notes keyed by line or by matching text, plus wrap and a repo path/link.",
+      "why": "Prefer real evidence over describing it. The Collie UI trace wanted per-line \"why\" notes; the investigation page had to grep line numbers, so notes can now match text.",
+      "how": "<Diff patch=\"evidence/actor.patch\" file=\"src/core/store.ts\" hunks=\"1\" notes={{ \"actor\": \"one line in dispatch\" }} />\n<Code file=\"evidence/semantic.tokens.json\" ranges=\"36-38,45-57\" highlight=\"49-52\" notes={{ 50: \"step 9 = solid fill, in every hue\" }} />",
+      "demo": {
+        "kind": "shot",
+        "shot": "evidence/code-notes.jpg",
+        "shotFrom": "collie-ui.html § Follow one colour",
+        "moreShots": [
+          "evidence/code-notes-diff.jpg"
+        ]
+      },
+      "round": 1,
+      "roundLabel": "1",
+      "commits": [
+        "4d1a97e",
+        "6b08448",
+        "4b13fa7",
+        "48bf7b0"
+      ],
+      "status": "new"
+    },
+    {
+      "id": "timeaxis",
+      "title": "TimeAxis: a real time scale",
+      "theme": "technical",
+      "oneLiner": "Events, ranges, bands and lanes on a real axis; segments break it (6 weeks, then 36 hours) and say so.",
+      "why": "The investigation page covered weeks of releases and then hours of impact; the builder hand-drew an SVG. Then Alex didn't understand the one timeline carrying two scales, which became the guide rule \"one claim per picture\".",
+      "how": "<TimeAxis title=\"…\" events={[{ at: \"2026-10-12T20:01:00+07:00\", label: \"round 1\" }]} segments={[{ from, to, weight: 1 }, { from, to, weight: 2 }]} />",
+      "demo": {
+        "kind": "live",
+        "components": [
+          "TimeAxis"
+        ],
+        "props": {
+          "TimeAxis": {
+            "title": "Thirteen rounds, Oct 12–13",
+            "lead": "First commit of each round on the kit branch (+07).",
+            "timeZone": "Asia/Ho_Chi_Minh",
+            "events": [
+              {
+                "at": "2026-10-12T20:01:00+07:00",
+                "label": "1"
+              },
+              {
+                "at": "2026-10-12T20:26:00+07:00",
+                "label": "2"
+              },
+              {
+                "at": "2026-10-12T20:35:00+07:00",
+                "label": "3–4"
+              },
+              {
+                "at": "2026-10-12T20:53:00+07:00",
+                "label": "5–6"
+              },
+              {
+                "at": "2026-10-12T21:46:00+07:00",
+                "label": "7"
+              },
+              {
+                "at": "2026-10-12T22:23:00+07:00",
+                "label": "8–10"
+              },
+              {
+                "at": "2026-10-12T23:39:00+07:00",
+                "label": "11"
+              },
+              {
+                "at": "2026-10-12T23:44:00+07:00",
+                "label": "12"
+              },
+              {
+                "at": "2026-10-13T01:20:00+07:00",
+                "label": "13"
+              }
+            ]
+          }
+        }
+      },
+      "round": 7,
+      "roundLabel": "7",
+      "commits": [
+        "48bf7b0",
+        "07f2012"
+      ],
+      "status": "new"
+    },
+    {
+      "id": "timeline-lanes",
+      "title": "Timeline swimlanes that pack",
+      "theme": "technical",
+      "oneLiner": "Timeline items in lanes (you / agents / lead); same `when` shares a row; `bucket` and `compact` keep it short.",
+      "why": "One row per event made 12 events in 3 lanes ~1300 px tall; the canvas-run builder fell back to a table. The multi-page run recap uses the packed timeline.",
+      "how": "<Timeline compact items={[{ when: \"Oct 11 03:13\", lane: \"you\", title: \"Explore plugins + diagramming\" }, { when: \"Oct 11 03:13\", lane: \"agents\", title: \"Round 1 until 08:18\" }]} />",
+      "demo": {
+        "kind": "shot",
+        "shot": "evidence/timeline-lanes.jpg",
+        "shotFrom": "canvas-run-pages.html#/run"
+      },
+      "round": 3,
+      "roundLabel": "3–4",
+      "commits": [
+        "d747fbd",
+        "7cd80b6"
+      ],
+      "status": "improved"
+    },
+    {
+      "id": "walkthrough",
+      "title": "Walkthrough: one case, step by step",
+      "theme": "technical",
+      "oneLiner": "Scenarios as tabs, steps on the left, each step's visual and text on the right, an optional state rail; every step is a present step.",
+      "why": "Alex liked the \"one order, step by step\" section of an investigation page (scenario tabs × steps, state rail, mock row), which the builder had written by hand.",
+      "how": "<Walkthrough states={[\"draft\", \"checked\", \"built\"]} scenarios={[{ label: \"One artifact\", steps: [{ title: \"Write index.tsx\", state: \"draft\", body: \"…\" }] }]} />",
+      "demo": {
+        "kind": "live",
+        "components": [
+          "Walkthrough"
+        ],
+        "props": {
+          "Walkthrough": {
+            "states": [
+              "draft",
+              "checked",
+              "built",
+              "answered"
+            ],
+            "scenarios": [
+              {
+                "label": "One artifact",
+                "steps": [
+                  {
+                    "title": "Write the page",
+                    "who": "agent",
+                    "state": "draft",
+                    "body": "index.tsx with kit components; data in data/, proof in evidence/."
+                  },
+                  {
+                    "title": "check until ok",
+                    "who": "agent",
+                    "state": "checked",
+                    "body": "Bundle, types, render, evidence, size, plus taste advice.",
+                    "note": "artifact check x.artifact"
+                  },
+                  {
+                    "title": "shot and look",
+                    "who": "agent",
+                    "state": "checked",
+                    "body": "PNGs in both themes and every present step; fix what looks wrong.",
+                    "note": "artifact shot x.artifact --theme both --present all"
+                  },
+                  {
+                    "title": "build one file",
+                    "who": "agent",
+                    "state": "built",
+                    "body": "Everything inlined into one HTML file.",
+                    "note": "artifact build x.artifact -o x.html"
+                  },
+                  {
+                    "title": "Answer and copy back",
+                    "who": "reader",
+                    "state": "answered",
+                    "tone": "good",
+                    "body": "Decide, comment, Copy all feedback; one paste back to the agent."
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "round": 12,
+      "roundLabel": "12",
+      "commits": [
+        "e38f8fe"
+      ],
+      "status": "new"
+    },
+    {
+      "id": "stages",
+      "title": "Stages: compare a few states row by row",
+      "theme": "technical",
+      "oneLiner": "Columns are stages, rows are the same questions asked of each, cells take a tone.",
+      "why": "Splitting the investigation timeline needed a small \"what changed per release\" strip; Stages replaced the custom one 1:1.",
+      "how": "<Stages stages={[{ title: \"Round 1\" }, { title: \"Round 13\" }]} rows={[{ label: \"tests\", cells: [\"88\", \"128\"] }]} />",
+      "demo": {
+        "kind": "live",
+        "components": [
+          "Stages"
+        ],
+        "props": {
+          "Stages": {
+            "stages": [
+              {
+                "title": "Round 1",
+                "sub": "kit + review fixes"
+              },
+              {
+                "title": "Round 2",
+                "sub": "first friction"
+              },
+              {
+                "title": "Rounds 3–6",
+                "sub": "demos ported"
+              },
+              {
+                "title": "Rounds 7–10",
+                "sub": "investigation, decisions"
+              },
+              {
+                "title": "Rounds 11–13",
+                "sub": "folding, Walkthrough, pages"
+              }
+            ],
+            "rows": [
+              {
+                "label": "kit tests",
+                "cells": [
+                  "88",
+                  "93",
+                  "111",
+                  "122",
+                  "128"
+                ]
+              },
+              {
+                "label": "reader can answer decisions",
+                "cells": [
+                  {
+                    "text": "no",
+                    "tone": "neutral"
+                  },
+                  {
+                    "text": "no",
+                    "tone": "neutral"
+                  },
+                  {
+                    "text": "no",
+                    "tone": "neutral"
+                  },
+                  {
+                    "text": "yes",
+                    "tone": "success"
+                  },
+                  {
+                    "text": "yes, across pages",
+                    "tone": "success"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "round": 8,
+      "roundLabel": "8–10",
+      "commits": [
+        "7a14ad0"
+      ],
+      "status": "new"
+    },
+    {
+      "id": "cli-core",
+      "title": "artifact new | dev | check | build",
+      "theme": "cli",
+      "oneLiner": "Scaffold, live reload on loopback, check (bundle, types, render, evidence, size), and build to one self-contained HTML.",
+      "why": "Sharing is a single HTML file for now (decision Oct 11); agents need a tight write → check → build loop.",
+      "how": "artifact new notes/status-1012 --kind status\nartifact dev notes/status-1012.artifact\nartifact check notes/status-1012.artifact\nartifact build notes/status-1012.artifact -o status.html",
+      "demo": {
+        "kind": "none"
+      },
+      "round": 1,
+      "roundLabel": "1",
+      "commits": [
+        "4d1a97e",
+        "62504e0"
+      ],
+      "status": "new"
+    },
+    {
+      "id": "evidence-safety",
+      "title": "Evidence stays inside evidence/",
+      "theme": "cli",
+      "oneLiner": "Evidence paths can't use `..` or symlinks out of the artifact; dev answers only known Host headers.",
+      "why": "The first kit review (verdict: changes) found a high-severity hole: a cited path like `evidence/../../secret.txt` got inlined into the shareable HTML.",
+      "how": "<Code file=\"evidence/../../secret.txt\" />   // check: evidence paths must stay inside evidence/",
+      "demo": {
+        "kind": "none"
+      },
+      "round": 1,
+      "roundLabel": "1",
+      "commits": [
+        "17b9a82"
+      ],
+      "status": "new"
+    },
+    {
+      "id": "shot",
+      "title": "artifact shot: agents look at their own page",
+      "theme": "cli",
+      "oneLiner": "PNGs of the built page in both themes, every present step, per page, or split into screen-tall pieces.",
+      "why": "Builders borrowed playwright from other worktrees to check their pages; one had to crop a 1280×5720 shot on a VM with no image tools.",
+      "how": "artifact shot x.artifact --theme both --present all\nartifact shot x.artifact --page all --split --height 800",
+      "demo": {
+        "kind": "none"
+      },
+      "round": 2,
+      "roundLabel": "2",
+      "commits": [
+        "a26e5b9",
+        "d002e67",
+        "78fff6a",
+        "48bf7b0",
+        "083b5e0"
+      ],
+      "status": "new"
+    },
+    {
+      "id": "capture",
+      "title": "artifact capture: screenshots of running apps",
+      "theme": "cli",
+      "oneLiner": "Headless screenshot of a URL or built file into evidence/, with selector, wait, theme and click/type steps; JPEG is ~4× smaller.",
+      "why": "Only 4 of 16 canvas branches had a screenshot; the canvas-run builder wrote the same playwright loop three times to capture 8 more.",
+      "how": "artifact capture http://127.0.0.1:5211 -o x.artifact/evidence/app.jpg --selector main --wait 800 --steps steps.json",
+      "demo": {
+        "kind": "none"
+      },
+      "round": 4,
+      "roundLabel": "3–4",
+      "commits": [
+        "d178788",
+        "7cd80b6"
+      ],
+      "status": "new"
+    },
+    {
+      "id": "gather",
+      "title": "artifact gather: collectors into data/",
+      "theme": "cli",
+      "oneLiner": "gh-prs, board and git-log collectors write data/<kind>.json; --fields / --count trim it; git-log --branches counts unique commits.",
+      "why": "The status builder wrote its own gather.sh, and summing per-branch counts reported 278 commits where the real unique number was 150.",
+      "how": "artifact gather gh-prs x.artifact --repos owner/a,owner/b --since 2026-10-11\nartifact gather git-log x.artifact --repo ~/code/canvas --branches 'idea/*' --base poc",
+      "demo": {
+        "kind": "none"
+      },
+      "round": 4,
+      "roundLabel": "3–4",
+      "commits": [
+        "d178788",
+        "d002e67",
+        "78fff6a"
+      ],
+      "status": "new"
+    },
+    {
+      "id": "check-advice",
+      "title": "check gives taste advice",
+      "theme": "cli",
+      "oneLiner": "Warnings that steer without templates: long pages, 20+ row tables outside <More>, a map fitted under 65%, grouped maps with back-edges, cited commits on no remote.",
+      "why": "The reader review found every demo too long, three repeating their summary in a Callout, and a dead commit link a teammate would hit.",
+      "how": "artifact check x.artifact   # errors fail; advice is printed as warnings",
+      "demo": {
+        "kind": "none"
+      },
+      "round": 4,
+      "roundLabel": "3–4",
+      "commits": [
+        "d002e67",
+        "78fff6a",
+        "48bf7b0"
+      ],
+      "status": "new"
+    },
+    {
+      "id": "pages",
+      "title": "Multi-page artifacts",
+      "theme": "multipage",
+      "oneLiner": "pages/<id>.tsx become hash routes in the same single HTML: grouped left nav with each page's sections, Previous / Next, <PageCards> on home, <Link to=\"id#section\">; comments and decisions work across pages.",
+      "why": "Alex (Oct 13): one long page of sections isn't great organization. The canvas run recap went from one 8.9k px page to pages of at most ~2.8k px.",
+      "how": "// pages/round-1.tsx\nexport const page = { title: \"Round 1\", group: \"Rounds\", order: 1, summary: \"…\", status: \"ok\", thumb: \"evidence/r1.jpg\" };\nexport default () => <Section title=\"The six branches\">…</Section>;\n// index.tsx\n<PageCards group=\"Rounds\" cols={2} />",
+      "demo": {
+        "kind": "shot",
+        "shot": "evidence/pages.jpg",
+        "shotFrom": "canvas-run-pages.html home",
+        "moreShots": [
+          "evidence/pages-cards.jpg"
+        ]
+      },
+      "round": 13,
+      "roundLabel": "13",
+      "commits": [
+        "2c2256f",
+        "083b5e0"
+      ],
+      "status": "new"
+    },
+    {
+      "id": "tour",
+      "title": "Tour across pages",
+      "theme": "multipage",
+      "oneLiner": "`\"tour\": [\"home\", \"round-1\", …]` in artifact.json adds a Tour button that presents those pages in order; Present on its own presents the current page.",
+      "why": "Present mode walked one page; a multi-page recap needs one walk across its pages in the author's order.",
+      "how": "// artifact.json\n{ \"tour\": [\"home\", \"round-1\", \"round-2\", \"oct-12\", \"merge-plan\", \"findings\"] }",
+      "demo": {
+        "kind": "none"
+      },
+      "round": 13,
+      "roundLabel": "13",
+      "commits": [
+        "ec214e5"
+      ],
+      "status": "new"
+    }
+  ],
+  "removed": [
+    {
+      "id": "detail-levels",
+      "title": "Detail 1–4 (zoom levels) and depth",
+      "oneLiner": "The reader's Detail 1–4 control (keys 1–4 zoomed the outline: sections collapse, heavy blocks stub) and `<Depth level>` / artifact.json `depth` are gone. `<Depth>` stays as a deprecated alias of `<More>`.",
+      "why": "Alex (Oct 12): it takes a lot of attention and doesn't deserve it. It reverses the Oct 9 decision to number zoom levels 1–4; replaced by quiet folding per section and author <More> disclosures.",
+      "addedRound": 8,
+      "removedRound": 11,
+      "commits": [
+        "f0092dd",
+        "7b958f3"
+      ],
+      "replacedBy": "folding-more"
+    },
+    {
+      "id": "fixed-format",
+      "title": "The recap POC's fixed format",
+      "oneLiner": "Fixed kinds, the zoom ladder and a fixed block list from the recap POC (task-1) are not part of the kit.",
+      "why": "Alex (Oct 12): too structured. Tool only; the agent picks the structure and kind is a free label.",
+      "replacedBy": "artifact-dir"
+    }
+  ],
+  "numbers": {
+    "rounds": 13,
+    "tests": 128,
+    "testsByRound": [
+      {
+        "round": "1",
+        "tests": 88
+      },
+      {
+        "round": "2",
+        "tests": 93
+      },
+      {
+        "round": "3–4",
+        "tests": 102
+      },
+      {
+        "round": "5–6",
+        "tests": 111
+      },
+      {
+        "round": "7",
+        "tests": 115
+      },
+      {
+        "round": "8–10",
+        "tests": 122
+      },
+      {
+        "round": "12",
+        "tests": 123
+      },
+      {
+        "round": "13",
+        "tests": 128
+      }
+    ],
+    "components": 46,
+    "componentsNote": "Exported components documented in COMPONENTS.md, not counting aliases (Matrix, Progression, Depth).",
+    "demos": 7,
+    "demosNote": "Real-work demos: status, canvas-proposal, collie-ui, canvas-run, task-5-run, canvas-run-pages (local) + one investigation page (on a VM, not shareable). Plus 2 samples: hello, journeys.",
+    "kitCommits": 27,
+    "customLinesRemovedByPorting": [
+      {
+        "demo": "status",
+        "lines": 120
+      },
+      {
+        "demo": "canvas-proposal",
+        "lines": 131
+      },
+      {
+        "demo": "collie-ui",
+        "lines": 55
+      },
+      {
+        "demo": "canvas-run",
+        "lines": 83
+      }
+    ],
+    "demoSizes": [
+      {
+        "demo": "status",
+        "size": "306 KB"
+      },
+      {
+        "demo": "canvas-proposal",
+        "size": "1.88 MB"
+      },
+      {
+        "demo": "collie-ui",
+        "size": "2.40 MB"
+      },
+      {
+        "demo": "canvas-run",
+        "size": "3.84 MB"
+      }
+    ],
+    "sizeNote": "One Map adds ~1.46 MB (the ELK layout engine)."
+  },
+  "nextUp": [
+    {
+      "title": "Artifacts own the layout (round 14, in progress)",
+      "oneLiner": "`shell: \"bare\"` with a floating corner menu that keeps feedback, present and download; routing hooks usePages / useRoute / navigate; view transitions and <Morph>. Four prototype experiences on this same content, then the winner's patterns become kit layouts."
+    },
+    {
+      "title": "A name",
+      "oneLiner": "\"artifact\" is the working term; the product name is open."
+    },
+    {
+      "title": "Link separate artifacts into a hub",
+      "oneLiner": "After multi-page."
+    },
+    {
+      "title": "Smaller maps",
+      "oneLiner": "Lay out at build time instead of shipping ELK (~1.5 MB per page with a Map)."
+    },
+    {
+      "title": "Comments that persist",
+      "oneLiner": "Stored in the browser today, behind a storage interface; a hosted server later."
+    },
+    {
+      "title": "Multi-page polish",
+      "oneLiner": "Group order in the nav, PageCards without a thumb, shot --tour."
+    },
+    {
+      "title": "Full review before closing",
+      "oneLiner": "The last full-diff review of the kit was round 1."
+    }
+  ],
+  "credits": "Direction and every \"not this\": Alex. Built round by round by a kit agent; demo pages by one builder agent each, which logged their friction; reviews by a kit reviewer and a reader reviewer; run by the lead."
+}
