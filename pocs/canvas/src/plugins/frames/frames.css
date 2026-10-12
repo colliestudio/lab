@@ -1,0 +1,377 @@
+/* ---- frame: a titled backdrop; only its title and resize corner take the pointer */
+.cv-node[data-kind='frame'] {
+  pointer-events: none;
+  cursor: default;
+  --fr-color: rgba(140, 200, 255, 0.85);
+  --fr-c1: #e5534b;
+  --fr-c2: #e8a33d;
+  --fr-c3: #e3d34f;
+  --fr-c4: #57b26a;
+  --fr-c5: #4fb3d9;
+  --fr-c6: #a77ee8;
+}
+.cv-node[data-kind='frame'].cv-selected {
+  outline-offset: 0;
+}
+.fr-frame {
+  position: absolute;
+  inset: 0;
+  border: 2px solid var(--fr-color);
+  border-radius: 14px;
+  background: rgba(140, 200, 255, 0.06);
+}
+.fr-title {
+  pointer-events: auto;
+  cursor: move;
+  position: absolute;
+  left: -2px;
+  top: -2px;
+  max-width: calc(100% - 20px);
+  height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  border-radius: 14px 0 14px 0;
+  background: var(--fr-color);
+  color: #0b1a26;
+  font: 600 16px/1 system-ui, sans-serif;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.fr-title b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fr-num {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 7px;
+  border-radius: 99px;
+  background: rgba(0, 0, 0, 0.18);
+}
+.fr-num.fr-skipped {
+  font-weight: 500;
+  opacity: 0.7;
+}
+.fr-resize {
+  pointer-events: auto;
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  width: 22px;
+  height: 22px;
+  cursor: nwse-resize;
+  background: linear-gradient(135deg, transparent 50%, var(--fr-color, #b98cff) 50%);
+  border-radius: 0 0 12px 0;
+  opacity: 0.8;
+}
+
+/* ---- portal: a window onto another room */
+.fr-portal {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  border: 2px solid #b98cff;
+  background: #0f1d2b;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), inset 0 0 40px rgba(185, 140, 255, 0.15);
+  overflow: hidden;
+}
+.fr-portal-head {
+  flex: 0 0 30px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 6px 0 12px;
+  background: rgba(185, 140, 255, 0.9);
+  color: #1a0b33;
+  font: 600 14px/1 system-ui, sans-serif;
+  white-space: nowrap;
+}
+.fr-portal-status {
+  flex: 1;
+  font-weight: 400;
+  font-size: 12px;
+  opacity: 0.75;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fr-portal-enter {
+  border: 0;
+  border-radius: 6px;
+  padding: 4px 8px;
+  background: #1a0b33;
+  color: #efe6ff;
+  font: 600 12px system-ui, sans-serif;
+  cursor: pointer;
+}
+.fr-portal-body {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  pointer-events: none; /* clicks select/move the portal; double-click enters */
+  background: radial-gradient(circle at 50% 40%, #2f6b45, #1d4a30 75%);
+}
+.fr-portal-world {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  transform-origin: 0 0;
+}
+.fr-portal-nested {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  border: 2px dashed #b98cff;
+  border-radius: 10px;
+  color: #efe6ff;
+  font: 600 14px system-ui, sans-serif;
+}
+.fr-snap {
+  display: block;
+}
+.fr-snap-node {
+  fill: rgba(240, 240, 235, 0.75);
+}
+.fr-snap-frame {
+  fill: rgba(140, 200, 255, 0.1);
+  stroke: rgba(140, 200, 255, 0.9);
+  stroke-width: 1;
+}
+.fr-snap-portal {
+  fill: rgba(185, 140, 255, 0.8);
+}
+
+/* ---- outline panel */
+.fr-outline {
+  position: fixed;
+  z-index: 10;
+  right: 12px;
+  top: 68px; /* below the toolbar, which can run the full width in a room */
+  width: 236px;
+  padding: 8px;
+  border-radius: 10px;
+  background: rgba(15, 25, 20, 0.8);
+  backdrop-filter: blur(6px);
+  color: #e8efe9;
+  font: 13px system-ui, sans-serif;
+}
+.fr-ol-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.fr-ol-head b {
+  flex: 1;
+}
+.fr-outline button {
+  border: 0;
+  border-radius: 6px;
+  padding: 3px 8px;
+  background: rgba(255, 255, 255, 0.12);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.fr-outline button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.24);
+}
+.fr-outline button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+.fr-outline .fr-ol-present {
+  background: #2f6b45;
+}
+.fr-folded .fr-ol-list,
+.fr-folded .fr-ol-map,
+.fr-folded .fr-ol-hint {
+  display: none;
+}
+.fr-ol-list {
+  max-height: 40vh;
+  overflow: auto;
+}
+.fr-ol-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.fr-ol-row:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+.fr-ol-row.fr-ol-current {
+  background: rgba(140, 200, 255, 0.18);
+}
+.fr-ol-row button {
+  padding: 1px 6px;
+  visibility: hidden;
+}
+.fr-ol-row:hover button,
+.fr-ol-portal button {
+  visibility: visible;
+}
+.fr-ol-badge {
+  flex: 0 0 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 99px;
+  background: rgba(140, 200, 255, 0.85);
+  color: #0b1a26;
+  font-size: 11px;
+  font-weight: 700;
+}
+.fr-ol-portal .fr-ol-badge {
+  background: rgba(185, 140, 255, 0.9);
+}
+.fr-ol-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fr-ol-meta {
+  font-size: 11px;
+  opacity: 0.6;
+}
+.fr-ol-empty {
+  padding: 6px;
+  opacity: 0.7;
+  font-size: 12px;
+}
+.fr-ol-map {
+  display: block;
+  margin-top: 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.3);
+  cursor: crosshair;
+  touch-action: none;
+}
+.fr-ol-hint {
+  margin-top: 6px;
+  font-size: 11px;
+  opacity: 0.55;
+}
+
+/* ---- present mode: nothing but the canvas and a small bar */
+body.fr-presenting #toolbar,
+body.fr-presenting .fr-outline,
+body.fr-presenting .cv-zoom,
+body.fr-presenting .cv-log,
+body.fr-presenting .ch-palette,
+body.fr-presenting .fr-follow {
+  display: none !important;
+}
+.fr-present-bar {
+  position: fixed;
+  z-index: 20;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 99px;
+  background: rgba(10, 18, 14, 0.7);
+  color: #e8efe9;
+  font: 13px system-ui, sans-serif;
+  opacity: 0.35;
+  transition: opacity 0.2s;
+}
+.fr-present-bar:hover {
+  opacity: 1;
+}
+.fr-present-bar button {
+  border: 0;
+  border-radius: 99px;
+  width: 28px;
+  height: 28px;
+  background: rgba(255, 255, 255, 0.14);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.fr-present-where {
+  padding: 0 6px;
+  white-space: nowrap;
+}
+
+/* ---- follow the presenter */
+.fr-follow {
+  position: fixed;
+  z-index: 15;
+  left: 50%;
+  top: 64px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 6px 12px;
+  border-radius: 99px;
+  background: rgba(10, 18, 14, 0.85);
+  color: #e8efe9;
+  font: 13px system-ui, sans-serif;
+  box-shadow: 0 0 0 2px var(--fr-peer, #888);
+}
+.fr-follow[hidden] {
+  display: none;
+}
+.fr-follow i {
+  width: 10px;
+  height: 10px;
+  border-radius: 99px;
+  background: var(--fr-peer, #888);
+}
+.fr-follow button {
+  border: 0;
+  border-radius: 99px;
+  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.16);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+/* ---- breadcrumb (in the toolbar) */
+.fr-crumbs {
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 6px;
+}
+.fr-crumbs a {
+  color: #b9d7ff;
+  text-decoration: none;
+}
+.fr-crumbs a:hover {
+  text-decoration: underline;
+}
+.fr-crumbs i {
+  font-style: normal;
+  opacity: 0.5;
+}
+
+.fr-flag {
+  align-self: center;
+  margin: 0 8px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: rgba(190, 140, 255, 0.25);
+  color: #e6d6ff;
+  font-size: 11px;
+}
+.fr-outline.fr-none {
+  display: none;
+}
