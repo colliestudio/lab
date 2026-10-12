@@ -254,6 +254,34 @@ export const settle: Command<{ ids: string[] }> = (doc, a) => {
   return changes;
 };
 
+/**
+ * Repair (core `repairs`) after a remote change: two stickies of one slot (two events added at the
+ * same moment, two commands on one event) share a spot, so the board re-packs. Every peer runs it
+ * and the pack depends on the doc only. A sticky being dragged by someone else is left alone: it
+ * is off any slot until the drop, so it never matches another's spot.
+ */
+export const repair: Command<{ ids: string[]; undo?: boolean }> = (doc, a) => {
+  if (!isIds(a?.ids)) return [];
+  const boards = new Map<string, CanvasNode>();
+  for (const n of pick(doc, a.ids).filter(isSticky)) {
+    const b = boardOf(doc, n);
+    if (b && enforcesTimeline(phaseOf(b))) boards.set(b.id, b);
+  }
+  const out: Change[] = [];
+  for (const b of boards.values()) {
+    const seen = new Set<string>();
+    const clash = doc.nodes.filter(isSticky).some((n) => {
+      if (boardOf(doc, n)?.id !== b.id) return false;
+      const key = `${n.x},${n.y}`;
+      const dup = seen.has(key);
+      seen.add(key);
+      return dup;
+    });
+    if (clash) out.push(...packBoard(doc, b));
+  }
+  return out;
+};
+
 /** Re-pack a board (menu: Tidy). */
 export const tidy: Command<{ board: string }> = (doc, a) => {
   const b = boardArg(doc, a?.board);

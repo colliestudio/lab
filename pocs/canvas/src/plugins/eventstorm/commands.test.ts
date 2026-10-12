@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import * as Y from 'yjs';
 import { Store, parse, serialize, type CommandCtx } from '../../core';
 import { registerCoreCommands } from '../../core/commands';
 import { registerStormLogic } from './logic';
@@ -150,6 +151,38 @@ describe('event storm', () => {
     expect(texts).toContain('Claude added domain event “Refund requested”');
     expect(texts).toContain('Claude added domain event “Refund paid”');
     expect(texts).toContain('Alex renamed domain event “Refund paid” to “Refund done”');
+  });
+
+  it('two peers add an event at the same moment: both repair, the slots do not overlap', () => {
+    const da = new Y.Doc();
+    const db = new Y.Doc();
+    const peer = (ydoc: Y.Doc, seed: string) => {
+      const st = new Store({ ydoc, ctx: { ...ctx(), newId: (() => { let n = 0; return () => `${seed}${++n}`; })() } });
+      registerCoreCommands(st);
+      registerStormLogic(st);
+      return st;
+    };
+    const A = peer(da, 'a');
+    const B = peer(db, 'b');
+    Y.applyUpdate(db, Y.encodeStateAsUpdate(da));
+    const id = A.dispatch('storm.createBoard', { x: 0, y: 0 }).select![0];
+    Y.applyUpdate(db, Y.encodeStateAsUpdate(da));
+    A.dispatch('storm.phase', { board: id, phase: 'timeline' });
+    Y.applyUpdate(db, Y.encodeStateAsUpdate(da));
+    A.dispatch('storm.add', { board: id, kind: 'event', text: 'One', by: ALEX });
+    Y.applyUpdate(db, Y.encodeStateAsUpdate(da));
+    // offline: each adds an event after "One", then they sync
+    const one = eventsOn(A.doc, id)[0].id;
+    A.dispatch('storm.add', { board: id, kind: 'event', text: 'From A', after: one, by: ALEX });
+    B.dispatch('storm.add', { board: id, kind: 'event', text: 'From B', after: one, by: ALEX });
+    Y.applyUpdate(da, Y.encodeStateAsUpdate(db));
+    Y.applyUpdate(db, Y.encodeStateAsUpdate(da));
+    for (const st of [A, B]) {
+      const evs = eventsOn(st.doc, id);
+      expect(evs).toHaveLength(3);
+      expect(new Set(evs.map((e) => `${e.x},${e.y}`)).size).toBe(3);
+    }
+    expect(eventsOn(A.doc, id).map((e) => e.x)).toEqual(eventsOn(B.doc, id).map((e) => e.x));
   });
 
   it('timer: start, pause keeps the time left, reset', () => {
