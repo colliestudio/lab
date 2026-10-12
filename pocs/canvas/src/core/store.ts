@@ -433,11 +433,6 @@ export class Store {
   redo(): boolean {
     return this.step('redo');
   }
-  /**
-   * Undoes exactly the top step. Yjs would pop on until a step changes something, so a step whose
-   * edits another player overwrote would be dropped silently and the one before it undone instead:
-   * hide the rest of the stack, and report false when the top step had nothing left to revert.
-   */
   /** Why the next undo/redo is refused by a plugin (see `undoGuards`), if it is. */
   undoBlocked(kind: 'undo' | 'redo' = 'undo'): string | undefined {
     const top = (kind === 'undo' ? this.undoManager.undoStack : this.undoManager.redoStack).at(-1);
@@ -449,6 +444,11 @@ export class Store {
     }
     return;
   }
+  /**
+   * Undoes exactly the top step. Yjs would pop on until a step changes something, so a step whose
+   * edits another player overwrote would be dropped silently and the one before it undone instead:
+   * hide the rest of the stack, and report false when the top step had nothing left to revert.
+   */
   private step(kind: 'undo' | 'redo'): boolean {
     const um = this.undoManager;
     const [from, to] = kind === 'undo' ? [um.undoStack, um.redoStack] : [um.redoStack, um.undoStack];
