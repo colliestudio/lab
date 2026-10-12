@@ -107,6 +107,8 @@ export function createFramesPlugin(opts: FramesOptions): Plugin & { portals?: Po
           if ((e.target as Element | null)?.closest?.('.fr-title') || app.selected().some(isFrame)) pin();
           freezeMembership(app.doc.nodes);
           stopFlight(app);
+          // after the view has raised what was pressed (it runs later in this event)
+          setTimeout(sink, 0);
         },
         true,
       );
@@ -117,8 +119,12 @@ export function createFramesPlugin(opts: FramesOptions): Plugin & { portals?: Po
         },
         true,
       );
+      const sink = () => {
+        app.dispatch('frames.sink', {}, { undoable: false });
+      };
       const thaw = () => {
         if (thawMembership()) app.store.invalidate();
+        sink();
       };
       window.addEventListener('pointerup', thaw);
       window.addEventListener('pointercancel', thaw);
@@ -228,7 +234,6 @@ export function createFramesPlugin(opts: FramesOptions): Plugin & { portals?: Po
               { label: 'Later in order', disabled: i === list.length - 1, run: () => a.dispatch('frames.reorder', { id: f.id, to: i + 1 }) },
               { label: 'Present from here', hint: '⌘↵', disabled: skip && 'Not in the presentation', run: () => presenter.start(f.id) },
               { label: 'Remove frame, keep contents', separator: true, run: () => a.dispatch('frames.unframe', { id: f.id }) },
-              { label: 'Delete frame and contents', hint: '⌫', run: () => a.dispatch('core.delete', { ids: [f.id] }) },
             ],
           };
         }

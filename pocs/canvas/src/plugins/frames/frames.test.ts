@@ -132,6 +132,16 @@ describe('commands', () => {
     const r = s.dispatch('frames.create', { x: 100, y: 0 });
     expect(orderedFrames(s.doc).map((f) => f.id)).toEqual([...before, r.select![0]]);
   });
+  it('sink puts frames back under every other node after a press raised them, keeping their order', () => {
+    const s = store([frame('outer', 0, 0, 900, 900, { z: -2 }), frame('inner', 50, 50, 300, 300, { z: -1 }), box('a', 60, 60, 20, 20, { z: 3 }), box('loose', 2000, 0, 20, 20, { z: 5 })]);
+    expect(s.dispatch('frames.sink', {}).changes).toEqual([]);
+    s.dispatch('core.front', { ids: ['outer'] }); // what pressing a frame does
+    expect(s.doc.get('outer')!.z).toBeGreaterThan(s.doc.get('loose')!.z!);
+    s.dispatch('frames.sink', {});
+    const z = (id: string) => s.doc.get(id)!.z!;
+    expect(Math.max(z('outer'), z('inner'))).toBeLessThan(Math.min(z('a'), z('loose')));
+    expect(z('inner')).toBeGreaterThan(z('outer')); // the inner frame rode with the outer one and stays above it
+  });
   it('create on unordered frames pins them in reading order first', () => {
     const s = store([frame('b', 800, 0, 100, 100), frame('a', 0, 0, 100, 100)]);
     const r = s.dispatch('frames.create', { x: -900, y: 0 });

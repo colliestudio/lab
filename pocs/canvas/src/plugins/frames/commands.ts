@@ -23,6 +23,21 @@ function pinOrder(doc: DocView): Change[] {
 }
 
 /**
+ * Frames are backdrops, but pressing one raises it (and its contents) above everything, so a
+ * dragged frame would end up covering unrelated notes. Put frames back under every other node,
+ * keeping their order among themselves (nested frames stay inside-over-outside). No-op if they are.
+ */
+export const sink: Command<Record<string, never>> = (doc) => {
+  const frames = doc.nodes.filter(isFrame).sort((a, b) => (a.z ?? 0) - (b.z ?? 0));
+  const ids = new Set(frames.map((f) => f.id));
+  const others = doc.nodes.filter((n) => !ids.has(n.id));
+  if (!frames.length || !others.length) return [];
+  const floor = Math.min(...others.map((n) => n.z ?? 0));
+  if ((frames[frames.length - 1].z ?? 0) < floor) return [];
+  return frames.map((f, i) => set(f.id, 'z', floor - (frames.length - i)));
+};
+
+/**
  * Slide order is reading order only until frames are touched: without an explicit order, moving a
  * frame across the canvas would reshuffle the talk. Pinning writes the order down (no-op once every
  * frame has one). Called before anything that can move a frame, and when presenting.
@@ -132,4 +147,4 @@ export const retarget: Command<{ id: string; room: string }> = (doc, a) => {
   return [set(p.id, 'file', `${a.room}.canvas`), set(p.id, PORTAL, { room: a.room })];
 };
 
-export const commands = { create, pin, rename, resize, reorder, skip, unframe, createPortal, retarget };
+export const commands = { create, pin, sink, rename, resize, reorder, skip, unframe, createPortal, retarget };
