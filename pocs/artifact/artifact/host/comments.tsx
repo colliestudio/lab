@@ -19,22 +19,71 @@ function idFor(node: HTMLElement, root: HTMLElement): string {
 
 const anchorNode = (el: HTMLElement) => (el.matches("[data-section] > .a-h") ? el.parentElement! : el); // a section's heading anchors the section
 
-/** The element a click means (closest candidate) and a stable id for it: its own `id`/data-aid, else section + tag + position. */
-export function anchorFor(target: HTMLElement, root: HTMLElement): Anchor | null {
+/** A CSS path from the root to a node: stops at the nearest id/data-aid, else tag:nth-of-type steps. Stable while the markup is. */
+function pathTo(node: HTMLElement, root: HTMLElement): string {
+  const parts: string[] = [];
+  let anchored = false;
+  for (let e: HTMLElement | null = node; e && e !== root; e = e.parentElement) {
+    if (e.id && !e.id.startsWith(":")) { parts.unshift(`#${CSS.escape(e.id)}`); anchored = true; break; }
+    if (e.dataset.aid) { parts.unshift(`[data-aid="${CSS.escape(e.dataset.aid)}"]`); anchored = true; break; }
+    const same = e.parentElement ? [...e.parentElement.children].filter((c) => c.tagName === e!.tagName) : [e];
+    parts.unshift(`${e.tagName.toLowerCase()}:nth-of-type(${same.indexOf(e) + 1})`);
+  }
+  return (anchored ? "" : ":scope > ") + parts.join(" > ");
+}
+const QUOTE = '~"';
+
+/** The nearest block-level element at or above the target inside the root (a blank page has no Sections to lean on). */
+function blockOf(target: HTMLElement, root: HTMLElement): HTMLElement | null {
+  let e: HTMLElement | null = target;
+  const svg = e.closest("svg");
+  if (svg && root.contains(svg)) e = svg as unknown as HTMLElement;
+  while (e && e !== root && getComputedStyle(e).display.startsWith("inline")) e = e.parentElement;
+  return e && e !== root && root.contains(e) ? e : null;
+}
+
+/**
+ * The element a click means and a stable id for it: its own `id`/data-aid, else section + tag + position.
+ * With `any` (blank-page artifacts) any element qualifies, identified by a CSS path from the content root.
+ */
+export function anchorFor(target: HTMLElement, root: HTMLElement, any = false): Anchor | null {
   const el = target.closest<HTMLElement>(SEL);
-  if (!el || !root.contains(el)) return null;
-  const node = anchorNode(el);
-  const id = idFor(node, root);
-  return { id, label: id, excerpt: short(node.textContent ?? ""), el: node };
+  if (el && root.contains(el)) {
+    const node = anchorNode(el);
+    const id = idFor(node, root);
+    return { id, label: id, excerpt: short(node.textContent ?? ""), el: node };
+  }
+  if (!any) return null;
+  const b = blockOf(target, root);
+  if (!b) return null;
+  const id = b.dataset.aid ?? (b.id && !b.id.startsWith(":") ? b.id : "~" + pathTo(b, root));
+  return { id, label: id, excerpt: short(b.getAttribute("aria-label") || b.textContent || b.getAttribute("alt") || b.tagName.toLowerCase()), el: b };
+}
+
+/** An anchor for selected text: the element holding it plus the quote (`<element id>~"the quote"`). */
+export function quoteAnchor(sel: Selection, root: HTMLElement, any = false): Anchor | null {
+  const text = sel.toString().replace(/\s+/g, " ").trim();
+  if (text.length < 3 || sel.rangeCount === 0) return null;
+  const n = sel.getRangeAt(0).commonAncestorContainer;
+  const host = (n.nodeType === 1 ? n : n.parentElement) as HTMLElement | null;
+  if (!host || !root.contains(host)) return null;
+  const base = anchorFor(host, root, any);
+  if (!base) return null;
+  const id = `${base.id}${QUOTE}${text.slice(0, 80)}"`;
+  return { id, label: id, excerpt: short(text, 120), el: base.el };
 }
 
 /** The element an anchor id points at (also after a reload, when auto ids have to be recomputed). */
 export function findAnchor(root: HTMLElement, id: string): HTMLElement | null {
+  const q = id.indexOf(QUOTE);
+  if (q > 0) id = id.slice(0, q);
+  if (id.startsWith("~")) { try { return root.querySelector<HTMLElement>(id.slice(1)); } catch { return null; } }
   for (const e of root.querySelectorAll<HTMLElement>("[data-aid],[data-section]")) if ((e.dataset.aid ?? e.dataset.section) === id) return e;
   for (const e of root.querySelectorAll<HTMLElement>(SEL)) {
     const n = anchorNode(e);
     if (!n.dataset.aid && !n.dataset.section && idFor(n, root) === id) return n;
   }
+  try { if (/^[A-Za-z][\w-]*$/.test(id)) { const e = root.querySelector<HTMLElement>(`#${CSS.escape(id)}`); if (e) return e; } } catch { /* not a selector */ }
   return null;
 }
 

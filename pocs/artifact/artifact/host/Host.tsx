@@ -3,12 +3,13 @@ import { meta, decisions as registryDecisions, type Source as Src } from "../kit
 import { Badge, Source } from "../kit/layout.tsx";
 import { fmtAsOf, fmtDate, plural, slug } from "../kit/util.ts";
 import { shell } from "../kit/shell.ts";
-import { useComments, useAnswerState, makeStore, Composer, FeedbackPanel, DecisionList, feedbackMarkdown, anchorFor, findAnchor, type Anchor } from "./comments.tsx";
+import { useComments, useAnswerState, makeStore, Composer, FeedbackPanel, DecisionList, feedbackMarkdown, anchorFor, quoteAnchor, findAnchor, type Anchor, type Comment } from "./comments.tsx";
 import { FeedbackCtx, decisionsMarkdown, reachable, type DecisionRow } from "../kit/feedback.ts";
 import { usePresent } from "./present.ts";
 import { Boundary } from "./Boundary.tsx";
 import { allPages, groups, home, isMulti, pageById, pages } from "../kit/pages.ts";
-import { hrefFor, parseHash, HOME, type Route } from "../kit/route.ts";
+import { hrefFor, parseHash, HOME } from "../kit/route.ts";
+import { useRoute } from "../kit/router.tsx";
 import { Status } from "../kit/layout.tsx";
 import { PresentCtx } from "../kit/present.ts";
 
@@ -81,11 +82,42 @@ function PageNav({ current }: { current: string }) {
   );
 }
 
+/** Small dots at the corner of commented elements (blank-page artifacts have no section bar to show them). */
+function Markers({ root, list, page, onOpen }: { root: React.RefObject<HTMLElement | null>; list: Comment[]; page: string; onOpen: () => void }) {
+  const [dots, setDots] = useState<{ x: number; y: number; n: number }[]>([]);
+  useEffect(() => {
+    let raf = 0;
+    const calc = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const el = root.current; if (!el) return;
+        const m = new Map<HTMLElement, number>();
+        for (const c of list) { if (c.anchor.page && c.anchor.page !== page) continue; const t = findAnchor(el, c.anchor.id); if (t) m.set(t, (m.get(t) ?? 0) + 1); }
+        const out: { x: number; y: number; n: number }[] = [];
+        for (const [t, n] of m) {
+          const r = t.getBoundingClientRect();
+          if ((!r.width && !r.height) || r.bottom < 0 || r.top > innerHeight) continue;
+          out.push({ x: Math.round(Math.max(8, Math.min(r.right - 4, innerWidth - 14))), y: Math.round(Math.max(4, Math.min(r.top - 4, innerHeight - 14))), n });
+        }
+        setDots((p) => (JSON.stringify(p) === JSON.stringify(out) ? p : out));
+      });
+    };
+    calc();
+    const mo = new MutationObserver(calc); if (root.current) mo.observe(root.current, { childList: true, subtree: true, attributes: true });
+    addEventListener("scroll", calc, { capture: true, passive: true }); addEventListener("resize", calc);
+    const t = setInterval(calc, 700);
+    return () => { cancelAnimationFrame(raf); mo.disconnect(); removeEventListener("scroll", calc, true); removeEventListener("resize", calc); clearInterval(t); };
+  }, [root, list, page]);
+  return <>{dots.map((d, i) => <button key={i} className="h-dot" style={{ left: d.x, top: d.y }} onClick={onOpen} aria-label={`${d.n} comment${d.n > 1 ? "s" : ""} here`} title={`${d.n} comment${d.n > 1 ? "s" : ""}`} />)}</>;
+}
+
 const typing = (e: KeyboardEvent) => { const t = e.target as HTMLElement; return t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName); };
 
 export function Host() {
   const content = useRef<HTMLElement>(null);
-  const [route, setRoute] = useState<Route>(() => parseHash(location.hash) ?? { page: HOME });
+  const bare = meta.shell === "bare"; // the artifact owns the layout: the host adds only the feedback layer and a corner menu
+  const route = useRoute();
+  const route_ = { page: route.page, section: route.anchor };
   const page = pageById(route.page) ?? home();
   const { items, active } = useOutline(content, page.id);
   const [dark, setDark] = useState(document.documentElement.dataset.theme === "midnight");
@@ -114,6 +146,8 @@ export function Host() {
   const [tab, setTab] = useState<"decisions" | "comments">("decisions");
   const summary = useRef<HTMLElement>(null);
   const lastPage = useRef(route.page);
+  const [menu, setMenu] = useState(false);
+  const [sel, setSel] = useState<{ a: Anchor; x: number; y: number } | null>(null);
   useEffect(() => {
     // a page change: a tour continues (or starts) on the new page; presenting anything else ends at the page change
     const pend = tourRef.current.pending;
@@ -141,23 +175,17 @@ export function Host() {
   const present = usePresent(content, head, page.title, summary, (dir) => { if (tourRef.current.on) goTour(dir); });
 
   useEffect(() => { document.title = page.id === HOME ? meta.title : `${page.title} · ${meta.title}`; }, [page]);
-  // hash routes: #/page and #/page/section; a plain #anchor stays an in-page anchor and never changes the page
-  useEffect(() => {
-    const f = () => { const r = parseHash(location.hash); if (r) setRoute(r); else if (location.hash === "" || location.hash === "#") setRoute({ page: HOME }); };
-    addEventListener("hashchange", f);
-    return () => removeEventListener("hashchange", f);
-  }, []);
   useEffect(() => {
     // after a route change: open and scroll to the section, or go to the top of the new page
     const t = setTimeout(() => {
-      const el = route.section ? document.getElementById(route.section) : null;
+      const el = route_.section ? document.getElementById(route_.section) : null;
       if (el) { for (let e: Element | null = el; e; e = e.parentElement) { if (e.matches?.(".a-section")) e.removeAttribute("data-folded"); if (e.tagName === "DETAILS") (e as HTMLDetailsElement).open = true; } el.scrollIntoView({ block: "start" }); }
-      else if (route.page !== lastPage.current) scrollTo({ top: 0 });
+      else if (route.page !== lastPage.current) scrollTo({ top: 0, behavior: "instant" });
       lastPage.current = route.page;
       doJump();
     }, 30);
     return () => clearTimeout(t);
-  }, [route]);
+  }, [route.page, route.anchor]);
   useEffect(() => {
     const el = content.current!;
     const scan = () => {
@@ -191,7 +219,7 @@ export function Host() {
       if (e.key === "c") setMode((m) => { if (!m) { setPanel(true); setTab("comments"); } return !m; });
       else if (e.key === "p") { tourRef.current.on = false; present.start(); }
       else if (e.key === "?") setHelp((h) => !h);
-      else if (e.key === "Escape") { setMode(false); setOpen(null); setHelp(false); }
+      else if (e.key === "Escape") { setMode(false); setOpen(null); setHelp(false); setMenu(false); setSel(null); }
     };
     addEventListener("keydown", k);
     return () => removeEventListener("keydown", k);
@@ -203,13 +231,13 @@ export function Host() {
     if (!mode) return;
     const el = content.current!;
     const over = (e: MouseEvent) => {
-      const a = anchorFor(e.target as HTMLElement, el);
+      const a = anchorFor(e.target as HTMLElement, el, bare);
       if (hover.current !== a?.el) { hover.current?.removeAttribute("data-hover"); hover.current = a?.el ?? null; a?.el.setAttribute("data-hover", ""); }
     };
     const click = (e: MouseEvent) => {
       const t = e.target as HTMLElement;
       if (t.closest("a, button")) { e.preventDefault(); }
-      const a = anchorFor(t, el);
+      const a = anchorFor(t, el, bare);
       if (!a) return;
       e.preventDefault(); e.stopPropagation();
       setOpen(a);
@@ -222,7 +250,33 @@ export function Host() {
       hover.current?.removeAttribute("data-hover"); hover.current = null;
       delete document.documentElement.dataset.commenting;
     };
-  }, [mode]);
+  }, [mode, bare]);
+  // alt-click comments on any element without comment mode; selecting text offers a small "Comment" button (blank-page artifacts)
+  useEffect(() => {
+    const el = content.current!;
+    const alt = (e: MouseEvent) => {
+      if (!e.altKey || mode || present.active) return;
+      const a = anchorFor(e.target as HTMLElement, el, bare);
+      if (!a) return;
+      e.preventDefault(); e.stopPropagation(); setOpen(a);
+    };
+    const up = () => setTimeout(() => {
+      const s = getSelection();
+      const a = bare && s && !s.isCollapsed && !mode && !present.active ? quoteAnchor(s, el, true) : null;
+      if (!a || !s) { setSel(null); return; }
+      const r = s.getRangeAt(0).getBoundingClientRect();
+      setSel({ a, x: Math.min(r.right, innerWidth - 90), y: Math.min(r.bottom + 6, innerHeight - 40) });
+    }, 0);
+    const down = (e: MouseEvent) => { if (!(e.target as HTMLElement).closest?.(".h-selbtn")) setSel(null); };
+    el.addEventListener("click", alt, true); el.addEventListener("mouseup", up); document.addEventListener("mousedown", down);
+    return () => { el.removeEventListener("click", alt, true); el.removeEventListener("mouseup", up); document.removeEventListener("mousedown", down); };
+  }, [mode, bare, present.active]);
+  useEffect(() => {
+    if (!menu) return;
+    const f = (e: MouseEvent) => { if (!(e.target as HTMLElement).closest?.(".h-corner")) setMenu(false); };
+    document.addEventListener("pointerdown", f);
+    return () => document.removeEventListener("pointerdown", f);
+  }, [menu]);
   // mark commented elements
   useEffect(() => {
     const el = content.current!;
@@ -291,8 +345,8 @@ export function Host() {
   const feedbackLabel = ["Feedback", rows.length ? `${decided}/${rows.length} decided` : "", cm.list.length ? plural(cm.list.length, "note") : ""].filter(Boolean).join(" · ").replace("Feedback ·", "Feedback:");
   const compact = meta.header !== "full";
   return (
-    <div className="h-root">
-      <div className="h-bar" role="toolbar" aria-label="Page tools">
+    <div className="h-root" data-shell={bare ? "bare" : undefined}>
+      {!bare && <div className="h-bar" role="toolbar" aria-label="Page tools">
         <span className="h-bar-title">{meta.title}</span>
         {isMulti() && (
           <select className="h-pagesel" aria-label="Go to page" value={page.id} onChange={(e) => { location.hash = hrefFor(e.target.value); }}>
@@ -317,9 +371,9 @@ export function Host() {
             </div>
           </div>
         )}
-      </div>
+      </div>}
       <div className="h-layout" data-outline={outlineOff ? "off" : undefined}>
-        <nav className="h-outline" aria-label={isMulti() ? "Pages" : "Outline"}>
+        {!bare && <nav className="h-outline" aria-label={isMulti() ? "Pages" : "Outline"}>
           {isMulti() && (
             <div className="h-pages">
               <a href={hrefFor(HOME)} className={cx("h-page", page.id === HOME && "on")}>{home().title}</a>
@@ -340,9 +394,9 @@ export function Host() {
           {!isMulti() && items.map((it) => (
             <a key={it.id} href={`#${it.id}`} className={it.id === active ? "on" : ""} style={{ paddingLeft: `${0.6 + (it.level - 1) * 0.8}rem` }}>{it.title}</a>
           ))}
-        </nav>
+        </nav>}
         <main className="h-main" data-width={meta.width}>
-          <header className="h-head" data-header={compact ? "compact" : "full"} ref={head}>
+          {!bare && <header className="h-head" data-header={compact ? "compact" : "full"} ref={head}>
             {page.id !== HOME && (
               <div className="h-crumbs"><a href={hrefFor(HOME)}>{meta.title}</a>{page.group && <> › <span>{page.group}</span></>}</div>
             )}
@@ -365,11 +419,11 @@ export function Host() {
                 {sources.length > 3 && <button className="h-more" onClick={() => setAllSources(!allSources)}>{allSources ? "show fewer" : `+${sources.length - 3} sources`}</button>}
               </div>
             ))}
-          </header>
+          </header>}
           <FeedbackCtx.Provider value={{ interactive: true, answers: am.answers, answer: am.answer }}>
             <PresentCtx.Provider value={present.state}><article className="a-content" ref={content} data-page={page.id}><Boundary key={page.id}><page.Component /></Boundary></article></PresentCtx.Provider>
           </FeedbackCtx.Provider>
-          {isMulti() && <PageNav current={page.id} />}
+          {isMulti() && !bare && <PageNav current={page.id} />}
           {rows.length > 0 && (!tourRef.current.on || page.id === tourIds[tourIds.length - 1]) && (
             <section className="h-summary-slide" ref={summary} data-title="Summary">
               <h2 className="a-h">Summary: {decided}/{rows.length} decided</h2>
@@ -385,6 +439,34 @@ export function Host() {
           onCopyComments={() => copyText(feedbackMarkdown(meta.title, cm.list), "comments")} onCopyDecisions={() => copyText(decisionsMd(), "decisions")} onCopyAll={() => copyText(allMd(), "all")}
           onClearAnswers={am.clear} onJumpDecision={jumpDecision} onJumpComment={jumpComment} pageTitle={(id) => (id ? pageById(id)?.title : undefined)} onClose={() => { setPanel(false); setMode(false); }} />}
       </div>
+      {bare && !present.active && (
+        <>
+          <Markers root={content} list={cm.list} page={page.id} onOpen={() => { setPanel(true); setTab("comments"); }} />
+          <div className="h-corner" data-open={menu ? "" : undefined}>
+            {menu && (
+              <div className="h-corner-menu" role="menu" aria-label="Page menu">
+                <button role="menuitem" onClick={() => { setPanel(!panel); setMenu(false); }}>{feedbackLabel}</button>
+                <button role="menuitem" onClick={() => { setMenu(false); tourRef.current.on = false; present.start(); }}>Present <kbd>p</kbd></button>
+                {hasTour && <button role="menuitem" onClick={() => { setMenu(false); tourRef.current.on = true; if (page.id === tourIds[0]) present.start(); else { tourRef.current.pending = "first"; location.hash = hrefFor(tourIds[0]); } }}>Tour</button>}
+                {canDownload && <button role="menuitem" onClick={() => { setMenu(false); download(); }}>Download</button>}
+                <button role="menuitem" onClick={() => { setMenu(false); setTheme(!dark); }}>{dark ? "Light theme" : "Dark theme"}</button>
+                <button role="menuitem" onClick={() => { setMenu(false); setHelp(true); }}>Shortcuts <kbd>?</kbd></button>
+              </div>
+            )}
+            {help && (
+              <div className="h-pop h-pop-corner" role="dialog" aria-label="Keyboard shortcuts">
+                <b>Shortcuts</b>
+                {SHORTCUTS.map(([k, d]) => <div key={k}><kbd>{k}</kbd><span>{d}</span></div>)}
+                <div><kbd>⌥ click</kbd><span>Comment on the element; or select text and press Comment</span></div>
+              </div>
+            )}
+            <button className="h-corner-btn" aria-label="Page menu" aria-expanded={menu} onClick={() => setMenu(!menu)}>
+              <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden><circle cx="2.5" cy="7" r="1.3" fill="currentColor" /><circle cx="7" cy="7" r="1.3" fill="currentColor" /><circle cx="11.5" cy="7" r="1.3" fill="currentColor" /></svg>
+            </button>
+          </div>
+          {sel && <button className="h-selbtn" style={{ left: sel.x, top: sel.y }} onClick={() => { setOpen(sel.a); setSel(null); getSelection()?.removeAllRanges(); }}>Comment</button>}
+        </>
+      )}
       {open && <Composer anchor={open} onCancel={() => setOpen(null)} onSave={(body) => { cm.add(open, body, isMulti() ? page.id : undefined); setOpen(null); }} existing={cm.list.filter((c) => c.anchor.id === open.id && (!c.anchor.page || c.anchor.page === page.id))} />}
       {present.active && (
         <div className="h-present-bar" data-slide={present.state.slide} data-slides={present.state.slides} data-step={present.state.step} data-steps={present.state.steps}>

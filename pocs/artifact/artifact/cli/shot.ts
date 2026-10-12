@@ -68,7 +68,7 @@ export async function shot(dir: string, o: ShotOpts = {}): Promise<string[]> {
         await Promise.all([...document.images].map((i) => (i.complete ? null : new Promise((r) => { i.onload = i.onerror = () => r(null); }))));
       });
       await page.waitForTimeout(200);
-      await page.addStyleTag({ content: o.chrome === false ? ".h-bar{display:none!important}" : ".h-bar{position:static!important}" });
+      await page.addStyleTag({ content: o.chrome === false ? ".h-bar,.h-corner{display:none!important}" : ".h-bar{position:static!important}" });
       if (o.split) {
         // viewport-sized slices of the full page: each PNG is readable on its own
         const dims = await page.evaluate(() => ({ h: document.documentElement.scrollHeight, w: document.documentElement.clientWidth }));
@@ -148,7 +148,7 @@ export async function capture(url: string, o: CaptureOpts): Promise<string> {
       }
     }
     // the sticky host bar would be drawn mid-capture: hide it for element shots, unstick it for full pages
-    await page.addStyleTag({ content: o.selector ? ".h-bar{display:none!important}" : ".h-bar{position:static!important}" }).catch(() => {});
+    await page.addStyleTag({ content: o.selector ? ".h-bar,.h-corner{display:none!important}" : ".h-bar{position:static!important}" }).catch(() => {});
     mkdirSync(dirname(resolve(o.out)), { recursive: true });
     const jpeg = /\.jpe?g$/i.test(o.out);
     const opts = { path: resolve(o.out), ...(jpeg ? { type: "jpeg" as const, quality: o.quality ?? 72 } : { type: "png" as const }) };

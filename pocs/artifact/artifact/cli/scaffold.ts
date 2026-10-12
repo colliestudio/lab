@@ -1,13 +1,16 @@
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 
-const TEMPLATE = `import { Section, Callout, Grid, Card, Status, Table, Steps, Questions, Source, useData } from "artifact";
+const TEMPLATE = `import { meta, Section, Callout, Grid, Card, Status, Table, Steps, Questions, Source, useData } from "artifact";
 
-// Write whatever structure fits the story. Big picture first; cite where facts came from.
+// artifact.json has "shell": "bare": this page is blank and yours (the host adds only comments, decisions and a corner menu).
+// Lay it out however fits the story; here, a plain centred column. Big picture first; cite where facts came from.
 export default function Artifact() {
   const items = useData<{ name: string; status: string; owner: string }[]>("items");
   return (
-    <>
+    <main style={{ maxWidth: "60rem", margin: "0 auto", padding: "2.5rem 1.5rem 6rem" }}>
+      <h1 style={{ marginBottom: 0 }}>{meta.title}</h1>
+      <p className="a-muted">{meta.summary}</p>
       <Callout tone="info" title="In one line">Say the conclusion first; the sections below are for checking it.</Callout>
 
       <Section title="Where things are">
@@ -24,7 +27,7 @@ export default function Artifact() {
         <Questions items={[{ q: "Which option do we take?", why: "Blocks the next step.", owner: "Alex" }]} />
         <p>Based on <Source label="example thread" kind="thread" from="chat" />.</p>
       </Section>
-    </>
+    </main>
   );
 }
 `;
@@ -36,7 +39,7 @@ export function scaffold(dirArg: string, kind = "status"): string {
   mkdirSync(join(dir, "evidence"), { recursive: true });
   const title = basename(dir, ".artifact").replace(/[-_]+/g, " ").replace(/^./, (c) => c.toUpperCase());
   writeFileSync(join(dir, "artifact.json"), JSON.stringify({
-    title, kind, audience: "who this is for", summary: "One or two sentences: what the reader should take away.",
+    title, kind, shell: "bare", audience: "who this is for", summary: "One or two sentences: what the reader should take away.",
     sources: [], created: new Date().toISOString().slice(0, 10),
   }, null, 2) + "\n");
   writeFileSync(join(dir, "index.tsx"), TEMPLATE);

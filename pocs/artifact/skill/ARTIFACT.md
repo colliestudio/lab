@@ -5,7 +5,7 @@ description: Make an artifact: a page that shows what you did, found or propose 
 
 # artifact
 
-An artifact is a directory `x.artifact/`. You write the page; the kit gives you parts (`COMPONENTS.md` next to this file lists them with props); the host (outline, present mode, feedback drawer) wraps it. You pick the structure: nothing here is a required shape.
+An artifact is a directory `x.artifact/`. You write the page; the kit gives you parts (`COMPONENTS.md` next to this file lists them with props); the host adds the feedback layer (comments, decisions, present, download). You pick the structure and the layout: nothing here is a required shape.
 
 ```
 x.artifact/
@@ -15,7 +15,7 @@ x.artifact/
   evidence/       *.patch  *.replay  images  source files: cited by path, inlined at build
 ```
 
-`artifact.json` also takes `tour` (page ids to present in order, see Pages), `asOf` (ISO gather time, shown in the header) with `timeZone` (default UTC), `repo` (a local path: `check` warns about cited commits that are on no remote branch), `width` ("wide"|"full"), `header` ("full"), `host: {"download": false}`. `audience` is shown as written. `summary` is printed large under the title and is slide 1 when presenting: make it your headline and don't restate it in a Callout.
+`artifact.json` also takes `shell` ("bare" for new artifacts, see Shell; "doc" = the older layout, the default when absent), `tour` (page ids to present in order, see Pages), `asOf` (ISO gather time, shown in the header) with `timeZone` (default UTC), `repo` (a local path: `check` warns about cited commits that are on no remote branch), `width` ("wide"|"full"), `header` ("full"), `host: {"download": false}`. `audience` is shown as written. `summary` is printed large under the title and is slide 1 when presenting: make it your headline and don't restate it in a Callout.
 
 ## Commands
 
@@ -45,9 +45,18 @@ Loop: write, `check` until ok, `shot` and look at the PNGs (both themes; `--page
 - Prefer real evidence (`<Diff>`, `<Replay>`, screenshots) over describing it; pick hunks, never paste whole patches.
 - Use `<Section>` for every part you want in the outline and in present mode (content outside Sections becomes loose "intro" slides). Readers can fold any Section by clicking its heading; Fold all / Unfold all are in the "?" panel. Heavy blocks stay open unless you set `collapsed`.
 
+## Shell: the feedback layer; layout is yours
+
+The shell is only what every artifact shares: comments, decisions and answers, the Feedback drawer with copy, Download, shortcuts, present plumbing. It shows one tiny corner button (bottom-right, faint until hover) with a menu. Everything visible is yours: `artifact new` scaffolds `"shell": "bare"`, a blank full-viewport page with no header, outline, page nav or width limit. Build the experience the story wants (a board, a scroll story, sheets, a deck) and let readers move through it your way.
+
+- Comments work on anything: alt-click an element, or select text and press Comment (or `c`, then click). Anchors are your `id`/`data-aid`, else a CSS path, plus the quoted text and the page id; commented elements get a small dot. Give key elements an `id` for stable anchors. Sections still anchor by id.
+- Navigation: `usePages()`, `useRoute()`, `navigate(id, {anchor})`, `<Link>`, `<Morph name>` (COMPONENTS.md). Page changes use a view transition unless the reader prefers reduced motion.
+- Present mode and `<Step>` / `usePresentSteps` still work; Sections (or loose elements) are the slides.
+- `"shell": "doc"` (or no `shell`) keeps the older layout: header, outline, grouped page nav, prev/next, page select. Use it for plain reading documents; pick bare when the layout is part of the point. `shot` and `check` work in both.
+
 ## Pages (multi-page artifacts)
 
-Put `pages/<id>.tsx` files next to `index.tsx` (home). Each exports a default component and optionally `export const page = { title, group, order, summary, status, thumb }`. The left nav lists pages by `group`, the current page's Sections sit under it, each page ends with Previous / Next, and routes are hash links (`#/id`, `#/id/section`), so it is still one HTML file and Back works. Put `<PageCards />` on the home page and link across with `<Link to="id#section">`. Comments and decisions work across pages (the drawer groups them by page; copied output names the page), and `"tour": ["home", "a", "b"]` in artifact.json adds a Tour button that presents all of them in order. `check` renders every page; `shot --page id|all`.
+Put `pages/<id>.tsx` files next to `index.tsx` (home). Each exports a default component and optionally `export const page = { title, group, order, summary, status, thumb }`. In the doc shell the left nav lists pages by `group`, the current page's Sections sit under it and each page ends with Previous / Next; in bare you build the nav yourself from `usePages()`. Routes are hash links (`#/id`, `#/id/section`), so it is still one HTML file and Back works. Put `<PageCards />` on the home page and link across with `<Link to="id#section">`. Comments and decisions work across pages (the drawer groups them by page; copied output names the page), and `"tour": ["home", "a", "b"]` in artifact.json adds a Tour button that presents all of them in order. `check` renders every page; `shot --page id|all`.
 
 **Use pages** for several items or journeys, different audiences, or anything over about 3 screens with natural parts (a recap with one page per round, a demo with a page per journey). **Stay on one page** for one story that reads top to bottom: Sections and `<More>` are enough, and one page needs no nav.
 
@@ -71,7 +80,7 @@ For a batch of decisions when the reader is away from chat: prepare the tree (ea
 
 ## What the reader has
 
-Outline (toggle for full width), theme, **Present** (`p`: title slide, then → / ← through Sections and `<Step>`s, ↑/↓ scroll, `#links` jump between slides, a Summary slide when there are decisions), **Feedback** drawer (`c` adds a comment on any element; decisions tab; copy as Markdown with element ids), **Download** (the same single HTML file), `?` for shortcuts and fold all.
+In the doc shell: outline (toggle for full width), theme, **Present** (`p`: title slide, then → / ← through Sections and `<Step>`s, ↑/↓ scroll, `#links` jump between slides, a Summary slide when there are decisions), **Feedback** drawer (`c` adds a comment on any element; decisions tab; copy as Markdown with element ids), **Download** (the same single HTML file), `?` for shortcuts and fold all.
 
 ## Limits
 

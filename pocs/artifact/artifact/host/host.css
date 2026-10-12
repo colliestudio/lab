@@ -129,3 +129,24 @@ html[data-present] .h-summary-slide .h-decisions li { font-size: 1.05rem; }
 .h-pagesel { font: inherit; font-size: var(--collie-text-sm); padding: 0.2em 0.4em; border: 1px solid var(--collie-color-border); border-radius: var(--collie-radius-sm); background: var(--collie-color-canvas); color: inherit; max-width: 14rem; }
 html[data-present] .h-pagenav { display: none; }
 .h-pagehead { font-size: var(--collie-text-xs); text-transform: uppercase; letter-spacing: 0.06em; color: var(--collie-color-fg-muted); margin: 0.4rem 0 0.1rem; }
+
+/* shell: "bare": the artifact owns the whole viewport; the host adds only the feedback layer and a corner menu */
+.h-root[data-shell="bare"] .h-layout, .h-root[data-shell="bare"] .h-layout:has(.h-panel), .h-root[data-shell="bare"] .h-layout:has(.a-page), .h-root[data-shell="bare"] .h-layout:has(.h-main) { display: block !important; max-width: none !important; margin: 0 !important; }
+.h-root[data-shell="bare"] .h-main, html[data-present] .h-root[data-shell="bare"] .h-main, html[data-present] .h-root[data-shell="bare"] .h-main[data-width] { max-width: none !important; width: 100%; padding: 0 !important; margin: 0 !important; font-size: inherit; }
+.h-root[data-shell="bare"] .a-content, .h-root[data-shell="bare"] .a-content > :first-child { max-width: none; margin-top: 0; }
+.h-root[data-shell="bare"] .h-panel { position: fixed; right: 0; top: 0; bottom: 0; max-height: none; z-index: 35; box-shadow: var(--collie-shadow-overlay); }
+.h-root[data-shell="bare"] .a-content [data-commented] { box-shadow: none; background: none; }
+.h-root[data-shell="bare"] .h-summary-slide { margin: 0 auto; max-width: 62rem; padding: 2rem; }
+.h-corner { position: fixed; right: 0.9rem; bottom: 0.9rem; z-index: 36; display: flex; flex-direction: column; align-items: flex-end; gap: 0.4rem; font-size: var(--collie-text-sm); }
+.h-corner-btn { width: 2rem; height: 2rem; padding: 0; display: grid; place-items: center; border-radius: 50%; border: 1px solid var(--collie-color-border); background: var(--collie-color-canvas); color: var(--collie-color-fg); cursor: pointer; opacity: 0.25; transition: opacity 0.2s; box-shadow: var(--collie-shadow-raised); }
+.h-corner:hover .h-corner-btn, .h-corner-btn:focus-visible, .h-corner[data-open] .h-corner-btn { opacity: 1; }
+.h-corner-menu { display: grid; min-width: 11rem; padding: 0.3rem; background: var(--collie-color-canvas); border: 1px solid var(--collie-color-border); border-radius: 10px; box-shadow: var(--collie-shadow-overlay); }
+.h-corner-menu button { font: inherit; text-align: left; display: flex; justify-content: space-between; gap: 1rem; padding: 0.35rem 0.6rem; border: 0; border-radius: 6px; background: none; color: var(--collie-color-fg); cursor: pointer; }
+.h-corner-menu button:hover { background: var(--collie-color-accent-subtle); }
+.h-corner-menu kbd { font-family: var(--a-mono); font-size: 11px; color: var(--collie-color-fg-muted); }
+.h-pop-corner { position: static; margin: 0; width: 22rem; }
+.h-dot { position: fixed; z-index: 34; width: 9px; height: 9px; padding: 0; border-radius: 50%; border: 1.5px solid var(--collie-color-canvas); background: var(--collie-color-warning-solid); opacity: 0.75; cursor: pointer; }
+.h-dot:hover { opacity: 1; }
+.h-selbtn { position: fixed; z-index: 45; font: inherit; font-size: var(--collie-text-xs); padding: 0.25em 0.7em; border: 1px solid var(--collie-color-border); border-radius: 999px; background: var(--collie-color-canvas); color: var(--collie-color-fg); box-shadow: var(--collie-shadow-overlay); cursor: pointer; }
+html[data-present] .h-corner, html[data-present] .h-dot { display: none; }
+@media (prefers-reduced-motion: reduce) { ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; } .h-corner-btn { transition: none; } html { scroll-behavior: auto; } }

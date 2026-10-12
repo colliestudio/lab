@@ -161,6 +161,7 @@ test("cli: new → check → build", async () => {
     const html = readFileSync(join(root, "out/demo.html"), "utf8");
     assert.match(html, /<title>Demo<\/title>/);
     assert.throws(() => scaffold(join(root, "demo")), /not empty/);
+    assert.equal(JSON.parse(readFileSync(join(root, "demo.artifact/artifact.json"), "utf8")).shell, "bare", "new artifacts start on a blank page");
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -1060,7 +1061,7 @@ test("multi-page: pages/ files become hash routes with nav, prev/next, PageCards
       assert.equal(await p.locator("article.a-content h2:has-text('Refunds')").count(), 0, "only the current page renders");
       await p.locator(".a-pagecard", { hasText: "Returns" }).click();
       await h1("Returns");
-      assert.equal(await p.evaluate(() => location.hash), "#/returns");
+      await p.waitForFunction(() => location.hash === "#/returns");
       assert.ok(await p.locator("article.a-content h2:has-text('Refunds')").isVisible());
       assert.equal(await p.locator(".h-sub a").count(), 2, "the current page's sections sit under it in the nav");
       assert.match(await p.locator(".h-pagenav").innerText(), /Previous\s*Checkout[\s\S]*Next →\s*Limits/);
@@ -1073,7 +1074,7 @@ test("multi-page: pages/ files become hash routes with nav, prev/next, PageCards
       await p.evaluate(() => { location.hash = "#/"; });
       await h1("Shop journeys: checkout and returns");
       await p.getByRole("link", { name: "Checkout → Payment" }).click();
-      assert.equal(await p.evaluate(() => location.hash), "#/checkout/payment");
+      await p.waitForFunction(() => location.hash === "#/checkout/payment"); // navigate() applies it inside the view transition
       await p.waitForSelector("#payment", { state: "visible" });
       await p.selectOption(".h-pagesel", "limits");
       await h1("Limits");
@@ -1198,4 +1199,80 @@ test("shot --page all takes every page; build reports per-page source size; chec
     const one = await shot("samples/journeys.artifact", { out, themes: ["dark"], page: "returns", chrome: false });
     assert.deepEqual(one.map((p) => p.split("/").pop()), ["journeys-returns-dark.png"]);
   } finally { rmSync(out, { recursive: true, force: true }); }
+});
+
+test("shell bare: no host chrome, full viewport, corner menu, hooks in order, navigate, comments on a blank page", async (t) => {
+  const { findChrome } = await import("../artifact/cli/shot.ts");
+  let exe: string;
+  try { exe = await findChrome(); } catch { return t.skip("no Chromium available"); }
+  const { chromium } = await import("playwright-core");
+  const out = join(mkdtempSync(join(tmpdir(), "art-bare-")), "b.html");
+  try {
+    const built = await buildArtifact("samples/bare.artifact");
+    assert.deepEqual(built.errors, []);
+    writeFileSync(out, built.html);
+    const b = await chromium.launch({ executablePath: exe });
+    try {
+      const p = await (await b.newContext({ viewport: { width: 1280, height: 800 } })).newPage();
+      const errs: string[] = []; p.on("pageerror", (e) => errs.push(e.message));
+      await p.goto("file://" + out);
+      await p.waitForSelector(".b-nav");
+      for (const sel of [".h-bar", ".h-outline", ".h-head", ".h-pagenav", ".h-pagesel"]) assert.equal(await p.locator(sel).count(), 0, `${sel} is not rendered`);
+      assert.equal(await p.evaluate(() => document.querySelector(".h-main")!.getBoundingClientRect().width), 1280, "the artifact gets the whole viewport");
+      // usePages: home first, then the pages in order
+      assert.deepEqual(await p.locator(".b-nav a").allInnerTexts(), ["Overview", "Alpha demo", "Beta demo"]);
+      // corner menu
+      await p.locator(".h-corner-btn").click();
+      assert.deepEqual(await p.locator(".h-corner-menu button").allInnerTexts().then((a) => a.map((x) => x.split("\n")[0].trim())), ["Feedback", "Present", "Download", "Dark theme", "Shortcuts"]);
+      await p.keyboard.press("Escape"); await p.mouse.click(600, 700);
+      // navigate: a card click changes hash and page; back returns
+      await p.locator(".b-card", { hasText: "Alpha" }).click();
+      await p.waitForFunction(() => document.querySelector("h1")?.textContent === "Alpha demo");
+      assert.equal(await p.evaluate(() => location.hash), "#/alpha");
+      assert.equal(await p.locator(".b-nav [aria-current]").innerText(), "Alpha demo", "useRoute drives the nav");
+      await p.goBack();
+      await p.waitForFunction(() => document.querySelector("h1")?.textContent === "Release notes");
+      // reduced motion: instant, same result
+      await p.emulateMedia({ reducedMotion: "reduce" });
+      await p.locator(".b-nav a", { hasText: "Beta" }).click();
+      await p.waitForFunction(() => document.querySelector("h1")?.textContent === "Beta demo");
+      assert.equal(await p.evaluate(() => location.hash), "#/beta");
+      // feedback on a blank page: alt-click any element, then a text selection
+      await p.locator(".b-hero").click({ modifiers: ["Alt"] });
+      await p.locator(".h-composer textarea").fill("hero is too tall");
+      await p.getByRole("button", { name: /^(Save|Add|Comment)/ }).last().click();
+      await p.waitForSelector(".h-dot");
+      await p.locator("p", { hasText: "Offline mode" }).evaluate((el) => { const r = document.createRange(); r.selectNodeContents(el); const s = getSelection()!; s.removeAllRanges(); s.addRange(r); el.dispatchEvent(new MouseEvent("mouseup", { bubbles: true })); });
+      await p.locator(".h-selbtn").click();
+      await p.locator(".h-composer textarea").fill("reword this");
+      await p.getByRole("button", { name: /^(Save|Add|Comment)/ }).last().click();
+      await p.keyboard.press("c");
+      const notes = await p.locator(".h-note").allInnerTexts();
+      assert.equal(notes.length, 2, notes.join("|"));
+      assert.match(notes.join("|"), /hero is too tall/); assert.match(notes.join("|"), /reword this/);
+      const stored = await p.evaluate(() => Object.entries(localStorage).filter(([k]) => k.startsWith("artifact-comments")).flatMap(([, v]) => JSON.parse(v)));
+      assert.ok(stored.every((c: { anchor: { page?: string } }) => c.anchor.page === "beta"), "anchored to the page");
+      assert.ok(stored.some((c: { anchor: { id: string } }) => c.anchor.id.includes('~"')), "the text quote is part of the anchor");
+      assert.deepEqual(errs, []);
+    } finally { await b.close(); }
+  } finally { rmSync(join(out, ".."), { recursive: true, force: true }); }
+});
+
+test("shell doc stays the default: the host header, outline and page nav render", async (t) => {
+  const { findChrome } = await import("../artifact/cli/shot.ts");
+  let exe: string;
+  try { exe = await findChrome(); } catch { return t.skip("no Chromium available"); }
+  const { chromium } = await import("playwright-core");
+  const out = join(mkdtempSync(join(tmpdir(), "art-doc-")), "j.html");
+  try {
+    writeFileSync(out, (await buildArtifact("samples/journeys.artifact")).html);
+    const b = await chromium.launch({ executablePath: exe });
+    try {
+      const p = await b.newPage();
+      await p.goto("file://" + out);
+      await p.waitForSelector(".h-bar");
+      assert.equal(await p.locator(".h-corner").count(), 0);
+      assert.ok(await p.locator(".h-outline").count());
+    } finally { await b.close(); }
+  } finally { rmSync(join(out, ".."), { recursive: true, force: true }); }
 });

@@ -1,15 +1,15 @@
 import type { ReactNode } from "react";
 import { pages, pageById } from "./pages.ts";
-import { hrefFor, parseTo, parseHash } from "./route.ts";
+import { hrefFor, parseTo } from "./route.ts";
+import { navClick, useRoute } from "./router.tsx";
 import { Status } from "./layout.tsx";
 import { imageSrc } from "./registry.ts";
 import { cx } from "./util.ts";
 
 /** A link to another page (and a section on it): `<Link to="journey-2#fix">…</Link>`; `to="#fix"` is a section of this page. */
 export function Link({ to, children }: { to: string; children?: ReactNode }) {
-  const current = typeof location === "undefined" ? "home" : parseHash(location.hash)?.page ?? "home";
-  const r = parseTo(to, current);
-  return <a className="a-link" href={hrefFor(r.page, r.section)}>{children ?? pageById(r.page)?.title ?? to}</a>;
+  const r = parseTo(to, useRoute().page);
+  return <a className="a-link" href={hrefFor(r.page, r.section)} onClick={navClick(r.page, r.section)}>{children ?? pageById(r.page)?.title ?? to}</a>;
 }
 
 /**
@@ -22,7 +22,7 @@ export function PageCards({ group, ids, cols }: { group?: string; ids?: string[]
   return (
     <div className="a-pagecards" data-c="pagecards" style={cols ? { gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` } : undefined}>
       {list.map((p) => (
-        <a key={p.id} className={cx("a-pagecard")} href={hrefFor(p.id)}>
+        <a key={p.id} className={cx("a-pagecard")} href={hrefFor(p.id)} onClick={navClick(p.id)}>
           {p.thumb && <div className="a-pagecard-thumb"><img src={imageSrc(p.thumb)} alt="" /></div>}
           <div className="a-pagecard-body">
             <div className="a-pagecard-head"><b>{p.icon && <span aria-hidden>{p.icon} </span>}{p.title}</b>{p.status && <Status s={p.status as never} />}</div>

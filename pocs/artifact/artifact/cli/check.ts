@@ -62,7 +62,7 @@ export async function check(dir: string, opts: { types?: boolean } = {}): Promis
         const ids = [...html.matchAll(/data-section="([^"]+)"/g)].map((m) => m[1]);
         const dup = ids.filter((x, i) => ids.indexOf(x) !== i);
         for (const d of new Set(dup)) rep.errors.push(`${tag}duplicate Section id "${d}" (set id= on one of them)`);
-        if (!ids.length) rep.warnings.push(`${tag}no <Section>: the outline and present mode have nothing to walk`);
+        if (!ids.length && meta.shell !== "bare") rep.warnings.push(`${tag}no <Section>: the outline and present mode have nothing to walk`);
         for (const w of advise(html, meta).warnings) rep.warnings.push(tag + w);
       }
       for (const w of await smallMaps(s.maps)) rep.warnings.push(w);
