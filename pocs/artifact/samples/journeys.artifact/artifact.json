@@ -1,0 +1,9 @@
+{
+  "title": "Shop journeys: checkout and returns",
+  "kind": "recap",
+  "audience": "The product team, deciding what to fix first",
+  "summary": "Two customer journeys and the limits that shape them. Start with the overview, then read a journey; decisions on any page add up in the Feedback drawer.",
+  "asOf": "2026-10-13T09:00:00Z",
+  "tour": ["home", "checkout", "returns", "limits"],
+  "created": "2026-10-13"
+}

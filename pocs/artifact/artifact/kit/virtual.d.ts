@@ -13,3 +13,8 @@ declare module "*.svg" { const url: string; export default url }
 declare module "*.patch" { import type { PatchFile } from "./registry.ts"; const files: PatchFile[]; export default files }
 declare module "*.replay" { const b64: string; export default b64 }
 declare module "*.css?text" { const css: string; export default css }
+declare module "artifact:pages" {
+  import type { ComponentType } from "react";
+  const data: { home: { default: ComponentType; page?: object }; pages: { id: string; mod: { default: ComponentType; page?: object } }[] };
+  export default data;
+}

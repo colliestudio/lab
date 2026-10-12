@@ -6,11 +6,15 @@ import { shell } from "../kit/shell.ts";
 import { useComments, useAnswerState, makeStore, Composer, FeedbackPanel, DecisionList, feedbackMarkdown, anchorFor, findAnchor, type Anchor } from "./comments.tsx";
 import { FeedbackCtx, decisionsMarkdown, type DecisionRow } from "../kit/feedback.ts";
 import { usePresent } from "./present.ts";
+import { Boundary } from "./Boundary.tsx";
+import { allPages, groups, home, isMulti, pageById, pages } from "../kit/pages.ts";
+import { hrefFor, parseHash, HOME, type Route } from "../kit/route.ts";
+import { Status } from "../kit/layout.tsx";
 import { PresentCtx } from "../kit/present.ts";
 
 interface OutlineItem { id: string; title: string; level: number }
 
-function useOutline(root: React.RefObject<HTMLElement | null>) {
+function useOutline(root: React.RefObject<HTMLElement | null>, pageId: string) {
   const [items, setItems] = useState<OutlineItem[]>([]);
   const [active, setActive] = useState("");
   useEffect(() => {
@@ -25,7 +29,7 @@ function useOutline(root: React.RefObject<HTMLElement | null>) {
     const mo = new MutationObserver(() => { clearTimeout(t); t = window.setTimeout(scan, 100); });
     mo.observe(el, { childList: true, subtree: true });
     return () => { mo.disconnect(); clearTimeout(t); };
-  }, [root]);
+  }, [root, pageId]);
   useEffect(() => {
     const onScroll = () => {
       let cur = "";
@@ -53,11 +57,37 @@ async function pageSource(): Promise<string> {
 }
 const canDownload = meta.host?.download ?? meta.download ?? true;
 const SHORTCUTS: [string, string][] = [["p", "Present: ← → or space step, ↑ ↓ scroll, Esc leaves"], ["c", "Add a comment: opens the drawer, then click any element"], ["?", "This list"], ["Esc", "Close dialogs, leave comment mode"]];
+const cx = (...a: (string | false | undefined)[]) => a.filter(Boolean).join(" ");
+
+function Sub({ items, active, page }: { items: OutlineItem[]; active: string; page: string }) {
+  if (items.length < 2) return null; // a single section needs no sub-list
+  return (
+    <div className="h-sub">
+      {items.map((it) => <a key={it.id} href={hrefFor(page, it.id)} className={it.id === active ? "on" : ""} style={{ paddingLeft: `${0.6 + (it.level - 1) * 0.7}rem` }}>{it.title}</a>)}
+    </div>
+  );
+}
+
+/** Previous / next page at the end of each page (nav order: home, then the groups). */
+function PageNav({ current }: { current: string }) {
+  const order = [home(), ...groups().flatMap((g) => g.pages)];
+  const i = order.findIndex((p) => p.id === current);
+  const prev = order[i - 1], next = order[i + 1];
+  return (
+    <nav className="h-pagenav" aria-label="Previous and next page">
+      {prev ? <a href={hrefFor(prev.id)} className="prev"><span className="a-muted">← Previous</span><b>{prev.title}</b></a> : <span />}
+      {next ? <a href={hrefFor(next.id)} className="next"><span className="a-muted">Next →</span><b>{next.title}</b></a> : <span />}
+    </nav>
+  );
+}
+
 const typing = (e: KeyboardEvent) => { const t = e.target as HTMLElement; return t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName); };
 
-export function Host({ children }: { children: ReactNode }) {
+export function Host() {
   const content = useRef<HTMLElement>(null);
-  const { items, active } = useOutline(content);
+  const [route, setRoute] = useState<Route>(() => parseHash(location.hash) ?? { page: HOME });
+  const page = pageById(route.page) ?? home();
+  const { items, active } = useOutline(content, page.id);
   const [dark, setDark] = useState(document.documentElement.dataset.theme === "midnight");
   const [mode, setMode] = useState(false);          // comment mode
   const [open, setOpen] = useState<Anchor | null>(null);
@@ -74,10 +104,27 @@ export function Host({ children }: { children: ReactNode }) {
   const rows: DecisionRow[] = useMemo(() => rawRows.map((r) => ({ ...r, answer: am.answers[r.id] })), [rawRows, am.answers]);
   const [tab, setTab] = useState<"decisions" | "comments">("decisions");
   const summary = useRef<HTMLElement>(null);
+  const lastPage = useRef(route.page);
   const head = useRef<HTMLElement>(null);
   const present = usePresent(content, head, meta.title, summary);
 
-  useEffect(() => { document.title = meta.title; }, []);
+  useEffect(() => { document.title = page.id === HOME ? meta.title : `${page.title} · ${meta.title}`; }, [page]);
+  // hash routes: #/page and #/page/section; a plain #anchor stays an in-page anchor and never changes the page
+  useEffect(() => {
+    const f = () => { const r = parseHash(location.hash); if (r) setRoute(r); else if (location.hash === "" || location.hash === "#") setRoute({ page: HOME }); };
+    addEventListener("hashchange", f);
+    return () => removeEventListener("hashchange", f);
+  }, []);
+  useEffect(() => {
+    // after a route change: open and scroll to the section, or go to the top of the new page
+    const t = setTimeout(() => {
+      const el = route.section ? document.getElementById(route.section) : null;
+      if (el) { for (let e: Element | null = el; e; e = e.parentElement) { if (e.matches?.(".a-section")) e.removeAttribute("data-folded"); if (e.tagName === "DETAILS") (e as HTMLDetailsElement).open = true; } el.scrollIntoView({ block: "start" }); }
+      else if (route.page !== lastPage.current) scrollTo({ top: 0 });
+      lastPage.current = route.page;
+    }, 30);
+    return () => clearTimeout(t);
+  }, [route]);
   useEffect(() => {
     const el = content.current!;
     const scan = () => {
@@ -88,7 +135,7 @@ export function Host({ children }: { children: ReactNode }) {
     const mo = new MutationObserver(scan);
     mo.observe(el, { childList: true, subtree: true });
     return () => mo.disconnect();
-  }, []);
+  }, [page.id]);
   const setTheme = (d: boolean) => {
     setDark(d); localStorage.setItem("artifact-theme", d ? "dark" : "light");
     if (d) document.documentElement.dataset.theme = "midnight"; else delete document.documentElement.dataset.theme;
@@ -159,7 +206,8 @@ export function Host({ children }: { children: ReactNode }) {
   useEffect(() => {
     // a link to something collapsed opens it (and what contains it)
     const open = () => {
-      const id = decodeURIComponent(location.hash.slice(1));
+      const r = parseHash(location.hash);
+      const id = r ? r.section ?? "" : decodeURIComponent(location.hash.slice(1));
       const t = id ? document.getElementById(id) : null;
       for (let e = t; e; e = e.parentElement) { if (e.matches?.(".a-section")) e.removeAttribute("data-folded"); if (e.matches?.(".a-heavy")) e.setAttribute("data-open", ""); if (e.tagName === "DETAILS") (e as HTMLDetailsElement).open = true; }
     };
@@ -202,6 +250,11 @@ export function Host({ children }: { children: ReactNode }) {
     <div className="h-root">
       <div className="h-bar" role="toolbar" aria-label="Page tools">
         <span className="h-bar-title">{meta.title}</span>
+        {isMulti() && (
+          <select className="h-pagesel" aria-label="Go to page" value={page.id} onChange={(e) => { location.hash = hrefFor(e.target.value); }}>
+            {allPages().map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
+          </select>
+        )}
         <span className="h-spacer" />
         <button className="h-btn" onClick={() => setPanel(!panel)} aria-pressed={panel} title="Feedback: answer the decisions and leave comments, then copy it all back to the author">{feedbackLabel}</button>
         <button className="h-btn" onClick={() => present.start()} title="Present (p): walk through the sections full screen">Present</button>
@@ -221,21 +274,42 @@ export function Host({ children }: { children: ReactNode }) {
         )}
       </div>
       <div className="h-layout" data-outline={outlineOff ? "off" : undefined}>
-        <nav className="h-outline" aria-label="Outline">
-          {items.map((it) => (
+        <nav className="h-outline" aria-label={isMulti() ? "Pages" : "Outline"}>
+          {isMulti() && (
+            <div className="h-pages">
+              <a href={hrefFor(HOME)} className={cx("h-page", page.id === HOME && "on")}>{home().title}</a>
+              {page.id === HOME && <Sub items={items} active={active} page={page.id} />}
+              {groups().map((g) => (
+                <div key={g.name || "_"} className="h-group-nav">
+                  {g.name && <div className="h-group-name">{g.name}</div>}
+                  {g.pages.map((p) => (
+                    <div key={p.id}>
+                      <a href={hrefFor(p.id)} className={cx("h-page", p.id === page.id && "on")}>{p.icon && <span aria-hidden>{p.icon} </span>}{p.title}</a>
+                      {p.id === page.id && <Sub items={items} active={active} page={page.id} />}
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+          {!isMulti() && items.map((it) => (
             <a key={it.id} href={`#${it.id}`} className={it.id === active ? "on" : ""} style={{ paddingLeft: `${0.6 + (it.level - 1) * 0.8}rem` }}>{it.title}</a>
           ))}
         </nav>
         <main className="h-main" data-width={meta.width}>
           <header className="h-head" data-header={compact ? "compact" : "full"} ref={head}>
+            {page.id !== HOME && (
+              <div className="h-crumbs"><a href={hrefFor(HOME)}>{meta.title}</a>{page.group && <> › <span>{page.group}</span></>}</div>
+            )}
             <div className="h-meta">
-              {meta.kind && <Badge tone="accent">{meta.kind}</Badge>}
-              {meta.audience && <span title="audience"><span className="a-muted">Audience:</span> {meta.audience}</span>}
+              {page.id === HOME && meta.kind && <Badge tone="accent">{meta.kind}</Badge>}
+              {page.id !== HOME && page.status && <Status s={page.status as never} />}
+              {page.id === HOME && meta.audience && <span title="audience"><span className="a-muted">Audience:</span> {meta.audience}</span>}
               {meta.asOf ? <span title="gathered at">as of {fmtAsOf(meta.asOf, meta.timeZone)}</span> : meta.created && <span>{fmtDate(meta.created)}</span>}
             </div>
-            <h1>{meta.title}</h1>
-            {meta.summary && <p className="h-summary">{meta.summary}</p>}
-            {sources.length > 0 && (compact ? (
+            <h1>{page.title}</h1>
+            {page.summary && <p className="h-summary">{page.summary}</p>}
+            {page.id === HOME && sources.length > 0 && (compact ? (
               <div className="h-sources">
                 <button className="h-more" aria-expanded={allSources} onClick={() => setAllSources(!allSources)}>Sources ({sources.length}) {allSources ? "▾" : "▸"}</button>
                 {allSources && sources.map((s, i) => <Source key={i} {...s} />)}
@@ -248,8 +322,9 @@ export function Host({ children }: { children: ReactNode }) {
             ))}
           </header>
           <FeedbackCtx.Provider value={{ interactive: true, answers: am.answers, answer: am.answer }}>
-            <PresentCtx.Provider value={present.state}><article className="a-content" ref={content}>{children}</article></PresentCtx.Provider>
+            <PresentCtx.Provider value={present.state}><article className="a-content" ref={content} data-page={page.id}><Boundary key={page.id}><page.Component /></Boundary></article></PresentCtx.Provider>
           </FeedbackCtx.Provider>
+          {isMulti() && <PageNav current={page.id} />}
           {rows.length > 0 && (
             <section className="h-summary-slide" ref={summary} data-title="Summary">
               <h2 className="a-h">Summary: {decided}/{rows.length} decided</h2>

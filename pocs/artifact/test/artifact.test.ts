@@ -1036,3 +1036,62 @@ export default () => <><Section title="Walk"><Walkthrough states={["A", "B", "C"
     } finally { await b.close(); }
   } finally { cleanup(d); }
 });
+
+test("multi-page: pages/ files become hash routes with nav, prev/next, PageCards, Link and back/forward", async (t) => {
+  const { findChrome } = await import("../artifact/cli/shot.ts");
+  let exe: string;
+  try { exe = await findChrome(); } catch { return t.skip("no Chromium available"); }
+  const { chromium } = await import("playwright-core");
+  const out = join(mkdtempSync(join(tmpdir(), "art-pages-")), "j.html");
+  try {
+    const built = await buildArtifact("samples/journeys.artifact");
+    assert.deepEqual(built.errors, []);
+    writeFileSync(out, built.html);
+    assert.equal((built.html.match(/<\/script>/g) ?? []).length, 1, "still one file");
+    const b = await chromium.launch({ executablePath: exe });
+    try {
+      const p = await (await b.newContext({ viewport: { width: 1280, height: 900 } })).newPage();
+      const errs: string[] = []; p.on("pageerror", (e) => errs.push(e.message));
+      await p.goto("file://" + out);
+      await p.waitForSelector(".a-pagecards");
+      const h1 = (t: string) => p.waitForFunction((x) => document.querySelector("h1")?.textContent === x, t);
+      assert.equal(await p.locator(".a-pagecard").count(), 3);
+      assert.equal(await p.locator(".h-group-name").count(), 2, "two nav groups");
+      assert.equal(await p.locator("article.a-content h2:has-text('Refunds')").count(), 0, "only the current page renders");
+      await p.locator(".a-pagecard", { hasText: "Returns" }).click();
+      await h1("Returns");
+      assert.equal(await p.evaluate(() => location.hash), "#/returns");
+      assert.ok(await p.locator("article.a-content h2:has-text('Refunds')").isVisible());
+      assert.equal(await p.locator(".h-sub a").count(), 2, "the current page's sections sit under it in the nav");
+      assert.match(await p.locator(".h-pagenav").innerText(), /Previous\s*Checkout[\s\S]*Next →\s*Limits/);
+      await p.locator(".h-pagenav .next").click();
+      await h1("Limits");
+      assert.equal(await p.locator(".h-sub a").count(), 0, "a one-section page has no sub-list");
+      await p.goBack(); await h1("Returns");
+      await p.goForward(); await h1("Limits");
+      // cross-page link opens the section
+      await p.evaluate(() => { location.hash = "#/"; });
+      await h1("Shop journeys: checkout and returns");
+      await p.getByRole("link", { name: "Checkout → Payment" }).click();
+      assert.equal(await p.evaluate(() => location.hash), "#/checkout/payment");
+      await p.waitForSelector("#payment", { state: "visible" });
+      await p.selectOption(".h-pagesel", "limits");
+      await h1("Limits");
+      assert.deepEqual(errs, []);
+    } finally { await b.close(); }
+  } finally { rmSync(join(out, ".."), { recursive: true, force: true }); }
+});
+
+test("check renders every page and names the page of an error", async () => {
+  const d = fixture(`export default () => <p>home</p>;`, (dir) => {
+    mkdirSync(join(dir, "pages"));
+    writeFileSync(join(dir, "pages/ok.tsx"), `export default () => <p>fine</p>;`);
+    writeFileSync(join(dir, "pages/bad.tsx"), `export default function Bad() { throw new Error("boom in bad"); }`);
+  });
+  try {
+    const rep = await check(d, { types: false });
+    assert.ok(rep.errors.some((e) => e.includes("boom in bad") && e.includes("[page: bad]")), rep.errors.join("\n"));
+    const s = await renderStatic(join(d, "../../" + "nonexistent").replace(/nonexistent$/, "")).catch(() => null);
+    void s;
+  } finally { cleanup(d); }
+});

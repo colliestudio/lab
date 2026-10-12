@@ -2,7 +2,7 @@
 // virtual module, and everything is inlined into a single HTML file.
 import * as esbuild from "esbuild";
 import mdx from "@mdx-js/esbuild";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { createRequire as cr } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -23,6 +23,13 @@ export interface BuildResult {
   parts: { name: string; bytes: number }[];
 }
 
+/** pages/<id>.tsx|jsx|ts|mdx next to index.tsx: the pages of a multi-page artifact (id = file name). */
+export function listPages(dir: string): { id: string; file: string }[] {
+  const d = join(dir, "pages");
+  if (!existsSync(d)) return [];
+  return readdirSync(d).filter((f) => /\.(tsx|jsx|ts|mdx)$/.test(f) && !f.startsWith(".")).sort().map((f) => ({ id: f.replace(/\.[^.]+$/, ""), file: join(d, f) }));
+}
+
 export function findEntry(dir: string): string {
   for (const f of ["index.tsx", "index.jsx", "index.ts", "index.mdx"]) if (existsSync(join(dir, f))) return join(dir, f);
   throw new Error(`no index.tsx in ${dir}`);
@@ -33,6 +40,13 @@ function plugin(state: { collected?: Collected; dir: string }): esbuild.Plugin {
     name: "artifact",
     setup(b) {
       b.onResolve({ filter: /^artifact$/ }, () => ({ path: kitIndex }));
+      b.onResolve({ filter: /^artifact:pages$/ }, () => ({ path: "pages", namespace: "artifact-pages" }));
+      b.onLoad({ filter: /.*/, namespace: "artifact-pages" }, () => {
+        const ps = listPages(state.dir);
+        const lines = [`import * as home from ${JSON.stringify(findEntry(state.dir))};`, ...ps.map((p, i) => `import * as p${i} from ${JSON.stringify(p.file)};`)];
+        lines.push(`export default { home, pages: [${ps.map((p, i) => `{ id: ${JSON.stringify(p.id)}, mod: p${i} }`).join(", ")}] };`);
+        return { contents: lines.join("\n"), loader: "js", resolveDir: repoRoot };
+      });
       b.onResolve({ filter: /^artifact:registry$/ }, () => ({ path: "registry", namespace: "artifact-registry" }));
       b.onLoad({ filter: /.*/, namespace: "artifact-registry" }, () => {
         state.collected = collect(state.dir);
@@ -72,9 +86,8 @@ const options = (dir: string, state: { dir: string }, o: BuildOpts): esbuild.Bui
       `import ${JSON.stringify(join(repoRoot, "artifact/kit/tokens.css"))};`,
       `import ${JSON.stringify(join(repoRoot, "artifact/kit/kit.css"))};`,
       `import ${JSON.stringify(join(repoRoot, "artifact/host/host.css"))};`,
-      `import App from ${JSON.stringify(findEntry(dir))};`,
       `import { mount } from ${JSON.stringify(hostMain)};`,
-      `mount(App);`,
+      `mount();`,
     ].join("\n"),
     resolveDir: repoRoot, loader: "tsx", sourcefile: "artifact-entry.tsx",
   },
@@ -152,25 +165,31 @@ export async function formatMessages(ms: esbuild.Message[], kind: "error" | "war
 }
 
 /** Server-side render of the artifact (best effort): catches runtime errors in the agent's code and duplicate Section ids. */
-export async function renderStatic(dir: string): Promise<{ html: string; maps: MapSpec[] } | { error: string }> {
+export async function renderStatic(dir: string): Promise<{ html: string; pageHtml: Record<string, string>; maps: MapSpec[] } | { error: string }> {
   const abs = resolve(dir);
   const state = { dir: abs, collected: undefined as Collected | undefined };
   const base = options(abs, state, { minify: false });
   const r = await esbuild.build({
     ...base,
-    stdin: { contents: `import App from ${JSON.stringify(findEntry(abs))};\nimport { renderToString } from "react-dom/server";\nimport { createElement } from "react";\nglobalThis.__html = () => renderToString(createElement(App));`, resolveDir: repoRoot, loader: "tsx" },
+    stdin: { contents: `import pages from "artifact:pages";\nimport { renderToString } from "react-dom/server";\nimport { createElement } from "react";\nconst r = (id, C) => { globalThis.__artifactPage = id; return renderToString(createElement(C)); };\nglobalThis.__html = () => ({ home: r("home", pages.home.default), pages: pages.pages.map((p) => ({ id: p.id, html: r(p.id, p.mod.default) })) });`, resolveDir: repoRoot, loader: "tsx" },
     platform: "node", format: "cjs", write: false, outdir: "out", metafile: false,
     external: ["mermaid", "elkjs", "elkjs/*"],
   }).catch((e) => ({ errors: e.errors ?? [{ text: String(e) }], outputFiles: [] as never }));
   if (!r.outputFiles?.length) return { error: "bundle failed: " + ((r as { errors?: esbuild.Message[] }).errors ?? []).map((m) => m.text).join("; ") };
   try {
-    const g = globalThis as unknown as { __html?: () => string; __artifactMaps?: MapSpec[] };
+    const g = globalThis as unknown as { __html?: () => { home: string; pages: { id: string; html: string }[] }; __artifactMaps?: MapSpec[]; __artifactPage?: string };
     g.__artifactMaps = [];
     new Function("require", "module", "exports", r.outputFiles[0].text)(createRequire(), { exports: {} }, {});
-    const html = g.__html!();
-    const maps = g.__artifactMaps ?? [];
-    delete g.__html; delete g.__artifactMaps;
-    return { html, maps };
-  } catch (e) { return { error: String((e as Error)?.stack ?? e).split("\n").slice(0, 6).join("\n") }; }
+    try {
+      const out = g.__html!();
+      const pageHtml: Record<string, string> = { home: out.home };
+      for (const p of out.pages) pageHtml[p.id] = p.html;
+      const maps = g.__artifactMaps ?? [];
+      return { html: Object.values(pageHtml).join("\n"), pageHtml, maps };
+    } catch (e) {
+      (e as { __page?: string }).__page = g.__artifactPage;
+      throw e;
+    } finally { delete g.__html; delete g.__artifactMaps; delete g.__artifactPage; }
+  } catch (e) { return { error: String((e as Error)?.stack ?? e).split("\n").slice(0, 6).join("\n") + ((e as { __page?: string }).__page ? ` [page: ${(e as { __page?: string }).__page}]` : "") }; }
 }
 function createRequire() { const req = cr(join(repoRoot, "package.json")); return (id: string) => req(id); }

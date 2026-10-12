@@ -117,3 +117,14 @@ html[data-present] .h-main, html[data-present] .h-main[data-width] { max-width: 
 .h-summary-slide { display: none; margin-top: 2rem; } html[data-present] .h-summary-slide { display: block; }
 html[data-present] .h-summary-slide .h-decisions li { font-size: 1.05rem; }
 .h-pop-actions { display: flex; gap: 0.4rem; margin-top: 0.3rem; padding-top: 0.5rem; border-top: 1px solid var(--collie-color-border-subtle); } .h-pop-actions .h-btn { padding: 0.2em 0.6em; font-size: var(--collie-text-xs); }
+
+/* pages */
+.h-pages { display: flex; flex-direction: column; gap: 0.1rem; font-size: var(--collie-text-sm); }
+.h-page { border-left: 2px solid transparent !important; color: var(--collie-color-fg) !important; font-weight: var(--collie-weight-medium); padding: 0.3rem 0.6rem !important; } .h-page.on { border-left-color: var(--collie-color-accent-solid) !important; background: var(--collie-color-accent-subtle); }
+.h-group-nav { margin-top: 0.6rem; } .h-group-name { font-size: var(--collie-text-xs); text-transform: uppercase; letter-spacing: 0.06em; color: var(--collie-color-fg-muted); padding: 0.2rem 0.6rem; }
+.h-sub { display: flex; flex-direction: column; margin: 0.1rem 0 0.3rem 0.6rem; } .h-sub a { font-size: var(--collie-text-xs); color: var(--collie-color-fg-muted) !important; padding-block: 0.15rem !important; } .h-sub a.on { color: var(--collie-color-fg) !important; }
+.h-crumbs { font-size: var(--collie-text-sm); color: var(--collie-color-fg-muted); margin-bottom: 0.2rem; } .h-crumbs a { color: inherit; }
+.h-pagenav { display: flex; justify-content: space-between; gap: 1rem; margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--collie-color-border-subtle); }
+.h-pagenav a { display: flex; flex-direction: column; gap: 0.1rem; text-decoration: none; color: var(--collie-color-fg); padding: 0.5rem 0.9rem; border: 1px solid var(--collie-color-border-subtle); border-radius: 8px; min-width: 10rem; } .h-pagenav a:hover { border-color: var(--collie-color-border-accent); } .h-pagenav .next { text-align: right; margin-left: auto; }
+.h-pagesel { font: inherit; font-size: var(--collie-text-sm); padding: 0.2em 0.4em; border: 1px solid var(--collie-color-border); border-radius: var(--collie-radius-sm); background: var(--collie-color-canvas); color: inherit; max-width: 14rem; }
+html[data-present] .h-pagenav { display: none; }
