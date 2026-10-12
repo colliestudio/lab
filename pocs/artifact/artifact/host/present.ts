@@ -11,7 +11,7 @@ const stepsOf = (s?: Slide) => (s ? s.els.flatMap((e) => (e.hasAttribute("data-s
  * [data-present-hidden] (css); the content's React state is never touched.
  * Keys: → space PageDown Enter next; ← PageUp Backspace back; ↑/↓ scroll a tall slide; Esc or p leaves.
  */
-export function usePresent(root: React.RefObject<HTMLElement | null>, head: React.RefObject<HTMLElement | null>, title: string) {
+export function usePresent(root: React.RefObject<HTMLElement | null>, head: React.RefObject<HTMLElement | null>, title: string, summary?: React.RefObject<HTMLElement | null>) {
   const [active, setActive] = useState(false);
   const [pos, setPos] = useState({ slide: 0, step: 0 });
   const [count, setCount] = useState(0);
@@ -34,8 +34,9 @@ export function usePresent(root: React.RefObject<HTMLElement | null>, head: Reac
       if (e.dataset.section) { flush(); out.push({ els: [e], title: e.dataset.title ?? "" }); } else loose.push(e);
     }
     flush();
+    if (summary?.current) out.push({ els: [summary.current], title: "Summary" }); // generated when the page has decisions
     return out;
-  }, [root, head, title]);
+  }, [root, head, title, summary]);
 
   const apply = useCallback((p: { slide: number; step: number }, scroll: "top" | "step" | "none" = "top") => {
     const ss = slides();
@@ -90,6 +91,7 @@ export function usePresent(root: React.RefObject<HTMLElement | null>, head: Reac
     const k = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
       if (e.metaKey || e.ctrlKey || e.altKey || t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
+      if ((e.key === " " || e.key === "Enter") && t.closest("button, a, [role=radio]")) return; // answering a decision, not stepping
       if (["ArrowRight", "PageDown", " ", "Enter"].includes(e.key)) { e.preventDefault(); go(1); }
       else if (["ArrowLeft", "PageUp", "Backspace"].includes(e.key)) { e.preventDefault(); go(-1); }
       else if (e.key === "Escape" || e.key === "p") stop();

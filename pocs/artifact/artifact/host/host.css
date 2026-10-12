@@ -104,3 +104,15 @@ html[data-present] .h-main, html[data-present] .h-main[data-width] { max-width: 
 .h-pop > div { display: grid; grid-template-columns: 3rem 1fr; gap: 0.5rem; align-items: baseline; } .h-pop > div.a-muted { display: block; }
 .h-pop kbd { font-family: var(--a-mono); font-size: 11px; border: 1px solid var(--collie-color-border); border-bottom-width: 2px; border-radius: 4px; padding: 0 0.4em; text-align: center; background: var(--collie-color-surface); }
 .h-panel-actions { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-bottom: 0.7rem; } .h-panel .h-btn { padding: 0.2em 0.6em; font-size: var(--collie-text-xs); } .h-panel kbd { font-family: var(--a-mono); font-size: 11px; border: 1px solid var(--collie-color-border); border-radius: 4px; padding: 0 0.3em; }
+
+/* decisions in the drawer and the Summary slide */
+.h-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--collie-color-border-subtle); margin-bottom: 0.6rem; }
+.h-tabs button { font: inherit; font-size: var(--collie-text-sm); background: none; border: 0; border-bottom: 2px solid transparent; padding: 0.3em 0.6em; color: var(--collie-color-fg-muted); cursor: pointer; margin-bottom: -1px; }
+.h-tabs button[aria-selected="true"] { color: var(--collie-color-fg); border-bottom-color: var(--collie-color-accent-solid); font-weight: var(--collie-weight-medium); }
+.h-decisions { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
+.h-decisions li { border: 1px solid var(--collie-color-border-subtle); border-radius: 8px; padding: 0.45rem 0.6rem; display: grid; gap: 0.2rem; font-size: var(--collie-text-sm); }
+.h-decisions li.done { border-left: 3px solid var(--collie-color-success-solid); } .h-decisions li.todo { border-left: 3px solid var(--collie-color-warning-solid); }
+.h-d-q { font-weight: var(--collie-weight-medium); } .h-d-a { display: grid; gap: 0.15rem; }
+.h-tag { font-size: 10.5px; padding: 0 0.5em; border-radius: 999px; width: fit-content; } .h-tag.ok { background: var(--collie-color-success-subtle); color: var(--collie-color-fg-success); } .h-tag.diff { background: var(--collie-color-warning-subtle); color: var(--collie-color-fg-warning); }
+.h-summary-slide { display: none; margin-top: 2rem; } html[data-present] .h-summary-slide { display: block; }
+html[data-present] .h-summary-slide .h-decisions li { font-size: 1.05rem; }

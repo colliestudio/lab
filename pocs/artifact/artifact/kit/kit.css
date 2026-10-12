@@ -374,3 +374,15 @@ html[data-present] .a-depth-stub { display: none !important; }
 .a-stage-label { padding: 0.55rem 0.8rem; color: var(--a-muted); border-bottom: 1px solid var(--a-line); font-weight: var(--collie-weight-medium); background: var(--a-soft); }
 .a-stage-cell { padding: 0.55rem 0.8rem; border-bottom: 1px solid var(--a-line); border-left: 1px solid var(--a-line); }
 .a-stage-cell.tone-success { background: var(--collie-color-success-subtle); } .a-stage-cell.tone-warn { background: var(--collie-color-warning-subtle); } .a-stage-cell.tone-critical { background: var(--collie-color-critical-subtle); } .a-stage-cell.tone-accent { background: var(--collie-color-accent-subtle); }
+
+/* answerable decisions */
+.a-options li > button { all: unset; box-sizing: border-box; width: 100%; display: flex; justify-content: space-between; gap: 0.5rem; align-items: center; cursor: pointer; padding: 0; }
+.a-options li:has(> button) { padding: 0; } .a-options li > button { padding: 0.4em 0.7em; }
+.a-options li:has(> button):hover { border-color: var(--collie-color-border-accent); } .a-options li > button:focus-visible { outline: 2px solid var(--collie-color-accent-solid); outline-offset: 1px; border-radius: 4px; }
+.a-options li.picked { border-color: var(--collie-color-accent-solid); background: var(--collie-color-accent-subtle); box-shadow: 0 0 0 1px var(--collie-color-accent-solid); font-weight: var(--collie-weight-medium); }
+.a-decision.answered { border-color: var(--collie-color-border-success); }
+.a-decision-more { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.6rem; align-items: center; }
+.a-decision-more > button, .a-decision-other button { font: inherit; font-size: var(--collie-text-xs); padding: 0.2em 0.7em; border: 1px dashed var(--collie-color-border); border-radius: 999px; background: none; color: var(--a-muted); cursor: pointer; }
+.a-decision-more > button.on { border-style: solid; border-color: var(--collie-color-accent-solid); color: var(--collie-color-fg-accent); background: var(--collie-color-accent-subtle); }
+.a-decision-other { display: inline-flex; gap: 0.3rem; } .a-decision-other input, .a-decision-more textarea { font: inherit; font-size: var(--collie-text-sm); padding: 0.25em 0.6em; border: 1px solid var(--collie-color-border); border-radius: 6px; background: var(--collie-color-canvas); color: inherit; min-width: 14rem; }
+.a-decision-more textarea { width: 100%; }

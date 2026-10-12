@@ -3,6 +3,7 @@ import { Badge, Source, Status, type SourceProps, type StatusValue, type Tone } 
 import { meta } from "./registry.ts";
 import { fmtAsOf } from "./util.ts";
 import { imageSrc } from "./registry.ts";
+import { useAnswers } from "./feedback.ts";
 import { ZoomImg } from "./zoom.tsx";
 import { usePresent } from "./present.ts";
 import { cx } from "./util.ts";
@@ -200,21 +201,35 @@ export function Stats({ items }: { items: { value: ReactNode; label: ReactNode; 
   );
 }
 
-/** The decisions on this page, with their recommendation, linking to each `<Decision>`. */
+/** The decisions on this page, with their recommendation and (in a host) the reader's answers, linking to each `<Decision>`. */
 export function DecisionIndex({ title = "Decisions on this page" }: { title?: ReactNode }) {
   const [list, setList] = useState<{ id: string; q: string; rec?: string; owner?: string }[]>([]);
+  const answers = useAnswers();
   useEffect(() => {
-    const els = [...document.querySelectorAll<HTMLElement>('[data-c="decision"]')];
-    els.forEach((e, n) => { if (!e.id) e.id = `decision-${n + 1}`; });
-    setList(els.map((e) => ({ id: e.id, q: e.dataset.q ?? "", rec: e.dataset.rec || undefined, owner: e.dataset.owner })));
+    const scan = () => {
+      const els = [...document.querySelectorAll<HTMLElement>('[data-c="decision"]')];
+      els.forEach((e, n) => { if (!e.id) e.id = `decision-${n + 1}`; });
+      const next = els.map((e) => ({ id: e.id, did: e.dataset.did ?? e.id, q: e.dataset.q ?? "", rec: e.dataset.rec || undefined, owner: e.dataset.owner }));
+      setList((p) => (JSON.stringify(p) === JSON.stringify(next) ? p : next));
+    };
+    scan();
+    const mo = new MutationObserver(scan);
+    mo.observe(document.body, { childList: true, subtree: true });
+    return () => mo.disconnect();
   }, []);
   if (!list.length) return null;
+  const done = list.filter((d) => answers[(d as { did?: string }).did ?? d.id]).length;
   return (
     <div className="a-questions" data-c="decisions-index">
-      <div className="a-questions-title">{title}</div>
-      <ol>{list.map((d) => (
-        <li key={d.id}><a href={`#${d.id}`}><b>{d.q}</b></a>{d.rec && <span className="a-muted"> → {d.rec}</span>}{d.owner && <> <Badge tone="warn">{d.owner}</Badge></>}</li>
-      ))}</ol>
+      <div className="a-questions-title">{title}{done > 0 && ` · ${done}/${list.length} decided`}</div>
+      <ol>{list.map((d) => {
+        const a = answers[(d as { did?: string }).did ?? d.id];
+        return (
+          <li key={d.id}><a href={`#${d.id}`}><b>{d.q}</b></a>
+            {a ? <> → <Badge tone="success">{a.choice === "unsure" ? "discuss" : a.label}</Badge>{a.note && <span className="a-muted"> ({a.note})</span>}</> : d.rec && <span className="a-muted"> → {d.rec}</span>}
+            {d.owner && !a && <> <Badge tone="warn">{d.owner}</Badge></>}</li>
+        );
+      })}</ol>
     </div>
   );
 }

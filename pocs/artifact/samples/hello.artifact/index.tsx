@@ -1,6 +1,6 @@
 import {
   Badge, Callout, Card, CardGrid, Img, Chart, Checklist, Code, Compare, Decision, Depth, Diff, Flow, Grid, Lanes, Map, PR, Questions,
-  Replay, Stages, TimeAxis, Stats, Scorecard, Facts, Actions, RiskMatrix, Gallery, DecisionIndex, Section, Source, Stale, Status, Step, Steps, Table, Tab, Tabs, Timeline, useData,
+  Replay, When, Stages, TimeAxis, Stats, Scorecard, Facts, Actions, RiskMatrix, Gallery, DecisionIndex, Section, Source, Stale, Status, Step, Steps, Table, Tab, Tabs, Timeline, useData,
 } from "artifact";
 
 type Pr = { n: number; title: string; state: string; checks: string; owner: string; stack: [number, number]; href: string };
@@ -42,6 +42,19 @@ export default function Hello() {
         <Decision id="d-ship" question="Ship the kit before the demos are redone?" recommend={0} owner="Alex"
           options={[{ label: "Yes, ship now", note: "Demos follow in a second pass." }, { label: "Wait for the demos" }]}
           why="Both paths work; waiting costs about a day." />
+        {/* a two-level decision tree: the follow-ups appear only after the answer above */}
+        <When decision="d-ship" is="a">
+          <Decision id="d-order" question="Which demo goes first?" recommend={0} owner="Alex"
+            options={["The collie-ui explainer", "The status page", { label: "Both in parallel", key: "both" }]} />
+          <When decision="d-order" is="both">
+            <Decision id="d-split" question="Who reviews the second one?" recommend="A fresh reviewer" owner="Alex" options={["A fresh reviewer", "The same reviewer"]} />
+          </When>
+        </When>
+        <When decision="d-ship" is="b">
+          <Callout tone="warn" title="Waiting">Then the next question is how long we wait.</Callout>
+          <Decision id="d-wait" question="How long do we wait for the demos?" options={["One day", "Until they pass review"]} recommend={0} />
+        </When>
+        <When decision="d-ship" unanswered><p className="a-muted">Answer the decision above and the follow-up questions appear here.</p></When>
         <Questions items={[{ q: "Is 5 MB the right size warning?", why: "Recordings dominate." }, "Keep the name?"]} />
       </Section>
 

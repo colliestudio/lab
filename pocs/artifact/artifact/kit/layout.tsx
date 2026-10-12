@@ -176,28 +176,6 @@ export function Questions({ items, title = "Questions", start }: { items: Q[]; t
   );
 }
 
-/** A decision someone must make: options, a recommendation, who has to decide. */
-export function Decision({ question, options, recommend, owner = "needs a decision", why, id, source }: {
-  question: ReactNode; options?: (ReactNode | { label: ReactNode; note?: ReactNode })[]; recommend?: number | string;
-  owner?: string; why?: ReactNode; id?: string; source?: ReactNode;
-}) {
-  const recOpt = options?.[typeof recommend === "number" ? recommend : -1];
-  const recText = typeof recommend === "string" ? recommend : recOpt && typeof recOpt === "object" && !isValidElement(recOpt) && "label" in (recOpt as object) ? String((recOpt as { label: ReactNode }).label) : typeof recOpt === "string" ? recOpt : undefined;
-  return (
-    <div className="a-decision" data-c="decision" id={id} data-aid={id} data-q={typeof question === "string" ? question : undefined} data-owner={owner}
-      data-rec={recText}>
-      <div className="a-decision-head"><Badge tone="warn">{owner}</Badge>{source && <span className="a-muted"> recommendation: {source}</span>}</div>
-      <div className="a-decision-q">{question}</div>
-      {why && <div className="a-muted">{why}</div>}
-      {options && <ul className="a-options">{options.map((o, i) => {
-        const x = o && typeof o === "object" && !isValidElement(o) && "label" in (o as object) ? (o as { label: ReactNode; note?: ReactNode }) : { label: o as ReactNode };
-        const rec = recommend === i || (typeof recommend === "string" && typeof x.label === "string" && x.label === recommend);
-        return <li key={i} className={cx(rec && "rec")}><span>{x.label}{x.note && <span className="a-muted"> {x.note}</span>}</span>{rec && <Badge tone="success">recommended</Badge>}</li>;
-      })}</ul>}
-    </div>
-  );
-}
-
 /** `items={["text", {text, done, note, status}]}` */
 export function Checklist({ items }: { items: (string | { text: ReactNode; done?: boolean; note?: ReactNode; status?: string })[] }) {
   return (

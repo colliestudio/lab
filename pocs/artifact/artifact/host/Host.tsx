@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { meta, type Source as Src } from "../kit/registry.ts";
 import { Badge, Source } from "../kit/layout.tsx";
 import { fmtAsOf, fmtDate, plural, slug } from "../kit/util.ts";
 import { shell } from "../kit/shell.ts";
-import { useComments, Composer, CommentsPanel, feedbackMarkdown, anchorFor, findAnchor, type Anchor } from "./comments.tsx";
+import { useComments, useAnswerState, makeStore, Composer, FeedbackPanel, DecisionList, feedbackMarkdown, anchorFor, findAnchor, type Anchor } from "./comments.tsx";
+import { FeedbackCtx, decisionsMarkdown, type DecisionRow } from "../kit/feedback.ts";
 import { usePresent } from "./present.ts";
 import { PresentCtx } from "../kit/present.ts";
 
@@ -71,9 +72,15 @@ export function Host({ children }: { children: ReactNode }) {
   const [allSources, setAllSources] = useState(false);
   const [copied, setCopied] = useState("");
   const [more, setMore] = useState(false);
-  const cm = useComments(`${meta.title}|${meta.created ?? ""}`);
+  const store = useMemo(() => makeStore(`${meta.title}|${meta.created ?? ""}`), []);
+  const cm = useComments(store);
+  const am = useAnswerState(store);
+  const [rawRows, setRawRows] = useState<Omit<DecisionRow, "answer">[]>([]);
+  const rows: DecisionRow[] = useMemo(() => rawRows.map((r) => ({ ...r, answer: am.answers[r.id] })), [rawRows, am.answers]);
+  const [tab, setTab] = useState<"decisions" | "comments">("decisions");
+  const summary = useRef<HTMLElement>(null);
   const head = useRef<HTMLElement>(null);
-  const present = usePresent(content, head, meta.title);
+  const present = usePresent(content, head, meta.title, summary);
 
   useEffect(() => { document.title = meta.title; }, []);
   useEffect(() => {
@@ -83,6 +90,8 @@ export function Host({ children }: { children: ReactNode }) {
       for (const n of [2, 3, 4]) counts[n] = el.querySelectorAll(`[data-depth-level="${n}"]`).length;
       setDepthUsed(counts[2] + counts[3] + counts[4] > 0); // level 1 never hides, so alone it needs no control
       setDepthCounts((p) => (JSON.stringify(p) === JSON.stringify(counts) ? p : counts));
+      const next = [...el.querySelectorAll<HTMLElement>('[data-c="decision"]')].map((d) => ({ id: d.dataset.did ?? d.id, question: d.dataset.q ?? "", recommended: d.dataset.rec || undefined, owner: d.dataset.owner }));
+      setRawRows((p) => (JSON.stringify(p) === JSON.stringify(next) ? p : next));
     };
     scan();
     const mo = new MutationObserver(scan);
@@ -123,7 +132,7 @@ export function Host({ children }: { children: ReactNode }) {
       if (typing(e) || e.metaKey || e.ctrlKey || e.altKey) return;
       if (present.active) return;
       if (depthUsed && /^[1-4]$/.test(e.key)) changeDepth(Number(e.key));
-      else if (e.key === "c") setMode((m) => { if (!m) setPanel(true); return !m; });
+      else if (e.key === "c") setMode((m) => { if (!m) { setPanel(true); setTab("comments"); } return !m; });
       else if (e.key === "p") present.start();
       else if (e.key === "?") setHelp((h) => !h);
       else if (e.key === "Escape") { setMode(false); setOpen(null); setHelp(false); }
@@ -180,15 +189,23 @@ export function Host({ children }: { children: ReactNode }) {
     setTimeout(() => URL.revokeObjectURL(link.href), 4000);
   }, []);
 
-  const copy = useCallback(async () => {
-    const md = feedbackMarkdown(meta.title, cm.list);
+  const copyText = useCallback(async (md: string, flag: string) => {
     try { await navigator.clipboard.writeText(md); } catch {
       const ta = document.createElement("textarea"); ta.value = md; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove();
     }
-    setCopied("Copied"); setTimeout(() => setCopied(""), 1600);
-  }, [cm.list]);
+    setCopied(flag); setTimeout(() => setCopied(""), 1600);
+  }, []);
+  const decisionsMd = () => decisionsMarkdown(meta.title, rows);
+  const allMd = () => `${decisionsMd()}\n${cm.list.length ? feedbackMarkdown(meta.title, cm.list) : ""}`.trimEnd() + "\n";
+  const jumpDecision = (id: string) => {
+    const el = content.current?.querySelector<HTMLElement>(`[data-did="${CSS.escape(id)}"]`);
+    if (!el) return;
+    if (present.active) present.goTo(el); else el.scrollIntoView({ block: "center", behavior: "smooth" });
+  };
 
   const sources = (meta.sources ?? []).map(normSource);
+  const decided = rows.filter((r) => r.answer).length;
+  const feedbackLabel = ["Feedback", rows.length ? `${decided}/${rows.length} decided` : "", cm.list.length ? plural(cm.list.length, "note") : ""].filter(Boolean).join(" · ").replace("Feedback ·", "Feedback:");
   const compact = meta.header !== "full";
   return (
     <div className="h-root">
@@ -203,7 +220,7 @@ export function Host({ children }: { children: ReactNode }) {
             </span>
           </span>
         )}
-        <button className="h-btn" onClick={() => setPanel(!panel)} aria-pressed={panel} title="Comments: leave notes on any element, then copy them back to the author">{cm.list.length ? `Comments (${cm.list.length})` : "Comments"}</button>
+        <button className="h-btn" onClick={() => setPanel(!panel)} aria-pressed={panel} title="Feedback: answer the decisions and leave comments, then copy it all back to the author">{feedbackLabel}</button>
         <button className="h-btn" onClick={() => present.start()} title="Present (p): walk through the sections full screen">Present</button>
         <button className="h-btn" aria-pressed={!outlineOff} onClick={() => { setOutlineOff(!outlineOff); localStorage.setItem("artifact-outline", outlineOff ? "on" : "off"); }} title="Show or hide the outline on the left">Outline</button>
         <button className="h-btn" onClick={() => setTheme(!dark)} title="Switch between the light and dark theme">{dark ? "Light" : "Dark"}</button>
@@ -244,9 +261,23 @@ export function Host({ children }: { children: ReactNode }) {
               </div>
             ))}
           </header>
-          <PresentCtx.Provider value={present.state}><article className="a-content" ref={content}>{children}</article></PresentCtx.Provider>
+          <FeedbackCtx.Provider value={{ interactive: true, answers: am.answers, answer: am.answer }}>
+            <PresentCtx.Provider value={present.state}><article className="a-content" ref={content}>{children}</article></PresentCtx.Provider>
+          </FeedbackCtx.Provider>
+          {rows.length > 0 && (
+            <section className="h-summary-slide" ref={summary} data-title="Summary">
+              <h2 className="a-h">Summary: {decided}/{rows.length} decided</h2>
+              <DecisionList rows={rows} onJump={jumpDecision} />
+              <div className="h-panel-actions">
+                <button className="h-btn" disabled={!decided} onClick={() => copyText(decisionsMd(), "decisions")}>{copied === "decisions" ? "Copied" : "Copy decisions"}</button>
+                <button className="h-btn" disabled={!decided && !cm.list.length} onClick={() => copyText(allMd(), "all")}>{copied === "all" ? "Copied" : "Copy all feedback"}</button>
+              </div>
+            </section>
+          )}
         </main>
-        {panel && <CommentsPanel cm={cm} mode={mode} onMode={() => setMode(!mode)} onCopy={copy} copied={copied} onClose={() => { setPanel(false); setMode(false); }} />}
+        {panel && <FeedbackPanel cm={cm} rows={rows} tab={rows.length ? tab : "comments"} setTab={setTab} mode={mode} onMode={() => setMode(!mode)} copied={copied}
+          onCopyComments={() => copyText(feedbackMarkdown(meta.title, cm.list), "comments")} onCopyDecisions={() => copyText(decisionsMd(), "decisions")} onCopyAll={() => copyText(allMd(), "all")}
+          onClearAnswers={am.clear} onJumpDecision={jumpDecision} onClose={() => { setPanel(false); setMode(false); }} />}
       </div>
       {toast && <div className="h-toast" role="status">{toast}</div>}
       {open && <Composer anchor={open} onCancel={() => setOpen(null)} onSave={(body) => { cm.add(open, body); setOpen(null); }} existing={cm.list.filter((c) => c.anchor.id === open.id)} />}

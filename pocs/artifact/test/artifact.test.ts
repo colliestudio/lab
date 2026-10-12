@@ -833,13 +833,108 @@ test("comments: one drawer with add / list / copy / clear, behind a store interf
       await p.locator(".a-content p").first().click();
       await p.locator(".h-composer textarea").fill("Looks off");
       await p.keyboard.press("Meta+Enter");
-      assert.equal(await p.locator(".h-bar").getByRole("button", { name: "Comments (1)" }).count(), 1);
-      await p.getByRole("button", { name: "Copy feedback" }).click();
+      assert.equal(await p.locator(".h-bar").getByRole("button", { name: /Feedback.*1 note/ }).count(), 1);
+      await p.getByRole("button", { name: "Copy comments" }).click();
       assert.match(await p.evaluate(() => navigator.clipboard.readText()), /Looks off/);
       await p.getByRole("button", { name: "Clear all" }).click();
       await p.getByRole("button", { name: "Click again to clear" }).click();
       assert.equal(await p.locator(".h-note").count(), 0);
       assert.ok(await p.locator('[data-c="stages"]').isVisible());
+    } finally { await b.close(); }
+  } finally { cleanup(d); }
+});
+
+import { matchesAnswer, decisionsMarkdown, type Answer } from "../artifact/kit/feedback.ts";
+
+test("decision answers: matching and the Markdown an agent can apply", () => {
+  const a: Answer = { choice: "a", label: "Yes, ship now", rec: true, note: "after lunch", at: "t" };
+  assert.ok(matchesAnswer(a, "a") && matchesAnswer(a, "yes, ship now") && matchesAnswer(a, ["x", "a"]));
+  assert.ok(!matchesAnswer(a, "b") && !matchesAnswer(undefined, "a") && !matchesAnswer(a, undefined));
+  const md = decisionsMarkdown("Page", [
+    { id: "d1", question: "Ship?", recommended: "Yes, ship now", answer: a },
+    { id: "d2", question: "Which\n demo?", recommended: "X", answer: { choice: "b", label: "Y", at: "t" } },
+    { id: "d3", question: "Own?", answer: { choice: "other", label: "mine", custom: "my own plan", at: "t" } },
+    { id: "d4", question: "Unsure?", answer: { choice: "unsure", label: "not sure / discuss", note: "call me", at: "t" } },
+    { id: "d5", question: "Later?" },
+  ]);
+  assert.match(md, /- \*\*d1\*\* — Ship\?\n {2}- answer: Yes, ship now \[a\] \(the recommended option\)\n {2}- note: after lunch/);
+  assert.match(md, /answer: Y \[b\] \(differs from the recommendation: X\)/);
+  assert.match(md, /answer: own answer: my own plan/);
+  assert.match(md, /answer: not sure \/ discuss\n {2}- note: call me/);
+  assert.match(md, /d5\*\* — Later\?\n {2}- answer: \(not decided\)/);
+  assert.match(md, /Which demo\?/);
+});
+
+test("Decision and When render statically (no host): plain option list, unanswered branch shows", async () => {
+  const d = fixture(`import { Decision, When, Section } from "artifact";
+export default () => <Section title="D"><Decision id="d1" question="Pick?" options={["One", "Two"]} recommend={1} />
+<When decision="d1" is="a"><p>BRANCH-A</p></When><When decision="d1" unanswered><p>UNANSWERED</p></When></Section>;`);
+  try {
+    const s = await renderStatic(d);
+    assert.ok("html" in s, JSON.stringify(s));
+    assert.match(s.html, /id="d1"/); assert.match(s.html, /UNANSWERED/); assert.doesNotMatch(s.html, /BRANCH-A/);
+    assert.doesNotMatch(s.html, /role="radio"/);
+  } finally { cleanup(d); }
+});
+
+test("answerable decisions: branch, progress, summary, copy, present summary slide", async (t) => {
+  const { findChrome } = await import("../artifact/cli/shot.ts");
+  let exe: string;
+  try { exe = await findChrome(); } catch { return t.skip("no Chromium available"); }
+  const { chromium } = await import("playwright-core");
+  const d = fixture(`import { Decision, When, Section } from "artifact";
+export default () => <><Section title="One"><Decision id="d1" question="Ship now?" recommend={0} options={["Yes", "No"]} />
+<When decision="d1" is="a"><Decision id="d2" question="Which first?" options={["Alpha", "Beta"]} recommend="Beta" /><When decision="d2" is="beta"><p>BETA-BRANCH</p></When></When>
+<When decision="d1" is="b"><p>NO-BRANCH</p></When></Section>
+<Section title="Two"><p>other</p></Section></>;`);
+  const out = join(d, "../dec.html");
+  try {
+    writeFileSync(out, (await buildArtifact(d)).html);
+    const b = await chromium.launch({ executablePath: exe });
+    try {
+      const ctx = await b.newContext({ permissions: ["clipboard-read", "clipboard-write"] });
+      const p = await ctx.newPage();
+      await p.goto("file://" + out);
+      await p.waitForSelector(".a-decision");
+      assert.equal(await p.locator('[data-c="decision"]').count(), 1, "the follow-up is hidden until d1 is answered");
+      assert.match(await p.locator(".h-bar").innerText(), /Feedback/);
+      await p.locator("#d1 button[role=radio]").first().click();            // d1 = Yes (recommended)
+      assert.equal(await p.locator('[data-c="decision"]').count(), 2, "answering d1 reveals d2");
+      assert.match(await p.locator(".h-bar").innerText(), /1\/2 decided/);
+      await p.locator('[data-did="d2"] button[role=radio]').nth(1).click();   // d2 = Beta (recommended)
+      assert.ok(await p.getByText("BETA-BRANCH").isVisible(), "two levels deep");
+      await p.locator('[data-did="d2"]').getByRole("button", { name: "Add note" }).click();
+      await p.locator('[data-did="d2"] textarea').fill("sounds right");
+      await p.locator('[data-did="d2"] textarea').blur();
+      await p.locator(".h-bar").getByRole("button", { name: /Feedback/ }).click();
+      assert.ok(await p.locator(".h-panel .h-decisions li").first().isVisible());
+      await p.getByRole("button", { name: "Copy decisions" }).click();
+      let md = await p.evaluate(() => navigator.clipboard.readText());
+      assert.match(md, /\*\*d1\*\* — Ship now\?\n {2}- answer: Yes \[a\] \(the recommended option\)/);
+      assert.match(md, /\*\*d2\*\* — Which first\?\n {2}- answer: Beta \[b\] \(the recommended option\)\n {2}- note: sounds right/);
+      // a different answer to d1 closes the branch: d2 leaves the page and the summary
+      await p.locator('[data-did="d1"]').getByRole("button", { name: "Write your own…" }).click();
+      await p.locator('[data-did="d1"] input').fill("Yes but Friday");
+      await p.keyboard.press("Enter");
+      assert.equal(await p.locator('[data-c="decision"]').count(), 1);
+      await p.getByRole("button", { name: "Copy decisions" }).click();
+      md = await p.evaluate(() => navigator.clipboard.readText());
+      assert.match(md, /\*\*d1\*\* — Ship now\?\n {2}- answer: own answer: Yes but Friday/);
+      assert.doesNotMatch(md, /d2/);
+      await p.reload(); await p.waitForSelector(".a-decision");
+      assert.equal(await p.locator('[data-c="decision"]').count(), 1, "answers persist (localStorage)");
+      await p.locator("#d1 button[role=radio]").first().click();
+      assert.equal(await p.locator('[data-c="decision"]').count(), 2, "back to Yes: d2 returns with its earlier answer");
+      // present: answer while presenting, then the generated Summary slide
+      await p.keyboard.press("p"); await p.waitForSelector(".h-present-bar");
+      await p.keyboard.press("ArrowRight");
+      await p.locator('[data-did="d2"] button[role=radio]').first().focus();
+      await p.keyboard.press("Enter");                                          // answers, does not step
+      assert.match(await p.locator(".h-present-label").innerText(), /^2\//);
+      await p.keyboard.press("ArrowRight"); await p.keyboard.press("ArrowRight"); await p.keyboard.press("ArrowRight");
+      assert.match(await p.locator(".h-present-label").innerText(), /Summary$/);
+      assert.ok(await p.locator(".h-summary-slide").isVisible());
+      assert.match(await p.locator(".h-summary-slide").innerText(), /Alpha/);
     } finally { await b.close(); }
   } finally { cleanup(d); }
 });
