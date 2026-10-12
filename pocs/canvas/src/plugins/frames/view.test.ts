@@ -149,3 +149,31 @@ describe('present mode', () => {
     expect(document.body.classList.contains('fr-presenting')).toBe(false);
   });
 });
+
+describe('digit keys', () => {
+  it('share 1–9 with an earlier binding (cards deal): a frame jump only with no other object selected or hovered', () => {
+    const root = document.createElement('div');
+    document.body.append(root);
+    roots.push(root);
+    const app = new App(root);
+    const dealt: number[] = [];
+    app.use({ id: 'dealer', setup: (a) => a.registerKey({ key: '1', label: 'Deal 1', run: () => dealt.push(1) }) });
+    app.use(createFramesPlugin({ room: null, enter: () => {} }));
+    app.store.load({
+      nodes: [
+        { id: 'f1', type: 'group', label: 'One', x: 5000, y: 5000, width: 800, height: 600, 'x-frame': {} },
+        { id: 'deck', type: 'text', text: 'deck', x: 0, y: 0, width: 100, height: 100 },
+      ],
+      edges: [],
+    });
+    const k = app.keys.get('1')!;
+    app.store.select(['deck']);
+    expect(k.when!(app)).toBe(true);
+    k.run(app);
+    expect(dealt).toEqual([1]);
+    app.store.select([]);
+    k.run(app);
+    expect(dealt).toEqual([1]); // went to the frame instead
+    expect(app.keys.get('2')!.when?.(app) ?? true).toBe(false); // no frame 2, no other binding: key left alone
+  });
+});

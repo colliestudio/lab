@@ -262,7 +262,23 @@ export function createFramesPlugin(opts: FramesOptions): Plugin & { portals?: Po
       app.registerKey({ key: 'shift+f', label: 'Frame the selection (or a new frame)', run: frameSelection });
       app.registerKey({ key: ']', label: 'Next frame', run: () => step(1) });
       app.registerKey({ key: '[', label: 'Previous frame', run: () => step(-1) });
-      for (let d = 1; d <= 9; d++) app.registerKey({ key: String(d), label: `Go to frame ${d}`, run: () => go(orderedFrames(app.doc)[d - 1]) });
+      // Digits are also cards' "Deal N": they go to a frame only when there is one to go to and the
+      // pointer or selection isn't on another object (a deck); otherwise the earlier binding runs.
+      const onFramesOnly = (a: App) => {
+        const h = a.view.hovered ? a.node(a.view.hovered) : undefined;
+        return (!h || isFrame(h)) && a.selected().every(isFrame);
+      };
+      for (let d = 1; d <= 9; d++) {
+        const key = String(d);
+        const prev = app.keys.get(key);
+        const mine = (a: App) => !!orderedFrames(a.doc)[d - 1] && (!prev || onFramesOnly(a));
+        app.registerKey({
+          key,
+          label: `Go to frame ${d}`,
+          when: (a) => mine(a) || (!!prev && (!prev.when || prev.when(a))),
+          run: (a) => (mine(a) ? go(orderedFrames(a.doc)[d - 1]) : prev?.run(a)),
+        });
+      }
       app.registerKey({ key: 'mod+enter', label: 'Present', run: () => presenter.start() });
       const step = (dir: 1 | -1) => {
         const list = orderedFrames(app.doc);
