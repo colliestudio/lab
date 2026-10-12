@@ -1,0 +1,6 @@
+[
+  { "when": "Mon", "lane": "planner", "title": "Plan written", "status": "done" },
+  { "when": "Mon", "lane": "dev", "title": "Kit built", "status": "doing", "body": "Host chrome and CLI next." },
+  { "when": "Tue", "lane": "reviewer", "title": "Review of the kit", "status": "todo" },
+  { "when": "Tue", "lane": "dev", "title": "Fix findings", "status": "todo" }
+]

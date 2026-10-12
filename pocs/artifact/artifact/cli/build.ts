@@ -34,6 +34,15 @@ function plugin(state: { collected?: Collected; dir: string }): esbuild.Plugin {
         state.collected = collect(state.dir);
         return { contents: `export default ${JSON.stringify(state.collected.registry)};`, loader: "js", resolveDir: repoRoot };
       });
+      // Mermaid's optional layout engines and math are ~2.5 MB; flowcharts, sequence, state, class, ER, gantt, pie don't need them.
+      b.onResolve({ filter: /^(elkjs|cytoscape|cytoscape-fcose|cytoscape-cose-bilkent|cose-base|layout-base|katex)(\/.*)?$/ }, (a) =>
+        /[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/]node_modules[\\/])?mermaid[\\/]/.test(a.importer) ? { path: a.path, namespace: "mermaid-stub" } : undefined);
+      b.onLoad({ filter: /.*/, namespace: "mermaid-stub" }, (a) => ({
+        contents: `const no = () => { throw new Error(${JSON.stringify(`this Mermaid feature needs ${"${PKG}"}, which the artifact build leaves out to stay small`).replace("${PKG}", a.path.split("/")[0])}); };
+const stub = new Proxy(no, { get: (_, k) => (k === "__esModule" ? false : k === "then" ? undefined : stub), construct: no, apply: no });
+export default stub; export const render = no; export const parse = no;`,
+        loader: "js",
+      }));
       // `x.css?text` → the CSS as a string (loaded only by the component that needs it)
       b.onResolve({ filter: /\?text$/ }, async (a) => {
         const r = await b.resolve(a.path.replace(/\?text$/, ""), { resolveDir: a.resolveDir, kind: a.kind });
@@ -145,9 +154,9 @@ export async function renderStatic(dir: string): Promise<{ html: string } | { er
     ...base,
     stdin: { contents: `import App from ${JSON.stringify(findEntry(abs))};\nimport { renderToString } from "react-dom/server";\nimport { createElement } from "react";\nglobalThis.__html = () => renderToString(createElement(App));`, resolveDir: repoRoot, loader: "tsx" },
     platform: "node", format: "cjs", write: false, outdir: "out", metafile: false,
-    external: ["mermaid", "rrweb-player", "rrweb-player/*", "elkjs", "elkjs/*"],
+    external: ["mermaid", "elkjs", "elkjs/*"],
   }).catch((e) => ({ errors: e.errors ?? [{ text: String(e) }], outputFiles: [] as never }));
-  if (!r.outputFiles?.length) return { error: "bundle failed" };
+  if (!r.outputFiles?.length) return { error: "bundle failed: " + ((r as { errors?: esbuild.Message[] }).errors ?? []).map((m) => m.text).join("; ") };
   try {
     const g = globalThis as unknown as { __html?: () => string };
     new Function("require", "module", "exports", r.outputFiles[0].text)(createRequire(), { exports: {} }, {});
