@@ -8,7 +8,7 @@ import type { LogActor } from '../src/core/log';
 import { registerBoardLogic } from '../src/plugins/board/logic';
 import { registerChessLogic } from '../src/plugins/chess/logic';
 import { views, type View } from './views';
-import { describeDiff, diffFile, stableSerialize } from './canonical';
+import { describeDiff, mergeFile, stableSerialize, withZ } from '../src/core/canonical';
 
 // The bridge's document side, without network or disk (server.ts adds those): one Y.Doc that
 // browsers sync with, a Store per actor on that doc (each agent its own undo history and log name),
@@ -208,24 +208,4 @@ export class Host {
   static fromFile(origin: unknown) {
     return origin === FILE;
   }
-}
-
-const withZ = (d: CanvasDoc): CanvasDoc => ({ ...d, nodes: d.nodes.map((n, i) => ({ ...n, z: i + 1 })) });
-
-/**
- * A file edit as a 3-way merge: what changed from `base` (the file as the bridge last saw it) to
- * `next` is applied to `cur` (the live doc), so fields players changed meanwhile and the file didn't
- * touch stay. Stacking order comes from the live doc (z values differ between the two).
- */
-export function mergeFile(base: CanvasDoc, cur: CanvasDoc, next: CanvasDoc) {
-  const fromBase = diffFile(base, next);
-  const fromCur = diffFile(cur, next);
-  const isZ = (c: Change) => c.op === 'set' && c.key === 'z';
-  const reordered = fromBase.changes.some(isZ);
-  const addZ = new Map(fromCur.changes.flatMap((c) => (c.op === 'add' ? [[c.node.id, c.node.z] as const] : [])));
-  const changes = fromBase.changes
-    .filter((c) => !isZ(c))
-    .map((c) => (c.op === 'add' && addZ.has(c.node.id) ? { ...c, node: { ...c.node, z: addZ.get(c.node.id) } } : c));
-  if (reordered) changes.push(...fromCur.changes.filter(isZ));
-  return { ...fromBase, changes };
 }

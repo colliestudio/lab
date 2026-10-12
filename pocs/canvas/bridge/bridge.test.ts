@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 import { Store } from '../src/core/store';
 import { registerBoardLogic } from '../src/plugins/board/logic';
-import { diffFile, stableSerialize } from './canonical';
+import { diffFile, stableSerialize } from '../src/core/canonical';
 import { Host, makeActor } from './host';
 
 const n = (id: string, extra: Record<string, unknown> = {}) => ({ id, type: 'text', x: 0, y: 0, width: 100, height: 50, ...extra });

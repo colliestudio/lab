@@ -1,4 +1,4 @@
-import type { CanvasDoc, CanvasEdge, CanvasNode, Change } from '../src/core/doc';
+import type { CanvasDoc, CanvasEdge, CanvasNode, Change } from './doc';
 
 // The .canvas file as a git-friendly record: the same document always serializes to the same text
 // (fixed key order, tabs like Obsidian, nodes in z order, edges by id), so a diff shows only what
@@ -149,4 +149,26 @@ export function describeDiff(s: FileDiff['summary']): string {
     s.edges && `${s.edges} link${s.edges === 1 ? '' : 's'}`,
   ].filter(Boolean);
   return parts.join(', ') || 'reordered';
+}
+
+/** The doc with z = array position (a file's order is its stacking order). */
+export const withZ = (d: CanvasDoc): CanvasDoc => ({ ...d, nodes: d.nodes.map((n, i) => ({ ...n, z: i + 1 })) });
+
+/**
+ * An edit of the text as a 3-way merge: what changed from `base` (the text as it was last shown or
+ * written) to `next` is applied to `cur` (the live doc), so fields players changed meanwhile and the
+ * text didn't touch stay. Stacking order comes from the live doc (z values differ between the two).
+ * Used by the bridge for file edits and by the browser's JSON panel.
+ */
+export function mergeFile(base: CanvasDoc, cur: CanvasDoc, next: CanvasDoc) {
+  const fromBase = diffFile(base, next);
+  const fromCur = diffFile(cur, next);
+  const isZ = (c: Change) => c.op === 'set' && c.key === 'z';
+  const reordered = fromBase.changes.some(isZ);
+  const addZ = new Map(fromCur.changes.flatMap((c) => (c.op === 'add' ? [[c.node.id, c.node.z] as const] : [])));
+  const changes = fromBase.changes
+    .filter((c) => !isZ(c))
+    .map((c) => (c.op === 'add' && addZ.has(c.node.id) ? { ...c, node: { ...c.node, z: addZ.get(c.node.id) } } : c));
+  if (reordered) changes.push(...fromCur.changes.filter(isZ));
+  return { ...fromBase, changes };
 }
