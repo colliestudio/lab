@@ -44,6 +44,7 @@ export async function check(dir: string, opts: { types?: boolean } = {}): Promis
   for (const u of r.collected.unsafe) rep.errors.push(`evidence path leaves evidence/: ${u} (paths must stay inside evidence/, no .. or symlinks elsewhere)`);
   for (const m of r.collected.missing) rep.errors.push(`missing evidence: ${m} (referenced in the source, not in evidence/)`);
   for (const u of r.collected.unreferenced) rep.warnings.push(`unused evidence: ${u} (never mentioned in the source, so not inlined)`);
+  for (const [p, n] of Object.entries(r.collected.sizes)) if (/\.png$/i.test(p) && n > 400_000) rep.warnings.push(`${p} is ${fmtBytes(n * 0.75)} inlined: save screenshots as .jpg (artifact capture -o x.jpg) to cut it ~4x`);
   rep.bytes = r.bytes;
   if (r.bytes > MAX_BYTES) rep.errors.push(`output is ${fmtBytes(r.bytes)} (limit ${fmtBytes(MAX_BYTES)})`);
   else if (r.bytes > WARN_BYTES) rep.warnings.push(`output is ${fmtBytes(r.bytes)}: trim recordings/images, or cut heavy components`);

@@ -1,14 +1,18 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { buildArtifact, fmtBytes, formatMessages } from "./build.ts";
 import { check, MAX_BYTES, WARN_BYTES } from "./check.ts";
 import { scaffold } from "./scaffold.ts";
 import { dev } from "./dev.ts";
+import { gatherCmd } from "./gather.ts";
 
 const USAGE = `artifact: agent-written pages (React + a component kit), one self-contained HTML out
 
   artifact new <dir> [--kind k]          scaffold <dir>.artifact with a small example
+  artifact capture <url|file.html> -o evidence/x.png|.jpg [--selector css] [--wait ms|css] [--width N] [--height N] [--theme dark] [--full] [--steps steps.json]
+                                         screenshot a running app into evidence (jpg is ~4x smaller)
+  artifact gather gh-prs|board|git-log <dir> [options]   write <dir>/data/<kind>.json (see ARTIFACT.md)
   artifact dev <dir> [--port N]          live-reload server on 127.0.0.1 (default 4177)
   artifact check <dir>                   bundle + types + render + evidence + size; exit 1 on errors
   artifact build <dir> -o out.html       one HTML file, everything inlined; reports sizes
@@ -20,9 +24,10 @@ export async function main(argv: string[]): Promise<number> {
   const [cmd, ...rest] = argv;
   const { values, positionals } = parseArgs({
     args: rest, allowPositionals: true,
-    options: { kind: { type: "string" }, port: { type: "string" }, host: { type: "string" }, o: { type: "string", short: "o" }, theme: { type: "string" }, present: { type: "string" }, width: { type: "string" }, "no-chrome": { type: "boolean" }, "no-types": { type: "boolean" }, force: { type: "boolean" } },
+    options: { kind: { type: "string" }, port: { type: "string" }, host: { type: "string" }, o: { type: "string", short: "o" }, theme: { type: "string" }, present: { type: "string" }, width: { type: "string" }, "no-chrome": { type: "boolean" }, "no-types": { type: "boolean" }, selector: { type: "string" }, wait: { type: "string" }, height: { type: "string" }, full: { type: "boolean" }, steps: { type: "string" }, repos: { type: "string" }, workspaces: { type: "string" }, repo: { type: "string" }, since: { type: "string" }, name: { type: "string" }, limit: { type: "string" }, force: { type: "boolean" } },
   });
   const dir = positionals[0];
+  if (cmd === "gather" && positionals.length >= 2) return gatherCmd(positionals[0], positionals[1], values as Record<string, string | boolean | undefined>);
   if (!cmd || cmd === "help" || cmd === "--help" || !dir) { console.log(USAGE); return cmd && cmd !== "help" && cmd !== "--help" ? 2 : 0; }
   switch (cmd) {
     case "new": {
@@ -59,6 +64,14 @@ export async function main(argv: string[]): Promise<number> {
       const themes = values.theme === "both" ? (["light", "dark"] as const) : values.theme === "dark" ? (["dark"] as const) : (["light"] as const);
       const paths = await shot(dir, { out: values.o, themes: [...themes], present: values.present, width: values.width ? Number(values.width) : undefined, chrome: !values["no-chrome"] });
       for (const p of paths) console.log(p);
+      return 0;
+    }
+    case "capture": {
+      if (!values.o) { console.error("capture needs -o evidence/x.png"); return 2; }
+      const { capture } = await import("./shot.ts");
+      const w = (x?: string) => (x ? Number(x) : undefined);
+      const p = await capture(dir, { out: values.o, selector: values.selector, wait: values.wait, width: w(values.width), height: w(values.height), theme: values.theme === "dark" ? "dark" : "light", full: values.full, steps: values.steps });
+      console.log(`${p}  ${fmtBytes(statSync(p).size)}`);
       return 0;
     }
     case "dev": {

@@ -87,3 +87,46 @@ export async function shot(dir: string, o: ShotOpts = {}): Promise<string[]> {
   } finally { await browser.close(); rmSync(tmp, { recursive: true, force: true }); }
   return paths;
 }
+
+export interface CaptureOpts {
+  out: string; selector?: string; wait?: number | string; width?: number; height?: number; theme?: "light" | "dark";
+  full?: boolean; steps?: string; quality?: number; scale?: number;
+}
+type Step = { click: string } | { fill: [string, string] } | { type: [string, string] } | { press: string } | { wait: number | string } | { goto: string } | { hover: string };
+
+/**
+ * Screenshot a URL (or local html file) into evidence: `.png` or `.jpg` (jpeg, `quality` 72 by default, much smaller).
+ * `selector` captures one element, `wait` is ms or a selector to wait for, `steps` a JSON file of
+ * `[{"click":"sel"},{"fill":["sel","text"]},{"press":"Enter"},{"wait":500|"sel"},{"goto":"url"}]` run before the shot.
+ */
+export async function capture(url: string, o: CaptureOpts): Promise<string> {
+  const { chromium } = await import("playwright-core");
+  const { readFileSync } = await import("node:fs");
+  const { dirname } = await import("node:path");
+  const target = /^[a-z]+:\/\//i.test(url) ? url : "file://" + resolve(url);
+  const browser = await chromium.launch({ executablePath: await findChrome() });
+  try {
+    const ctx = await browser.newContext({ viewport: { width: o.width ?? 1280, height: o.height ?? 800 }, colorScheme: o.theme ?? "light", deviceScaleFactor: o.scale ?? 1 });
+    const page = await ctx.newPage();
+    await page.goto(target, { waitUntil: "load", timeout: 30_000 });
+    const waitFor = async (w: number | string) => (typeof w === "number" || /^\d+$/.test(String(w)) ? page.waitForTimeout(Number(w)) : page.waitForSelector(String(w), { timeout: 15_000 }));
+    if (o.wait != null) await waitFor(o.wait);
+    if (o.steps) {
+      for (const s of JSON.parse(readFileSync(o.steps, "utf8")) as Step[]) {
+        if ("click" in s) await page.click(s.click);
+        else if ("hover" in s) await page.hover(s.hover);
+        else if ("fill" in s) await page.fill(s.fill[0], s.fill[1]);
+        else if ("type" in s) await page.type(s.type[0], s.type[1]);
+        else if ("press" in s) await page.keyboard.press(s.press);
+        else if ("wait" in s) await waitFor(s.wait);
+        else if ("goto" in s) await page.goto(s.goto);
+      }
+    }
+    mkdirSync(dirname(resolve(o.out)), { recursive: true });
+    const jpeg = /\.jpe?g$/i.test(o.out);
+    const opts = { path: resolve(o.out), ...(jpeg ? { type: "jpeg" as const, quality: o.quality ?? 72 } : { type: "png" as const }) };
+    if (o.selector) await page.locator(o.selector).first().screenshot(opts);
+    else await page.screenshot({ ...opts, fullPage: !!o.full });
+    return resolve(o.out);
+  } finally { await browser.close(); }
+}

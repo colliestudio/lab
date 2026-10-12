@@ -407,3 +407,51 @@ test("artifact.json depth and header are accepted", async () => {
     assert.equal(r.collected.registry.meta.header, "full");
   } finally { cleanup(d); }
 });
+
+import { execFileSync } from "node:child_process";
+import { parseBoard, ghPrs, gitLog, gatherCmd } from "../artifact/cli/gather.ts";
+
+test("gather: board text, gh PRs (stubbed gh), git log", () => {
+  const b = parseBoard(`To Do:\n  [HIGH] TASK-3 - Do the thing (ac: 1/2)\n  TASK-4 - Other\n\nIn Progress:\n  TASK-5 - Busy\n\nDone:\n  TASK-1 - Old\n  TASK-2 - Older\n`);
+  assert.deepEqual(b.todo.map((t) => [t.id, t.priority, t.ac]), [["task-3", "HIGH", [1, 2]], ["task-4", null, undefined]]);
+  assert.equal(b.doing[0].title, "Busy");
+  assert.equal(b.doneCount, 2);
+
+  const calls: string[][] = [];
+  const exec = (cmd: string, args: string[]) => {
+    calls.push([cmd, ...args]);
+    return args.includes("merged") ? `[{"number":1},{"number":2}]` : JSON.stringify([
+      { number: 7, title: "T", isDraft: false, reviewDecision: "CHANGES_REQUESTED", baseRefName: "main", headRefName: "x", updatedAt: "2026-10-10T00:00:00Z", mergeable: "CONFLICTING", url: "https://h/7", statusCheckRollup: [{ conclusion: "SUCCESS" }, { conclusion: "FAILURE" }], author: { login: "me" } },
+      { number: 8, title: "D", isDraft: true, reviewDecision: "", baseRefName: "main", headRefName: "y", updatedAt: "2026-10-11T00:00:00Z", mergeable: "MERGEABLE", url: "https://h/8", statusCheckRollup: [] },
+    ]);
+  };
+  const r = ghPrs(["o/a"], { since: "2026-10-11T00:00:00Z", exec });
+  assert.deepEqual(r.prs.map((p) => [p.n, p.state, p.review, p.checks, p.conflict]), [[7, "open", "changes", "fail", true], [8, "draft", undefined, undefined, false]]);
+  assert.equal(r.merged["o/a"], 2);
+  assert.ok(calls.every((c) => c[0] === "gh"));
+
+  const root = mkdtempSync(join(tmpdir(), "art-git-"));
+  try {
+    const g = (...a: string[]) => execFileSync("git", ["-C", root, "-c", "user.name=T", "-c", "user.email=t@t", ...a], { stdio: "pipe" });
+    g("init", "-q"); writeFileSync(join(root, "f"), "1"); g("add", "."); g("commit", "-q", "-m", "first"); writeFileSync(join(root, "f"), "2"); g("commit", "-qam", "second");
+    const l = gitLog(root);
+    assert.deepEqual(l.commits.map((c) => c.subject), ["second", "first"]);
+    const art = join(root, "x.artifact");
+    const log = console.log; console.log = () => {};
+    try { assert.equal(gatherCmd("git-log", art, { repo: root }), 0); } finally { console.log = log; }
+    assert.equal(JSON.parse(readFileSync(join(art, "data/git-log.json"), "utf8")).commits.length, 2);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("capture saves a jpg of one element and honours steps", async (t) => {
+  const { capture, findChrome } = await import("../artifact/cli/shot.ts");
+  try { await findChrome(); } catch { return t.skip("no Chromium available"); }
+  const root = mkdtempSync(join(tmpdir(), "art-cap-"));
+  try {
+    writeFileSync(join(root, "p.html"), `<button id=b onclick="document.getElementById('o').textContent='clicked'">go</button><div id=o style="width:200px;height:60px;background:#cde">x</div>`);
+    writeFileSync(join(root, "steps.json"), JSON.stringify([{ click: "#b" }, { wait: 50 }]));
+    const out = await capture(join(root, "p.html"), { out: join(root, "evidence/o.jpg"), selector: "#o", steps: join(root, "steps.json") });
+    const bytes = readFileSync(out);
+    assert.equal(bytes[0], 0xff); assert.equal(bytes[1], 0xd8);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
