@@ -4,7 +4,7 @@ import registry from "artifact:registry";
 
 export interface Source { label: string; href?: string; kind?: string; from?: string }
 export interface Meta {
-  title: string; kind?: string; audience?: string; summary?: string; created?: string;
+  title: string; kind?: string; audience?: string; summary?: string; created?: string; width?: "narrow" | "normal" | "wide" | "full";
   sources?: (string | Source)[];
 }
 export interface PatchLine { t: " " | "+" | "-"; s: string }

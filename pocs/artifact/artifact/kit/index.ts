@@ -4,6 +4,7 @@ export { Table, Img, Compare, Chart, type Column, type CompareItem } from "./dat
 export { Code, Diff } from "./code.tsx";
 export { Map, type MapNodeIn, type MapEdgeIn } from "./map.tsx";
 export { Flow } from "./flow.tsx";
+export * from "./present.ts";
 export { Replay } from "./replay.tsx";
 export { useData, meta } from "./registry.ts";
 export { useTheme } from "./theme.ts";

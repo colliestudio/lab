@@ -340,3 +340,15 @@ test("highlightLines keeps every line on JSX and falls back to plain when it can
     out.forEach((h, i) => assert.equal(h.replace(/<[^>]*>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&").replace(/&quot;/g, '"'), src[i]));
   }
 });
+
+test("shot saves PNGs of the page and a present slide", async (t) => {
+  const { shot, findChrome } = await import("../artifact/cli/shot.ts");
+  try { await findChrome(); } catch { return t.skip("no Chromium available"); }
+  const d = fixture(`import { Section, Map } from "artifact"; export default () => <><Section title="A"><p>a</p></Section><Section title="B"><Map nodes={Array.from({length: 14}, (_, i) => ({ id: "n" + i, label: "A fairly long node label " + i }))} edges={Array.from({length: 13}, (_, i) => ({ from: "n" + i, to: "n" + (i + 1) }))} direction="right" /></Section></>;`);
+  try {
+    const out = join(d, "../shots");
+    const paths = await shot(d, { out, themes: ["dark"], present: "0,2" });
+    assert.equal(paths.length, 3);
+    for (const p of paths) assert.ok(readFileSync(p).subarray(1, 4).toString() === "PNG", p);
+  } finally { cleanup(d); }
+});

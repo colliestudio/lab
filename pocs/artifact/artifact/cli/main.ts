@@ -12,13 +12,15 @@ const USAGE = `artifact: agent-written pages (React + a component kit), one self
   artifact dev <dir> [--port N]          live-reload server on 127.0.0.1 (default 4177)
   artifact check <dir>                   bundle + types + render + evidence + size; exit 1 on errors
   artifact build <dir> -o out.html       one HTML file, everything inlined; reports sizes
+  artifact shot <dir> [--theme light|dark|both] [--present N|a,b|all] [-o outdir] [--width N] [--no-chrome]
+                                         PNGs of the page (and present slides) to look at; default <dir>/.shots
 `;
 
 export async function main(argv: string[]): Promise<number> {
   const [cmd, ...rest] = argv;
   const { values, positionals } = parseArgs({
     args: rest, allowPositionals: true,
-    options: { kind: { type: "string" }, port: { type: "string" }, host: { type: "string" }, o: { type: "string", short: "o" }, "no-types": { type: "boolean" }, force: { type: "boolean" } },
+    options: { kind: { type: "string" }, port: { type: "string" }, host: { type: "string" }, o: { type: "string", short: "o" }, theme: { type: "string" }, present: { type: "string" }, width: { type: "string" }, "no-chrome": { type: "boolean" }, "no-types": { type: "boolean" }, force: { type: "boolean" } },
   });
   const dir = positionals[0];
   if (!cmd || cmd === "help" || cmd === "--help" || !dir) { console.log(USAGE); return cmd && cmd !== "help" && cmd !== "--help" ? 2 : 0; }
@@ -50,6 +52,13 @@ export async function main(argv: string[]): Promise<number> {
       console.log(`${out}  ${fmtBytes(r.bytes)}  (js ${fmtBytes(r.js)}, css ${fmtBytes(r.css)})`);
       console.log("  " + r.parts.slice(0, 6).map((p) => `${p.name} ${fmtBytes(p.bytes)}`).join(" · "));
       if (r.bytes > WARN_BYTES) console.warn(`warning: over ${fmtBytes(WARN_BYTES)}; large files are slow to open and share`);
+      return 0;
+    }
+    case "shot": {
+      const { shot } = await import("./shot.ts");
+      const themes = values.theme === "both" ? (["light", "dark"] as const) : values.theme === "dark" ? (["dark"] as const) : (["light"] as const);
+      const paths = await shot(dir, { out: values.o, themes: [...themes], present: values.present, width: values.width ? Number(values.width) : undefined, chrome: !values["no-chrome"] });
+      for (const p of paths) console.log(p);
       return 0;
     }
     case "dev": {

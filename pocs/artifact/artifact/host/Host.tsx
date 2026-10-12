@@ -4,6 +4,7 @@ import { Badge, Source } from "../kit/layout.tsx";
 import { fmtDate, plural } from "../kit/util.ts";
 import { useComments, Composer, CommentsPanel, feedbackMarkdown, anchorFor, findAnchor, type Anchor } from "./comments.tsx";
 import { usePresent } from "./present.ts";
+import { PresentCtx } from "../kit/present.ts";
 
 interface OutlineItem { id: string; title: string; level: number }
 
@@ -51,9 +52,11 @@ export function Host({ children }: { children: ReactNode }) {
   const [mode, setMode] = useState(false);          // comment mode
   const [open, setOpen] = useState<Anchor | null>(null);
   const [panel, setPanel] = useState(false);
+  const [allSources, setAllSources] = useState(false);
   const [copied, setCopied] = useState("");
   const cm = useComments(`${meta.title}|${meta.created ?? ""}`);
-  const present = usePresent(content);
+  const head = useRef<HTMLElement>(null);
+  const present = usePresent(content, head, meta.title);
 
   useEffect(() => { document.title = meta.title; }, []);
   useEffect(() => {
@@ -82,7 +85,7 @@ export function Host({ children }: { children: ReactNode }) {
     };
     addEventListener("keydown", k);
     return () => removeEventListener("keydown", k);
-  }, [depthUsed, present]);
+  }, [depthUsed, present.active, present.start]);
 
   // comment mode: hover outline + click to comment
   const hover = useRef<HTMLElement | null>(null);
@@ -145,7 +148,7 @@ export function Host({ children }: { children: ReactNode }) {
         <button className="h-btn" aria-pressed={mode} onClick={() => setMode(!mode)} title="Comment on any element (c)">Comment</button>
         <button className="h-btn" onClick={() => setPanel(!panel)} aria-pressed={panel}>{cm.list.length ? plural(cm.list.length, "note") : "Notes"}</button>
         <button className="h-btn" onClick={copy} disabled={!cm.list.length} title="Copy the comments as Markdown to paste back to the agent">{copied || "Copy feedback"}</button>
-        <button className="h-btn" onClick={present.start} title="Present (p): arrow keys step through sections">Present</button>
+        <button className="h-btn" onClick={() => present.start()} title="Present (p): arrow keys step through sections">Present</button>
         <button className="h-btn" onClick={() => setTheme(!dark)} aria-label="Toggle theme">{dark ? "Light" : "Dark"}</button>
       </div>
       <div className="h-layout">
@@ -154,8 +157,8 @@ export function Host({ children }: { children: ReactNode }) {
             <a key={it.id} href={`#${it.id}`} className={it.id === active ? "on" : ""} style={{ paddingLeft: `${0.6 + (it.level - 1) * 0.8}rem` }}>{it.title}</a>
           ))}
         </nav>
-        <main className="h-main">
-          <header className="h-head">
+        <main className="h-main" data-width={meta.width}>
+          <header className="h-head" ref={head}>
             <div className="h-meta">
               {meta.kind && <Badge tone="accent">{meta.kind}</Badge>}
               {meta.audience && <span>For {meta.audience}</span>}
@@ -163,9 +166,14 @@ export function Host({ children }: { children: ReactNode }) {
             </div>
             <h1>{meta.title}</h1>
             {meta.summary && <p className="h-summary">{meta.summary}</p>}
-            {sources.length > 0 && <div className="h-sources"><span className="a-muted">Sources</span>{sources.map((s, i) => <Source key={i} {...s} />)}</div>}
+            {sources.length > 0 && (
+              <div className="h-sources"><span className="a-muted">Sources</span>
+                {(allSources ? sources : sources.slice(0, 3)).map((s, i) => <Source key={i} {...s} />)}
+                {sources.length > 3 && <button className="h-more" onClick={() => setAllSources(!allSources)}>{allSources ? "show fewer" : `+${sources.length - 3} sources`}</button>}
+              </div>
+            )}
           </header>
-          <article className="a-content" ref={content}>{children}</article>
+          <PresentCtx.Provider value={present.state}><article className="a-content" ref={content}>{children}</article></PresentCtx.Provider>
         </main>
         {panel && <CommentsPanel cm={cm} onClose={() => setPanel(false)} />}
       </div>

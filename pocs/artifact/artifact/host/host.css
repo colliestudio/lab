@@ -30,7 +30,7 @@ a { color: var(--collie-color-fg-accent); }
 /* prose inside the artifact */
 .a-content { max-width: 100%; }
 .a-content > :first-child { margin-top: 1.5rem; }
-.a-content p, .a-content li { max-width: 46rem; }
+.a-content > p, .a-content > ul > li, .a-content > ol > li, .a-section > p, .a-section > ul > li, .a-section > ol > li, .a-content > blockquote { max-width: 46rem; }
 .a-content h1, .a-content h2, .a-content h3, .a-content h4 { line-height: 1.25; }
 .a-content pre, .a-content code { font-family: var(--a-mono); }
 .a-content :not(pre) > code { font-size: 0.88em; background: var(--collie-color-neutral-subtle); border: 1px solid var(--collie-color-border-subtle); border-radius: 4px; padding: 0.08em 0.35em; }
@@ -59,10 +59,19 @@ html[data-commenting] .a-content [data-hover] { outline: 2px solid var(--collie-
 .h-note-del { all: unset; cursor: pointer; font-size: var(--collie-text-xs); color: var(--collie-color-fg-muted); justify-self: end; }
 
 /* present */
-html[data-present] .h-outline, html[data-present] .h-head, html[data-present] .h-bar { display: none; }
+html[data-present] .h-outline, html[data-present] .h-bar { display: none; }
+html[data-present] .h-head { border: 0; padding: 12vh 0 2rem; } html[data-present] .h-head h1 { font-size: clamp(2.4rem, 5vw, 3.6rem); } html[data-present] .h-summary { font-size: 1.5rem; max-width: 52rem; }
 html[data-present] .h-layout { grid-template-columns: minmax(0, 1fr); }
 html[data-present] .h-main { max-width: 70rem; margin: 0 auto; font-size: 1.25rem; padding-top: 1.5rem; }
 html[data-present] .a-section > .a-h { font-size: 2rem; }
 html[data-present] .a-content p, html[data-present] .a-content li { max-width: none; }
+html[data-present] .h-main { min-height: 100vh; }
 .h-present-bar { position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%); display: flex; gap: 0.5rem; align-items: center; background: var(--collie-color-fg); color: var(--collie-color-canvas); border-radius: 999px; padding: 0.35rem 0.6rem; font-size: var(--collie-text-sm); z-index: 40; opacity: 0.9; }
 .h-present-bar button { all: unset; cursor: pointer; padding: 0.15rem 0.6rem; border-radius: 999px; } .h-present-bar button:hover { background: color-mix(in srgb, var(--collie-color-canvas) 20%, transparent); }
+
+.h-more { font: inherit; font-size: var(--collie-text-sm); background: none; border: 1px dashed var(--collie-color-border); border-radius: var(--collie-radius-sm); padding: 0.15em 0.6em; color: var(--collie-color-fg-muted); cursor: pointer; }
+.h-main[data-width="wide"], .h-main:has(.a-page[data-width="wide"]) { max-width: 88rem; }
+.h-main[data-width="full"], .h-main:has(.a-page[data-width="full"]) { max-width: none; }
+.h-layout:has(.a-page[data-width="wide"]), .h-layout:has(.h-main[data-width="wide"]) { max-width: 105rem; }
+.h-layout:has(.a-page[data-width="full"]), .h-layout:has(.h-main[data-width="full"]) { max-width: none; }
+.h-main[data-width="narrow"] { max-width: 44rem; }
