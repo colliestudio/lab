@@ -1,3 +1,4 @@
+import { describeDiff } from './canonical';
 import { set, type CanvasNode, type Change, type DocView } from './doc';
 import type { Store } from './store';
 
@@ -125,11 +126,44 @@ export function registerCoreCommands(store: Store) {
   });
   /**
    * Apply field-level changes made outside the commands (the JSON panel's edit): one undo step, logged
-   * with a line that carries counts only. The changes are plain data from a parsed, validated text.
+   * with a line that carries counts only. Any peer or bridge agent can send this, so the changes are
+   * checked for shape (a malformed one would break every peer's render) and the log line is made here.
    */
-  store.register('core.patch', (_doc, a: { changes: Change[]; text: string; targets?: string[] }) => {
-    if (!Array.isArray(a?.changes) || typeof a.text !== 'string') return [];
-    const targets = isIds(a.targets) ? a.targets.slice(0, 20) : undefined;
-    return { changes: a.changes, events: a.changes.length ? [{ type: 'core.patch', text: a.text, targets, cue: 'pulse' }] : [] };
+  store.register('core.patch', (_doc, a: { changes: Change[] }) => {
+    if (!Array.isArray(a?.changes)) return [];
+    const bad = a.changes.findIndex((c) => !validChange(c));
+    if (bad >= 0) throw new Error(`change #${bad} is not a valid change`);
+    if (!a.changes.length) return [];
+    const ids = (op: Change['op']) => [...new Set(a.changes.flatMap((c) => (c.op === op ? [c.op === 'add' ? c.node.id : (c as { id: string }).id] : [])))];
+    const added = ids('add');
+    const changed = [...new Set(a.changes.flatMap((c) => (c.op === 'set' && c.key !== 'z' && !added.includes(c.id) ? [c.id] : [])))];
+    const summary = { added, changed, removed: ids('del'), edges: a.changes.filter((c) => c.op === 'edge' || c.op === 'unedge').length };
+    const targets = [...added, ...changed].slice(0, 20);
+    return { changes: a.changes, events: [{ type: 'core.patch', text: `edited the JSON: ${describeDiff(summary)}`, targets, cue: 'pulse' }] };
   });
+}
+
+const GEOMETRY = new Set(['x', 'y', 'width', 'height', 'z']);
+const isStr = (v: unknown): v is string => typeof v === 'string';
+const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
+/** A change a renderer can live with: a node keeps an id, a type and numeric geometry. */
+function validChange(c: unknown): c is Change {
+  if (!isObj(c)) return false;
+  switch (c.op) {
+    case 'add': {
+      const n = c.node;
+      return isObj(n) && isStr(n.id) && isStr(n.type) && [n.x, n.y, n.width, n.height].every(isNum) && (n.z === undefined || isNum(n.z));
+    }
+    case 'set':
+      if (!isStr(c.id) || !isStr(c.key) || c.key === 'id') return false;
+      if (GEOMETRY.has(c.key)) return isNum(c.value);
+      return c.key !== 'type' || isStr(c.value);
+    case 'del':
+    case 'unedge':
+      return isStr(c.id);
+    case 'edge':
+      return isObj(c.edge) && isStr(c.edge.id) && isStr(c.edge.fromNode) && isStr(c.edge.toNode);
+    default:
+      return false;
+  }
 }

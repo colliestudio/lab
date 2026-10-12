@@ -45,7 +45,7 @@ function unmask(c: Change): Change | null {
   return { op: 'add', node: clean(c.node as unknown as Record<string, unknown>) as unknown as CanvasNode };
 }
 
-export type Plan = { ok: true; changes: Change[]; summary: FileDiff['summary']; text: string; touched: string[] } | { ok: false; error: string };
+export type Plan = { ok: true; changes: Change[]; summary: FileDiff['summary']; text: string } | { ok: false; error: string };
 
 /** "line 3 column 5" from a JSON.parse error, if it says where. */
 function jsonError(e: unknown, text: string): string {
@@ -115,8 +115,7 @@ export class JsonSession {
       const u = unmask(c);
       return u ? [u] : [];
     });
-    const touched = [...d.summary.added, ...d.summary.changed];
-    return { ok: true, changes, summary: d.summary, text: `edited the JSON: ${describeDiff(d.summary)}`, touched };
+    return { ok: true, changes, summary: d.summary, text: `edited the JSON: ${describeDiff(d.summary)}` };
   }
 
   /**
@@ -128,7 +127,7 @@ export class JsonSession {
     if (!p.ok) return p;
     let line: string | null = null;
     if (p.changes.length) {
-      const r = this.store.dispatch('core.patch', { changes: p.changes, text: p.text, targets: p.touched });
+      const r = this.store.dispatch('core.patch', { changes: p.changes });
       if (!r.ok) return { ok: false, error: r.error ?? 'could not apply' };
       line = p.text;
     }

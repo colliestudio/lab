@@ -84,6 +84,16 @@ describe('JsonSession: editing the text', () => {
     expect(s.undoManager.undoStack.length).toBe(0);
   });
 
+  it('core.patch (open to any peer or agent) refuses malformed changes and writes its own log line', () => {
+    const { s } = setup();
+    for (const changes of [[{ op: 'add', node: null }], [{ op: 'add', node: { id: 'q' } }], [{ op: 'set', id: 'a', key: 'x', value: 'abc' }], [{ op: 'set', id: 'a', key: 'id', value: 'b' }], [{ op: 'bogus' }]]) {
+      expect(s.dispatch('core.patch', { changes })).toMatchObject({ ok: false });
+    }
+    expect(s.undoManager.undoStack.length).toBe(0);
+    expect(s.dispatch('core.patch', { changes: [{ op: 'set', id: 'a', key: 'color', value: '2' }], text: 'resigned the game' })).toMatchObject({ ok: true });
+    expect(logLines(s)).toEqual(['edited the JSON: 1 changed']);
+  });
+
   it('error says where for broken JSON', () => {
     const { j } = setup();
     const r = j.apply('{\n"nodes": [\n  1 2\n]}');
