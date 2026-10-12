@@ -98,4 +98,29 @@ describe('the JSON panel and hidden cards', () => {
     expect((app.node('c0')!['x-cards'] as any).face).toBe('AS');
     expect((app.node('k0')!['x-cards'] as any).face).toBe('5S');
   });
+
+  it("nobody takes another player's hand or makes its cards show through the text", () => {
+    for (const hideCount of [false, true]) {
+      const { app, h, as } = table(hideCount);
+      const j = as('bob');
+      const tryEdit = (f: (t: any) => void) => {
+        const t = JSON.parse(j.text);
+        f(t);
+        return j.apply(JSON.stringify(t));
+      };
+      const hand = (t: any) => t.nodes.find((n: any) => n.id === h);
+      expect(tryEdit((t) => (hand(t).owner = 'bob'))).toMatchObject({ ok: false, error: expect.stringContaining('hidden from you') });
+      expect(tryEdit((t) => (hand(t)['x-cards'].showing = true))).toMatchObject({ ok: false });
+      expect(tryEdit((t) => (hand(t)['x-cards'].hideCount = !hideCount))).toMatchObject({ ok: false });
+      if (!hideCount) expect(tryEdit((t) => (t.nodes.find((n: any) => n.id === 'c0')['x-cards'].faceUp = true))).toMatchObject({ ok: false });
+      expect(app.node(h)!.owner).toBe('alice');
+      // moving it is fine (the canvas lets you too)
+      expect(tryEdit((t) => (hand(t).x += 10))).toMatchObject({ ok: true });
+      // the owner edits her own hand as she likes
+      const mine = as('alice');
+      const t = JSON.parse(mine.text);
+      t.nodes.find((n: any) => n.id === h).label = 'Mine';
+      expect(mine.apply(JSON.stringify(t))).toMatchObject({ ok: true });
+    }
+  });
 });

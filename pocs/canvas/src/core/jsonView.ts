@@ -16,6 +16,10 @@ export type Redactor = (node: CanvasNode, ctx: { doc: DocView; viewer: string })
 
 /** The saved form of the live doc, as `viewer` may see it: redacted nodes, no edges to omitted ones. */
 export function redactedDoc(store: Store, redactors: readonly Redactor[], viewer: string): CanvasDoc {
+  return redact(store, redactors, viewer).doc;
+}
+
+function redact(store: Store, redactors: readonly Redactor[], viewer: string): { doc: CanvasDoc; gone: Set<string> } {
   const doc = store.doc;
   const out = store.exportDoc();
   const gone = new Set<string>();
@@ -30,13 +34,16 @@ export function redactedDoc(store: Store, redactors: readonly Redactor[], viewer
     else gone.add(n.id);
   }
   const edges = out.edges.filter((e: CanvasEdge) => !gone.has(e.fromNode) && !gone.has(e.toNode));
-  return { ...out, nodes, edges };
+  return { doc: { ...out, nodes, edges }, gone };
 }
 
 /** Canonical text of what `viewer` may see. */
 export const viewText = (store: Store, redactors: readonly Redactor[], viewer: string) => stableSerialize(redactedDoc(store, redactors, viewer));
 
 const hasMask = (v: unknown): boolean => v === MASK || (!!v && typeof v === 'object' && Object.values(v).some(hasMask));
+
+/** What may change on a node that holds secrets (or holds nodes that do): where it is and how it looks. */
+const OPEN_KEYS = new Set(['x', 'y', 'width', 'height', 'z', 'color']);
 
 /**
  * Why `c` may not be applied, if it touches a value this viewer can't see. Masked values are
@@ -70,16 +77,17 @@ function jsonError(e: unknown, text: string): string {
 
 export class JsonSession {
   /** The text as last shown / applied, parsed with z: what the next edit is measured from. */
-  private base: CanvasDoc;
-  private shown: string;
+  private base!: CanvasDoc;
+  private shown!: string;
+  /** Nodes the base text masks or leaves out. */
+  private secret = new Set<string>();
 
   constructor(
     private store: Store,
     private redactors: readonly Redactor[],
     private viewer: () => string,
   ) {
-    this.shown = this.current();
-    this.base = withZ(parse(this.shown));
+    this.refresh();
   }
 
   /** The canonical text of the live doc for this viewer. */
@@ -94,8 +102,10 @@ export class JsonSession {
 
   /** Take the live doc as the new starting point (the editor now shows it). */
   refresh(): string {
-    this.shown = this.current();
+    const r = redact(this.store, this.redactors, this.viewer());
+    this.shown = stableSerialize(r.doc);
     this.base = withZ(parse(this.shown));
+    this.secret = new Set([...r.gone, ...this.base.nodes.filter(hasMask).map((n) => n.id)]);
     return this.shown;
   }
 
@@ -121,9 +131,13 @@ export class JsonSession {
     if (diffFile(this.base, nextDoc).extra) return { ok: false, error: 'top-level fields other than nodes and edges are read-only here' };
     const d = mergeFile(this.base, cur, nextDoc);
     const baseById = new Map(this.base.nodes.map((n) => [n.id, n]));
+    // a secret's container decides who sees it (a hand's owner, what it shows): as locked as the secret
+    const holders = new Set([...this.secret].flatMap((id) => live.parentOf(id) ?? []));
     for (const c of d.changes) {
       const masked = maskError(c, baseById);
       if (masked) return { ok: false, error: masked };
+      if (c.op === 'set' && !OPEN_KEYS.has(c.key) && (this.secret.has(c.id) || holders.has(c.id)))
+        return { ok: false, error: `${c.id}: holds something hidden from you; only its position, size and color can be changed here (${c.key})` };
       // a new node's id may belong to one this viewer can't see (or one added meanwhile): adding would replace it
       if (c.op === 'add' && live.get(c.node.id)) return { ok: false, error: `${c.node.id}: that id is already used on the board` };
     }
