@@ -8,11 +8,14 @@ import { clockPlugin } from './plugins/clock';
 import { battleLinePlugin } from './plugins/battleline';
 import { matsPlugin } from './plugins/mats';
 import { prototypePlugin } from './plugins/prototype';
+import { stormPlugin } from './plugins/eventstorm';
 import { mountHelp, removeHelpNote } from './help';
+import { attachFollow, createFramesPlugin, portalsEnabled, enterUrl, mountBreadcrumb, trailFromUrl } from './plugins/frames';
 
 const ROOM = roomFromUrl();
 const DB_NAME = ROOM ? roomDbName(ROOM) : 'canvas-poc';
-const VIEW_KEY = 'canvas-poc:view';
+// per room: a room entered through a portal must not open at the camera of the table you came from
+const VIEW_KEY = ROOM ? `canvas-poc:view:${ROOM}` : 'canvas-poc:view';
 
 const app = new App(document.getElementById('table')!);
 // this browser's player id (also in solo play) = who "my hand" belongs to and who views the table
@@ -27,6 +30,11 @@ app.use(clockPlugin);
 app.use(battleLinePlugin);
 app.use(matsPlugin);
 app.use(prototypePlugin);
+app.use(stormPlugin);
+// last: its rider rule (frame membership) must come after the others (a piece rides its board, the board its frame)
+const TRAIL = trailFromUrl();
+const frames = createFramesPlugin({ room: ROOM, portals: portalsEnabled(), enter: (room) => (location.href = enterUrl(room, ROOM, TRAIL)) });
+app.use(frames);
 app.store.migrations.push(removeHelpNote);
 
 
@@ -151,6 +159,7 @@ handBtn.addEventListener('click', () => {
   app.view.openMenu(newHandEntries(app), handBtn, 'New hand for');
 });
 bar.append(handBtn, helpBtn, status);
+mountBreadcrumb(bar, ROOM, TRAIL);
 app.onNotify(flash);
 mountHelp(app, helpBtn);
 mountZoomControl(app);
@@ -189,6 +198,7 @@ persistLocally(app, DB_NAME).then(({ empty }) => {
   const info = ({ id, name, color }: { id: string; name: string; color: string }) => ({ id, name, color });
   const room = joinRoom(app, ROOM, info(stored));
   (window as any).room = room;
+  attachFollow(app, room.presence, frames.presenter!);
   const rename = async (first = false) => {
     const choice = await askName(room.presence.me, first ? { title: 'Join the table', action: 'Join' } : { title: 'Your name and color', action: 'Save' });
     if (!choice) return;

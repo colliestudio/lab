@@ -233,3 +233,28 @@ describe('edge changes', () => {
     expect(s.doc.edges.length).toBe(1);
   });
 });
+
+describe('adoptViewRules', () => {
+  it('a second store over another doc reads it with the first store’s rules', () => {
+    const main = new Store();
+    main.addRiderRule((n) => (n['x-on'] as string | undefined) ?? undefined);
+    const other = new Store();
+    other.load({ nodes: [{ id: 'b', type: 'text', x: 0, y: 0, width: 10, height: 10 }, { id: 'p', type: 'text', x: 1, y: 1, width: 1, height: 1, 'x-on': 'b' }], edges: [] });
+    expect(other.doc.carrierOf('p')).toBeUndefined();
+    other.adoptViewRules(main);
+    expect(other.doc.carrierOf('p')).toBe('b');
+  });
+  it('invalidate rebuilds the snapshot and notifies', () => {
+    const s = new Store();
+    let flag = false;
+    s.addRiderRule((n) => (flag && n.id === 'p' ? 'b' : undefined));
+    s.load({ nodes: [{ id: 'b', type: 'text', x: 0, y: 0, width: 10, height: 10 }, { id: 'p', type: 'text', x: 1, y: 1, width: 1, height: 1 }], edges: [] });
+    expect(s.doc.carrierOf('p')).toBeUndefined();
+    flag = true;
+    let heard = 0;
+    s.subscribe(() => heard++);
+    s.invalidate();
+    expect(s.doc.carrierOf('p')).toBe('b');
+    expect(heard).toBe(1);
+  });
+});
