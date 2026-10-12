@@ -184,7 +184,7 @@ export class VoiceChat {
         // a fresh attempt (new cid) from the same side; the answerer replaces its end when the offer arrives
         clearTimeout(link.retry);
         link.retry = setTimeout(() => {
-          if (this.links.get(id) === link && this.joined) void this.offer(id);
+          if (this.links.get(id) === link && this.joined) this.offer(id).catch(() => {});
         }, 1500);
       }
     };
@@ -200,7 +200,7 @@ export class VoiceChat {
   }
 
   private onPeer(id: number, initiator: boolean) {
-    if (initiator) void this.offer(id);
+    if (initiator) this.offer(id).catch(() => {}); // the peer left (link closed) while the offer was being made
     // the other side waits for the offer
   }
 
@@ -214,7 +214,7 @@ export class VoiceChat {
         const ans = await l.pc.createAnswer();
         await l.pc.setLocalDescription(ans);
         this.sig.send(from, 'answer', m.cid, { type: ans.type, sdp: ans.sdp });
-      });
+      }).catch(() => {}); // a bad offer, or the link closed meanwhile; a rejected queue would also drop every later candidate
       return;
     }
     const link = this.links.get(from);
