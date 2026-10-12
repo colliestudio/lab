@@ -121,13 +121,102 @@ describe('chess rules mode', () => {
     const bp = at(a, id, 'e7')!.id;
     drag(a, bp, id, 'e5'); // Alice can't move Bot's pieces
     expect(piece(a.doc.get(bp)!).square).toBe('e7');
-    // undo of the drag undoes the move as one step
-    a.undo();
-    expect(piece(a.doc.get(pawn)!).square).toBe('e4'); // the bounce was its own step; undo again
-    a.undo();
-    a.undo();
+    // plain undo is off in a rules game; takeback restores it
+    expect(a.undoBlocked()).toMatch(/takeback/);
+    expect(a.undo()).toBe(false);
+    expect(piece(a.doc.get(pawn)!).square).toBe('e4');
+    expect(a.dispatch('chess.takeback', { id }).ok).toBe(true);
     expect(piece(a.doc.get(pawn)!).square).toBe('e2');
     expect(board(a.doc.get(id)!).turn).toBe('w');
+  });
+
+  describe('takeback', () => {
+    const play = (s: Store, id: string, ...ms: string[]) => ms.forEach((m) => expect(s.dispatch('chess.move', { id, move: m }).ok).toBe(true));
+    const sans = (s: Store, id: string) => board(s.doc.get(id)!).moves;
+
+    it('seated: undoes your move and the reply, pieces and fields', () => {
+      const { a, b, id } = game();
+      a.dispatch('chess.sit', { id, color: 'w' });
+      b.dispatch('chess.sit', { id, color: 'b' });
+      const before = JSON.stringify(a.doc.nodes.filter((n) => isPiece(n)).map((n) => [n.id, n.x, n.y, piece(n).square]));
+      play(a, id, 'e4');
+      play(b, id, 'e5');
+      play(a, id, 'Nf3');
+      play(b, id, 'Nc6');
+      // an undo after the bot replied is refused: it would corrupt the game
+      expect(a.undo()).toBe(false);
+      expect(b.undo()).toBe(false);
+      expect(a.dispatch('chess.takeback', { id }).ok).toBe(true);
+      expect(sans(a, id)).toEqual(['e4', 'e5']);
+      expect(board(a.doc.get(id)!)).toMatchObject({ turn: 'w', full: 2, from: 'e7', to: 'e5' });
+      expect(at(a, id, 'f3')).toBeUndefined();
+      expect(at(a, id, 'g1')).toBeDefined();
+      expect(at(a, id, 'b8')).toBeDefined();
+      expect(gameView(a.doc, a.doc.get(id)!).fen).toBe('rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2');
+      // Bot's takeback: back to just before its own move
+      expect(b.dispatch('chess.takeback', { id }).ok).toBe(true);
+      expect(sans(b, id)).toEqual(['e4']);
+      expect(board(b.doc.get(id)!).turn).toBe('b');
+      // all the way
+      expect(a.dispatch('chess.takeback', { id }).ok).toBe(true);
+      expect(sans(a, id)).toBeUndefined();
+      expect(JSON.stringify(a.doc.nodes.filter((n) => isPiece(n)).map((n) => [n.id, n.x, n.y, piece(n).square]))).toBe(before);
+      expect(a.dispatch('chess.takeback', { id }).error).toMatch(/no moves/);
+    });
+
+    it('brings back a captured piece, an undone promotion becomes a pawn again, castling rights return', () => {
+      const { a, id } = game();
+      play(a, id, 'e4', 'd5', 'exd5', 'Nf6', 'Nf3', 'c5', 'dxc6', 'e6', 'Bb5', 'Bd7', 'O-O', 'Qb6', 'cxb7', 'Nc6');
+      const fen = gameView(a.doc, a.doc.get(id)!).fen;
+      play(a, id, 'bxa8=Q+');
+      expect(at(a, id, 'a8') && piece(at(a, id, 'a8')!).piece).toBe('Q');
+      a.dispatch('chess.takeback', { id }); // hot seat: the last move only
+      expect(gameView(a.doc, a.doc.get(id)!).fen).toBe(fen);
+      expect(piece(at(a, id, 'b7')!).piece).toBe('P');
+      expect(piece(at(a, id, 'a8')!).piece).toBe('R');
+      expect(a.doc.nodes.filter((n) => isPiece(n) && piece(n).board === id).length).toBe(32);
+      // the castling move comes back with its rook and rights
+      for (let i = 0; i < 4; i++) a.dispatch('chess.takeback', { id });
+      expect(sans(a, id)!.at(-1)).toBe('Bd7');
+      expect(piece(at(a, id, 'e1')!).piece).toBe('K');
+      expect(piece(at(a, id, 'h1')!).piece).toBe('R');
+      expect(board(a.doc.get(id)!).castling).toBe('KQkq');
+    });
+
+    it('only seated players take back when both seats are taken; not before you moved; not in free play', () => {
+      const { a, b, id } = game();
+      const carol = seat(a.ydoc, { id: 'p:carol', name: 'Carol', color: '#0f0' });
+      play(a, id, 'e4');
+      b.dispatch('chess.sit', { id, color: 'w' });
+      a.dispatch('chess.sit', { id, color: 'b' });
+      expect(carol.dispatch('chess.takeback', { id }).error).toMatch(/only the players/);
+      expect(a.dispatch('chess.takeback', { id }).error).toMatch(/not moved/);
+      a.dispatch('chess.rules', { id, on: false });
+      expect(a.dispatch('chess.takeback', { id }).error).toMatch(/free play/);
+    });
+
+    it('rules turned on mid-game: the record starts there and takeback replays from it', () => {
+      const { a, id } = game();
+      a.dispatch('chess.rules', { id, on: false });
+      drag(a, at(a, id, 'e2')!.id, id, 'e4'); // free play move
+      a.dispatch('chess.rules', { id, on: true, turn: 'b' });
+      play(a, id, 'e5', 'Nf3');
+      a.dispatch('chess.takeback', { id });
+      a.dispatch('chess.takeback', { id });
+      expect(sans(a, id)).toBeUndefined();
+      expect(piece(at(a, id, 'e4')!).piece).toBe('P');
+      expect(board(a.doc.get(id)!).turn).toBe('b');
+      expect(at(a, id, 'e7')).toBeDefined();
+    });
+
+    it('refuses when the pieces no longer match the record', () => {
+      const { a, id } = game();
+      play(a, id, 'e4', 'e5');
+      a.dispatch('chess.rules', { id, on: false });
+      drag(a, at(a, id, 'a2')!.id, id, 'a3');
+      a.dispatch('chess.rules', { id, on: true, turn: 'w' }); // the record restarts here
+      expect(a.dispatch('chess.takeback', { id }).error).toMatch(/no moves/);
+    });
   });
 
   it('a piece dragged off a rules board goes back; free-play boards are unchanged', () => {

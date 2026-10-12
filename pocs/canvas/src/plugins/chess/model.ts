@@ -50,6 +50,8 @@ export interface BoardField {
   full?: number;
   /** The game so far, in SAN. */
   moves?: string[];
+  /** FEN the moves start from, when the game did not start from the standard position (rules turned on mid-game). */
+  start?: string;
   /** "1-0", "0-1", "1/2-1/2" once the game is over, and why ("checkmate", "resigned"…). */
   result?: string;
   end?: string;

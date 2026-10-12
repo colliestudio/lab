@@ -305,7 +305,12 @@ async function api(req: IncomingMessage, res: ServerResponse) {
     if (req.method === 'POST' && (url.pathname === '/undo' || url.pathname === '/redo')) {
       const b = await body(req);
       const actor = actorOf(b, req);
-      const done = host.undo(actor, url.pathname === '/redo');
+      let done: boolean;
+      try {
+        done = host.undo(actor, url.pathname === '/redo');
+      } catch (e) {
+        return reply(400, { ok: false, error: (e as Error).message });
+      }
       return reply(200, { ok: done, error: done ? undefined : `nothing to ${url.pathname.slice(1)} for ${actor.name} (each actor undoes only its own steps, while it stays seated)` });
     }
     reply(404, { error: 'GET /doc /query /log /status /view/<name> /wait/<name>?timeout=S /chat/read?new=1&limit=N /chat/wait?timeout=S; POST /chat/say {as,text,node} POST /cmd {as,name,args} /undo {as} /redo {as}' });

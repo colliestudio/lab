@@ -31,6 +31,7 @@ function gameMenu(app: App, b: CanvasNode): MenuEntry[] {
     { label: 'New game', separator: true, run: run('chess.newgame', { id }) },
     seat('w'),
     seat('b'),
+    ...(f.moves?.length ? [{ label: 'Take back my last move', run: run('chess.takeback', { id }) }] : []),
     ...(mine && !f.result ? [{ label: 'Resign', run: run('chess.resign', { id, color: mine }) }] : []),
     { label: 'Free play (rules off)', run: run('chess.rules', { id, on: false }) },
   ];

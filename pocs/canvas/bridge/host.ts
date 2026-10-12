@@ -113,6 +113,8 @@ export class Host {
 
   undo(actor: Actor, redo = false): boolean {
     const seat = this.seat(actor);
+    const why = seat.store.undoBlocked(redo ? 'redo' : 'undo');
+    if (why) throw new Error(why);
     return redo ? seat.store.redo() : seat.store.undo();
   }
 

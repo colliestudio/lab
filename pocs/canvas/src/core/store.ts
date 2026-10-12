@@ -60,6 +60,8 @@ const LOG = Symbol('log');
 const REPAIR = Symbol('repair');
 /** Undo stack item meta: the public texts / targets of the events logged in that step. */
 const STEP_EVENTS = 'events';
+/** Undo stack item meta: ids of the nodes the step changed (for `undoGuards`). */
+const STEP_IDS = 'ids';
 type StepEvent = { text: string; targets?: string[] };
 
 type YNode = Y.Map<unknown>;
@@ -110,6 +112,14 @@ export class Store {
    * (deterministic, idempotent) and leave alone what another player is in the middle of (a drag).
    */
   readonly repairs: Command<{ ids: string[]; undo: boolean }>[] = [];
+  /**
+   * A plugin can refuse to undo a step that touched nodes it keeps consistent itself (a chess game:
+   * undoing one side's move after the other replied leaves the game fields wrong). Return the reason,
+   * shown to the player, or undefined to allow.
+   */
+  readonly undoGuards: ((ids: string[], doc: DocView) => string | undefined)[] = [];
+  /** Told why an undo/redo was refused (the app shows it). */
+  onUndoRefused?: (reason: string) => void;
   /** Commands that upgrade older docs in place; run (not undoable) after every load. Must be idempotent. */
   readonly migrations: Command[] = [];
   selection: ReadonlySet<string> = new Set();
@@ -239,6 +249,14 @@ export class Store {
     // the undo step this dispatch made (or joined), if it made one
     const item = this.undoManager.undoStack.at(-1);
     const step = opts.undoable !== false && res.changes.length > 0 && !!item && (item !== top || merge) ? item : undefined;
+    if (item && opts.undoable !== false && res.changes.length > 0 && (item !== top || merge)) {
+      const ids = new Set((item.meta.get(STEP_IDS) as string[] | undefined) ?? []);
+      for (const c of res.changes) {
+        if (c.op === 'add') ids.add(c.node.id);
+        else if (c.op === 'set' || c.op === 'del') ids.add(c.id);
+      }
+      item.meta.set(STEP_IDS, [...ids]);
+    }
     if (res.events) this.record(res.events, step);
     if (res.select) this.select(res.select);
     return { ...res, ok: true };
@@ -420,10 +438,27 @@ export class Store {
    * edits another player overwrote would be dropped silently and the one before it undone instead:
    * hide the rest of the stack, and report false when the top step had nothing left to revert.
    */
+  /** Why the next undo/redo is refused by a plugin (see `undoGuards`), if it is. */
+  undoBlocked(kind: 'undo' | 'redo' = 'undo'): string | undefined {
+    const top = (kind === 'undo' ? this.undoManager.undoStack : this.undoManager.redoStack).at(-1);
+    const ids = top?.meta.get(STEP_IDS) as string[] | undefined;
+    if (!ids?.length) return;
+    for (const g of this.undoGuards) {
+      const why = g(ids, this.doc);
+      if (why) return why;
+    }
+    return;
+  }
   private step(kind: 'undo' | 'redo'): boolean {
     const um = this.undoManager;
     const [from, to] = kind === 'undo' ? [um.undoStack, um.redoStack] : [um.redoStack, um.undoStack];
+    const blocked = this.undoBlocked(kind);
+    if (blocked) {
+      this.onUndoRefused?.(blocked);
+      return false;
+    }
     const events = from.at(-1)?.meta.get(STEP_EVENTS) as StepEvent[] | undefined;
+    const stepIds = from.at(-1)?.meta.get(STEP_IDS);
     let done = false;
     const rest = from.splice(0, Math.max(from.length - 1, 0));
     // The undo and its repairs in one transaction: one update for the other players (they never see
@@ -447,6 +482,7 @@ export class Store {
       from.unshift(...rest);
     }
     if (!done) return false;
+    if (stepIds) to.at(-1)?.meta.set(STEP_IDS, stepIds);
     if (!events?.length) return true;
     to.at(-1)?.meta.set(STEP_EVENTS, events);
     const targets = [...new Set(events.flatMap((e) => e.targets ?? []))];

@@ -38,6 +38,7 @@ export class App {
   constructor(root: HTMLElement) {
     registerCoreCommands(this.store);
     this.store.actor = () => this.me();
+    this.store.onUndoRefused = (why) => this.notify(why);
     this.view = new View(this, root);
     // zoom keys (handled before the browser's page zoom)
     const zin = { run: () => this.view.zoomCenter('in') };

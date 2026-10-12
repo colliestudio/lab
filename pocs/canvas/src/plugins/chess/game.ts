@@ -4,7 +4,7 @@ import { set } from '../../core/doc';
 import type { CanvasNode, Change, Command, CommandResult, DocView, EventSpec, LogActor } from '../../core';
 import { arrange, commands as free, moveTo, slots } from './commands';
 import { FIELD, board, boardUnder, center, isBoard, isColor, isPiece, piece, pieceText, squareAt, squarePos, type BoardField, type Color, type SeatField } from './model';
-import { ascii, inCheck, legalMoves, outcome, parseMove, play, san, sqIndex, sqName, toFen, validCastling, type Move, type Position } from './rules';
+import { ascii, inCheck, legalMoves, outcome, parseFen, parseMove, play, san, sqIndex, sqName, startPosition, toFen, validCastling, type Move, type Position } from './rules';
 
 // Rules mode for a chessboard: the same pieces on the same table, plus turns, legal moves, seats and
 // a result. A position is derived from the pieces standing on the board's squares and the game fields
@@ -52,6 +52,7 @@ const freshGame = (id: string): Change[] => [
   set(id, F('half'), 0),
   set(id, F('full'), 1),
   set(id, F('moves'), undefined),
+  set(id, F('start'), undefined),
   set(id, F('result'), undefined),
   set(id, F('end'), undefined),
 ];
@@ -149,8 +150,100 @@ export const rules: Command<{ id: string; on: boolean; turn?: Color }> = (doc, a
   const b = boardOf(doc, a?.id);
   if (!a.on) return [set(b.id, F('rules'), undefined)];
   const turn = isColor(a.turn) ? a.turn : 'w';
-  const pos = positionOf(doc, b);
-  return [set(b.id, F('rules'), true), set(b.id, F('turn'), turn), set(b.id, F('castling'), validCastling({ ...pos, castling: 'KQkq' }))];
+  const pos = { ...positionOf(doc, b), turn };
+  const castling = validCastling({ ...pos, castling: 'KQkq' });
+  // the record starts here: takeback replays the moves from this position
+  return [
+    set(b.id, F('rules'), true),
+    set(b.id, F('turn'), turn),
+    set(b.id, F('castling'), castling),
+    set(b.id, F('start'), toFen({ ...pos, castling, ep: undefined })),
+    set(b.id, F('moves'), undefined),
+  ];
+};
+
+/**
+ * Take back your last move (and the reply to it): the pieces and game fields go back to the position
+ * before it, as one step. Seated: back to just before your last move. Not seated (hot seat): the last
+ * move. This replaces undo in a rules game, which can't be trusted once the other side has moved.
+ * No consent is asked of the other player (yet).
+ */
+export const takeback: Command<{ id: string }> = (doc, a, ctx) => {
+  const b = boardOf(doc, a?.id);
+  const f = board(b);
+  if (!f.rules) throw new Error('this board is in free play: use undo');
+  const moves = f.moves ?? [];
+  if (!moves.length) throw new Error('no moves to take back');
+  // replay the record: positions[i] = before ply i
+  const positions: Position[] = [f.start ? parseFen(f.start) : startPosition()];
+  const played: Move[] = [];
+  for (const text of moves) {
+    const pos = positions[positions.length - 1];
+    const m = parseMove(pos, text);
+    if (!m) throw new Error('can\'t take back: the game record does not replay (the board was set up by hand)');
+    played.push(m);
+    positions.push(play(pos, m));
+  }
+  const now = positionOf(doc, b);
+  const cut = (p: Position) => toFen(p).split(' ').slice(0, 2).join(' ');
+  if (cut(now) !== cut(positions[positions.length - 1])) throw new Error('can\'t take back: the pieces no longer match the game record');
+  const mine = (['w', 'b'] as Color[]).find((c) => ctx.actor && f[seatKey(c)]?.id === ctx.actor.id);
+  if (!mine && (f.white || f.black) && !(['w', 'b'] as Color[]).some((c) => !f[seatKey(c)])) throw new Error('only the players at this board can take back');
+  let keep = moves.length - 1;
+  if (mine) {
+    keep = played.map((m) => m.c).lastIndexOf(mine);
+    if (keep < 0) throw new Error(`you have not moved yet (${colorName(mine)})`);
+  }
+  const target = positions[keep];
+  // pieces for the target position: stay where they are if they can, else a free piece of the same
+  // kind and color, else a promoted piece goes back to being a pawn
+  const mineOnBoard = doc.riders(b.id).filter(isPiece);
+  const free = new Set(mineOnBoard.map((p) => p.id));
+  const take = (test: (p: CanvasNode) => boolean) => {
+    const p = mineOnBoard.find((n) => free.has(n.id) && test(n));
+    if (p) free.delete(p.id);
+    return p;
+  };
+  const wanted = target.sq.map((man, i) => (man ? { i, ...man } : undefined)).filter((x) => !!x);
+  const assigned = new Map<number, CanvasNode>();
+  for (const w of wanted) {
+    const p = take((n) => piece(n).square === sqName(w.i) && piece(n).piece === w.k && piece(n).color === w.c);
+    if (p) assigned.set(w.i, p);
+  }
+  for (const w of wanted) {
+    if (assigned.has(w.i)) continue;
+    const p = take((n) => piece(n).piece === w.k && piece(n).color === w.c) ?? (w.k === 'P' ? take((n) => piece(n).color === w.c && piece(n).piece !== 'K') : undefined);
+    if (!p) throw new Error(`can't take back: no ${colorName(w.c)} piece left for ${sqName(w.i)}`);
+    assigned.set(w.i, p);
+  }
+  const changes: Change[] = [];
+  const moving = new Set([...assigned.values()].map((p) => p.id));
+  const aside = mineOnBoard.filter((p) => free.has(p.id) && piece(p).square);
+  for (const p of aside) moving.add(p.id);
+  for (const [i, p] of assigned) {
+    const square = sqName(i);
+    const man = target.sq[i]!;
+    changes.push(...moveTo(p, { board: b.id, square, ...squarePos(b, square) }));
+    if (piece(p).piece !== man.k) changes.push(set(p.id, F('piece'), man.k), set(p.id, 'text', pieceText({ piece: man.k, color: man.c, square })));
+  }
+  const slot = slots(doc, b, moving);
+  for (const p of aside) changes.push(...moveTo(p, { board: b.id, ...slot(piece(p).color, 'capturer') }));
+  const last = played[keep - 1];
+  const end = outcome(target);
+  const dropped = moves.slice(keep);
+  changes.push(
+    set(b.id, F('from'), last ? sqName(last.from) : undefined),
+    set(b.id, F('to'), last ? sqName(last.to) : undefined),
+    set(b.id, F('turn'), target.turn),
+    set(b.id, F('castling'), validCastling(target)),
+    set(b.id, F('ep'), target.ep),
+    set(b.id, F('half'), target.half),
+    set(b.id, F('full'), target.full),
+    set(b.id, F('moves'), keep ? moves.slice(0, keep) : undefined),
+    set(b.id, F('result'), end?.result),
+    set(b.id, F('end'), end?.reason),
+  );
+  return { changes, select: [b.id], events: [{ type: 'chess.takeback', text: `took back ${dropped.join(' ')}`, targets: [b.id] }] };
 };
 
 /**
@@ -261,7 +354,7 @@ export const setup: Command<{ id: string }> = (doc, a, ctx) => {
 /** Reset table: rules boards start a fresh game (runs with the other resets, one undo step). */
 export const resetGames: Command<Record<string, never>> = (doc) => doc.visible.filter((n) => isBoard(n) && board(n).rules).flatMap((b) => freshGame(b.id));
 
-export const gameCommands = { move, newgame, rules, sit, resign, place, setup };
+export const gameCommands = { move, newgame, rules, sit, resign, takeback, place, setup };
 
 // ------------------------------------------------------------------ the game as agents see it
 

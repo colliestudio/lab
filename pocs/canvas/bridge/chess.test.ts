@@ -25,6 +25,22 @@ describe('chess through the bridge', () => {
     expect(h.store.log.toArray().at(-1)).toMatchObject({ text: 'played White Nf3', actor: { name: 'Claude' } });
   });
 
+  it('undo is refused in a rules game; takeback restores the position (also after the reply)', () => {
+    const h = new Host();
+    h.dispatch(claude, 'chess.newgame', { x: 0, y: 0 });
+    const id = (h.view(claude, 'chess.state', {}) as GameView).board;
+    h.dispatch(claude, 'chess.sit', { id, color: 'w' });
+    h.dispatch(bot, 'chess.sit', { id, color: 'b' });
+    h.dispatch(claude, 'chess.move', { id, move: 'e4' });
+    h.dispatch(bot, 'chess.move', { id, move: 'e5' });
+    expect(() => h.undo(claude)).toThrow(/takeback/);
+    expect(() => h.undo(bot)).toThrow(/takeback/);
+    expect((h.view(claude, 'chess.state', {}) as GameView).moves).toBe('1. e4 e5');
+    expect(h.dispatch(claude, 'chess.takeback', { id }).ok).toBe(true);
+    const v = h.view(claude, 'chess.state', {}) as GameView;
+    expect(v).toMatchObject({ moves: '', yourTurn: true, fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1' });
+  });
+
   it('wait resolves when the opponent moves', async () => {
     const h = new Host();
     h.dispatch(claude, 'chess.newgame', { x: 0, y: 0 });

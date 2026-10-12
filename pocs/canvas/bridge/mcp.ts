@@ -169,6 +169,16 @@ server.registerTool(
 );
 
 server.registerTool(
+  'chess_takeback',
+  { description: 'Take back your last move and the reply to it (plain undo is off in a rules game). Returns the game.', inputSchema: { board: boardArg } },
+  tool(async (a: { board?: string }) => {
+    const id = a.board ?? (await c.view<GameView>('chess.state')).board;
+    await cmd('chess.takeback', { id });
+    return gameText(await c.view<GameView>('chess.state', { board: id }));
+  }),
+);
+
+server.registerTool(
   'chess_resign',
   { description: 'Resign the game for your color.', inputSchema: { board: boardArg } },
   tool(async (a: { board?: string }) => {

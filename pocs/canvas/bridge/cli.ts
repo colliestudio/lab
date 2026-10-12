@@ -33,6 +33,7 @@ const HELP = `canvas: read and edit a live canvas through the bridge
   chess sit white|black [--leave]         take (or leave) a seat: only you move that color
   chess move MOVE                         e2e4, e7e8q, Nf3, O-O … (fails with the legal list)
   chess wait [--timeout S]                block until it's your move (or the game ended)
+  chess takeback                          undo your last move and the reply (plain undo is off in a rules game)
   chess resign
   bot chess [--color black] [--depth 2] [--delay 600] [--keep]
                                           built-in opponent: sits, waits, moves (as --as, default "Bot")
@@ -224,6 +225,11 @@ async function chess(sub: string | undefined, args: string[]) {
       const v = await waitForTurn(c, board, num('timeout') ?? 290);
       if (!v) throw new Error('timed out: still not your move');
       return show(v);
+    }
+    case 'takeback': {
+      const id = board ?? (await c.view<GameView>('chess.state')).board;
+      await run('chess.takeback', { id });
+      return show(await c.view<GameView>('chess.state', { board: id }));
     }
     case 'resign': {
       const id = board ?? (await c.view<GameView>('chess.state')).board;
