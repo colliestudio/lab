@@ -118,6 +118,25 @@ describe('commands', () => {
     const r = s.dispatch('frames.create', { x: -500, y: -500 });
     expect(orderedFrames(s.doc).at(-1)!.id).toBe(r.select![0]);
   });
+  it('pin writes the current order down without changing it; a new frame goes last and pins the rest', () => {
+    const s = store([frame('b', 800, 0, 100, 100), frame('a', 0, 0, 100, 100), { id: 'c', type: 'group', x: 400, y: 0, width: 100, height: 100 }]);
+    const before = orderedFrames(s.doc).map((f) => f.id);
+    s.dispatch('frames.pin', {});
+    expect(orderedFrames(s.doc).map((f) => f.id)).toEqual(before);
+    expect(s.doc.nodes.map((n) => (n['x-frame'] as { order?: number }).order).sort()).toEqual([0, 1, 2]);
+    expect(s.dispatch('frames.pin', {}).changes).toEqual([]);
+    // moving a pinned frame across the canvas no longer reorders the slides
+    s.dispatch('core.move', { ids: ['a'], dx: 5000, dy: 3000 });
+    expect(orderedFrames(s.doc).map((f) => f.id)).toEqual(before);
+    // creating a frame between them in space still lands last, and the others keep their places
+    const r = s.dispatch('frames.create', { x: 100, y: 0 });
+    expect(orderedFrames(s.doc).map((f) => f.id)).toEqual([...before, r.select![0]]);
+  });
+  it('create on unordered frames pins them in reading order first', () => {
+    const s = store([frame('b', 800, 0, 100, 100), frame('a', 0, 0, 100, 100)]);
+    const r = s.dispatch('frames.create', { x: -900, y: 0 });
+    expect(orderedFrames(s.doc).map((f) => f.id)).toEqual(['a', 'b', r.select![0]]);
+  });
   it('resize has a minimum; bad args are a no-op', () => {
     const s = store([frame('f', 0, 0, 500, 500)]);
     s.dispatch('frames.resize', { id: 'f', width: 10, height: 900 });

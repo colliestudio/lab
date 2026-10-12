@@ -5,6 +5,7 @@ import { App } from '../../core';
 import { chessPlugin } from '../chess';
 import { buildChessRoom } from './demo';
 import { createFramesPlugin } from './index';
+import { orderedFrames } from './model';
 
 // The real view + frames plugin on a DOM: portals choose live / snapshot / nothing, render the
 // other room with the app's own renderers; present mode steps through slides.
@@ -17,7 +18,7 @@ afterEach(() => {
   document.body.className = '';
 });
 
-function setup(room: string | null = null) {
+function setup(room: string | null = null, portals = true) {
   const root = document.createElement('div');
   Object.defineProperty(root, 'clientWidth', { value: 1200 });
   Object.defineProperty(root, 'clientHeight', { value: 800 });
@@ -30,6 +31,7 @@ function setup(room: string | null = null) {
   const entered: string[] = [];
   const frames = createFramesPlugin({
     room,
+    portals,
     enter: (r) => entered.push(r),
     connect: (_r, doc) => {
       Y.applyUpdate(doc, Y.encodeStateAsUpdate(remote));
@@ -80,6 +82,50 @@ describe('portal view', () => {
     const { app, entered } = setup();
     app.typeOf(app.node('p')!)!.onDoubleClick!(app.node('p')!, app);
     expect(entered).toEqual(['chess-room']);
+  });
+});
+
+describe('portals flag', () => {
+  it('off by default: a .canvas file stays a plain file node, no portals engine, none in the outline, no portal kit', async () => {
+    const { app, root, frames } = setup(null, false);
+    app.viewport.set(-1000, 0, 1);
+    expect(frames.portals).toBeUndefined();
+    expect(root.querySelector('.fr-portal')).toBeNull();
+    expect(app.typeOf(app.node('p')!)?.id).not.toBe('portal');
+    expect(document.querySelector('.fr-outline')!.textContent).not.toContain('chess-room');
+    expect((app as unknown as { frames: { outline(): { kind: string }[] } }).frames.outline().some((e) => e.kind === 'portal')).toBe(false);
+    expect(app.kits.some((k) => k.id === 'frames.portal')).toBe(false);
+    await flush();
+  });
+  it('on: the same document shows the portal and lists it', () => {
+    const { app } = setup(null, true);
+    expect(app.typeOf(app.node('p')!)?.id).toBe('portal');
+    expect((app as unknown as { frames: { outline(): { kind: string }[] } }).frames.outline().some((e) => e.kind === 'portal')).toBe(true);
+    expect(app.kits.some((k) => k.id === 'frames.portal')).toBe(true);
+  });
+});
+
+describe('slide order stays put', () => {
+  const press = (target: Element) => target.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
+  it('pressing a frame title writes the order down, so dragging it cannot reshuffle the slides', () => {
+    const { app, root } = setup();
+    app.dispatch('core.add', { nodes: [{ id: 'f3', type: 'group', label: 'Three', x: 2000, y: 0, width: 800, height: 600, 'x-frame': {} }] });
+    expect(app.node('f1')!['x-frame']).toEqual({});
+    press(root.querySelector('[data-node-id="f1"] .fr-title')!);
+    expect(app.node('f1')!['x-frame']).toMatchObject({ order: 0 });
+    app.dispatch('core.move', { ids: ['f1'], dx: 3000, dy: 900 }); // dragged past and below the others
+    expect(orderedFrames(app.doc).map((f) => f.id)).toEqual(['f1', 'f2', 'f3']);
+  });
+  it('a selected frame moved by the keyboard is pinned first; presenting pins too', () => {
+    const { app, frames } = setup();
+    app.store.select(['f2']);
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    expect(app.node('f2')!['x-frame']).toMatchObject({ order: 1 });
+    app.store.select([]);
+    app.dispatch('core.add', { nodes: [{ id: 'f3', type: 'group', label: 'Three', x: 2000, y: 0, width: 800, height: 600, 'x-frame': {} }] });
+    frames.presenter!.start();
+    expect(app.node('f3')!['x-frame']).toMatchObject({ order: 2 });
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
   });
 });
 

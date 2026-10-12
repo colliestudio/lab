@@ -17,6 +17,18 @@ export function bounds(nodes: readonly Pick<CanvasNode, 'x' | 'y' | 'width' | 'h
   return { x, y, width: Math.max(...nodes.map((n) => n.x + n.width)) - x, height: Math.max(...nodes.map((n) => n.y + n.height)) - y };
 }
 
+/** Write each frame's current place in the presentation as an explicit order (no change to the order itself). */
+function pinOrder(doc: DocView): Change[] {
+  return orderedFrames(doc).flatMap((n, i) => (frameField(n).order === i ? [] : [set(n.id, `${FRAME}.order`, i)]));
+}
+
+/**
+ * Slide order is reading order only until frames are touched: without an explicit order, moving a
+ * frame across the canvas would reshuffle the talk. Pinning writes the order down (no-op once every
+ * frame has one). Called before anything that can move a frame, and when presenting.
+ */
+export const pin: Command<Record<string, never>> = (doc) => pinOrder(doc);
+
 /**
  * New frame, under everything (frames are backdrops). `around`: fit it around those nodes (with a
  * margin and room for the title); else a box at x, y (top-left) of width x height.
@@ -33,9 +45,8 @@ export const create: Command<{ x?: number; y?: number; width?: number; height?: 
   if (!box) return [];
   const id = ctx.newId();
   const frames = doc.nodes.filter(isFrame);
-  const orders = frames.map((f) => frameField(f).order).filter(isNum);
-  // explicit order only once someone has ordered frames by hand; else reading order decides
-  const field = orders.length ? { order: Math.max(...orders) + 1 } : {};
+  // a new frame goes last; the existing ones get their current order written down so it stays put
+  const pinned = pinOrder(doc);
   const node: CanvasNode = {
     id,
     type: 'group',
@@ -45,9 +56,9 @@ export const create: Command<{ x?: number; y?: number; width?: number; height?: 
     width: Math.max(MIN_W, Math.round(box.width)),
     height: Math.max(MIN_H, Math.round(box.height)),
     z: lowestZ(doc) - 1,
-    [FRAME]: field,
+    [FRAME]: { order: frames.length },
   };
-  return { changes: [{ op: 'add', node }], select: [id], events: [{ type: 'frames.create', text: `added frame “${node.label}”`, targets: [id] }] };
+  return { changes: [...pinned, { op: 'add', node }], select: [id], events: [{ type: 'frames.create', text: `added frame “${node.label}”`, targets: [id] }] };
 };
 
 export const rename: Command<{ id: string; label: string }> = (doc, a) => {
@@ -121,4 +132,4 @@ export const retarget: Command<{ id: string; room: string }> = (doc, a) => {
   return [set(p.id, 'file', `${a.room}.canvas`), set(p.id, PORTAL, { room: a.room })];
 };
 
-export const commands = { create, rename, resize, reorder, skip, unframe, createPortal, retarget };
+export const commands = { create, pin, rename, resize, reorder, skip, unframe, createPortal, retarget };

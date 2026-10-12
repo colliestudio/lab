@@ -119,7 +119,7 @@ export interface OutlineEntry {
  * What a reader (person or agent) needs to navigate the canvas: frames in order, each followed by
  * the portals inside it; then portals outside any frame. Pure: works on any DocView.
  */
-export function outline(doc: Pick<DocView, 'nodes'>): OutlineEntry[] {
+export function outline(doc: Pick<DocView, 'nodes'>, opts: { portals?: boolean } = {}): OutlineEntry[] {
   const nodes = doc.nodes;
   const member = memberships(nodes);
   const depthOf = (id: string) => {
@@ -130,7 +130,7 @@ export function outline(doc: Pick<DocView, 'nodes'>): OutlineEntry[] {
   const counts = new Map<string, number>();
   for (const f of member.values()) counts.set(f, (counts.get(f) ?? 0) + 1);
   const rect = (n: CanvasNode) => ({ x: n.x, y: n.y, width: n.width, height: n.height });
-  const portals = nodes.filter(isPortal);
+  const portals = opts.portals === false ? [] : nodes.filter(isPortal);
   const out: OutlineEntry[] = [];
   let slide = 0;
   const placed = new Set<string>();

@@ -6,6 +6,8 @@ import { isFrame, isPortal, outline, type OutlineEntry } from './model';
 // minimap of the whole canvas with the current view, and the Present button. O toggles it.
 
 export interface OutlineHooks {
+  /** List portals too (the portals flag). */
+  portals: boolean;
   go(n: CanvasNode | undefined): void;
   present(fromId?: string): void;
   enter(room: string): void;
@@ -132,7 +134,7 @@ export function mountOutline(app: App, hooks: OutlineHooks) {
         ctx.lineWidth = 1;
         ctx.strokeRect(...r(n));
       } else {
-        ctx.fillStyle = isPortal(n) ? 'rgba(190, 140, 255, 0.85)' : 'rgba(230, 236, 232, 0.55)';
+        ctx.fillStyle = hooks.portals && isPortal(n) ? 'rgba(190, 140, 255, 0.85)' : 'rgba(230, 236, 232, 0.55)';
         ctx.fillRect(...r(n));
       }
     }
@@ -170,7 +172,7 @@ export function mountOutline(app: App, hooks: OutlineHooks) {
     queued = true;
     requestAnimationFrame(() => {
       queued = false;
-      drawList(outline(app.doc));
+      drawList(outline(app.doc, { portals: hooks.portals }));
       drawMap(dragging);
     });
   };

@@ -16,6 +16,29 @@ export interface FramesOptions {
   enter(room: string): void;
   /** Transport for portal rooms (tests: null = local only). */
   connect?: Connect | null;
+  /**
+   * Portals on (default off). A portal joins the other room as a full peer, so until the host can
+   * enforce read-only and refuse rooms they stay behind this flag. Frames, outline, keys and
+   * presenting don't depend on it.
+   */
+  portals?: boolean;
+}
+
+const PORTALS_KEY = 'canvas-poc:portals';
+/**
+ * The portals flag for this browser: `?portals=1` turns it on (and remembers it, so rooms entered
+ * through a portal keep it), `?portals=0` turns it off again.
+ */
+export function portalsEnabled(): boolean {
+  if (typeof location === 'undefined') return false;
+  try {
+    const q = new URLSearchParams(location.search).get('portals');
+    if (q === '1') localStorage.setItem(PORTALS_KEY, '1');
+    else if (q === '0') localStorage.removeItem(PORTALS_KEY);
+    return localStorage.getItem(PORTALS_KEY) === '1';
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -66,18 +89,31 @@ export function createFramesPlugin(opts: FramesOptions): Plugin & { portals?: Po
     id: 'frames',
     setup(app) {
       registerFramesLogic(app.store);
-      const portals = new PortalViews(app, { currentRoom: opts.room, connect: opts.connect });
+      const portalsOn = !!opts.portals;
+      const portals = portalsOn ? new PortalViews(app, { currentRoom: opts.room, connect: opts.connect }) : undefined;
       const presenter = new Presenter(app);
       plugin.portals = portals;
       plugin.presenter = presenter;
 
       // freeze membership for the length of a press (see `frozen`)
       const root = app.view.root;
+      // Slide order is reading order until written down; do that before a frame can move.
+      const pin = () => {
+        if (app.doc.nodes.filter(isFrame).length > 1) app.dispatch('frames.pin', {});
+      };
       root.addEventListener(
         'pointerdown',
-        () => {
+        (e) => {
+          if ((e.target as Element | null)?.closest?.('.fr-title') || app.selected().some(isFrame)) pin();
           freezeMembership(app.doc.nodes);
           stopFlight(app);
+        },
+        true,
+      );
+      window.addEventListener(
+        'keydown',
+        (e) => {
+          if (e.key.startsWith('Arrow') && app.selected().some(isFrame)) pin();
         },
         true,
       );
@@ -154,6 +190,7 @@ export function createFramesPlugin(opts: FramesOptions): Plugin & { portals?: Po
       });
 
       // ------------------------------------------------------------ portal
+      if (portals)
       app.registerType({
         id: 'portal',
         match: isPortal,
@@ -161,7 +198,7 @@ export function createFramesPlugin(opts: FramesOptions): Plugin & { portals?: Po
           el.innerHTML = `<div class="fr-portal"><div class="fr-portal-head"><span class="fr-portal-name"></span><span class="fr-portal-status"></span><button class="fr-portal-enter" data-action="enter" title="Go into this room (or double-click)">Enter ↗</button></div><div class="fr-portal-body"></div><div class="fr-resize" title="Resize"></div></div>`;
           el.querySelector('.fr-portal-name')!.textContent = `⧉ ${portalTitle(node)}`;
           el.querySelector<HTMLElement>('.fr-resize')!.addEventListener('pointerdown', (e) => resizeFrom(node.id, e));
-          portals.mount(node, el.querySelector<HTMLElement>('.fr-portal-body')!, el.querySelector<HTMLElement>('.fr-portal-status')!);
+          portals!.mount(node, el.querySelector<HTMLElement>('.fr-portal-body')!, el.querySelector<HTMLElement>('.fr-portal-status')!);
         },
         renderKey: (node) => `${portalRoom(node) ?? ''}|${node.label ?? ''}|${node.width}x${node.height}`,
         canDrop: () => false,
@@ -195,7 +232,7 @@ export function createFramesPlugin(opts: FramesOptions): Plugin & { portals?: Po
             ],
           };
         }
-        if (sel.length === 1 && isPortal(sel[0])) {
+        if (portalsOn && sel.length === 1 && isPortal(sel[0])) {
           const p = sel[0];
           const room = portalRoom(p);
           return {
@@ -236,23 +273,24 @@ export function createFramesPlugin(opts: FramesOptions): Plugin & { portals?: Po
         label: 'Frame (around the selection)',
         create: () => frameSelection(),
       });
-      app.registerKit({
-        id: 'frames.portal',
-        label: 'Portal to another room…',
-        create: async (a, at) => {
-          const room = await askRoom();
-          if (room) a.dispatch('frames.createPortal', { ...at, room });
-        },
-      });
+      if (portalsOn)
+        app.registerKit({
+          id: 'frames.portal',
+          label: 'Portal to another room…',
+          create: async (a, at) => {
+            const room = await askRoom();
+            if (room) a.dispatch('frames.createPortal', { ...at, room });
+          },
+        });
       app.registerKit({
         id: 'frames.demo',
-        label: 'Frames demo: 3 frames + a portal into a chess room',
-        create: (a) => void seedDemo(a).then((ids) => ids && flyTo(a, boundsOf(a, ids), { pad: 60 })),
+        label: portalsOn ? 'Frames demo: 3 frames + a portal into a chess room' : 'Frames demo: 3 frames',
+        create: (a) => void seedDemo(a, portalsOn).then((ids) => ids && flyTo(a, boundsOf(a, ids), { pad: 60 })),
       });
 
-      if (typeof document !== 'undefined') mountOutline(app, { go, present: (id) => presenter.start(id), enter: opts.enter, rename, currentRoom: opts.room });
+      if (typeof document !== 'undefined') mountOutline(app, { portals: portalsOn, go, present: (id) => presenter.start(id), enter: opts.enter, rename, currentRoom: opts.room });
       // for agents and the console: what an outline reader sees
-      (app as unknown as { frames?: unknown }).frames = { outline: () => outline(app.doc), go: (id: string) => go(app.node(id)), present: (id?: string) => presenter.start(id) };
+      (app as unknown as { frames?: unknown }).frames = { outline: () => outline(app.doc, { portals: portalsOn }), go: (id: string) => go(app.node(id)), present: (id?: string) => presenter.start(id) };
     },
   };
   return plugin;

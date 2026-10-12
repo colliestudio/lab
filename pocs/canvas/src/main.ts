@@ -8,7 +8,7 @@ import { clockPlugin } from './plugins/clock';
 import { battleLinePlugin } from './plugins/battleline';
 import { matsPlugin } from './plugins/mats';
 import { mountHelp, removeHelpNote } from './help';
-import { attachFollow, createFramesPlugin, enterUrl, mountBreadcrumb, trailFromUrl } from './plugins/frames';
+import { attachFollow, createFramesPlugin, portalsEnabled, enterUrl, mountBreadcrumb, trailFromUrl } from './plugins/frames';
 
 const ROOM = roomFromUrl();
 const DB_NAME = ROOM ? roomDbName(ROOM) : 'canvas-poc';
@@ -29,7 +29,7 @@ app.use(battleLinePlugin);
 app.use(matsPlugin);
 // last: its rider rule (frame membership) must come after the others (a piece rides its board, the board its frame)
 const TRAIL = trailFromUrl();
-const frames = createFramesPlugin({ room: ROOM, enter: (room) => (location.href = enterUrl(room, ROOM, TRAIL)) });
+const frames = createFramesPlugin({ room: ROOM, portals: portalsEnabled(), enter: (room) => (location.href = enterUrl(room, ROOM, TRAIL)) });
 app.use(frames);
 app.store.migrations.push(removeHelpNote);
 

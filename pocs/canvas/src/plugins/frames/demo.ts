@@ -59,7 +59,7 @@ export async function seedChessRoom(room = DEMO_ROOM): Promise<boolean> {
 }
 
 /** The index canvas's nodes, top-left at (x, y). Frames get z below `zBase`, contents above `zTop`. */
-export function indexNodes(newId: () => string, x: number, y: number, zBase: number, zTop: number, room = DEMO_ROOM): CanvasNode[] {
+export function indexNodes(newId: () => string, x: number, y: number, zBase: number, zTop: number, room: string | null = DEMO_ROOM): CanvasNode[] {
   let z = zTop;
   let fz = zBase;
   const frame = (label: string, dx: number, w: number, h: number): CanvasNode => ({ id: newId(), type: 'group', label, x: x + dx, y, width: w, height: h, z: --fz, [FRAME]: {} });
@@ -69,7 +69,7 @@ export function indexNodes(newId: () => string, x: number, y: number, zBase: num
     text('Team space · week 41', 40, 70, 560, 60),
     text('1. Sprint review: what shipped', 40, 160, 560),
     text('2. Plan the next sprint', 40, 250, 560),
-    text('3. Game night (the chess room, through the portal →)', 40, 340, 560),
+    text('3. Game night', 40, 340, 560),
 
     frame('Sprint board', 760, 900, 460),
     text('To do', 800, 70, 260, 50),
@@ -81,32 +81,36 @@ export function indexNodes(newId: () => string, x: number, y: number, zBase: num
     text('Present mode', 1360, 240, 260, 80),
 
     frame('Game night', 1780, 720, 660),
-    {
-      id: newId(),
-      type: 'file',
-      file: `${room}.canvas`,
-      label: 'Chess room',
-      x: x + 1820,
-      y: y + 70,
-      width: 640,
-      height: 470,
-      z: ++z,
-      [PORTAL]: { room },
-    },
-    text('Double-click the portal (or Enter ↗) to go into the chess room. Moves made there show here live.', 1820, 560, 640, 70),
+    ...(room === null
+      ? [text('Game night. With ?portals=1 a live chess room shows here.', 1820, 90, 640, 70)]
+      : [
+          {
+            id: newId(),
+            type: 'file',
+            file: `${room}.canvas`,
+            label: 'Chess room',
+            x: x + 1820,
+            y: y + 70,
+            width: 640,
+            height: 470,
+            z: ++z,
+            [PORTAL]: { room },
+          } as CanvasNode,
+          text('Double-click the portal (or Enter ↗) to go into the chess room. Moves made there show here live.', 1820, 560, 640, 70),
+        ]),
   ];
 }
 
 /** Put the demo on the table (right of what's there) and seed its chess room. One undo step. */
-export async function seedDemo(app: App): Promise<string[] | undefined> {
-  await seedChessRoom().catch(() => false);
+export async function seedDemo(app: App, portals = true): Promise<string[] | undefined> {
+  if (portals) await seedChessRoom().catch(() => false);
   const doc = app.doc;
   const vis = doc.visible;
   const x = vis.length ? Math.max(...vis.map((n) => n.x + n.width)) + 300 : 0;
   const y = vis.length ? Math.min(...vis.map((n) => n.y)) : 0;
   const zs = doc.nodes.map((n) => n.z ?? 0);
   const minZ = zs.length ? Math.min(...zs) : 0;
-  const nodes = indexNodes(app.store.ctx.newId, x, y, minZ, doc.topZ);
+  const nodes = indexNodes(app.store.ctx.newId, x, y, minZ, doc.topZ, portals ? DEMO_ROOM : null);
   app.store.newUndoStep();
   app.dispatch('core.add', { nodes });
   return nodes.map((n) => n.id);

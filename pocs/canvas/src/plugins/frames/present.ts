@@ -37,6 +37,7 @@ export class Presenter {
       this.app.notify('Nothing to present: add a frame first (⇧F), or put one back in the slides');
       return;
     }
+    this.app.dispatch('frames.pin', {}); // a talk's order must not change under the presenter
     const i = Math.max(0, fromId ? list.findIndex((f) => f.id === fromId) : 0);
     if (typeof document !== 'undefined') {
       document.body.classList.add('fr-presenting');
