@@ -64,7 +64,7 @@ export async function shot(dir: string, o: ShotOpts = {}): Promise<string[]> {
         await Promise.all([...document.images].map((i) => (i.complete ? null : new Promise((r) => { i.onload = i.onerror = () => r(null); }))));
       });
       await page.waitForTimeout(200);
-      if (o.chrome === false) await page.addStyleTag({ content: ".h-bar{display:none!important}" });
+      await page.addStyleTag({ content: o.chrome === false ? ".h-bar{display:none!important}" : ".h-bar{position:static!important}" });
       const p = join(out, `${name}-${theme}.png`);
       await page.screenshot({ path: p, fullPage: true });
       paths.push(p);
@@ -72,21 +72,22 @@ export async function shot(dir: string, o: ShotOpts = {}): Promise<string[]> {
         await page.reload(); await page.waitForSelector(".a-content"); await page.waitForTimeout(800);
         await page.keyboard.press("p");
         await page.waitForSelector(".h-present-bar");
-        const total = Number((await page.locator(".h-present-bar span").innerText()).match(/\/(\d+)/)?.[1] ?? 1);
-        const want = o.present === "all" ? Array.from({ length: total }, (_, i) => i) : o.present.split(",").map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n < total);
-        let at = 0;
-        for (const n of want) {
-          while (at < n) { await page.keyboard.press("ArrowRight"); at++; }
-          // slides, not steps: skip through revealed steps until the slide index changes
-          for (let g = 0; g < 50; g++) {
-            const cur = Number((await page.locator(".h-present-bar span").innerText()).match(/^(\d+)/)?.[1]) - 1;
-            if (cur >= n) break;
-            await page.keyboard.press("ArrowRight");
+        const read = () => page.locator(".h-present-bar").evaluate((e) => ({ slide: Number(e.getAttribute("data-slide")), slides: Number(e.getAttribute("data-slides")), step: Number(e.getAttribute("data-step")), steps: Number(e.getAttribute("data-steps")) }));
+        const total = (await read()).slides;
+        const want = o.present === "all" ? null : new Set(o.present.split(",").map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n < total));
+        // walk every state (slide, step) once; a slide's later steps get `-s<k>` suffixes so nothing is skipped
+        for (let guard = 0; guard < 500; guard++) {
+          const st = await read();
+          if (!want || want.has(st.slide)) {
+            await page.waitForTimeout(450);
+            const sp = join(out, `${name}-${theme}-present-${st.slide + 1}${st.step ? `-s${st.step}` : ""}.png`);
+            await page.screenshot({ path: sp });
+            paths.push(sp);
           }
-          await page.waitForTimeout(500);
-          const sp = join(out, `${name}-${theme}-present-${n + 1}.png`);
-          await page.screenshot({ path: sp });
-          paths.push(sp);
+          await page.keyboard.press("ArrowRight");
+          await page.waitForTimeout(80);
+          const nx = await read();
+          if (nx.slide === st.slide && nx.step === st.step) break;
         }
       }
       if (errs.length) console.warn(`warning: page errors (${theme}): ${errs.join("; ")}`);

@@ -52,8 +52,10 @@ export function Host({ children }: { children: ReactNode }) {
   const [mode, setMode] = useState(false);          // comment mode
   const [open, setOpen] = useState<Anchor | null>(null);
   const [panel, setPanel] = useState(false);
+  const [outlineOff, setOutlineOff] = useState(localStorage.getItem("artifact-outline") === "off");
   const [allSources, setAllSources] = useState(false);
   const [copied, setCopied] = useState("");
+  const [more, setMore] = useState(false);
   const cm = useComments(`${meta.title}|${meta.created ?? ""}`);
   const head = useRef<HTMLElement>(null);
   const present = usePresent(content, head, meta.title);
@@ -72,6 +74,15 @@ export function Host({ children }: { children: ReactNode }) {
     setDark(d); localStorage.setItem("artifact-theme", d ? "dark" : "light");
     if (d) document.documentElement.dataset.theme = "midnight"; else delete document.documentElement.dataset.theme;
   };
+
+  useEffect(() => {
+    if (!present.active) { setMore(false); return; }
+    const f = () => setMore(document.documentElement.scrollHeight - (scrollY + innerHeight) > 40);
+    f();
+    const t = setInterval(f, 400);
+    addEventListener("scroll", f, { passive: true }); addEventListener("resize", f);
+    return () => { clearInterval(t); removeEventListener("scroll", f); removeEventListener("resize", f); };
+  }, [present.active]);
 
   // keys: 1-4 depth, c comment mode, p present
   useEffect(() => {
@@ -150,9 +161,10 @@ export function Host({ children }: { children: ReactNode }) {
         <button className="h-btn" onClick={() => setPanel(!panel)} aria-pressed={panel}>{cm.list.length ? plural(cm.list.length, "note") : "Notes"}</button>
         <button className="h-btn" onClick={copy} disabled={!cm.list.length} title="Copy the comments as Markdown to paste back to the agent">{copied || "Copy feedback"}</button>
         <button className="h-btn" onClick={() => present.start()} title="Present (p): arrow keys step through sections">Present</button>
+        <button className="h-btn" aria-pressed={!outlineOff} onClick={() => { setOutlineOff(!outlineOff); localStorage.setItem("artifact-outline", outlineOff ? "on" : "off"); }} title="Show or hide the outline to give the page the full width">Outline</button>
         <button className="h-btn" onClick={() => setTheme(!dark)} aria-label="Toggle theme">{dark ? "Light" : "Dark"}</button>
       </div>
-      <div className="h-layout">
+      <div className="h-layout" data-outline={outlineOff ? "off" : undefined}>
         <nav className="h-outline" aria-label="Outline">
           {items.map((it) => (
             <a key={it.id} href={`#${it.id}`} className={it.id === active ? "on" : ""} style={{ paddingLeft: `${0.6 + (it.level - 1) * 0.8}rem` }}>{it.title}</a>
@@ -185,9 +197,10 @@ export function Host({ children }: { children: ReactNode }) {
       </div>
       {open && <Composer anchor={open} onCancel={() => setOpen(null)} onSave={(body) => { cm.add(open, body); setOpen(null); }} existing={cm.list.filter((c) => c.anchor.id === open.id)} />}
       {present.active && (
-        <div className="h-present-bar">
+        <div className="h-present-bar" data-slide={present.state.slide} data-slides={present.state.slides} data-step={present.state.step} data-steps={present.state.steps}>
           <button onClick={present.prev}>←</button>
           <span>{present.label}</span>
+          {more && <span className="h-more-hint" title="This slide continues below: scroll or press ↓">↓ more</span>}
           <button onClick={present.next}>→</button>
           <button onClick={present.stop}>Exit</button>
         </div>

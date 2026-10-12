@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Badge, Source, Status, type SourceProps, type Tone } from "./layout.tsx";
+import { Badge, Source, Status, type SourceProps, type StatusValue, type Tone } from "./layout.tsx";
+import { meta } from "./registry.ts";
+import { fmtAsOf } from "./util.ts";
 import { imageSrc } from "./registry.ts";
 import { ZoomImg } from "./zoom.tsx";
 import { usePresent } from "./present.ts";
@@ -124,7 +126,7 @@ export function RiskMatrix({ risks }: { risks: Risk[] }) {
 export interface GalleryItem {
   label: ReactNode; id?: string;
   src?: string; node?: ReactNode; aside?: ReactNode; caption?: ReactNode;          // variants: the shown thing + a side pane
-  thumb?: string; status?: string; badges?: ReactNode; summary?: ReactNode; detail?: ReactNode;  // tiles: a card, detail opens below
+  thumb?: string; status?: StatusValue; badges?: ReactNode; summary?: ReactNode; detail?: ReactNode;  // tiles: a card, detail opens below
 }
 /**
  * Variants one at a time (pills + `src`/`node` + `aside`), or, when items have `thumb`/`detail`, a grid of tiles
@@ -216,3 +218,6 @@ export function DecisionIndex({ title = "Decisions on this page" }: { title?: Re
     </div>
   );
 }
+
+/** An absolute time in the artifact's one time zone (`"timeZone"` in artifact.json, default UTC): `<Time iso="2026-10-12T13:18:00Z" />` → "12 Oct 2026, 13:18 UTC". */
+export function Time({ iso, zone }: { iso: string; zone?: string }) { return <time dateTime={iso}>{fmtAsOf(iso, zone ?? meta.timeZone)}</time>; }

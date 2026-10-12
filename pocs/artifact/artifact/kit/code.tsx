@@ -24,11 +24,14 @@ export function Code({ code, file, lang, ranges, highlight, title, path, href, n
   const html = useMemo(() => highlightLines(text.split("\n"), language), [text, language]);
   const want = useMemo(() => parseNums(ranges as string), [ranges]);
   const hl = useMemo(() => new Set(parseNums(highlight as string) ?? []), [highlight]);
+  const [wrap, setWrap] = useState(false);
+  const long = text.split("\n").some((l) => l.length > 100);
   const shown = html.map((h, i) => ({ h, n: start + i })).filter((l) => !want || want.includes(l.n));
   return (
-    <figure className="a-code" data-c="code" data-aid={id}>
-      {(title || path || file) && (
-        <figcaption className="a-code-title">{href ? <a href={href} target="_blank" rel="noreferrer">{title ?? path ?? file}</a> : title ?? path ?? file}</figcaption>
+    <figure className={cx("a-code", wrap && "wrap")} data-c="code" data-aid={id}>
+      {(title || path || file || long) && (
+        <figcaption className="a-code-title"><span>{href ? <a href={href} target="_blank" rel="noreferrer">{title ?? path ?? file}</a> : title ?? path ?? file}</span>
+          {long && <button className="a-code-wrap" aria-pressed={wrap} onClick={() => setWrap(!wrap)} title="Wrap long lines">wrap</button>}</figcaption>
       )}
       <pre><code>{shown.map((l, i) => (
         <Fragment key={l.n}>

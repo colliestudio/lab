@@ -90,6 +90,19 @@ export function gitBranches(repo: string, glob: string, base: string, exec: Run 
   return { repo, base, branches: branches.sort((a, b) => b.at.localeCompare(a.at)) };
 }
 
+/** `--fields a,b` keeps only those keys of every object in a list; `--count` replaces every list of objects by its length. */
+export function trim(v: unknown, o: { fields?: string[]; count?: boolean }): unknown {
+  if (Array.isArray(v)) {
+    if (v.length && typeof v[0] === "object" && v[0] !== null) {
+      if (o.count) return v.length;
+      return v.map((x) => (o.fields?.length ? Object.fromEntries(Object.entries(x as object).filter(([k]) => o.fields!.includes(k))) : trim(x, o)));
+    }
+    return o.count ? v.length : v;
+  }
+  if (v && typeof v === "object") return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, trim(x, o)]));
+  return v;
+}
+
 const list = (v?: string) => (v ?? "").split(",").map((x) => x.trim()).filter(Boolean);
 
 /** `artifact gather <kind> <artifact-dir> [--branches 'idea/*' --base main] [--repos a/b,c/d] [--since ISO|"24 hours ago"] [--workspaces dir,dir] [--repo path] [--ref r] [--name file]` */
@@ -119,6 +132,7 @@ export function gatherCmd(kind: string, dir: string, v: Record<string, string | 
     }
     default: console.error(`unknown collector ${kind} (gh-prs, board, git-log)`); return 2;
   }
+  if (s("fields") || v.count) data = trim(data, { fields: list(s("fields")), count: !!v.count });
   const out = join(resolve(dir), "data", `${s("name") ?? kind}.json`);
   mkdirSync(join(resolve(dir), "data"), { recursive: true });
   writeFileSync(out, JSON.stringify(data, null, 1) + "\n");

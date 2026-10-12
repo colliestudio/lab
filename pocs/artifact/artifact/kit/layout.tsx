@@ -58,7 +58,7 @@ export function Card({ title, children, tone, href, footer, id, aside }: {
 
 /** Cards from data: `items={[{title, body, status?, href?}]}`. */
 export function CardGrid({ items, min, cols }: {
-  items: { title: ReactNode; body?: ReactNode; status?: string; href?: string; tone?: Tone; footer?: ReactNode; id?: string }[];
+  items: { title: ReactNode; body?: ReactNode; status?: StatusValue; href?: string; tone?: Tone; footer?: ReactNode; id?: string }[];
   min?: string; cols?: number;
 }) {
   return <Grid min={min} cols={cols}>{items.map((it, i) => (
@@ -107,7 +107,9 @@ const STATUS: Record<string, { tone: Tone; label: string }> = {
   review: { tone: "accent", label: "In review" }, info: { tone: "info", label: "Info" }, new: { tone: "accent", label: "New" },
 };
 /** A state pill: ok, done, merged, warn, risk, stale, blocked, failed, todo, open, planned, doing, review, info… (unknown words show as is). */
-export function Status({ s, label, children }: { s: string; label?: ReactNode; children?: ReactNode }) {
+export type StatusValue = string | { label: ReactNode; tone?: Tone };
+export function Status({ s, label, children }: { s: StatusValue; label?: ReactNode; children?: ReactNode }) {
+  if (s && typeof s === "object") return <span className={cx("a-status custom", `tone-${s.tone ?? "neutral"}`)}><i />{children ?? s.label}</span>;
   const d = STATUS[String(s ?? "").toLowerCase()] ?? { tone: "neutral" as Tone, label: String(s ?? "") };
   return <span className={cx("a-status", `tone-${d.tone}`)} data-status={s}><i />{children ?? label ?? d.label}</span>;
 }
@@ -214,7 +216,7 @@ export function Checklist({ items }: { items: (string | { text: ReactNode; done?
   );
 }
 
-export interface TimelineItem { when?: ReactNode; title: ReactNode; body?: ReactNode; tone?: Tone; status?: string; href?: string; lane?: string }
+export interface TimelineItem { when?: ReactNode; title: ReactNode; body?: ReactNode; tone?: Tone; status?: StatusValue; href?: string; lane?: string }
 /**
  * Events in order. With `lane` on items (an actor, an agent) the page becomes a swimlane grid: one column per lane,
  * one row per distinct `when` (items with the same `when` share a row), so 12 events in 3 lanes take as few rows as there are times.

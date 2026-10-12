@@ -79,3 +79,18 @@ export function unpublishedCommits(source: string, meta: Pick<Meta, "sources">, 
   }
   return bad;
 }
+
+/** Maps that would be drawn smaller than `min` of their natural size in a ~880 px column (node text gets unreadable). */
+export async function smallMaps(maps: { nodes: { id: string; label: string; group?: string }[]; edges: { from: string; to: string; label?: string }[]; groups: { id: string; label: string }[]; direction?: string; height?: number }[], min = 0.65): Promise<string[]> {
+  const { layoutMap, approxMeasure } = await import("../kit/map-layout.ts");
+  const out: string[] = [];
+  for (const [i, m] of maps.entries()) {
+    const [right, down] = await Promise.all([layoutMap({ groups: m.groups ?? [], nodes: m.nodes, edges: m.edges ?? [] }, "RIGHT", approxMeasure), layoutMap({ groups: m.groups ?? [], nodes: m.nodes, edges: m.edges ?? [] }, "DOWN", approxMeasure)]);
+    const maxH = Math.min(m.height ?? 560, 640);
+    const scale = (l: { w: number; h: number }) => Math.min(880 / l.w, maxH / l.h, 1);
+    const lay = m.direction === "right" ? right : m.direction === "down" ? down : scale(right) < 0.85 && scale(down) > scale(right) + 0.1 ? down : right;
+    const s = scale(lay);
+    if (s < min) out.push(`Map #${i + 1} (${m.nodes.length} nodes) fits at about ${Math.round(s * 100)}%: too small to read; cut nodes, collapse groups, or try direction="down" with a taller height`);
+  }
+  return out;
+}

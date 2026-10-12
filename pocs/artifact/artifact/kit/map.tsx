@@ -26,6 +26,8 @@ export function Map({ nodes, edges = [], groups = [], direction = "auto", focus,
   nodes: MapNodeIn[]; edges?: MapEdgeIn[]; groups?: { id: string; label: string }[]; direction?: "auto" | "right" | "down";
   focus?: string; id?: string; height?: number;
 }) {
+  // server-side render (artifact check): record the map so the check can lay it out and warn when it would be unreadably small
+  if (typeof document === "undefined") (globalThis as { __artifactMaps?: unknown[] }).__artifactMaps?.push({ nodes, edges, groups, direction, height });
   const map = useMemo<DocMap>(() => ({ groups, nodes, edges }), [nodes, edges, groups]);
   const [both, setBoth] = useState<{ right: Layout; down: Layout } | null>(null);
   const [w, setW] = useState(0);

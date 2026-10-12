@@ -545,3 +545,52 @@ test("JSX evidence is highlighted in the built page (browser)", async (t) => {
     } finally { await b.close(); }
   } finally { cleanup(d); }
 });
+
+import { trim } from "../artifact/cli/gather.ts";
+import { smallMaps } from "../artifact/cli/advice.ts";
+
+test("Status/Gallery take a custom label with a tone; Time uses the artifact's zone; long code gets a wrap toggle", async () => {
+  const d = fixture(`import { Status, Gallery, Time, Code, Section } from "artifact";
+export default () => <Section title="S"><Status s={{ label: "fix first", tone: "warn" }} />
+<Gallery items={[{ label: "a", summary: "x", status: { label: "gated", tone: "critical" }, detail: <p>d</p> }]} />
+<Time iso="2026-10-12T13:18:00Z" /><Code code={"x".repeat(160)} /></Section>;`);
+  writeFileSync(join(d, "artifact.json"), JSON.stringify({ title: "T", kind: "k", audience: "a", summary: "s", timeZone: "Asia/Bangkok" }));
+  try {
+    const s = await renderStatic(d);
+    assert.ok("html" in s, JSON.stringify(s));
+    assert.match(s.html, /tone-warn[^>]*><i><\/i>fix first/);
+    assert.match(s.html, /tone-critical[^>]*><i><\/i>gated/);
+    assert.match(s.html, /12 Oct 2026, 20:18/);
+    assert.match(s.html, /a-code-wrap/);
+  } finally { cleanup(d); }
+});
+
+test("gather --fields / --count trim output", () => {
+  const data = { prs: [{ n: 1, title: "t", href: "h" }, { n: 2, title: "u", href: "i" }], merged: { a: 3 }, todo: [{ id: "x", title: "y" }], names: ["a", "b"] };
+  assert.deepEqual(trim(data, { fields: ["n"] }), { prs: [{ n: 1 }, { n: 2 }], merged: { a: 3 }, todo: [{}], names: ["a", "b"] });
+  assert.deepEqual(trim(data, { count: true }), { prs: 2, merged: { a: 3 }, todo: 1, names: 2 });
+});
+
+test("check warns when a map fits too small, and the render records maps", async () => {
+  const nodes = Array.from({ length: 16 }, (_, i) => ({ id: "n" + i, label: "A reasonably long node label " + i }));
+  const edges = Array.from({ length: 15 }, (_, i) => ({ from: "n" + i, to: "n" + (i + 1) }));
+  const d = fixture(`import { Map } from "artifact"; export default () => <Map nodes={${JSON.stringify(nodes)}} edges={${JSON.stringify(edges)}} direction="right" />;`);
+  try {
+    const s = await renderStatic(d);
+    assert.ok("maps" in s && s.maps.length === 1);
+    assert.match((await smallMaps(s.maps)).join(), /Map #1 \(16 nodes\) fits at about \d+%/);
+    assert.deepEqual(await smallMaps([{ nodes: nodes.slice(0, 3), edges: edges.slice(0, 2), groups: [] }]), []);
+    assert.ok((await check(d, { types: false })).warnings.some((w) => w.includes("Map #1")));
+  } finally { cleanup(d); }
+});
+
+test("shot --present all captures every step, not just the first", async (t) => {
+  const { shot, findChrome } = await import("../artifact/cli/shot.ts");
+  try { await findChrome(); } catch { return t.skip("no Chromium available"); }
+  const d = fixture(`import { Section, Step } from "artifact"; export default () => <Section title="A"><Step><p>one</p></Step><Step><p>two</p></Step></Section>;`);
+  try {
+    const paths = await shot(d, { out: join(d, "../shots"), themes: ["light"], present: "all" });
+    const names = paths.map((p) => p.split("/").pop());
+    assert.ok(names.some((n) => n!.endsWith("present-2.png")) && names.some((n) => n!.endsWith("present-2-s1.png")) && names.some((n) => n!.endsWith("present-2-s2.png")), names.join());
+  } finally { cleanup(d); }
+});

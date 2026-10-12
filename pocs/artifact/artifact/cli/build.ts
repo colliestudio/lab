@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { collect, IMAGE_MIME, slimReplay, type Collected } from "./evidence.ts";
 import { parsePatch } from "../../src/parse/patch.ts";
 
+export interface MapSpec { nodes: { id: string; label: string; group?: string }[]; edges: { from: string; to: string; label?: string }[]; groups: { id: string; label: string }[]; direction?: "auto" | "right" | "down"; height?: number }
 export const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const kitIndex = join(repoRoot, "artifact/kit/index.ts");
 const hostMain = join(repoRoot, "artifact/host/main.tsx");
@@ -151,7 +152,7 @@ export async function formatMessages(ms: esbuild.Message[], kind: "error" | "war
 }
 
 /** Server-side render of the artifact (best effort): catches runtime errors in the agent's code and duplicate Section ids. */
-export async function renderStatic(dir: string): Promise<{ html: string } | { error: string }> {
+export async function renderStatic(dir: string): Promise<{ html: string; maps: MapSpec[] } | { error: string }> {
   const abs = resolve(dir);
   const state = { dir: abs, collected: undefined as Collected | undefined };
   const base = options(abs, state, { minify: false });
@@ -163,11 +164,13 @@ export async function renderStatic(dir: string): Promise<{ html: string } | { er
   }).catch((e) => ({ errors: e.errors ?? [{ text: String(e) }], outputFiles: [] as never }));
   if (!r.outputFiles?.length) return { error: "bundle failed: " + ((r as { errors?: esbuild.Message[] }).errors ?? []).map((m) => m.text).join("; ") };
   try {
-    const g = globalThis as unknown as { __html?: () => string };
+    const g = globalThis as unknown as { __html?: () => string; __artifactMaps?: MapSpec[] };
+    g.__artifactMaps = [];
     new Function("require", "module", "exports", r.outputFiles[0].text)(createRequire(), { exports: {} }, {});
     const html = g.__html!();
-    delete g.__html;
-    return { html };
+    const maps = g.__artifactMaps ?? [];
+    delete g.__html; delete g.__artifactMaps;
+    return { html, maps };
   } catch (e) { return { error: String((e as Error)?.stack ?? e).split("\n").slice(0, 6).join("\n") }; }
 }
 function createRequire() { const req = cr(join(repoRoot, "package.json")); return (id: string) => req(id); }

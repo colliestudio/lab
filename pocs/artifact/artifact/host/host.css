@@ -81,3 +81,10 @@ html[data-present] .h-main { min-height: 100vh; }
 .h-head[data-header="compact"] .h-summary { font-size: 1rem; margin: 0 0 0.5rem; }
 .h-head[data-header="compact"] + .a-content > :first-child, .h-main > .a-content > :first-child { margin-top: 1rem; }
 html[data-present] .h-head[data-header="compact"] h1 { font-size: clamp(2.4rem, 5vw, 3.6rem); } html[data-present] .h-head[data-header="compact"] .h-summary { font-size: 1.5rem; }
+
+.h-layout[data-outline="off"], .h-layout[data-outline="off"]:has(.h-panel) { grid-template-columns: minmax(0, 1fr); } .h-layout[data-outline="off"] .h-outline { display: none; }
+.h-layout:has(.a-page[data-width="wide"]), .h-layout:has(.h-main[data-width="wide"]) { grid-template-columns: 11rem minmax(0, 1fr); }
+.h-layout:has(.h-main[data-width="wide"]) .h-main, .h-layout:has(.a-page[data-width="wide"]) .h-main { padding-inline: 1.5rem; }
+.h-main[data-width="full"] { padding-inline: 1.5rem; }
+.h-more-hint { opacity: 0.8; }
+.h-layout[data-outline="off"], .h-layout[data-outline="off"]:has(.a-page), .h-layout[data-outline="off"]:has(.h-main), .h-layout[data-outline="off"]:has(.h-panel) { grid-template-columns: minmax(0, 1fr) !important; }
