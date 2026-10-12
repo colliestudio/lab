@@ -1,5 +1,6 @@
 import { useEffect, useId, useState } from "react";
 import { useTheme } from "./theme.ts";
+import { Heavy } from "./layout.tsx";
 
 let mermaidP: Promise<typeof import("mermaid").default> | null = null;
 const loadMermaid = () => (mermaidP ??= import("mermaid").then((m) => m.default));
@@ -50,10 +51,12 @@ export function Flow({ chart, children, caption, id }: { chart?: string; childre
     return () => { live = false; };
   }, [src, theme, rid]);
   return (
+    <Heavy label="Diagram">
     <figure className="a-flow" data-c="flow" data-aid={id}>
       {err ? <div className="a-map-err"><b>Diagram error</b><pre>{err}</pre><pre>{src}</pre></div>
         : svg ? <div className="a-flow-svg" dangerouslySetInnerHTML={{ __html: svg }} /> : <div className="a-muted">Rendering diagram…</div>}
       {caption && <figcaption>{caption}</figcaption>}
     </figure>
+    </Heavy>
   );
 }

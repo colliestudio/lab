@@ -59,7 +59,7 @@ export function advise(html: string, meta: Pick<Meta, "summary" | "depth">): Adv
   // 4. a slide that shows nothing at step 0 (only its heading)
   for (const s of all.filter((n) => attr(n, "data-section") != null && !inside(n, (a) => attr(a, "data-section") != null))) {
     const hasStep = [...walk(s)].some((n) => attr(n, "data-step") != null);
-    const visible = textOf(s, (n) => attr(n, "data-step") != null || n.tag === "h2" || n.tag === "h3").trim();
+    const visible = textOf(s, (n) => attr(n, "data-step") != null || ["h2", "h3", "button"].includes(n.tag)).trim();
     if (hasStep && !visible) out.push(`present: the slide "${attr(s, "data-title")}" is empty at step 0 (everything is in <Step>): put its lead line outside the Steps`);
   }
   return { warnings: out, stats: { screens } };

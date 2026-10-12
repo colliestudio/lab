@@ -113,8 +113,8 @@ a.a-source:hover { border-color: var(--collie-color-border-accent); }
 .a-stale s { color: var(--a-muted); text-decoration-color: var(--collie-color-critical-solid); }
 
 /* depth, step (present) */
-html[data-depth="1"] [data-depth-level="2"], html[data-depth="1"] [data-depth-level="3"], html[data-depth="1"] [data-depth-level="4"],
-html[data-depth="2"] [data-depth-level="3"], html[data-depth="2"] [data-depth-level="4"], html[data-depth="3"] [data-depth-level="4"] { display: none !important; }
+html:not([data-present])[data-depth="1"] [data-depth-level="2"], html:not([data-present])[data-depth="1"] [data-depth-level="3"], html:not([data-present])[data-depth="1"] [data-depth-level="4"],
+html:not([data-present])[data-depth="2"] [data-depth-level="3"], html:not([data-present])[data-depth="2"] [data-depth-level="4"], html:not([data-present])[data-depth="3"] [data-depth-level="4"] { display: none !important; }
 [data-present-hidden] { display: none !important; }
 
 /* table */
@@ -258,7 +258,7 @@ html[data-depth="2"] [data-depth-level="3"], html[data-depth="2"] [data-depth-le
 .a-gallery-main img { max-width: 100%; border: 1px solid var(--a-line); border-radius: var(--collie-radius-sm); display: block; }
 @media (max-width: 760px) { .a-gallery-body { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 640px) { .a-lanes { grid-template-columns: 1fr !important; } }
-.a-gallery, .a-risk, .a-actions { margin-block: var(--collie-space-200); }
+.a-gallery, .a-risk, .a-actions { margin-block: var(--collie-space-100); }
 
 /* tiles, stats, lightbox */
 .a-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(13.5rem, 1fr)); gap: var(--collie-space-100); }
@@ -386,3 +386,23 @@ html[data-present] .a-depth-stub { display: none !important; }
 .a-decision-more > button.on { border-style: solid; border-color: var(--collie-color-accent-solid); color: var(--collie-color-fg-accent); background: var(--collie-color-accent-subtle); }
 .a-decision-other { display: inline-flex; gap: 0.3rem; } .a-decision-other input, .a-decision-more textarea { font: inherit; font-size: var(--collie-text-sm); padding: 0.25em 0.6em; border: 1px solid var(--collie-color-border); border-radius: 6px; background: var(--collie-color-canvas); color: inherit; min-width: 14rem; }
 .a-decision-more textarea { width: 100%; }
+
+/* automatic outline zoom (Detail 1-4): driven by structure, not by tags. 1 = sections collapse to title + lead (+ a first callout/stats);
+   2 = nested sections collapse, heavy blocks become one-line stubs; 3 = everything but Depth 4; 4 = everything. Present mode ignores it. */
+.a-sec-more, .a-heavy-stub { display: none; font: inherit; font-size: var(--collie-text-sm); cursor: pointer; text-align: left; color: var(--collie-color-fg-accent); background: var(--collie-color-accent-subtle); border: 1px solid var(--collie-color-border-accent); border-radius: 999px; padding: 0.15em 0.8em; margin: 0.2rem 0 0.4rem; }
+.a-heavy-stub { width: 100%; border-radius: var(--collie-radius-sm); border-style: dashed; background: var(--a-soft); color: var(--a-muted); padding: 0.35em 0.8em; margin: 0.3rem 0; }
+.a-sec-more:hover, .a-heavy-stub:hover { border-color: var(--collie-color-accent-solid); color: var(--collie-color-fg-accent); }
+.a-sec-more .hide, .a-heavy-stub .hide, [data-open] > .a-sec-more .show, [data-open] > .a-heavy-stub .show { display: none; } [data-open] > .a-sec-more .hide, [data-open] > .a-heavy-stub .hide { display: inline; }
+html:not([data-present])[data-depth="1"] .a-section .a-sec-more { display: inline-flex; }
+html:not([data-present])[data-depth="2"] .a-section:not([data-level="1"]) .a-sec-more { display: inline-flex; }
+html:not([data-present])[data-depth="1"] .a-section:not([data-open]) > .a-section-body > :not(:is([data-c="callout"], [data-c="stats"]):first-child),
+html:not([data-present])[data-depth="2"] .a-section:not([data-level="1"]):not([data-open]) > .a-section-body > :not(:is([data-c="callout"], [data-c="stats"]):first-child) { display: none; }
+html:not([data-present])[data-depth="1"] .a-heavy-stub, html:not([data-present])[data-depth="2"] .a-heavy-stub { display: block; }
+html:not([data-present])[data-depth="1"] .a-heavy:not([data-open]) > .a-heavy-body, html:not([data-present])[data-depth="2"] .a-heavy:not([data-open]) > .a-heavy-body { display: none; }
+html:not([data-present])[data-depth="1"] .a-section:not([data-open]) > .a-h a::before, html:not([data-present])[data-depth="2"] .a-section:not([data-level="1"]):not([data-open]) > .a-h a::before { content: "▸ "; color: var(--a-muted); }
+html:not([data-present])[data-depth="1"] .a-section:not([data-open]), html:not([data-present])[data-depth="2"] .a-section:not([data-level="1"]):not([data-open]) { margin-block: var(--collie-space-100); }
+@keyframes a-reveal { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+@keyframes a-flash { from { background: var(--collie-color-accent-subtle); } to { background: transparent; } }
+html[data-depth-anim] .a-section-body > *, html[data-depth-anim] .a-heavy-body { animation: a-reveal 0.4s ease both; }
+html[data-depth-anim] .a-sec-more, html[data-depth-anim] .a-heavy-stub { animation: a-reveal 0.4s ease both; }
+html[data-depth-anim] .a-section { animation: a-flash 0.6s ease; }

@@ -10,6 +10,21 @@ export function Page({ children, width = "normal" }: { children: ReactNode; widt
   return <div className="a-page" data-width={width}>{children}</div>;
 }
 
+/**
+ * Something heavy (diff, code, big table, recording, diagram) that collapses to a one-line stub at detail levels 1-2;
+ * click the stub to open it. Used by the kit's own heavy components.
+ */
+export function Heavy({ label, children }: { label: ReactNode; children?: ReactNode }) {
+  return (
+    <div className="a-heavy">
+      <button className="a-heavy-stub" onClick={(e) => e.currentTarget.parentElement?.toggleAttribute("data-open")}>
+        <span className="show">▸ {label}</span><span className="hide">▾ {label}</span>
+      </button>
+      <div className="a-heavy-body">{children}</div>
+    </div>
+  );
+}
+
 /** A titled part of the page. Feeds the outline and present mode; nest Sections for sub-headings. */
 export function Section({ id, title, children, lead }: { id?: string; title: ReactNode; children?: ReactNode; lead?: ReactNode }) {
   const level = useContext(LevelCtx);
@@ -21,7 +36,10 @@ export function Section({ id, title, children, lead }: { id?: string; title: Rea
       <section id={sid} className="a-section" data-section={sid} data-title={text || sid} data-level={level}>
         <H className="a-h"><a href={`#${sid}`}>{title}</a></H>
         {lead && <p className="a-lead">{lead}</p>}
-        {children}
+        <button className="a-sec-more" onClick={(e) => e.currentTarget.closest("section")?.toggleAttribute("data-open")}>
+          <span className="show">▸ Show {Children.count(children)} hidden</span><span className="hide">▾ Hide</span>
+        </button>
+        <div className="a-section-body">{children}</div>
       </section>
     </LevelCtx.Provider>
   );

@@ -4,6 +4,7 @@ import RrwebPlayer from "rrweb-player";
 import playerCss from "rrweb-player/dist/style.css?text";
 import { getEvidence } from "./registry.ts";
 import { cx } from "./util.ts";
+import { Heavy } from "./layout.tsx";
 
 interface Step { t: number; text: string; kind?: string }
 interface Rec {
@@ -68,6 +69,7 @@ export function Replay({ src, steps: only, caption, id }: { src: string; steps?:
   const active = shown.reduce<number>((a, s, i) => (s.rel <= now + 60 ? i : a), -1);
   const side = hasScreen && (box.current?.clientWidth ?? 720) >= SIDE;
   return (
+    <Heavy label={`Recording: ${src.split("/").pop()}`}>
     <figure className="a-replay" data-c="replay" data-aid={id}>
       {caption && <figcaption>{caption}</figcaption>}
       <div ref={box} style={{ display: "flex", gap: GAP, alignItems: "flex-start", flexDirection: side ? "row" : "column" }}>
@@ -84,5 +86,6 @@ export function Replay({ src, steps: only, caption, id }: { src: string; steps?:
         </ol>
       </div>
     </figure>
+    </Heavy>
   );
 }

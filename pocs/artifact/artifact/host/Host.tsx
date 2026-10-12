@@ -54,6 +54,7 @@ async function pageSource(): Promise<string> {
 const canDownload = meta.host?.download ?? meta.download ?? true;
 const SHORTCUTS: [string, string][] = [["p", "Present: ← → or space step, ↑ ↓ scroll, Esc leaves"], ["c", "Add a comment: opens the drawer, then click any element"], ["1–4", "Detail level (pages that use it)"], ["?", "This list"], ["Esc", "Close dialogs, leave comment mode"]];
 const DETAIL = ["Headline", "Key", "Supporting", "Everything"];
+const DETAIL_HELP = ["sections show only their title and lead", "nested sections collapse; diffs, code, big tables and recordings become stubs", "everything except Depth level 4", "everything"];
 const typing = (e: KeyboardEvent) => { const t = e.target as HTMLElement; return t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName); };
 
 export function Host({ children }: { children: ReactNode }) {
@@ -88,7 +89,7 @@ export function Host({ children }: { children: ReactNode }) {
     const scan = () => {
       const counts: Record<number, number> = {};
       for (const n of [2, 3, 4]) counts[n] = el.querySelectorAll(`[data-depth-level="${n}"]`).length;
-      setDepthUsed(counts[2] + counts[3] + counts[4] > 0); // level 1 never hides, so alone it needs no control
+      setDepthUsed(!!el.querySelector('[data-section], [data-depth-level="2"], [data-depth-level="3"], [data-depth-level="4"]')); // sections collapse by themselves: no tagging needed
       setDepthCounts((p) => (JSON.stringify(p) === JSON.stringify(counts) ? p : counts));
       const next = [...el.querySelectorAll<HTMLElement>('[data-c="decision"]')].map((d) => ({ id: d.dataset.did ?? d.id, question: d.dataset.q ?? "", recommended: d.dataset.rec || undefined, owner: d.dataset.owner }));
       setRawRows((p) => (JSON.stringify(p) === JSON.stringify(next) ? p : next));
@@ -100,10 +101,18 @@ export function Host({ children }: { children: ReactNode }) {
   }, []);
   useEffect(() => { document.documentElement.dataset.depth = String(depth); }, [depth]);
   const changeDepth = useCallback((n: number) => {
+    // a level change forgets the manual opens; then say what collapsed (counted after the DOM has updated)
+    document.querySelectorAll("[data-open]").forEach((e) => e.removeAttribute("data-open"));
+    document.documentElement.dataset.depth = String(n);
+    document.documentElement.setAttribute("data-depth-anim", "");
+    setTimeout(() => document.documentElement.removeAttribute("data-depth-anim"), 600);
     setDepth(n);
     const el = content.current;
-    const hidden = el ? [...el.querySelectorAll<HTMLElement>("[data-depth-level]")].filter((e) => Number(e.dataset.depthLevel) > n && !e.parentElement?.closest("[data-depth-level]")).length : 0;
-    setToast(n >= 4 ? `Detail ${n} (${DETAIL[n - 1]}): everything shown` : hidden ? `Detail ${n} (${DETAIL[n - 1]}): ${plural(hidden, "block")} hidden; "▸ more" stubs mark them` : `Detail ${n} (${DETAIL[n - 1]}): nothing on this page is hidden at this level`);
+    const vis = (e: Element) => getComputedStyle(e).display !== "none";
+    const collapsed = el ? [...el.querySelectorAll(".a-sec-more, .a-heavy-stub")].filter(vis).length : 0;
+    const hiddenTagged = el ? [...el.querySelectorAll<HTMLElement>("[data-depth-level]")].filter((e) => Number(e.dataset.depthLevel) > n && !e.parentElement?.closest("[data-depth-level]")).length : 0;
+    const total = collapsed + hiddenTagged;
+    setToast(n >= 4 ? `Detail ${n} (${DETAIL[n - 1]}): everything shown` : `Detail ${n} (${DETAIL[n - 1]}): ${total ? `${plural(total, "item")} collapsed; click a stub to open it` : "nothing to collapse on this page"}`);
     clearTimeout((changeDepth as unknown as { t?: number }).t);
     (changeDepth as unknown as { t?: number }).t = window.setTimeout(() => setToast(""), 2600);
   }, []);
@@ -180,6 +189,18 @@ export function Host({ children }: { children: ReactNode }) {
     return () => mo.disconnect();
   }, [cm.list]);
 
+  useEffect(() => {
+    // a link to something collapsed opens it (and what contains it)
+    const open = () => {
+      const id = decodeURIComponent(location.hash.slice(1));
+      const t = id ? document.getElementById(id) : null;
+      for (let e = t; e; e = e.parentElement) if (e.matches?.(".a-section, .a-heavy")) e.setAttribute("data-open", "");
+    };
+    addEventListener("hashchange", open);
+    document.addEventListener("click", (e) => { const h = (e.target as HTMLElement).closest?.('a[href^="#"]')?.getAttribute("href"); if (h && h.length > 1) setTimeout(open, 0); });
+    return () => removeEventListener("hashchange", open);
+  }, []);
+
   const download = useCallback(async () => {
     const blob = new Blob([await pageSource()], { type: "text/html" });
     const link = document.createElement("a");
@@ -216,7 +237,7 @@ export function Host({ children }: { children: ReactNode }) {
           <span className="h-group" title="How much detail to show">
             <span className="h-label">Detail</span>
             <span className="h-seg">
-              {[1, 2, 3, 4].map((n) => <button key={n} aria-pressed={depth === n} onClick={() => changeDepth(n)} title={`${n} · ${DETAIL[n - 1]} (key ${n})${n > 1 ? `: ${plural(depthCounts[n] ?? 0, "block")} at this level` : ": always shown"}`}>{n}</button>)}
+              {[1, 2, 3, 4].map((n) => <button key={n} aria-pressed={depth === n} onClick={() => changeDepth(n)} title={`${n} · ${DETAIL[n - 1]} (key ${n}): ${DETAIL_HELP[n - 1]}`}>{n}</button>)}
             </span>
           </span>
         )}
@@ -230,7 +251,7 @@ export function Host({ children }: { children: ReactNode }) {
           <div className="h-pop" role="dialog" aria-label="Keyboard shortcuts">
             <b>Shortcuts</b>
             {SHORTCUTS.filter(([k]) => k !== "1–4" || depthUsed).map(([k, d]) => <div key={k}><kbd>{k}</kbd><span>{d}</span></div>)}
-            {depthUsed && <div className="a-muted">Detail: {DETAIL.map((d, i) => `${i + 1} ${d}`).join(" · ")}</div>}
+            {depthUsed && <div className="a-muted">Detail: {DETAIL.map((d, i) => `${i + 1} ${d}`).join(" · ")}. Click a collapsed stub to open it.</div>}
           </div>
         )}
       </div>

@@ -1,5 +1,6 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { ZoomImg } from "./zoom.tsx";
+import { Heavy } from "./layout.tsx";
 import { cx, niceTicks } from "./util.ts";
 
 type Row = Record<string, unknown>;
@@ -25,7 +26,7 @@ export function Table<R extends Row = Row>({ columns, rows, sortable = true, den
     return [...rows].sort((a, b) => (sort.desc ? -f(a, b) : f(a, b)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows, sort]);
-  return (
+  const tbl = (
     <div className="a-table-wrap" data-c="table" data-aid={id}>
       <table className={cx("a-table", dense && "dense")}>
         <thead><tr>{cols.map((c) => {
@@ -48,6 +49,7 @@ export function Table<R extends Row = Row>({ columns, rows, sortable = true, den
       </table>
     </div>
   );
+  return rows.length > 8 ? <Heavy label={`Table (${rows.length} rows)`}>{tbl}</Heavy> : tbl;
 }
 
 /** An image from evidence (inlined at build), a data URL or an http URL. */

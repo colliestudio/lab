@@ -751,7 +751,7 @@ test("Download saves the same single HTML file; settings can turn it off; Detail
     return d;
   };
   const withDepth = mk(`import { Section, Depth } from "artifact"; export default () => <Section title="A"><p>top</p><Depth level={3}><p>DEEP</p></Depth></Section>;`);
-  const plain = mk(`import { Section, Depth } from "artifact"; export default () => <Section title="A"><Depth level={1}><p>only headline</p></Depth></Section>;`, { host: { download: false } });
+  const plain = mk(`import { Depth } from "artifact"; export default () => <div><Depth level={1}><p>only headline</p></Depth></div>;`, { host: { download: false } });
   const b = await chromium.launch({ executablePath: exe });
   try {
     const out = join(withDepth, "../d.html");
@@ -767,7 +767,7 @@ test("Download saves the same single HTML file; settings can turn it off; Detail
     assert.equal(readFileSync(path, "utf8"), built, "byte-identical to the built file (rebuilt from its own style/script text under file://)");
     // Detail control: toast + stub
     await p.keyboard.press("2");
-    assert.match(await p.locator(".h-toast").innerText(), /Detail 2 \(Key\): 1 block hidden/);
+    assert.match(await p.locator(".h-toast").innerText(), /Detail 2 \(Key\): 1 item collapsed/);
     assert.ok(await p.locator('div.a-depth-stub[data-depth-stub="3"]').isVisible(), "a stub marks the hidden block");
     await p.locator('div.a-depth-stub[data-depth-stub="3"]').click();
     assert.ok(await p.getByText("DEEP").isVisible());
@@ -937,4 +937,46 @@ export default () => <><Section title="One"><Decision id="d1" question="Ship now
       assert.match(await p.locator(".h-summary-slide").innerText(), /Alpha/);
     } finally { await b.close(); }
   } finally { cleanup(d); }
+});
+
+test("Detail levels zoom the outline: level 1 is much shorter than 4, heavy blocks stub at 2, manual opens reset", async (t) => {
+  const { findChrome } = await import("../artifact/cli/shot.ts");
+  let exe: string;
+  try { exe = await findChrome(); } catch { return t.skip("no Chromium available"); }
+  const { chromium } = await import("playwright-core");
+  const out = join(mkdtempSync(join(tmpdir(), "art-detail-")), "hello.html");
+  try {
+    writeFileSync(out, (await buildArtifact("samples/hello.artifact")).html);
+    const b = await chromium.launch({ executablePath: exe });
+    try {
+      const p = await (await b.newContext({ viewport: { width: 1280, height: 900 } })).newPage();
+      await p.goto("file://" + out);
+      await p.waitForSelector(".a-content");
+      await p.waitForTimeout(500);
+      const height = async () => p.evaluate(() => document.documentElement.scrollHeight);
+      const h = {} as Record<number, number>;
+      for (const n of [4, 3, 2, 1]) { await p.keyboard.press(String(n)); await p.waitForTimeout(700); h[n] = await height(); }
+      assert.ok(h[1] < h[4] * 0.5, `level 1 (${h[1]}px) is much shorter than level 4 (${h[4]}px)`);
+      assert.ok(h[2] < h[4] && h[1] < h[2] && h[3] <= h[4], JSON.stringify(h));
+      assert.match(await p.locator(".h-toast").innerText(), /Detail 1 \(Headline\): \d+ items? collapsed/);
+      // level 1: a collapsed section opens on click, alone
+      const secs = p.locator(".a-section[data-level='1']");
+      const before = await secs.nth(1).evaluate((e) => e.getBoundingClientRect().height);
+      await secs.nth(1).locator(":scope > .a-sec-more").click();
+      assert.ok((await secs.nth(1).evaluate((e) => e.getBoundingClientRect().height)) > before + 50, "the opened section grows");
+      assert.equal(await p.locator("[data-open]").count(), 1);
+      // level 2: heavy blocks are stubs that expand on click; a level change forgets manual opens
+      await p.keyboard.press("2"); await p.waitForTimeout(700);
+      assert.equal(await p.locator("[data-open]").count(), 0, "manual opens reset on a level change");
+      const stub = p.locator(".a-heavy-stub:visible").first();
+      assert.match(await stub.innerText(), /^▸ (Diagram|Diff|Code|Table|Recording)/);
+      await stub.click();
+      assert.equal(await p.locator(".a-heavy[data-open]").count(), 1);
+      // present mode ignores detail
+      await p.keyboard.press("1"); await p.waitForTimeout(500);
+      await p.keyboard.press("p"); await p.waitForSelector(".h-present-bar");
+      await p.keyboard.press("ArrowRight");
+      assert.equal(await p.locator(".a-sec-more:visible").count(), 0, "no collapse stubs while presenting");
+    } finally { await b.close(); }
+  } finally { rmSync(join(out, ".."), { recursive: true, force: true }); }
 });

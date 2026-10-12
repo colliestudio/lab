@@ -2,6 +2,7 @@ import { Fragment, useMemo, useState, type ReactNode } from "react";
 import { highlightLines } from "./highlight.ts";
 import { getEvidence, type PatchFile } from "./registry.ts";
 import { cx, parseNums } from "./util.ts";
+import { Heavy } from "./layout.tsx";
 
 const LANG: Record<string, string> = {
   go: "go", ts: "typescript", tsx: "typescript", js: "javascript", jsx: "javascript", mjs: "javascript", json: "json",
@@ -37,7 +38,9 @@ export function Code({ code, file, lang, ranges, highlight, title, path, href, n
   const [wrap, setWrap] = useState(false);
   const long = text.split("\n").some((l) => l.length > 100);
   const shown = html.map((h, i) => ({ h, n: start + i })).filter((l) => !want || want.includes(l.n));
+  const label = `Code: ${typeof (title ?? path ?? file) === "string" ? (title ?? path ?? file) : "snippet"} (${shown.length} lines)`;
   return (
+    <Heavy label={label}>
     <figure className={cx("a-code", wrap && "wrap")} data-c="code" data-aid={id}>
       {(title || path || file || long) && (
         <figcaption className="a-code-title"><span>{href ? <a href={href} target="_blank" rel="noreferrer">{title ?? path ?? file}</a> : title ?? path ?? file}</span>
@@ -51,6 +54,7 @@ export function Code({ code, file, lang, ranges, highlight, title, path, href, n
         </Fragment>
       ))}</code></pre>
     </figure>
+    </Heavy>
   );
 }
 
@@ -149,5 +153,6 @@ export function Diff({ patch, file, hunks, notes, wrap = true }: {
   const files = want ? all.filter((f) => want.some((w) => f.path === w || f.path.endsWith("/" + w))) : all;
   if (want && !files.length) throw new Error(`Diff: no file matching ${want.join(", ")} in ${typeof patch === "string" ? patch : "patch"}`);
   const hs = parseNums(hunks as string);
-  return <div className={cx("a-diffs", !wrap && "nowrap")}>{files.map((f) => <FileDiff key={f.path} f={f} hunks={hs} notes={notes} />)}</div>;
+  const nLines = files.reduce((a, f) => a + f.hunks.reduce((b, h) => b + h.lines.length, 0), 0);
+  return <Heavy label={`Diff: ${files.map((f) => f.path.split("/").pop()).join(", ")} (${nLines} lines)`}><div className={cx("a-diffs", !wrap && "nowrap")}>{files.map((f) => <FileDiff key={f.path} f={f} hunks={hs} notes={notes} />)}</div></Heavy>;
 }

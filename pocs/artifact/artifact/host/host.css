@@ -30,7 +30,7 @@ a { color: var(--collie-color-fg-accent); }
 /* prose inside the artifact */
 .a-content { max-width: 100%; }
 .a-content > :first-child { margin-top: 1.5rem; }
-.a-content > p, .a-content > ul > li, .a-content > ol > li, .a-section > p, .a-section > ul > li, .a-section > ol > li, .a-content > blockquote { max-width: 46rem; }
+.a-content > p, .a-content > ul > li, .a-content > ol > li, .a-section-body > p, .a-section-body > ul > li, .a-section-body > ol > li, .a-lead, .a-content > blockquote { max-width: 46rem; }
 .a-content h1, .a-content h2, .a-content h3, .a-content h4 { line-height: 1.25; }
 .a-content pre, .a-content code { font-family: var(--a-mono); }
 .a-content :not(pre) > code { font-size: 0.88em; background: var(--collie-color-neutral-subtle); border: 1px solid var(--collie-color-border-subtle); border-radius: 4px; padding: 0.08em 0.35em; }
