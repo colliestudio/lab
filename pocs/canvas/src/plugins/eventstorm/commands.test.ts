@@ -139,6 +139,19 @@ describe('event storm', () => {
     expect(texts).toContain('Alex renamed domain event “Cart abandoned” to “Cart expired”');
   });
 
+  it('the log names the sticky author when an agent adds it, not the acting player', () => {
+    const { s, b } = withBoard();
+    const CLAUDE = { id: 'claude', name: 'Claude', color: '#a6f' };
+    s.dispatch('storm.add', { board: b, kind: 'event', x: 300, y: 300, text: 'Refund requested', by: CLAUDE });
+    const e = s.dispatch('storm.add', { board: b, kind: 'event', x: 500, y: 300, by: CLAUDE }).select![0];
+    s.dispatch('storm.text', { id: e, text: 'Refund paid' });
+    s.dispatch('storm.text', { id: e, text: 'Refund done' });
+    const texts = s.log.toArray().map((l) => `${l.actor?.name} ${l.text}`);
+    expect(texts).toContain('Claude added domain event “Refund requested”');
+    expect(texts).toContain('Claude added domain event “Refund paid”');
+    expect(texts).toContain('Alex renamed domain event “Refund paid” to “Refund done”');
+  });
+
   it('timer: start, pause keeps the time left, reset', () => {
     const { s, b } = withBoard();
     s.dispatch('storm.timer', { board: b, action: 'set', minutes: 5, now: 0 });

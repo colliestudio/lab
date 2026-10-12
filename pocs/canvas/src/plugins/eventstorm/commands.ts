@@ -51,6 +51,12 @@ const okAuthor = (a: unknown): Author | undefined => {
   const o = a as Author | undefined;
   return o && typeof o.id === 'string' && typeof o.name === 'string' && typeof o.color === 'string' ? { id: o.id, name: o.name, color: o.color } : undefined;
 };
+/**
+ * Who the log names for a sticky's first words: its author (`by`), so an agent that passes itself
+ * as `by` is not logged as the local player. No `by` = the acting player.
+ * Follow-up once commands carry the actor (CommandCtx.actor): use that instead of the argument.
+ */
+const logActor = (n: CanvasNode) => sticky(n).by ?? undefined;
 const quote = (n: CanvasNode) => (n.text?.trim() ? `“${n.text.trim().split('\n')[0].slice(0, 40)}”` : 'an empty sticky');
 const kindName = (k: StickyKind) => KINDS[k].name.toLowerCase();
 
@@ -189,7 +195,7 @@ export const add: Command<{ board: string; kind: StickyKind; x?: number; y?: num
   }
   const pack = packBoard(doc, b, { add: node });
   const changes: Change[] = [{ op: 'add', node: placed(node, pack) }, ...pack.filter((c) => c.op !== 'set' || c.id !== node.id)];
-  const events: EventSpec[] = node.text ? [{ type: 'storm.add', text: `added ${kindName(a.kind)} ${quote(node)}`, targets: [node.id] }] : [];
+  const events: EventSpec[] = node.text ? [{ type: 'storm.add', text: `added ${kindName(a.kind)} ${quote(node)}`, targets: [node.id], actor: logActor(node) }] : [];
   return { changes, select: [node.id], events };
 };
 
@@ -200,7 +206,7 @@ export const text: Command<{ id: string; text: string }> = (doc, a) => {
   if (!n || t === undefined || t === (n.text ?? '')) return [];
   const was = (n.text ?? '').trim();
   const now = { ...n, text: t };
-  const events: EventSpec[] = !t.trim() ? [] : [{ type: 'storm.text', text: was ? `renamed ${kindName(kindOf(n))} “${was.slice(0, 30)}” to ${quote(now)}` : `added ${kindName(kindOf(n))} ${quote(now)}`, targets: [n.id] }];
+  const events: EventSpec[] = !t.trim() ? [] : [{ type: 'storm.text', text: was ? `renamed ${kindName(kindOf(n))} “${was.slice(0, 30)}” to ${quote(now)}` : `added ${kindName(kindOf(n))} ${quote(now)}`, targets: [n.id], ...(was ? {} : { actor: logActor(n) }) }];
   return { changes: [set(n.id, 'text', t)], events };
 };
 

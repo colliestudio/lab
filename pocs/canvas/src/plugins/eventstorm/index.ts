@@ -132,6 +132,14 @@ export const stormPlugin: Plugin = {
         const at = onBoard ? p : { x: b.x + 140 + Math.random() * 300, y: b.y + 200 + Math.random() * 200 };
         args.x = at!.x;
         args.y = at!.y;
+        if (!onBoard) {
+          // keys with no pointer on the board: don't make a sticky nobody can see
+          const vp = app.viewport;
+          const r = app.view.root;
+          const sx = at!.x * vp.zoom + vp.x;
+          const sy = at!.y * vp.zoom + vp.y;
+          if (sx < 0 || sy < 0 || sx > r.clientWidth || sy > r.clientHeight) vp.set(r.clientWidth / 2 - at!.x * vp.zoom, r.clientHeight / 2 - at!.y * vp.zoom, vp.zoom);
+        }
       }
       app.store.newUndoStep();
       const id = app.dispatch('storm.add', args).select?.[0];
