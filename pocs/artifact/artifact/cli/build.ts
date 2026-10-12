@@ -7,7 +7,8 @@ import { createRequire as cr } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { htmlEscape, shell } from "../kit/shell.ts";
-import { collect, IMAGE_MIME, slimReplay, type Collected } from "./evidence.ts";
+import type { DecisionMeta } from "../kit/registry.ts";
+import { collect, IMAGE_MIME, slimReplay, sourceText, type Collected } from "./evidence.ts";
 import { parsePatch } from "../../src/parse/patch.ts";
 
 export interface MapSpec { nodes: { id: string; label: string; group?: string }[]; edges: { from: string; to: string; label?: string }[]; groups: { id: string; label: string }[]; direction?: "auto" | "right" | "down"; height?: number }
@@ -35,7 +36,7 @@ export function findEntry(dir: string): string {
   throw new Error(`no index.tsx in ${dir}`);
 }
 
-function plugin(state: { collected?: Collected; dir: string }): esbuild.Plugin {
+function plugin(state: { collected?: Collected; dir: string; decisions?: DecisionMeta[] }): esbuild.Plugin {
   return {
     name: "artifact",
     setup(b) {
@@ -50,6 +51,7 @@ function plugin(state: { collected?: Collected; dir: string }): esbuild.Plugin {
       b.onResolve({ filter: /^artifact:registry$/ }, () => ({ path: "registry", namespace: "artifact-registry" }));
       b.onLoad({ filter: /.*/, namespace: "artifact-registry" }, () => {
         state.collected = collect(state.dir);
+        if (state.decisions?.length) state.collected.registry.decisions = state.decisions;
         return { contents: `export default ${JSON.stringify(state.collected.registry)};`, loader: "js", resolveDir: repoRoot };
       });
       // Mermaid's optional layout engines and math are ~2.5 MB; flowcharts, sequence, state, class, ER, gantt, pie don't need them.
@@ -116,7 +118,7 @@ function parts(meta: esbuild.Metafile): { name: string; bytes: number }[] {
   const by = new Map<string, number>();
   for (const [p, i] of Object.entries(out.inputs)) {
     const m = p.match(/node_modules\/(?:\.pnpm\/[^/]+\/node_modules\/)?((?:@[^/]+\/)?[^/]+)/);
-    const name = m ? m[1] : p.startsWith("artifact-registry") ? "evidence+data" : p.includes("artifact/kit") ? "kit" : p.includes("artifact/host") ? "host" : p.includes("artifact-entry") ? "entry" : "artifact source";
+    const name = m ? m[1] : p.startsWith("artifact-registry") ? "evidence+data" : p.includes("artifact/kit") ? "kit" : p.includes("artifact/host") ? "host" : p.includes("artifact-entry") ? "entry" : /[\\/]pages[\\/]/.test(p) ? `page ${p.split(/[\\/]/).pop()!.replace(/\.[^.]+$/, "")}` : "artifact source";
     by.set(name, (by.get(name) ?? 0) + i.bytesInOutput);
   }
   return [...by].map(([name, bytes]) => ({ name, bytes })).filter((x) => x.bytes > 0).sort((a, b) => b.bytes - a.bytes);
@@ -138,19 +140,28 @@ async function run(go: () => Promise<esbuild.BuildResult>): Promise<esbuild.Buil
   }
 }
 
+/** Every page's decisions (with the <When> conditions they sit in), found by rendering all pages once at build time. */
+export async function collectDecisions(dir: string): Promise<DecisionMeta[]> {
+  if (!/<Decision\b/.test(sourceText(resolve(dir)))) return [];
+  const r = await renderStatic(dir, { collect: true });
+  return "decisions" in r ? r.decisions : [];
+}
+
 export async function buildArtifact(dir: string, o: BuildOpts = {}, extra = ""): Promise<BuildResult> {
-  const state = { dir: resolve(dir), collected: undefined as Collected | undefined };
+  const state = { dir: resolve(dir), collected: undefined as Collected | undefined, decisions: undefined as DecisionMeta[] | undefined };
+  state.decisions = await collectDecisions(state.dir);
   const r = await run(() => esbuild.build(options(state.dir, state, o)));
   return finish(state.dir, r, state, o, extra);
 }
 
 /** Incremental builder for `dev`: rebuild() re-reads the artifact dir and re-collects evidence every time. */
 export async function createBuilder(dir: string, o: BuildOpts = {}) {
-  const state = { dir: resolve(dir), collected: undefined as Collected | undefined };
+  const state = { dir: resolve(dir), collected: undefined as Collected | undefined, decisions: undefined as DecisionMeta[] | undefined };
   let ctx: esbuild.BuildContext | undefined;
   return {
     async rebuild(extra = ""): Promise<BuildResult> {
       state.collected = undefined;
+      state.decisions = await collectDecisions(state.dir);
       ctx ??= await esbuild.context(options(state.dir, state, o));
       const r = await run(() => ctx!.rebuild());
       return finish(state.dir, r, state, o, extra);
@@ -165,7 +176,7 @@ export async function formatMessages(ms: esbuild.Message[], kind: "error" | "war
 }
 
 /** Server-side render of the artifact (best effort): catches runtime errors in the agent's code and duplicate Section ids. */
-export async function renderStatic(dir: string): Promise<{ html: string; pageHtml: Record<string, string>; maps: MapSpec[] } | { error: string }> {
+export async function renderStatic(dir: string, opts: { collect?: boolean } = {}): Promise<{ html: string; pageHtml: Record<string, string>; maps: MapSpec[]; decisions: DecisionMeta[] } | { error: string }> {
   const abs = resolve(dir);
   const state = { dir: abs, collected: undefined as Collected | undefined };
   const base = options(abs, state, { minify: false });
@@ -177,19 +188,20 @@ export async function renderStatic(dir: string): Promise<{ html: string; pageHtm
   }).catch((e) => ({ errors: e.errors ?? [{ text: String(e) }], outputFiles: [] as never }));
   if (!r.outputFiles?.length) return { error: "bundle failed: " + ((r as { errors?: esbuild.Message[] }).errors ?? []).map((m) => m.text).join("; ") };
   try {
-    const g = globalThis as unknown as { __html?: () => { home: string; pages: { id: string; html: string }[] }; __artifactMaps?: MapSpec[]; __artifactPage?: string };
+    const g = globalThis as unknown as { __html?: () => { home: string; pages: { id: string; html: string }[] }; __artifactMaps?: MapSpec[]; __artifactPage?: string; __artifactDecisions?: DecisionMeta[] };
     g.__artifactMaps = [];
+    if (opts.collect) g.__artifactDecisions = [];
     new Function("require", "module", "exports", r.outputFiles[0].text)(createRequire(), { exports: {} }, {});
     try {
       const out = g.__html!();
       const pageHtml: Record<string, string> = { home: out.home };
       for (const p of out.pages) pageHtml[p.id] = p.html;
       const maps = g.__artifactMaps ?? [];
-      return { html: Object.values(pageHtml).join("\n"), pageHtml, maps };
+      return { html: Object.values(pageHtml).join("\n"), pageHtml, maps, decisions: g.__artifactDecisions ?? [] };
     } catch (e) {
       (e as { __page?: string }).__page = g.__artifactPage;
       throw e;
-    } finally { delete g.__html; delete g.__artifactMaps; delete g.__artifactPage; }
+    } finally { delete g.__html; delete g.__artifactMaps; delete g.__artifactPage; delete g.__artifactDecisions; }
   } catch (e) { return { error: String((e as Error)?.stack ?? e).split("\n").slice(0, 6).join("\n") + ((e as { __page?: string }).__page ? ` [page: ${(e as { __page?: string }).__page}]` : "") }; }
 }
 function createRequire() { const req = cr(join(repoRoot, "package.json")); return (id: string) => req(id); }

@@ -15,7 +15,7 @@ x.artifact/
   evidence/       *.patch  *.replay  images  source files: cited by path, inlined at build
 ```
 
-`artifact.json` also takes `asOf` (ISO gather time, shown in the header) with `timeZone` (default UTC), `repo` (a local path: `check` warns about cited commits that are on no remote branch), `width` ("wide"|"full"), `header` ("full"), `host: {"download": false}`. `audience` is shown as written. `summary` is printed large under the title and is slide 1 when presenting: make it your headline and don't restate it in a Callout.
+`artifact.json` also takes `tour` (page ids to present in order, see Pages), `asOf` (ISO gather time, shown in the header) with `timeZone` (default UTC), `repo` (a local path: `check` warns about cited commits that are on no remote branch), `width` ("wide"|"full"), `header` ("full"), `host: {"download": false}`. `audience` is shown as written. `summary` is printed large under the title and is slide 1 when presenting: make it your headline and don't restate it in a Callout.
 
 ## Commands
 
@@ -31,7 +31,7 @@ artifact capture http://127.0.0.1:5211 -o <dir>/evidence/app.jpg --selector main
 artifact gather gh-prs <dir> --repos owner/a,owner/b --since ISO   # → data/gh-prs.json; also board --workspaces a,b; git-log --repo p --ref origin/main [--branches 'idea/*' --base main]; trim with --fields / --count
 ```
 
-Loop: write, `check` until ok, `shot` and look at the PNGs (both themes; `--present 2,3|all` is 1-based like the file numbers and shoots every step; `--split --height 800` cuts a tall page; `--no-chrome` hides the host bar), fix, build.
+Loop: write, `check` until ok, `shot` and look at the PNGs (both themes; `--page id|all`; `--present 2,3|all` is 1-based like the file numbers and shoots every step; `--split --height 800` cuts a tall page; `--no-chrome` hides the host bar), fix, build.
 
 ## Taste (guidance, not rules)
 
@@ -44,6 +44,12 @@ Loop: write, `check` until ok, `shot` and look at the PNGs (both themes; `--pres
 - **Decisions are explicit** (`<Decision>` with your recommendation and owner), used when they carry something, not by habit. The host header is optional too.
 - Prefer real evidence (`<Diff>`, `<Replay>`, screenshots) over describing it; pick hunks, never paste whole patches.
 - Use `<Section>` for every part you want in the outline and in present mode (content outside Sections becomes loose "intro" slides). Readers can fold any Section by clicking its heading; Fold all / Unfold all are in the "?" panel. Heavy blocks stay open unless you set `collapsed`.
+
+## Pages (multi-page artifacts)
+
+Put `pages/<id>.tsx` files next to `index.tsx` (home). Each exports a default component and optionally `export const page = { title, group, order, summary, status, thumb }`. The left nav lists pages by `group`, the current page's Sections sit under it, each page ends with Previous / Next, and routes are hash links (`#/id`, `#/id/section`), so it is still one HTML file and Back works. Put `<PageCards />` on the home page and link across with `<Link to="id#section">`. Comments and decisions work across pages (the drawer groups them by page; copied output names the page), and `"tour": ["home", "a", "b"]` in artifact.json adds a Tour button that presents all of them in order. `check` renders every page; `shot --page id|all`.
+
+**Use pages** for several items or journeys, different audiences, or anything over about 3 screens with natural parts (a recap with one page per round, a demo with a page per journey). **Stay on one page** for one story that reads top to bottom: Sections and `<More>` are enough, and one page needs no nav.
 
 ## Evidence
 

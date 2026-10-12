@@ -2,7 +2,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
-import { buildArtifact, formatMessages } from "./build.ts";
+import { buildArtifact, formatMessages, listPages } from "./build.ts";
 
 const NAMES = ["Google Chrome for Testing", "Chromium", "chrome-headless-shell", "headless_shell", "chrome"];
 
@@ -30,7 +30,7 @@ export async function findChrome(): Promise<string> {
   throw new Error(`no Chromium found (looked in ${bases.join(", ")} and PATH): run \`npx playwright-core install chromium\` or set ARTIFACT_CHROME=/path/to/chrome`);
 }
 
-export interface ShotOpts { out?: string; themes?: ("light" | "dark")[]; present?: string; width?: number; height?: number; chrome?: boolean; split?: boolean }
+export interface ShotOpts { out?: string; themes?: ("light" | "dark")[]; present?: string; width?: number; height?: number; chrome?: boolean; split?: boolean; page?: string }
 
 /** Writes `<name>-<theme>.png` (full page) and, with `present`, `<name>-<theme>-present-<n>.png` (viewport). Returns the paths. */
 export async function shot(dir: string, o: ShotOpts = {}): Promise<string[]> {
@@ -47,12 +47,14 @@ export async function shot(dir: string, o: ShotOpts = {}): Promise<string[]> {
   const browser = await chromium.launch({ executablePath: await findChrome() });
   const paths: string[] = [];
   try {
-    for (const theme of o.themes ?? ["light"]) {
+    const pageIds: (string | undefined)[] = o.page === "all" ? ["home", ...listPages(abs).map((p) => p.id)] : o.page ? [o.page] : [undefined];
+    for (const theme of o.themes ?? ["light"]) for (const pid of pageIds) {
+      const base = pid ? `${name}-${pid}` : name;
       const ctx = await browser.newContext({ viewport: { width: o.width ?? 1280, height: o.height ?? 800 }, colorScheme: theme });
       const page = await ctx.newPage();
       const errs: string[] = [];
       page.on("pageerror", (e) => errs.push(e.message));
-      await page.goto("file://" + file);
+      await page.goto("file://" + file + (pid ? `#/${pid}` : ""));
       await page.waitForSelector(".a-content", { timeout: 10_000 });
       await page.waitForTimeout(400);
       // async parts (map layout, diagrams, players) settle
@@ -72,12 +74,12 @@ export async function shot(dir: string, o: ShotOpts = {}): Promise<string[]> {
         const dims = await page.evaluate(() => ({ h: document.documentElement.scrollHeight, w: document.documentElement.clientWidth }));
         const sh = o.height ?? 800;
         for (let y = 0, n = 1; y < dims.h; y += sh, n++) {
-          const p = join(out, `${name}-${theme}-p${n}.png`);
+          const p = join(out, `${base}-${theme}-p${n}.png`);
           await page.screenshot({ path: p, fullPage: true, clip: { x: 0, y, width: dims.w, height: Math.min(sh, dims.h - y) } });
           paths.push(p);
         }
       } else {
-        const p = join(out, `${name}-${theme}.png`);
+        const p = join(out, `${base}-${theme}.png`);
         await page.screenshot({ path: p, fullPage: true });
         paths.push(p);
       }
@@ -94,7 +96,7 @@ export async function shot(dir: string, o: ShotOpts = {}): Promise<string[]> {
           const st = await read();
           if (!want || want.has(st.slide)) {
             await page.waitForTimeout(450);
-            const sp = join(out, `${name}-${theme}-present-${st.slide + 1}${st.step ? `-s${st.step}` : ""}.png`);
+            const sp = join(out, `${base}-${theme}-present-${st.slide + 1}${st.step ? `-s${st.step}` : ""}.png`);
             await page.screenshot({ path: sp });
             paths.push(sp);
           }

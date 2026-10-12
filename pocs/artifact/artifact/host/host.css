@@ -128,3 +128,4 @@ html[data-present] .h-summary-slide .h-decisions li { font-size: 1.05rem; }
 .h-pagenav a { display: flex; flex-direction: column; gap: 0.1rem; text-decoration: none; color: var(--collie-color-fg); padding: 0.5rem 0.9rem; border: 1px solid var(--collie-color-border-subtle); border-radius: 8px; min-width: 10rem; } .h-pagenav a:hover { border-color: var(--collie-color-border-accent); } .h-pagenav .next { text-align: right; margin-left: auto; }
 .h-pagesel { font: inherit; font-size: var(--collie-text-sm); padding: 0.2em 0.4em; border: 1px solid var(--collie-color-border); border-radius: var(--collie-radius-sm); background: var(--collie-color-canvas); color: inherit; max-width: 14rem; }
 html[data-present] .h-pagenav { display: none; }
+.h-pagehead { font-size: var(--collie-text-xs); text-transform: uppercase; letter-spacing: 0.06em; color: var(--collie-color-fg-muted); margin: 0.4rem 0 0.1rem; }

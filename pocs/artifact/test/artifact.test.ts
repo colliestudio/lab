@@ -1137,3 +1137,65 @@ test("tour: present across the pages of artifact.json tour, in order, forwards a
     } finally { await b.close(); }
   } finally { rmSync(join(out, ".."), { recursive: true, force: true }); }
 });
+
+test("feedback across pages: decisions on other pages count, drawer groups by page, copy names the page", async (t) => {
+  const { findChrome } = await import("../artifact/cli/shot.ts");
+  let exe: string;
+  try { exe = await findChrome(); } catch { return t.skip("no Chromium available"); }
+  const { chromium } = await import("playwright-core");
+  const built = await buildArtifact("samples/journeys.artifact");
+  const reg = built.collected.registry.decisions ?? [];
+  assert.deepEqual(reg.map((d) => [d.id, d.page, d.when?.length ?? 0]), [["d-pay", "checkout", 0], ["d-refund", "returns", 0], ["d-cap", "returns", 1]]);
+  const out = join(mkdtempSync(join(tmpdir(), "art-fb-")), "j.html");
+  writeFileSync(out, built.html);
+  try {
+    const b = await chromium.launch({ executablePath: exe });
+    try {
+      const ctx = await b.newContext({ viewport: { width: 1280, height: 900 }, permissions: ["clipboard-read", "clipboard-write"] });
+      const p = await ctx.newPage();
+      await p.goto("file://" + out + "#/checkout");
+      await p.waitForSelector("#d-pay");
+      assert.match(await p.locator(".h-bar").innerText(), /0\/2 decided/, "decisions on other pages count from the start (d-cap is not reachable yet)");
+      await p.locator("#d-pay button[role=radio]").first().click();
+      assert.match(await p.locator(".h-bar").innerText(), /1\/2 decided/);
+      await p.evaluate(() => { location.hash = "#/returns"; });
+      await p.waitForSelector("#d-refund");
+      assert.match(await p.locator(".h-bar").innerText(), /1\/2 decided/, "still counted on the other page");
+      await p.locator("#d-refund button[role=radio]").nth(1).click();   // "We do" opens the follow-up
+      await p.waitForSelector('[data-did="d-cap"]');
+      assert.match(await p.locator(".h-bar").innerText(), /2\/3 decided/);
+      // a comment on this page
+      await p.keyboard.press("c");
+      await p.locator('article p, article li').first().click();
+      await p.locator(".h-composer textarea").fill("Check the label wording");
+      await p.keyboard.press("Meta+Enter");
+      await p.locator(".h-tabs").getByRole("tab", { name: /Decisions/ }).click();
+      const heads = await p.locator(".h-panel .h-pagehead").allInnerTexts();
+      assert.deepEqual(heads.map((h) => h.toLowerCase()), ["checkout", "returns"]);
+      await p.getByRole("button", { name: "Copy all feedback" }).click();
+      const md = await p.evaluate(() => navigator.clipboard.readText());
+      assert.match(md, /## Checkout \(page: checkout\)[\s\S]*- \*\*d-pay\*\* \(page: checkout\) — Add a second payment provider\?\n {2}- answer: Yes, add one \[a\]/);
+      assert.match(md, /## Returns \(page: returns\)[\s\S]*d-refund[\s\S]*d-cap[\s\S]*not decided/);
+      assert.match(md, /Feedback on[\s\S]*\(page: returns\) — "/);
+      assert.match(md, /Check the label wording/);
+      // jumping to a decision on another page navigates there
+      await p.locator(".h-panel .h-decisions li", { hasText: "d-pay" }).locator(".h-note-on").click();
+      await p.waitForFunction(() => location.hash === "#/checkout");
+      await p.waitForSelector("#d-pay");
+    } finally { await b.close(); }
+  } finally { rmSync(join(out, ".."), { recursive: true, force: true }); }
+});
+
+test("shot --page all takes every page; build reports per-page source size; check tags page warnings", async (t) => {
+  const built = await buildArtifact("samples/journeys.artifact");
+  assert.ok(built.parts.some((x) => x.name === "page checkout") && built.parts.some((x) => x.name === "page returns"), built.parts.map((x) => x.name).join());
+  const { shot, findChrome } = await import("../artifact/cli/shot.ts");
+  try { await findChrome(); } catch { return t.skip("no Chromium available"); }
+  const out = mkdtempSync(join(tmpdir(), "art-shotp-"));
+  try {
+    const paths = await shot("samples/journeys.artifact", { out, themes: ["light"], page: "all", chrome: false });
+    assert.deepEqual(paths.map((p) => p.split("/").pop()).sort(), ["journeys-checkout-light.png", "journeys-home-light.png", "journeys-limits-light.png", "journeys-returns-light.png"]);
+    const one = await shot("samples/journeys.artifact", { out, themes: ["dark"], page: "returns", chrome: false });
+    assert.deepEqual(one.map((p) => p.split("/").pop()), ["journeys-returns-dark.png"]);
+  } finally { rmSync(out, { recursive: true, force: true }); }
+});

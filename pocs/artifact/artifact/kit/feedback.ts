@@ -1,5 +1,6 @@
 // Reader answers to <Decision>s (the async "grill me"): the types, the context the host provides, and the pure helpers.
 import { createContext, isValidElement, useContext, type ReactNode } from "react";
+import type { DecisionMeta } from "./registry.ts";
 
 export interface Answer {
   /** the option key ("a", "b"…), or "other" (own answer in `custom`), or "unsure" (not sure / discuss) */
@@ -46,20 +47,41 @@ export function matchesAnswer(a: Answer | undefined, want: Want | undefined): bo
 
 export interface DecisionRow {
   id: string; question: string; recommended?: string; owner?: string; answer?: Answer;
+  /** the page it lives on (multi-page artifacts) */
+  page?: string; pageTitle?: string;
 }
 
+/** The conditions of the `<When>`s a decision sits inside (collected at build time so other pages' decisions are known). */
+export type Cond = NonNullable<DecisionMeta["when"]>[number];
+export const WhenCtx = createContext<Cond[]>([]);
+
+/** Does a `<When>` condition hold for the answers given? */
+export function condHolds(c: Cond, answers: Record<string, Answer>): boolean {
+  const a = answers[c.decision];
+  return (c.is == null || matchesAnswer(a, c.is)) && (c.not == null || (!!a && !matchesAnswer(a, c.not))) && (!c.answered || !!a) && (!c.unanswered || !a);
+}
+export const reachable = (d: { when?: Cond[] }, answers: Record<string, Answer>) => (d.when ?? []).every((c) => condHolds(c, answers));
+
 const oneLine = (s: string) => s.replace(/\s+/g, " ").trim();
-/** Markdown an agent can apply: one bullet per decision with its id, the chosen option (and key), and the note. */
+/**
+ * Markdown an agent can apply: one bullet per decision with its id, the chosen option (and key), and the note.
+ * When decisions live on several pages they are grouped under the page title and the bullet names the page id.
+ */
 export function decisionsMarkdown(title: string, rows: DecisionRow[]): string {
   const lines = [`# Decisions on "${title}"`, ""];
+  const pages = [...new Set(rows.map((r) => r.page).filter(Boolean))];
+  const multi = pages.length > 1;
+  let last: string | undefined = "";
   for (const r of rows) {
-    lines.push(`- **${r.id}** — ${oneLine(r.question)}`);
+    if (multi && r.page !== last) { lines.push(`## ${r.pageTitle ?? r.page} (page: ${r.page})`, ""); last = r.page; }
+    lines.push(`- **${r.id}**${multi && r.page ? ` (page: ${r.page})` : ""} — ${oneLine(r.question)}`);
     const a = r.answer;
     if (!a) lines.push("  - answer: (not decided)");
     else if (a.choice === "unsure") lines.push("  - answer: not sure / discuss");
     else if (a.choice === "other") lines.push(`  - answer: own answer: ${oneLine(a.custom ?? a.label)}`);
     else lines.push(`  - answer: ${oneLine(a.label)} [${a.choice}]${a.rec ? " (the recommended option)" : r.recommended ? ` (differs from the recommendation: ${oneLine(r.recommended)})` : ""}`);
     if (a?.note) lines.push(`  - note: ${oneLine(a.note)}`);
+    if (multi) lines.push("");
   }
-  return lines.join("\n") + "\n";
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd() + "\n";
 }

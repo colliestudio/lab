@@ -1,6 +1,6 @@
 import { isValidElement, useState, type ReactNode } from "react";
 import { Badge } from "./layout.tsx";
-import { FeedbackCtx, keyOfIndex, matchesAnswer, nodeText, useAnswer, type Want } from "./feedback.ts";
+import { FeedbackCtx, WhenCtx, condHolds, keyOfIndex, nodeText, useAnswer, type Cond, type Want } from "./feedback.ts";
 import { cx, slug } from "./util.ts";
 import { useContext } from "react";
 
@@ -18,6 +18,7 @@ export function Decision({ question, options, recommend, owner = "needs a decisi
   owner?: string; why?: ReactNode; id?: string; source?: ReactNode;
 }) {
   const ctx = useContext(FeedbackCtx);
+  const conds = useContext(WhenCtx);
   const qText = nodeText(question);
   const did = id ?? (slug(qText).slice(0, 48) || "decision");
   const ans = useAnswer(did);
@@ -25,6 +26,9 @@ export function Decision({ question, options, recommend, owner = "needs a decisi
   const isRec = (i: number) => recommend === i || (typeof recommend === "string" && (recommend === opts[i].text || recommend === opts[i].key));
   const recIdx = opts.findIndex((_, i) => isRec(i));
   const recText = recIdx >= 0 ? opts[recIdx].text : undefined;
+  // build-time collection (server render with the collector on): every page's decisions end up in the registry
+  const collector = (globalThis as { __artifactDecisions?: unknown[]; __artifactPage?: string });
+  if (typeof document === "undefined" && collector.__artifactDecisions) collector.__artifactDecisions.push({ id: did, question: qText, recommended: recText, owner, page: collector.__artifactPage ?? "home", when: conds.length ? conds : undefined });
   const [other, setOther] = useState(false);
   const [draft, setDraft] = useState("");
   const [noteOpen, setNoteOpen] = useState(false);
@@ -72,7 +76,11 @@ export function Decision({ question, options, recommend, owner = "needs a decisi
 export function When({ decision, is, not, answered, unanswered, children }: {
   decision: string; is?: Want; not?: Want; answered?: boolean; unanswered?: boolean; children?: ReactNode;
 }) {
-  const a = useAnswer(decision);
-  const ok = (is == null || matchesAnswer(a, is)) && (not == null || (!!a && !matchesAnswer(a, not))) && (!answered || !!a) && (!unanswered || !a);
-  return ok ? <>{children}</> : null;
+  const ctx = useContext(FeedbackCtx);
+  const outer = useContext(WhenCtx);
+  const cond: Cond = { decision, is, not, answered, unanswered };
+  const collecting = typeof document === "undefined" && !!(globalThis as { __artifactDecisions?: unknown[] }).__artifactDecisions;
+  // while collecting at build time every branch renders, so decisions inside branches are found with their conditions
+  if (!collecting && !condHolds(cond, ctx.answers)) return null;
+  return <WhenCtx.Provider value={[...outer, cond]}>{children}</WhenCtx.Provider>;
 }

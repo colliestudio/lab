@@ -56,11 +56,15 @@ export async function check(dir: string, opts: { types?: boolean } = {}): Promis
     if ("error" in s) {
       if (!BROWSER_ONLY.test(s.error)) rep.errors.push(`render error: ${s.error}`);
     } else {
-      const ids = [...s.html.matchAll(/data-section="([^"]+)"/g)].map((m) => m[1]);
-      const dup = ids.filter((x, i) => ids.indexOf(x) !== i);
-      for (const d of new Set(dup)) rep.errors.push(`duplicate Section id "${d}" (set id= on one of them)`);
-      if (!ids.length) rep.warnings.push("no <Section>: the outline and present mode have nothing to walk");
-      for (const w of advise(s.html, meta).warnings) rep.warnings.push(w);
+      const multi = Object.keys(s.pageHtml).length > 1;
+      for (const [pid, html] of Object.entries(s.pageHtml)) {
+        const tag = multi ? `[page ${pid}] ` : "";
+        const ids = [...html.matchAll(/data-section="([^"]+)"/g)].map((m) => m[1]);
+        const dup = ids.filter((x, i) => ids.indexOf(x) !== i);
+        for (const d of new Set(dup)) rep.errors.push(`${tag}duplicate Section id "${d}" (set id= on one of them)`);
+        if (!ids.length) rep.warnings.push(`${tag}no <Section>: the outline and present mode have nothing to walk`);
+        for (const w of advise(html, meta).warnings) rep.warnings.push(tag + w);
+      }
       for (const w of await smallMaps(s.maps)) rep.warnings.push(w);
     }
     if (meta.repo) {

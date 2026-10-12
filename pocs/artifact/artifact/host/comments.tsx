@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import type { Answer, DecisionRow } from "../kit/feedback.ts";
 
 export interface Anchor { id: string; label: string; excerpt: string; el: HTMLElement }
-export interface Comment { id: string; anchor: { id: string; label: string; excerpt: string }; body: string; created: string }
+export interface Comment { id: string; anchor: { id: string; label: string; excerpt: string; page?: string }; body: string; created: string }
 
 const SEL = "[data-aid], [data-c], [data-section] > .a-h, p, li, pre, blockquote, h1, h2, h3, h4, figure, tr, td, th";
 const short = (s: string, n = 70) => { const t = s.replace(/\s+/g, " ").trim(); return t.length > n ? t.slice(0, n - 1) + "…" : t; };
@@ -70,7 +70,7 @@ export function useComments(store: FeedbackStore) {
   const [list, setList] = useState<Comment[]>(() => store.list());
   return {
     list,
-    add: (a: Anchor, body: string) => { store.add({ id: "c" + Date.now().toString(36), anchor: { id: a.id, label: a.label, excerpt: a.excerpt }, body, created: new Date().toISOString() }); setList(store.list()); },
+    add: (a: Anchor, body: string, page?: string) => { store.add({ id: "c" + Date.now().toString(36), anchor: { id: a.id, label: a.label, excerpt: a.excerpt, ...(page ? { page } : {}) }, body, created: new Date().toISOString() }); setList(store.list()); },
     remove: (id: string) => { store.remove(id); setList(store.list()); },
     clear: () => { store.clear(); setList(store.list()); },
   };
@@ -88,7 +88,7 @@ export function useAnswerState(store: FeedbackStore) {
 export function feedbackMarkdown(title: string, list: Comment[]): string {
   const lines = [`# Feedback on "${title}"`, ""];
   for (const c of list) {
-    lines.push(`- **${c.anchor.id}** — "${c.anchor.excerpt}"`);
+    lines.push(`- **${c.anchor.id}**${c.anchor.page ? ` (page: ${c.anchor.page})` : ""} — "${c.anchor.excerpt}"`);
     for (const l of c.body.trim().split("\n")) lines.push(`  ${l}`);
   }
   return lines.join("\n") + "\n";
@@ -111,14 +111,16 @@ export function Composer({ anchor, onSave, onCancel, existing }: { anchor: Ancho
 }
 
 /** Every decision with its answer: question, the choice, recommended or not, the note. Used in the drawer and on the Summary slide. */
-export function DecisionList({ rows, onJump }: { rows: DecisionRow[]; onJump?: (id: string) => void }) {
+export function DecisionList({ rows, onJump }: { rows: DecisionRow[]; onJump?: (r: DecisionRow) => void }) {
+  const multi = new Set(rows.map((r) => r.page).filter(Boolean)).size > 1;
   return (
     <ol className="h-decisions">
-      {rows.map((r) => {
+      {rows.map((r, i) => {
         const a = r.answer;
         return (
           <li key={r.id} className={a ? "done" : "todo"}>
-            <button className="h-note-on" onClick={() => onJump?.(r.id)} title="Jump to the decision">{r.id}</button>
+            {multi && r.page !== rows[i - 1]?.page && <div className="h-pagehead">{r.pageTitle ?? r.page}</div>}
+            <button className="h-note-on" onClick={() => onJump?.(r)} title="Jump to the decision">{r.id}</button>
             <div className="h-d-q">{r.question}</div>
             {a ? (
               <div className="h-d-a">
@@ -134,10 +136,10 @@ export function DecisionList({ rows, onJump }: { rows: DecisionRow[]; onJump?: (
   );
 }
 
-export function FeedbackPanel({ cm, rows, tab, setTab, mode, onMode, copied, onCopyComments, onCopyDecisions, onCopyAll, onClearAnswers, onJumpDecision, onClose }: {
+export function FeedbackPanel({ cm, rows, tab, setTab, mode, onMode, copied, onCopyComments, onCopyDecisions, onCopyAll, onClearAnswers, onJumpDecision, onJumpComment, pageTitle, onClose }: {
   cm: ReturnType<typeof useComments>; rows: DecisionRow[]; tab: "decisions" | "comments"; setTab: (t: "decisions" | "comments") => void;
   mode: boolean; onMode: () => void; copied: string; onCopyComments: () => void; onCopyDecisions: () => void; onCopyAll: () => void;
-  onClearAnswers: () => void; onJumpDecision: (id: string) => void; onClose: () => void;
+  onClearAnswers: () => void; onJumpDecision: (r: DecisionRow) => void; onJumpComment: (c: Comment) => void; pageTitle: (id?: string) => string | undefined; onClose: () => void;
 }) {
   const [sure, setSure] = useState<"" | "comments" | "answers">("");
   useEffect(() => { if (!sure) return; const t = setTimeout(() => setSure(""), 3000); return () => clearTimeout(t); }, [sure]);
@@ -167,9 +169,10 @@ export function FeedbackPanel({ cm, rows, tab, setTab, mode, onMode, copied, onC
             <button className="h-btn" disabled={!cm.list.length} onClick={() => { if (sure === "comments") { cm.clear(); setSure(""); } else setSure("comments"); }} title="Delete every comment on this page (stored in this browser)">{sure === "comments" ? "Click again to clear" : "Clear all"}</button>
           </div>
           {cm.list.length === 0 && <p className="a-muted">Nothing yet. Press <kbd>c</kbd> or "Add comment", then click any element.</p>}
-          {cm.list.map((c) => (
+          {cm.list.map((c, i) => (
             <div key={c.id} className="h-note">
-              <button className="h-note-on" onClick={() => { const root = document.querySelector<HTMLElement>(".a-content"); (root && findAnchor(root, c.anchor.id))?.scrollIntoView({ block: "center", behavior: "smooth" }); }} title="Jump to the element">{c.anchor.id}</button>
+              {c.anchor.page && c.anchor.page !== cm.list[i - 1]?.anchor.page && <div className="h-pagehead">{pageTitle(c.anchor.page) ?? c.anchor.page}</div>}
+              <button className="h-note-on" onClick={() => onJumpComment(c)} title="Jump to the element">{c.anchor.id}</button>
               <div>{c.body}</div>
               <button className="h-note-del" onClick={() => cm.remove(c.id)}>Delete</button>
             </div>

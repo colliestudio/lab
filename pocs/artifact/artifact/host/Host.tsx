@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { meta, type Source as Src } from "../kit/registry.ts";
+import { meta, decisions as registryDecisions, type Source as Src } from "../kit/registry.ts";
 import { Badge, Source } from "../kit/layout.tsx";
 import { fmtAsOf, fmtDate, plural, slug } from "../kit/util.ts";
 import { shell } from "../kit/shell.ts";
 import { useComments, useAnswerState, makeStore, Composer, FeedbackPanel, DecisionList, feedbackMarkdown, anchorFor, findAnchor, type Anchor } from "./comments.tsx";
-import { FeedbackCtx, decisionsMarkdown, type DecisionRow } from "../kit/feedback.ts";
+import { FeedbackCtx, decisionsMarkdown, reachable, type DecisionRow } from "../kit/feedback.ts";
 import { usePresent } from "./present.ts";
 import { Boundary } from "./Boundary.tsx";
 import { allPages, groups, home, isMulti, pageById, pages } from "../kit/pages.ts";
@@ -101,7 +101,16 @@ export function Host() {
   const cm = useComments(store);
   const am = useAnswerState(store);
   const [rawRows, setRawRows] = useState<Omit<DecisionRow, "answer">[]>([]);
-  const rows: DecisionRow[] = useMemo(() => rawRows.map((r) => ({ ...r, answer: am.answers[r.id] })), [rawRows, am.answers]);
+  // every page's decisions (found at build time, those behind a <When> only once reachable) plus what this page shows now
+  const rows: DecisionRow[] = useMemo(() => {
+    const out = new Map<string, DecisionRow>();
+    const order = allPages().map((p) => p.id);
+    for (const d of registryDecisions) if (reachable(d, am.answers)) out.set(d.id, { id: d.id, question: d.question, recommended: d.recommended, owner: d.owner, page: d.page, pageTitle: pageById(d.page)?.title });
+    for (const r of rawRows) if (!out.has(r.id)) out.set(r.id, { ...r, page: isMulti() ? page.id : undefined, pageTitle: isMulti() ? page.title : undefined });
+    const list = [...out.values()];
+    if (isMulti()) list.sort((a, b) => order.indexOf(a.page ?? HOME) - order.indexOf(b.page ?? HOME));
+    return list.map((r) => ({ ...r, answer: am.answers[r.id] }));
+  }, [rawRows, am.answers, page.id]);
   const [tab, setTab] = useState<"decisions" | "comments">("decisions");
   const summary = useRef<HTMLElement>(null);
   const lastPage = useRef(route.page);
@@ -145,6 +154,7 @@ export function Host() {
       if (el) { for (let e: Element | null = el; e; e = e.parentElement) { if (e.matches?.(".a-section")) e.removeAttribute("data-folded"); if (e.tagName === "DETAILS") (e as HTMLDetailsElement).open = true; } el.scrollIntoView({ block: "start" }); }
       else if (route.page !== lastPage.current) scrollTo({ top: 0 });
       lastPage.current = route.page;
+      doJump();
     }, 30);
     return () => clearTimeout(t);
   }, [route]);
@@ -218,7 +228,7 @@ export function Host() {
     const el = content.current!;
     const mark = () => {
       el.querySelectorAll("[data-commented]").forEach((n) => n.removeAttribute("data-commented"));
-      for (const c of cm.list) { findAnchor(el, c.anchor.id)?.setAttribute("data-commented", ""); }
+      for (const c of cm.list) { if (c.anchor.page && c.anchor.page !== page.id) continue; findAnchor(el, c.anchor.id)?.setAttribute("data-commented", ""); }
     };
     mark();
     const mo = new MutationObserver(() => { mo.disconnect(); mark(); mo.observe(el, { childList: true, subtree: true }); });
@@ -259,11 +269,22 @@ export function Host() {
   }, []);
   const decisionsMd = () => decisionsMarkdown(meta.title, rows);
   const allMd = () => `${decisionsMd()}\n${cm.list.length ? feedbackMarkdown(meta.title, cm.list) : ""}`.trimEnd() + "\n";
-  const jumpDecision = (id: string) => {
-    const el = content.current?.querySelector<HTMLElement>(`[data-did="${CSS.escape(id)}"]`);
+  const jumpTo = useRef<{ did?: string; anchor?: string } | null>(null);
+  const doJump = () => {
+    const j = jumpTo.current; if (!j) return;
+    const root = content.current;
+    const el = j.did ? root?.querySelector<HTMLElement>(`[data-did="${CSS.escape(j.did)}"]`) : j.anchor && root ? findAnchor(root, j.anchor) : null;
     if (!el) return;
+    jumpTo.current = null;
     if (present.active) present.goTo(el); else el.scrollIntoView({ block: "center", behavior: "smooth" });
   };
+  /** Jump to a decision or comment, going to its page first when it lives on another one. */
+  const jump = (target: { did?: string; anchor?: string }, onPage?: string) => {
+    jumpTo.current = target;
+    if (onPage && onPage !== page.id) { location.hash = hrefFor(onPage); } else doJump();
+  };
+  const jumpDecision = (r: DecisionRow) => jump({ did: r.id }, r.page);
+  const jumpComment = (c: { anchor: { id: string; page?: string } }) => jump({ anchor: c.anchor.id }, c.anchor.page);
 
   const sources = (meta.sources ?? []).map(normSource);
   const decided = rows.filter((r) => r.answer).length;
@@ -362,9 +383,9 @@ export function Host() {
         </main>
         {panel && <FeedbackPanel cm={cm} rows={rows} tab={rows.length ? tab : "comments"} setTab={setTab} mode={mode} onMode={() => setMode(!mode)} copied={copied}
           onCopyComments={() => copyText(feedbackMarkdown(meta.title, cm.list), "comments")} onCopyDecisions={() => copyText(decisionsMd(), "decisions")} onCopyAll={() => copyText(allMd(), "all")}
-          onClearAnswers={am.clear} onJumpDecision={jumpDecision} onClose={() => { setPanel(false); setMode(false); }} />}
+          onClearAnswers={am.clear} onJumpDecision={jumpDecision} onJumpComment={jumpComment} pageTitle={(id) => (id ? pageById(id)?.title : undefined)} onClose={() => { setPanel(false); setMode(false); }} />}
       </div>
-      {open && <Composer anchor={open} onCancel={() => setOpen(null)} onSave={(body) => { cm.add(open, body); setOpen(null); }} existing={cm.list.filter((c) => c.anchor.id === open.id)} />}
+      {open && <Composer anchor={open} onCancel={() => setOpen(null)} onSave={(body) => { cm.add(open, body, isMulti() ? page.id : undefined); setOpen(null); }} existing={cm.list.filter((c) => c.anchor.id === open.id && (!c.anchor.page || c.anchor.page === page.id))} />}
       {present.active && (
         <div className="h-present-bar" data-slide={present.state.slide} data-slides={present.state.slides} data-step={present.state.step} data-steps={present.state.steps}>
           <button onClick={present.prev}>←</button>

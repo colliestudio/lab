@@ -18,10 +18,16 @@ export type Evidence =
   | { k: "replay"; b64: string }
   | { k: "image" | "file"; url: string }
   | { k: "text"; text: string };
-export interface Registry { meta: Meta; data: Record<string, unknown>; evidence: Record<string, Evidence> }
+/** A decision found by rendering every page at build time (so other pages' decisions count in the progress). */
+export interface DecisionMeta {
+  id: string; question: string; recommended?: string; owner?: string; page: string;
+  when?: { decision: string; is?: string | number | (string | number)[]; not?: string | number | (string | number)[]; answered?: boolean; unanswered?: boolean }[];
+}
+export interface Registry { meta: Meta; data: Record<string, unknown>; evidence: Record<string, Evidence>; decisions?: DecisionMeta[] }
 
 const reg = registry as Registry;
 export const meta = reg.meta;
+export const decisions = reg.decisions ?? [];
 
 const norm = (p: string) => p.replace(/^\.?\//, "");
 
