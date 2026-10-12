@@ -76,9 +76,10 @@ export function mountRoomStatus(app: App, room: Room, bar: HTMLElement, onLeave:
   box.append(players, state, copy, leave);
   bar.append(box);
 
-  const dot = (color: string, name: string, you = false) => {
+  const dot = (color: string, name: string, clientId: number, you = false) => {
     const s = document.createElement(you ? 'button' : 'span');
     s.className = you ? 'player me' : 'player';
+    s.dataset.client = String(clientId);
     s.title = you ? 'You: click to change your name or color' : name;
     if (you) s.addEventListener('click', onRename);
     s.innerHTML = `<i></i><b></b>`;
@@ -95,7 +96,7 @@ export function mountRoomStatus(app: App, room: Room, bar: HTMLElement, onLeave:
     const key = JSON.stringify([me.name, me.color, peers.map((p) => [p.clientId, p.name, p.color])]);
     if (key !== players.dataset.key) {
       players.dataset.key = key;
-      players.replaceChildren(dot(me.color, me.name, true), ...peers.map((p) => dot(p.color, p.name)));
+      players.replaceChildren(dot(me.color, me.name, room.presence.awareness.clientID, true), ...peers.map((p) => dot(p.color, p.name, p.clientId)));
     }
     const sig = room.signalingConnected();
     everConnected ||= sig;

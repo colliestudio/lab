@@ -114,6 +114,7 @@ export function mountPresenceView(app: App, presence: Presence) {
       if (!el) {
         el = document.createElement('div');
         el.className = 'cv-cursor';
+        el.dataset.client = String(p.clientId);
         el.innerHTML =
           `<svg width="18" height="20" viewBox="0 0 18 20"><path d="M1 1 L1 16 L5 12 L8 19 L11 18 L8 11 L14 11 Z" stroke="#fff" stroke-width="1.5"/></svg>` +
           `<span></span>`;

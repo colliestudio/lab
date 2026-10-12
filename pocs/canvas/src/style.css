@@ -232,3 +232,36 @@ body {
 #toolbar .player.me:hover {
   background: rgba(255, 255, 255, 0.24);
 }
+
+/* voice chat */
+#toolbar .voice {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+#toolbar .voice .voice-note {
+  color: #ffb3a7;
+  max-width: 260px;
+}
+#toolbar .voice button.active {
+  background: #8a3b30;
+}
+#toolbar .player .mic {
+  text-decoration: none;
+  font-size: 11px;
+}
+#toolbar .player.in-voice i {
+  transition: box-shadow 120ms;
+}
+#toolbar .player.in-voice[data-link='connecting'] .mic {
+  opacity: 0.4;
+}
+#toolbar .player.speaking i {
+  box-shadow: 0 0 0 2px #fff, 0 0 0 5px #4cd37b;
+}
+.cv-cursor.speaking span {
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px #4cd37b;
+}
+.cv-cursor.voice-muted span::after {
+  content: ' 🔇';
+}

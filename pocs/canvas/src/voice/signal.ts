@@ -44,7 +44,6 @@ export class VoiceSignaling {
   private seq = 0;
   private known = new Map<number, { epoch: string; seen: number }>();
   private _on = false;
-  private _muted = false;
   private busy = false;
   private again = false;
 
@@ -69,7 +68,6 @@ export class VoiceSignaling {
   join(muted = false) {
     if (this._on) return;
     this._on = true;
-    this._muted = muted;
     this.epoch = Math.random().toString(36).slice(2, 10);
     this.seq = 0;
     this.known.clear();
@@ -86,7 +84,6 @@ export class VoiceSignaling {
   }
 
   setMuted(muted: boolean) {
-    this._muted = muted;
     const v = this.mine();
     if (v && v.muted !== muted) this.awareness.setLocalStateField('voice', { ...v, muted });
   }

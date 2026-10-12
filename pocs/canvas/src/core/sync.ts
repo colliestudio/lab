@@ -37,7 +37,7 @@ export function signalingUrl(loc: Location = location): string {
 
 export const roomDbName = (id: string) => `canvas-poc:room:${id}`;
 
-const ICE = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] }];
+export const ICE = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] }];
 
 export function joinRoom(app: App, id: string, me: PlayerInfo, signal = signalingUrl()): Room {
   const base = signal.replace(/\/+$/, '');

@@ -8,6 +8,7 @@ import { clockPlugin } from './plugins/clock';
 import { battleLinePlugin } from './plugins/battleline';
 import { matsPlugin } from './plugins/mats';
 import { boardPlugin } from './plugins/board';
+import { mountVoice } from './voice/ui';
 import { mountHelp, removeHelpNote } from './help';
 
 const BRIDGE = new URLSearchParams(location.search).get('bridge');
@@ -203,6 +204,7 @@ else persistLocally(app, DB_NAME).then(({ empty }) => {
     },
     () => void rename(),
   );
+  mountVoice(app, room, bar);
   if (!stored.named) void rename(true);
   const shared = sessionStorage.getItem('canvas-poc:shared');
   sessionStorage.removeItem('canvas-poc:shared');
@@ -241,6 +243,7 @@ function startBridge(url: string) {
       if (choice) room.presence.setMe(savePlayer(choice));
     },
   );
+  mountVoice(app, room, bar);
   flash(`Connecting to the bridge at ${url}…`);
   room.synced.then(() => {
     app.store.undoManager.clear();
