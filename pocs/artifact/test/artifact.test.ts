@@ -799,3 +799,47 @@ export default () => <Section title="T"><TimeAxis title="Heading" lead="How to r
     assert.match(h, /false-2/);
   } finally { cleanup(d); }
 });
+
+test("comments: one drawer with add / list / copy / clear, behind a store interface", async (t) => {
+  const { localCommentStore } = await import("../artifact/host/comments.tsx");
+  const mem = new Map<string, string>();
+  (globalThis as unknown as { localStorage: unknown }).localStorage = { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => mem.set(k, v), removeItem: (k: string) => mem.delete(k) };
+  const st = localCommentStore("t");
+  st.add({ id: "a", anchor: { id: "x", label: "x", excerpt: "e" }, body: "one", created: "now" });
+  st.add({ id: "b", anchor: { id: "y", label: "y", excerpt: "e" }, body: "two", created: "now" });
+  st.remove("a");
+  assert.deepEqual(st.list().map((c) => c.id), ["b"]);
+  st.clear();
+  assert.deepEqual(st.list(), []);
+  delete (globalThis as unknown as { localStorage?: unknown }).localStorage;
+
+  const { findChrome } = await import("../artifact/cli/shot.ts");
+  let exe: string;
+  try { exe = await findChrome(); } catch { return t.skip("no Chromium available"); }
+  const { chromium } = await import("playwright-core");
+  const d = fixture(`import { Section, Stages } from "artifact"; export default () => <Section title="A"><p id="p1">Hello world</p><Stages stages={[{title:"v1"},{title:"v2"}]} rows={[{label:"r", cells:["a",{text:"b",tone:"warn"}]}]} /></Section>;`);
+  const out = join(d, "../c.html");
+  try {
+    writeFileSync(out, (await buildArtifact(d)).html);
+    const b = await chromium.launch({ executablePath: exe });
+    try {
+      const ctx = await b.newContext({ permissions: ["clipboard-read", "clipboard-write"] });
+      const p = await ctx.newPage();
+      await p.goto("file://" + out);
+      await p.waitForSelector(".a-content");
+      assert.equal(await p.getByRole("button", { name: /^(Comment|Notes|Copy feedback)$/ }).count(), 0, "no separate comment buttons in the bar");
+      await p.keyboard.press("c");
+      assert.ok(await p.locator(".h-panel").isVisible(), "c opens the drawer");
+      await p.locator(".a-content p").first().click();
+      await p.locator(".h-composer textarea").fill("Looks off");
+      await p.keyboard.press("Meta+Enter");
+      assert.equal(await p.locator(".h-bar").getByRole("button", { name: "Comments (1)" }).count(), 1);
+      await p.getByRole("button", { name: "Copy feedback" }).click();
+      assert.match(await p.evaluate(() => navigator.clipboard.readText()), /Looks off/);
+      await p.getByRole("button", { name: "Clear all" }).click();
+      await p.getByRole("button", { name: "Click again to clear" }).click();
+      assert.equal(await p.locator(".h-note").count(), 0);
+      assert.ok(await p.locator('[data-c="stages"]').isVisible());
+    } finally { await b.close(); }
+  } finally { cleanup(d); }
+});

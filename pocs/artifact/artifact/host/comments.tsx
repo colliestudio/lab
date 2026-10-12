@@ -37,14 +37,26 @@ export function findAnchor(root: HTMLElement, id: string): HTMLElement | null {
   return null;
 }
 
-export function useComments(key: string) {
+/**
+ * Where comments live. localStorage is the only implementation today; a hosted backend can supply its own object
+ * (set `window.artifactComments` before the page script runs) with the same four methods.
+ */
+export interface CommentStore { list(): Comment[]; add(c: Comment): void; remove(id: string): void; clear(): void }
+
+export function localCommentStore(key: string): CommentStore {
   const k = "artifact-comments:" + key;
-  const [list, setList] = useState<Comment[]>(() => { try { return JSON.parse(localStorage.getItem(k) ?? "[]"); } catch { return []; } });
-  const save = (l: Comment[]) => { setList(l); localStorage.setItem(k, JSON.stringify(l)); };
+  const load = (): Comment[] => { try { return JSON.parse(localStorage.getItem(k) ?? "[]"); } catch { return []; } };
+  const save = (l: Comment[]) => localStorage.setItem(k, JSON.stringify(l));
+  return { list: load, add: (c) => save([...load(), c]), remove: (id) => save(load().filter((c) => c.id !== id)), clear: () => localStorage.removeItem(k) };
+}
+
+export function useComments(key: string, store: CommentStore = (window as unknown as { artifactComments?: CommentStore }).artifactComments ?? localCommentStore(key)) {
+  const [list, setList] = useState<Comment[]>(() => store.list());
   return {
     list,
-    add: (a: Anchor, body: string) => save([...list, { id: "c" + Date.now().toString(36), anchor: { id: a.id, label: a.label, excerpt: a.excerpt }, body, created: new Date().toISOString() }]),
-    remove: (id: string) => save(list.filter((c) => c.id !== id)),
+    add: (a: Anchor, body: string) => { store.add({ id: "c" + Date.now().toString(36), anchor: { id: a.id, label: a.label, excerpt: a.excerpt }, body, created: new Date().toISOString() }); setList(store.list()); },
+    remove: (id: string) => { store.remove(id); setList(store.list()); },
+    clear: () => { store.clear(); setList(store.list()); },
   };
 }
 
@@ -73,14 +85,23 @@ export function Composer({ anchor, onSave, onCancel, existing }: { anchor: Ancho
     </div>, document.body);
 }
 
-export function CommentsPanel({ cm, onClose }: { cm: ReturnType<typeof useComments>; onClose: () => void }) {
+export function CommentsPanel({ cm, mode, onMode, onCopy, copied, onClose }: {
+  cm: ReturnType<typeof useComments>; mode: boolean; onMode: () => void; onCopy: () => void; copied: string; onClose: () => void;
+}) {
+  const [sure, setSure] = useState(false);
+  useEffect(() => { if (!sure) return; const t = setTimeout(() => setSure(false), 3000); return () => clearTimeout(t); }, [sure]);
   return (
     <aside className="h-panel" aria-label="Comments">
-      <div className="h-panel-head"><b>Notes</b><button onClick={onClose} aria-label="Close">×</button></div>
-      {cm.list.length === 0 && <p className="a-muted">Nothing yet. Turn on Comment, then click any element.</p>}
+      <div className="h-panel-head"><b>Comments ({cm.list.length})</b><button onClick={onClose} aria-label="Close comments">×</button></div>
+      <div className="h-panel-actions">
+        <button className="h-btn" aria-pressed={mode} onClick={onMode} title="Comment mode (c): click any element on the page to leave a comment">{mode ? "Click an element…" : "Add comment"}</button>
+        <button className="h-btn" onClick={onCopy} disabled={!cm.list.length} title="Copy all comments as Markdown to paste back to the author or agent">{copied || "Copy feedback"}</button>
+        <button className="h-btn" disabled={!cm.list.length} onClick={() => { if (sure) { cm.clear(); setSure(false); } else setSure(true); }} title="Delete every comment on this page (stored in this browser)">{sure ? "Click again to clear" : "Clear all"}</button>
+      </div>
+      {cm.list.length === 0 && <p className="a-muted">Nothing yet. Press <kbd>c</kbd> or "Add comment", then click any element.</p>}
       {cm.list.map((c) => (
         <div key={c.id} className="h-note">
-          <button className="h-note-on" onClick={() => { const root = document.querySelector<HTMLElement>(".a-content"); (root && findAnchor(root, c.anchor.id))?.scrollIntoView({ block: "center", behavior: "smooth" }); }}>{c.anchor.id}</button>
+          <button className="h-note-on" onClick={() => { const root = document.querySelector<HTMLElement>(".a-content"); (root && findAnchor(root, c.anchor.id))?.scrollIntoView({ block: "center", behavior: "smooth" }); }} title="Jump to the element">{c.anchor.id}</button>
           <div>{c.body}</div>
           <button className="h-note-del" onClick={() => cm.remove(c.id)}>Delete</button>
         </div>

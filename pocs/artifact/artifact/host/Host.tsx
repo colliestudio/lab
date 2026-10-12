@@ -51,7 +51,7 @@ async function pageSource(): Promise<string> {
   return shell(meta.title, document.getElementById("a-css")?.textContent ?? "", document.getElementById("a-js")?.textContent ?? "");
 }
 const canDownload = meta.host?.download ?? meta.download ?? true;
-const SHORTCUTS: [string, string][] = [["p", "Present: ← → or space step, ↑ ↓ scroll, Esc leaves"], ["c", "Comment mode: click any element to comment"], ["1–4", "Detail level (pages that use it)"], ["?", "This list"], ["Esc", "Close dialogs, leave comment mode"]];
+const SHORTCUTS: [string, string][] = [["p", "Present: ← → or space step, ↑ ↓ scroll, Esc leaves"], ["c", "Add a comment: opens the drawer, then click any element"], ["1–4", "Detail level (pages that use it)"], ["?", "This list"], ["Esc", "Close dialogs, leave comment mode"]];
 const DETAIL = ["Headline", "Key", "Supporting", "Everything"];
 const typing = (e: KeyboardEvent) => { const t = e.target as HTMLElement; return t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName); };
 
@@ -123,7 +123,7 @@ export function Host({ children }: { children: ReactNode }) {
       if (typing(e) || e.metaKey || e.ctrlKey || e.altKey) return;
       if (present.active) return;
       if (depthUsed && /^[1-4]$/.test(e.key)) changeDepth(Number(e.key));
-      else if (e.key === "c") setMode((m) => !m);
+      else if (e.key === "c") setMode((m) => { if (!m) setPanel(true); return !m; });
       else if (e.key === "p") present.start();
       else if (e.key === "?") setHelp((h) => !h);
       else if (e.key === "Escape") { setMode(false); setOpen(null); setHelp(false); }
@@ -203,12 +203,7 @@ export function Host({ children }: { children: ReactNode }) {
             </span>
           </span>
         )}
-        <span className="h-group" role="group" aria-label="Comments">
-          <span className="h-label">Comments</span>
-          <button className="h-btn" aria-pressed={mode} onClick={() => setMode(!mode)} title="Comment mode (c): click any element on the page to leave a comment for the author">Add</button>
-          <button className="h-btn" onClick={() => setPanel(!panel)} aria-pressed={panel} title="List and delete your comments">{cm.list.length ? `List (${cm.list.length})` : "List"}</button>
-          <button className="h-btn" onClick={copy} disabled={!cm.list.length} title="Copy all comments as Markdown to paste back to the author or agent">{copied || "Copy"}</button>
-        </span>
+        <button className="h-btn" onClick={() => setPanel(!panel)} aria-pressed={panel} title="Comments: leave notes on any element, then copy them back to the author">{cm.list.length ? `Comments (${cm.list.length})` : "Comments"}</button>
         <button className="h-btn" onClick={() => present.start()} title="Present (p): walk through the sections full screen">Present</button>
         <button className="h-btn" aria-pressed={!outlineOff} onClick={() => { setOutlineOff(!outlineOff); localStorage.setItem("artifact-outline", outlineOff ? "on" : "off"); }} title="Show or hide the outline on the left">Outline</button>
         <button className="h-btn" onClick={() => setTheme(!dark)} title="Switch between the light and dark theme">{dark ? "Light" : "Dark"}</button>
@@ -251,7 +246,7 @@ export function Host({ children }: { children: ReactNode }) {
           </header>
           <PresentCtx.Provider value={present.state}><article className="a-content" ref={content}>{children}</article></PresentCtx.Provider>
         </main>
-        {panel && <CommentsPanel cm={cm} onClose={() => setPanel(false)} />}
+        {panel && <CommentsPanel cm={cm} mode={mode} onMode={() => setMode(!mode)} onCopy={copy} copied={copied} onClose={() => { setPanel(false); setMode(false); }} />}
       </div>
       {toast && <div className="h-toast" role="status">{toast}</div>}
       {open && <Composer anchor={open} onCancel={() => setOpen(null)} onSave={(body) => { cm.add(open, body); setOpen(null); }} existing={cm.list.filter((c) => c.anchor.id === open.id)} />}

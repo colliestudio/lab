@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { Badge, Source, Status, type SourceProps, type StatusValue, type Tone } from "./layout.tsx";
 import { meta } from "./registry.ts";
 import { fmtAsOf } from "./util.ts";
@@ -221,3 +221,30 @@ export function DecisionIndex({ title = "Decisions on this page" }: { title?: Re
 
 /** An absolute time in the artifact's one time zone (`"timeZone"` in artifact.json, default UTC): `<Time iso="2026-10-12T13:18:00Z" />` → "12 Oct 2026, 13:18 UTC". */
 export function Time({ iso, zone }: { iso: string; zone?: string }) { return <time dateTime={iso}>{fmtAsOf(iso, zone ?? meta.timeZone)}</time>; }
+
+/**
+ * A progression strip: a few stages (releases, phases, versions) as columns, the same rows across.
+ * `stages={[{title: "v1", sub: "Sep 1", tone: "success"}, …]}`, `rows={[{label: "What changed", cells: ["…", "…"]}]}`.
+ * Cells take a string, node or `{text, tone}` to colour one.
+ */
+export function Stages({ stages, rows, id }: {
+  stages: { title: ReactNode; sub?: ReactNode; tone?: Tone }[];
+  rows: { label: ReactNode; cells: (ReactNode | { text: ReactNode; tone?: Tone })[] }[]; id?: string;
+}) {
+  const isTone = (c: unknown): c is { text: ReactNode; tone?: Tone } => !!c && typeof c === "object" && !Array.isArray(c) && "text" in (c as object);
+  return (
+    <div className="a-stages" data-c="stages" data-aid={id} style={{ gridTemplateColumns: `minmax(7rem, 11rem) repeat(${stages.length}, minmax(8rem, 1fr))` }}>
+      <div />
+      {stages.map((s, i) => (
+        <div key={i} className={cx("a-stage-head", s.tone && `tone-${s.tone}`)}><b>{s.title}</b>{s.sub && <span className="a-muted">{s.sub}</span>}{i < stages.length - 1 && <i className="a-stage-arrow" aria-hidden>▸</i>}</div>
+      ))}
+      {rows.map((r, ri) => (
+        <Fragment key={ri}>
+          <div className="a-stage-label">{r.label}</div>
+          {stages.map((_, ci) => { const c = r.cells[ci]; const t = isTone(c) ? c : { text: c }; return <div key={ci} className={cx("a-stage-cell", t.tone && `tone-${t.tone}`)}>{t.text as ReactNode}</div>; })}
+        </Fragment>
+      ))}
+    </div>
+  );
+}
+export const Progression = Stages;

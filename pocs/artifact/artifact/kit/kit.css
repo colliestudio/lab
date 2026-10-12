@@ -365,3 +365,12 @@ html[data-present] .a-depth-stub { display: none !important; }
 .a-ta-band.tone-warn { background: color-mix(in srgb, var(--collie-color-warning-subtle) 55%, transparent); } .a-ta-band.tone-critical { background: color-mix(in srgb, var(--collie-color-critical-subtle) 55%, transparent); }
 .a-ta-band.tone-success { background: color-mix(in srgb, var(--collie-color-success-subtle) 55%, transparent); } .a-ta-band.tone-accent, .a-ta-band.tone-info { background: color-mix(in srgb, var(--collie-color-accent-subtle) 55%, transparent); }
 .a-ta-band > span { font-weight: var(--collie-weight-regular); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--a-muted); background: none; padding: 0 6px; }
+
+/* stages */
+.a-stages { display: grid; gap: 0; border: 1px solid var(--a-line); border-radius: var(--a-radius); overflow-x: auto; background: var(--a-card); margin: var(--collie-space-150) 0; font-size: var(--collie-text-sm); }
+.a-stage-head { position: relative; padding: 0.6rem 1.4rem 0.6rem 0.8rem; background: var(--a-soft); border-bottom: 1px solid var(--a-line); display: flex; flex-direction: column; gap: 0.1rem; }
+.a-stage-head.tone-success { box-shadow: inset 0 3px 0 var(--collie-color-success-solid); } .a-stage-head.tone-warn { box-shadow: inset 0 3px 0 var(--collie-color-warning-solid); } .a-stage-head.tone-critical { box-shadow: inset 0 3px 0 var(--collie-color-critical-solid); } .a-stage-head.tone-accent { box-shadow: inset 0 3px 0 var(--collie-color-accent-solid); }
+.a-stage-arrow { position: absolute; right: 0.4rem; top: 50%; transform: translateY(-50%); color: var(--a-muted); font-style: normal; }
+.a-stage-label { padding: 0.55rem 0.8rem; color: var(--a-muted); border-bottom: 1px solid var(--a-line); font-weight: var(--collie-weight-medium); background: var(--a-soft); }
+.a-stage-cell { padding: 0.55rem 0.8rem; border-bottom: 1px solid var(--a-line); border-left: 1px solid var(--a-line); }
+.a-stage-cell.tone-success { background: var(--collie-color-success-subtle); } .a-stage-cell.tone-warn { background: var(--collie-color-warning-subtle); } .a-stage-cell.tone-critical { background: var(--collie-color-critical-subtle); } .a-stage-cell.tone-accent { background: var(--collie-color-accent-subtle); }

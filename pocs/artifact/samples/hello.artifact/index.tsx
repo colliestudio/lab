@@ -1,6 +1,6 @@
 import {
   Badge, Callout, Card, CardGrid, Img, Chart, Checklist, Code, Compare, Decision, Depth, Diff, Flow, Grid, Lanes, Map, PR, Questions,
-  Replay, TimeAxis, Stats, Scorecard, Facts, Actions, RiskMatrix, Gallery, DecisionIndex, Section, Source, Stale, Status, Step, Steps, Table, Tab, Tabs, Timeline, useData,
+  Replay, Stages, TimeAxis, Stats, Scorecard, Facts, Actions, RiskMatrix, Gallery, DecisionIndex, Section, Source, Stale, Status, Step, Steps, Table, Tab, Tabs, Timeline, useData,
 } from "artifact";
 
 type Pr = { n: number; title: string; state: string; checks: string; owner: string; stack: [number, number]; href: string };
@@ -69,6 +69,16 @@ export default function Hello() {
           { label: "Before", src: "evidence/before.svg", aside: <p>The fixed viewer.</p> },
           { label: "After", src: "evidence/after.svg", aside: <p>Free-form.</p>, caption: "One at a time, with a detail pane" },
         ]} />
+      </Section>
+
+      <Section id="stages" title="Three releases, same questions">
+        <p>Each release fixed one more case; the last one made stuck orders recoverable.</p>
+        <Stages stages={[{ title: "v1", sub: "Sep 1", tone: "success" }, { title: "v2", sub: "Sep 12", tone: "warn" }, { title: "v3", sub: "Oct 12", tone: "critical" }]}
+          rows={[
+            { label: "What changed", cells: ["Added retries", "Moved the check", "Removed the fallback"] },
+            { label: "Can the order be acknowledged?", cells: [{ text: "yes", tone: "success" }, { text: "sometimes", tone: "warn" }, { text: "no", tone: "critical" }] },
+            { label: "Stuck orders", cells: ["0", "3", "212"] },
+          ]} />
       </Section>
 
       <Section id="when" title="When it happened (time axis)">
