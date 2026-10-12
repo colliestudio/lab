@@ -13,6 +13,7 @@ An event storming kit built as one plugin on the same "pieces on a table" model 
 - **Attach**: drop a non-event sticky in an event's column (same lane) → `on` is set; drop it elsewhere → let go. A new sticky made with an event selected attaches to it.
 - **Fast capture**: one key per kind makes a sticky (at the pointer, or attached/chained per selection) and opens its editor. Enter commits, Shift+Enter newline, Tab commits and chains the next one (an event: next slot on the timeline; others: same kind on the next event), Esc drops an empty new one. Creating + typing is one undo step.
 - **Facilitation**: phase switch (Chaotic exploration → Enforce the timeline → Commands & policies → Aggregates) changes the palette and keys offered and turns on packing; switching into phase 2 snaps the chaos into one sequence (one undo puts it back). Dot voting: `.` / `,` on the sticky under the pointer, budget per person per board (default 3), voter-colored dots; votes are flat keys `v_<player id>` so two people voting at once both count. Timebox: one countdown per board, same "time left + since" sync model as the game clock, logs "Timebox is over".
+- **Agents**: `app.dispatch('storm.add', { board, kind, text, by: { id, name, color } })` adds a sticky; the log names `by` (not the local player) for its first words. Renames name the person who renamed.
 - **Event log**: "Alex added domain event “Order placed”", "renamed …", "moved the workshop to …", "voted for …". Each sticky also stores `by` (author dot on it, name in the export).
 - **Export**: `toMarkdown(doc, board)`: numbered events in timeline order, lane, votes, author, attached stickies in flow order (actor, command, aggregate, external, read model, policy, hotspot); then loose stickies per kind; then the top 5 by votes. Shown in a dialog (copy / download `.md`) and on `window.storm.markdown()` for an agent driving the page.
 
@@ -21,7 +22,7 @@ An event storming kit built as one plugin on the same "pieces on a table" model 
 - `src/plugins/eventstorm/`: `model.ts` (kinds, phases, geometry, rider rule), `commands.ts` (pure: createBoard, add, text, kind, settle, tidy, phase, lanes, dots, vote, timer, detach, reset), `markdown.ts`, `render.ts`, `logic.ts` (registers commands, rider rule, reset), `index.ts` (types, keys, inline editor, menus, kit, timer ticker), `storm.css`, `commands.test.ts` (12 tests).
 - `src/main.ts`: `app.use(stormPlugin)`. `src/help.ts`: an "Event storm" group.
 - Core: **no changes**.
-- Tests: 241 pass (229 + 12). `pnpm typecheck` clean. Checked in headless Chromium against the dev server on 5213 (keys, typing, Tab chaining, phase snap, drag reorder, attach, votes, timebox, export, undo of create, Esc, fallback of shared keys to cards).
+- Tests: 243 pass in the whole suite (14 are eventstorm's). `pnpm typecheck` clean. Checked in headless Chromium against the dev server on 5213 (keys, typing, Tab chaining, phase snap, drag reorder, attach, votes, timebox, export, undo of create, Esc, fallback of shared keys to cards).
 
 ## Demo
 
@@ -56,10 +57,18 @@ Got in the way / gaps:
 
 ## Fit with the big vision
 
-- **Multiplayer**: all state is synced plain fields; votes per player can't clobber; the phase lives on the board, so the facilitator switches it for everyone; timer uses the clock's skew-tolerant model. Editing is local until commit (others see an empty sticky while you type, the text on Enter; live co-typing would need Y.Text). Re-pack runs only on the peer that made the change: two events added at the same moment land in the same slot, overlapping, until the next drop or **Tidy the timeline**; a `repairs` hook could re-pack after remote changes too (not done).
+- **Multiplayer**: all state is synced plain fields; votes per player can't clobber; the phase lives on the board, so the facilitator switches it for everyone; timer uses the clock's skew-tolerant model. Editing is local until commit (others see an empty sticky while you type, the text on Enter; live co-typing would need Y.Text). A `repairs` hook re-packs a board on every peer after a remote change leaves two stickies on one spot (two events added at the same moment); a sticky someone is dragging is left alone.
 - **Agent native**: the Markdown export is the read side (ordered, plain, no coordinates). The write side is already there: an agent can `app.dispatch('storm.add', { board, kind: 'event', after, text })` and the board lays itself out; commands validate args. Next: expose commands + `toMarkdown` as tools (MCP) so an agent can join a workshop as a participant (propose events, flag hotspots, answer "what's missing between X and Y").
 - **Local first / hosting**: everything is in the `.canvas` file; it opens in Obsidian as colored text cards. Git-tracked boards diff badly because positions are stored; the Markdown export could be committed alongside as the reviewable artifact.
 - **Host/secret model and marketplace security**: the plugin needs no secrets, no network, no private state. It overrides shared keys, which is a marketplace concern: a plugin shouldn't be able to silently take another's keys (core-managed key scopes). The privacy model (hiders, private log texts) would fit "silent brainstorm then reveal" without new trust.
+
+## Known gaps (not fixed at merge)
+
+- `by` is an argument, so the log is only as honest as the caller. Follow-up once the bridge's `CommandCtx.actor` is in poc: take the actor from the context in `logActor` (`commands.ts`) and drop `by` from the log.
+- Peers see an empty sticky while you type (text commits on Enter); live co-typing needs Y.Text.
+- Esc on a fresh sticky leaves an empty undo step.
+- Key wrappers (`chainKey`) stay until core has a list per key; no key scopes.
+- Deleting an event deletes its attached stickies; no arrows (policy → command); no MCP tools yet.
 
 ## Open questions
 
