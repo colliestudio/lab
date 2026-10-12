@@ -232,3 +232,28 @@ body {
 #toolbar .player.me:hover {
   background: rgba(255, 255, 255, 0.24);
 }
+#toolbar .chat-btn {
+  position: relative;
+}
+#toolbar .chat-btn.active {
+  background: rgba(255, 255, 255, 0.28);
+}
+#toolbar .chat-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #e6194b;
+  color: #fff;
+  font: 700 11px/18px system-ui, sans-serif;
+  text-align: center;
+}
+#toolbar .chat-badge[hidden] {
+  display: none;
+}
+#toolbar .chat-badge-mention {
+  background: #f5a623;
+  color: #231;
+}

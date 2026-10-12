@@ -458,3 +458,176 @@
   font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
+
+/* JSON Canvas edges (under every node) */
+.cv-edges {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 0;
+}
+.cv-edges line {
+  stroke: rgba(255, 255, 255, 0.75);
+  stroke-width: 2.5;
+}
+.cv-edges marker path {
+  fill: rgba(255, 255, 255, 0.85);
+}
+.cv-edges text {
+  fill: #fff;
+  font: 13px system-ui, sans-serif;
+  text-anchor: middle;
+  paint-order: stroke;
+  stroke: rgba(0, 0, 0, 0.5);
+  stroke-width: 3px;
+}
+
+/* ---- chat panel (right, above the zoom control) */
+.cv-chat {
+  position: fixed;
+  z-index: 11;
+  right: 12px;
+  bottom: 64px;
+  display: flex;
+  flex-direction: column;
+  width: 320px;
+  max-width: calc(100vw - 24px);
+  max-height: min(60vh, 520px);
+  border-radius: 10px;
+  background: rgba(15, 25, 20, 0.88);
+  backdrop-filter: blur(6px);
+  color: #e8efe9;
+  font: 13px/1.35 system-ui, sans-serif;
+}
+.cv-chat[hidden] {
+  display: none;
+}
+.cv-chat-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px 4px 12px;
+  font-weight: 700;
+}
+.cv-chat button {
+  border: 0;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.12);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.cv-chat button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.24);
+}
+.cv-chat-close {
+  padding: 0 8px;
+  font-size: 16px;
+}
+.cv-chat-list {
+  margin: 0;
+  padding: 4px 6px;
+  list-style: none;
+  overflow-y: auto;
+  min-height: 60px;
+  flex: 1;
+}
+.cv-chat-msg {
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+.cv-chat-mentioned {
+  background: rgba(255, 214, 90, 0.16);
+}
+.cv-chat-who {
+  padding: 0 !important;
+  background: none !important;
+  font-weight: 700;
+  color: var(--cv-actor);
+  filter: brightness(1.5) saturate(0.9);
+}
+.cv-chat-mine .cv-chat-who {
+  cursor: default;
+}
+.cv-chat-meta {
+  float: right;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 11px;
+  opacity: 0.65;
+}
+.cv-chat-kind {
+  padding: 0 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+}
+.cv-chat-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.cv-chat-at {
+  color: #ffd65a;
+  font-weight: 600;
+}
+.cv-chat-ref {
+  margin-top: 2px;
+  padding: 1px 7px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.cv-chat-ref:disabled {
+  opacity: 0.5;
+  cursor: default !important;
+}
+.cv-chat-empty {
+  padding: 8px 6px;
+  opacity: 0.7;
+}
+.cv-chat-form {
+  padding: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+.cv-chat-attach {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  margin-bottom: 4px;
+  padding: 1px 4px 1px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  font-size: 12px;
+}
+.cv-chat-attach[hidden] {
+  display: none;
+}
+.cv-chat-attach button {
+  padding: 0 6px;
+}
+.cv-chat-row {
+  display: flex;
+  gap: 4px;
+  align-items: flex-end;
+}
+.cv-chat-input {
+  flex: 1;
+  min-width: 0;
+  resize: none;
+  padding: 6px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.3);
+  color: inherit;
+  font: inherit;
+}
+.cv-chat-pin,
+.cv-chat-send {
+  padding: 6px 8px;
+}

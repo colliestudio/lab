@@ -25,7 +25,7 @@ export function boardHtml(b: BoardField): string {
     `<div class="ch-files ch-top">${files}</div><div class="ch-files ch-bottom">${files}</div>` +
     `<div class="ch-ranks ch-left">${ranks}</div><div class="ch-ranks ch-right">${ranks}</div>` +
     `<div class="ch-grip" data-grip title="Click for board actions • drag here to move the board with its pieces">` +
-    `<span class="ch-grip-dots">⠿</span>Chess${flipped ? ' · black' : ''}${lock}</div>` +
+    `<span class="ch-grip-dots">⠿</span>Chess${flipped ? ' · black' : ''}${lock}${gameHtml(b)}</div>` +
     `</div>`
   );
 }
@@ -33,4 +33,17 @@ export function boardHtml(b: BoardField): string {
 /** A piece: the solid glyph, filled white or black with a contrasting outline. */
 export function pieceHtml(p: PieceField): string {
   return `<div class="ch-piece ch-${p.color}" title="${pieceName(p)}"><span>${solidGlyph(p.piece)}︎</span></div>`;
+}
+
+const esc = (s: string) => s.replace(/[&<>"]/g, (c) => `&${({ '&': 'amp', '<': 'lt', '>': 'gt', '"': 'quot' })[c]};`);
+
+/** Rules mode in the tab: who plays which color, whose move (or the result). */
+export function gameHtml(b: BoardField): string {
+  if (!b.rules) return '';
+  const seat = (name: string | undefined, glyph: string) => `${glyph} ${name ? esc(name) : '<i>open</i>'}`;
+  const last = b.moves?.at(-1) ?? '';
+  const status = b.result
+    ? `<b>${esc(b.result)}</b> ${esc(b.end ?? '')}`
+    : `<b>${b.turn === 'b' ? 'Black' : 'White'} to move</b>${last.endsWith('+') ? ' · check' : ''}`;
+  return `<span class="ch-game">${seat(b.white?.name, '♔')} – ${seat(b.black?.name, '♚')} · ${status}</span>`;
 }
