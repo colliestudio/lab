@@ -26,13 +26,13 @@ Branch `idea/chat` (from `idea/agent-player`), worktree `~/code/canvas-wt/chat`.
 - `src/core/chat.ts`: `sendChat`, `after`/`unread`, `mentions`/`splitMentions`, `chatLine`, cap and text limit. DOM-free.
 - `src/core/chatView.ts`: toolbar Chat button with unread badge (⇧C), right-side panel (messages with color-coded names, "agent"/"tool" tag, times, mention highlight, node chips, click a name to @-mention, 📍 to point at the selection), a short status notice for new messages while the panel is closed, open state and last-read remembered.
 - Wired in both modes in `main.ts`: room (P2P/Worker relay) and `?bridge=`. Hidden when playing solo (nobody to talk to).
-- Bridge: `Host.say/readChat/waitChat`, HTTP `POST /chat/say`, `GET /chat/read?new=1&limit=N`, `GET /chat/wait?timeout=S` (long-poll, ≤290 s); client methods; CLI `canvas chat say|read|wait`; MCP `chat_send`, `chat_read`, `chat_wait`. The bridge now binds `127.0.0.1` by default (`--host` to change); before, it bound all interfaces. Localhost does not keep out web pages open in your own browser: the HTTP API answers `access-control-allow-origin: *` and takes POST bodies of any content type, so any page can say things as any agent name (`fetch(…/chat/say, {mode: 'no-cors'})`) and read the chat (`/chat/read`); the WebSocket checks no `Origin` either (reviewer verified the first two from a page on another port).
+- Bridge: `Host.say/readChat/waitChat`, HTTP `POST /chat/say`, `GET /chat/read?new=1&limit=N`, `GET /chat/wait?timeout=S` (long-poll, ≤290 s); client methods; CLI `canvas chat say|read|wait`; MCP `chat_send`, `chat_read`, `chat_wait`. The bridge binds `127.0.0.1` by default (`--host` to change). Localhost alone does not keep out web pages open in the same browser, so the bridge also refuses foreign `Origin`s (HTTP and WebSocket), non-localhost `Host`s and non-JSON POSTs, and sends no CORS headers (agent-bridge.md § Who may talk to the bridge); the app's origin is allowed with `--allow-origin`. Checked from a page on another origin in headless Chrome: its `fetch` POST to `/chat/say` and `/cmd`, its read of `/chat/read` and its WebSocket are all refused.
 - Readers (browser, host, CLI/MCP) skip malformed entries (no sender, a time `Date` can't format, text over the limit), since any peer can write to the array. CLI/MCP print times in the reader's local time (`[15:58]`), like the panel.
-- Tests: +14 (chat 7, host chat 7): 277 total. Checked in headless Chrome: two tabs on a bridge (badge, mention badge, send both ways, node chip jump, attach selection, reload keeps panel and read state), two tabs in a room (over BroadcastChannel; the reviewer also synced two isolated browser contexts over WebRTC with the local signaling), shell `say/read --new/wait` against live browsers, MCP tools over stdio with an SDK client, bridge restart keeps the history while `board.canvas` stays free of chat.
+- Tests: +14 (chat 7, host chat 7): 277 total (291 on the merge branch with the bridge guard, takeback and undo fixes). Checked in headless Chrome: two tabs on a bridge (badge, mention badge, send both ways, node chip jump, attach selection, reload keeps panel and read state), two tabs in a room (over BroadcastChannel; the reviewer also synced two isolated browser contexts over WebRTC with the local signaling), shell `say/read --new/wait` against live browsers, MCP tools over stdio with an SDK client, bridge restart keeps the history while `board.canvas` stays free of chat.
 
 ## Demo
 
-Ran on the Mini during the build (localhost only): app 5281, bridge 5284 on `/tmp/canvas-demos/chat/board.canvas` (a git repo); not running now, start them with the restart commands below. Browser via `mini.internal`:
+Ran on the Mini during the build (localhost only): app 5281, bridge 5284 on `/tmp/canvas-demos/chat/board.canvas` (a git repo); not running now, start them with the restart commands below (the bridge needs `--allow-origin http://localhost:5281` for the browser to connect). Browser via `mini.internal`:
 
 1. Open two tabs (a private window or a second browser for a second person; tabs in one browser share a name, rename from the toolbar): `http://mini.internal:5281/?bridge=ws://mini.internal:5284`.
 2. Shell, from the worktree: `export CANVAS_BRIDGE=http://localhost:5284`
@@ -44,7 +44,7 @@ Ran on the Mini during the build (localhost only): app 5281, bridge 5284 on `/tm
 4. A real Claude in the room (one LLM session): `claude mcp add canvas -e CANVAS_AS=Claude -e CANVAS_BRIDGE=http://localhost:5284 -- ~/code/canvas-wt/chat/node_modules/.bin/tsx ~/code/canvas-wt/chat/bridge/mcp.ts`, then: "You are at the table. Loop: chat_wait, answer with chat_send (use @Name), until I say stop." Ask it something from a tab; it replies under its own name with the "agent" tag.
 5. `git -C /tmp/canvas-demos/chat status`: chat is not in the file. Restart the bridge: history is still there (sidecar).
 
-Restart (detached): `cd ~/code/canvas-wt/chat && nohup pnpm exec vite --port 5281 --strictPort --host 127.0.0.1 > /tmp/canvas-demos/chat-app.log 2>&1 &`, `nohup pnpm bridge /tmp/canvas-demos/chat/board.canvas --port 5284 > /tmp/canvas-demos/chat-bridge.log 2>&1 &`.
+Restart (detached): `cd ~/code/canvas-wt/chat && nohup pnpm exec vite --port 5281 --strictPort --host 127.0.0.1 > /tmp/canvas-demos/chat-app.log 2>&1 &`, `nohup pnpm bridge /tmp/canvas-demos/chat/board.canvas --port 5284 --allow-origin http://localhost:5281 > /tmp/canvas-demos/chat-bridge.log 2>&1 &`.
 
 ## What it says about the core / plugin API
 
@@ -75,7 +75,7 @@ Restart (detached): `cd ~/code/canvas-wt/chat && nohup pnpm exec vite --port 528
 
 - No autocomplete for @-names (click a name in the panel to insert one); mentions of renamed players stop matching old messages.
 - Plain text only: no markdown, links aren't clickable, no images.
-- Chat is open to anyone who can write to the doc, and `from` is not verified (see above); behind a bridge that includes any web page open in the same browser (see What's built).
+- Chat is open to anyone who can write to the doc, and `from` is not verified (see above); behind a bridge that means any local process (`--as` is unauthenticated). Web pages in the same browser are refused by the bridge's Origin check.
 - Capped at 300 messages and 2000 chars each; history before the cap is gone for good. Two peers appending at once can land in either order (Yjs order, same on every peer).
 - The "seen" marker for people is per device and table; the unread count assumes the cap didn't drop your marker (then everything counts as unread).
 - A message sent while a peer was offline reaches them with their next sync (the badge counts it; no notice popup for messages older than 15 s).

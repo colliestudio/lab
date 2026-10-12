@@ -123,7 +123,10 @@ describe('chess rules mode', () => {
     expect(piece(a.doc.get(bp)!).square).toBe('e7');
     // plain undo is off in a rules game; takeback restores it
     expect(a.undoBlocked()).toMatch(/takeback/);
+    const told: string[] = [];
+    a.onUndoRefused = (why) => told.push(why); // the app shows this to the player
     expect(a.undo()).toBe(false);
+    expect(told).toHaveLength(1);
     expect(piece(a.doc.get(pawn)!).square).toBe('e4');
     expect(a.dispatch('chess.takeback', { id }).ok).toBe(true);
     expect(piece(a.doc.get(pawn)!).square).toBe('e2');

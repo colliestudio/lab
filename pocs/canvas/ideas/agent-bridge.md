@@ -26,14 +26,28 @@
 - `bridge/cli.ts` — `canvas status|list|query|show|add-node|add-column|update|move|connect|disconnect|rm|undo|redo|log|cmd|sync-backlog`. Nodes by id or title (unique prefix/substring).
 - `bridge/mcp.ts` — MCP stdio server: `canvas_list, canvas_add_node, canvas_update_node, canvas_connect, canvas_remove, canvas_undo, canvas_log`.
 - App: `?bridge=ws://host:5222` joins the bridge (no IndexedDB, no starter deck; toolbar shows players incl. agents).
-- Tests: +15 (edges, board commands, sync, canonical/diff/merge, host undo-per-actor, Yjs round trip, backlog parser). 244 total.
+- Tests: +15 (edges, board commands, sync, canonical/diff/merge, host undo-per-actor, Yjs round trip, backlog parser). 244 total on the original branch; the merge branch adds the undo-step test, the guard and argument parser tests.
+- `bridge/guard.ts` + `bridge/args.ts`: request guard and argument parsing (a flag before the file is not the file; unknown flags are an error).
+
+## Who may talk to the bridge
+
+The bridge binds `127.0.0.1` (`--host` to change) and answers only requests a local tool or the allowed app would send (`bridge/guard.ts`; the same idea as `localOnly` in the desktop-electron branch):
+
+- **Host** must be `localhost`, `127.0.0.1` or `[::1]` (or the host of an `--allow-origin`): a DNS name rebound to 127.0.0.1 is refused.
+- **Origin**, when the request has one (browsers always send it, also on WebSocket), must be the bridge's own origin or one given with `--allow-origin URL` (repeatable, or `$CANVAS_ALLOW_ORIGIN`, comma separated). Anything else gets `403` on every route, reads included (the document and the chat are private). CLI, MCP and curl send no Origin and pass.
+- **POST** needs `content-type: application/json`, which a cross-site form or a no-cors `fetch` cannot send.
+- No CORS headers at all: the browser app only uses the WebSocket.
+- Refusals are logged with the origin, so a missing `--allow-origin` shows in the bridge log.
+- `--as NAME` stays unauthenticated: any local process can act under any name (tokens per agent are the later step; Open questions).
+
+The app is served by vite on another port than the bridge, so its origin must be allowed: `pnpm bridge board.canvas --port 5285 --allow-origin http://localhost:5284` for an app on 5284. Alex opens `http://mini.internal:5284/?bridge=ws://mini.internal:5285`: the dev proxy on the Mini rewrites `mini.internal` to `localhost` in Host and Origin before they reach vite and the bridge, so the bridge sees `localhost:5284` and the flag above is the right one. Without that proxy (a direct URL), allow the origin exactly as the address bar shows it; a refused WebSocket says which origin in the bridge log.
 
 ## Demo
 
-From the worktree `~/code/canvas-wt/agent-bridge`:
+From the worktree `~/code/canvas-wt/agent-bridge` (ports are examples; `$APP` and `$BRIDGE` = the vite and bridge ports):
 
-1. `pnpm bridge /tmp/demo/board.canvas` (creates it; any dir works, a git repo is nicest: `git init /tmp/demo` first).
-2. `pnpm exec vite --port 5212 --strictPort --host`; open `http://mini.internal:5212/?bridge=ws://mini.internal:5222` (on the Mini itself: `localhost` for both). Two tabs to see two people (tabs in one browser share a name and color: rename one from the toolbar). Add `.canvas-bridge/` to the demo repo's `.gitignore`.
+1. `git init /tmp/demo` with `.canvas-bridge/` in its `.gitignore`, then `pnpm bridge /tmp/demo/board.canvas --port $BRIDGE --allow-origin http://localhost:$APP` (creates the file; add `--host 0.0.0.0` only to open it to the LAN, and then `--allow-origin` the LAN origin too).
+2. `pnpm exec vite --port $APP --strictPort`; open `http://mini.internal:$APP/?bridge=ws://mini.internal:$BRIDGE` (on the Mini itself `localhost` for both). `export CANVAS_BRIDGE=http://127.0.0.1:$BRIDGE` for the shell. Two tabs to see two people (tabs in one browser share a name and color: rename one from the toolbar).
 3. Agent from the shell, watch the browser:
    - `pnpm canvas add-node "Order placed"`
    - `pnpm canvas add-node "Payment taken" --near "Order placed" --color 4`
@@ -41,9 +55,10 @@ From the worktree `~/code/canvas-wt/agent-bridge`:
    - Claude's cursor jumps to each note, the log (bottom left) says "Claude added note …".
 4. `pnpm canvas sync-backlog` → three columns of cs's Backlog tasks appear (as "Backlog.md"). Run again: "board already up to date". Move a task in Backlog (`backlog task edit …`) and re-run: it moves column.
 5. Edit in the browser (double-click a note) → `git -C /tmp/demo diff` shows one line. Edit the file in an editor → browser updates, log says "File edited the file: 1 changed". `git checkout board.canvas` → the board reverts live.
-6. `pnpm canvas undo` → undoes Claude's last step only (people's and other agents' steps stay). `pnpm canvas undo --as Someone` → "nothing to undo".
-7. MCP: `claude mcp add canvas -e CANVAS_AS=Claude -- ~/code/canvas-wt/agent-bridge/node_modules/.bin/tsx ~/code/canvas-wt/agent-bridge/bridge/mcp.ts` (via `pnpm --dir … canvas-mcp` fails where mise has no global pnpm, e.g. from `/tmp`), then ask Claude to "map the checkout flow on the canvas". It shows up as a second player "Claude" (use `CANVAS_AS` to name each agent).
-8. Ctrl-C the bridge: it writes the file and state; restart picks up where it was.
+6. `pnpm canvas undo` → undoes Claude's last step only (people's and other agents' steps stay). `pnpm canvas undo --as Someone` → "nothing to undo". If another actor overwrote Claude's last step, `undo` says so and does nothing; the next `undo` goes to the step before.
+7. A web page cannot act: from a page on another origin, a `fetch` POST of `/chat/say` or `/cmd`, a read of `/chat/read`, and a `new WebSocket(...)` are all refused (bridge log: `refused POST /cmd: Origin … is not allowed`).
+8. MCP: `claude mcp add canvas -e CANVAS_AS=Claude -- ~/code/canvas-wt/agent-bridge/node_modules/.bin/tsx ~/code/canvas-wt/agent-bridge/bridge/mcp.ts` (via `pnpm --dir … canvas-mcp` fails where mise has no global pnpm, e.g. from `/tmp`), then ask Claude to "map the checkout flow on the canvas". It shows up as a second player "Claude" (use `CANVAS_AS` to name each agent).
+9. Ctrl-C the bridge: it writes the file and state; restart picks up where it was.
 
 ## What it says about the core / plugin API
 
@@ -85,17 +100,18 @@ Gaps the API showed:
 
 ## Known gaps
 
-- No auth; binds all interfaces (port 5222). Local/LAN use only.
+- No auth: any local process can act as any `--as` name and read/write the board. The bridge binds 127.0.0.1 and refuses foreign Origins/Hosts (see above), but `--host 0.0.0.0` opens it to every process on the network (the Origin check only constrains browsers).
+- Clicking a note raises it, and the file stores nodes in z order, so a browser edit also moves that note's block to the end of the file in `git diff`.
 - No plugin logic other than board in the bridge (see above); cards/chess still work in the browser over the bridge, but their export filters don't shape the file.
 - Browser in bridge mode doesn't persist offline edits if the bridge is down when the tab closes.
 - File edits with invalid JSON are skipped (logged) until fixed; meanwhile doc changes aren't written (the file isn't overwritten). Skipped malformed nodes in a valid file are dropped from the doc.
-- Per-agent undo leaks (Yjs UndoManager): if an agent's last step was overwritten by someone else, its undo silently skips that step and undoes its *previous* one (e.g. deletes a note it added earlier); and undoing an older step can restore a value over a later File/person edit of the same field when the agent edited that field again in between. Fix in core `Store.step`: undo exactly one stack item, report "overwritten by others".
+- Per-agent undo: fixed in core `Store.step` (undo takes exactly the top step; one that someone else overwrote is dropped and reported as nothing to undo, instead of undoing the step before it). Not fixed: undoing an older step can still restore a value over a later File/person edit of the same field when the agent edited that field again in between (Yjs only protects what it can tell was overwritten).
 - Calling `undo --as X` (or any call) seats X: it shows in the toolbar as a player for 3 min.
 - `pnpm canvas` prints pnpm's command echo on stderr; stdout is clean for scripts.
 
 ## Effort to make it real
 
-- Bridge hardening (auth tokens per actor, permissions per command, bind localhost by default, folder of files): ~1 week.
+- Bridge hardening (auth tokens per actor, permissions per command, folder of files): ~1 week. (Localhost bind and the Origin/Host/content-type guard are done.)
 - Plugin manifest with DOM-free logic entry + command schemas → auto MCP tools for every plugin: ~3–4 days.
 - Host-side secrecy (per-player filtering over WS): ~1–2 weeks; overlaps the dealer task (TASK-35.5).
 - More integrations (GitHub issues, Linear) on `board.sync`: ~1 day each.

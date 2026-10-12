@@ -28,9 +28,14 @@ Branch `idea/agent-player` (from `idea/agent-bridge`), worktree `~/code/canvas-w
 - Bridge: chess logic registered in the host; `GET /view/<name>`, `GET /wait/<name>?timeout=S`; client `view()/wait()`; CLI `canvas chess state|new|sit|move|wait|resign`, `canvas bot chess`; MCP `chess_state, chess_sit, chess_new_game, chess_move, chess_wait_for_turn, chess_resign`.
 - Tests: +19 (rules 5, rules mode 11, bridge 3). 263 total. Headless Chromium run: person drags e2→e5 (bounced), e2→e4, Ng1→f3 vs the bot as black; tab, cursors and log as expected. MCP checked with an SDK client over stdio (no LLM): list tools, new game, sit, refused out-of-turn move with the reason, wait timeout.
 
+## Takeback (and no undo in a rules game)
+
+- `chess.takeback {id}` (CLI `canvas chess takeback`, MCP `chess_takeback`, board menu "Take back my last move"): seated, it goes back to just before your last move (your move and the reply); not seated at an open board, the last move. It replays the SAN record (`moves`, from the standard start, or from `start` when rules were turned on mid-game) and puts the pieces, captured pieces, promoted pieces (back to pawns), castling rights, en passant, counters, last-move highlight and result as they were, as one step. If the pieces no longer match the record (moved by hand), it refuses and says so. Not seated while both seats are taken: refused.
+- Undo of any step that touched a rules board or its pieces is refused with "use takeback", in the browser (the toolbar says why), the CLI and MCP. This is a core hook (`Store.undoGuards`), so other games can guard their own state. Free-play boards undo as before.
+
 ## Demo
 
-Running on the Mini now: app 5220, bridge 5230 on `/tmp/canvas-demos/agent-player/game.canvas` (a git repo), and a bot seated as black (`--keep`: plays every new game).
+Start the bridge with the app's origin allowed (`--allow-origin http://localhost:<app port>`, see agent-bridge.md § Who may talk to the bridge). The ports below are the ones from the original run (app 5220, bridge 5230 on `/tmp/canvas-demos/agent-player/game.canvas`, a git repo), with a bot seated as black (`--keep`: plays every new game).
 
 1. Open `http://mini.internal:5220/?bridge=ws://mini.internal:5230`. Board tab menu (click "Chess") → **Play white**. Drag e2→e4: Bot's cursor goes to its reply after ~0.6 s; the log (bottom left) says "Bot played Black …". Try an illegal drop: the piece goes back.
 2. Shell, from the worktree, `export CANVAS_BRIDGE=http://localhost:5230`:
@@ -41,7 +46,8 @@ Running on the Mini now: app 5220, bridge 5230 on `/tmp/canvas-demos/agent-playe
    - `claude mcp add canvas -e CANVAS_AS=Claude -e CANVAS_BRIDGE=http://localhost:5230 -- ~/code/canvas-wt/agent-player/node_modules/.bin/tsx ~/code/canvas-wt/agent-player/bridge/mcp.ts`
    - prompt: "Sit at the chessboard as black with chess_sit, then loop: chess_wait_for_turn, pick a move from the legal list, chess_move, until the game is over."
    - Play white in the browser. Claude's cursor and log name show up like the bot's.
-4. `git -C /tmp/canvas-demos/agent-player diff`: a move is a handful of lines (piece square/x/y, board turn/from/to/moves).
+4. With the bot's reply on the board, `pnpm canvas undo --as Alex` is refused ("use takeback"); `pnpm canvas chess takeback --as Alex` puts the board back to before your move, white to move again, and the bot keeps playing.
+5. `git -C /tmp/canvas-demos/agent-player diff`: a move is a handful of lines (piece square/x/y, board turn/from/to/moves).
 
 Restart (all detached): `cd ~/code/canvas-wt/agent-player && nohup pnpm exec vite --port 5220 --strictPort > /tmp/canvas-demos/agent-player-app.log 2>&1 &`, `nohup pnpm bridge /tmp/canvas-demos/agent-player/game.canvas --port 5230 > /tmp/canvas-demos/agent-player-bridge.log 2>&1 &`, `CANVAS_BRIDGE=http://localhost:5230 nohup pnpm canvas bot chess --as Bot --color black --keep > /tmp/canvas-demos/agent-player-bot.log 2>&1 &`.
 
@@ -70,7 +76,7 @@ Restart (all detached): `cd ~/code/canvas-wt/agent-player && nohup pnpm exec vit
 
 ## Open questions
 
-- Takebacks: per-actor undo of a move after the opponent replied leaves the game fields inconsistent with a half-restored position (tried: nothing crashes and the bot keeps playing, but the undone move stays in the history and the undoer moves again; after a recapture the captured piece doesn't come back). Should rules mode replace undo with a `chess.takeback` (undo the last move pair for both)?
+- Takebacks: decided and built (`chess.takeback`, below). Per-actor undo of a move after the opponent replied left the game fields inconsistent with a half-restored position (the undone move stayed in the history and the undoer moved again; a recaptured piece didn't come back), so rules mode now refuses undo. Open: should the other player have to agree to a takeback?
 - Should seats be core (a table-level "who plays what" for any game: chess colors, card seats, battleline sides), with permissions on commands keyed to them?
 - A clock (the clock plugin exists): tie it to the turn (`turn` change → press the clock), and time out a waiting agent?
 - Draw offers, threefold repetition (needs position history), PGN export.
@@ -79,6 +85,8 @@ Restart (all detached): `cd ~/code/canvas-wt/agent-player && nohup pnpm exec vit
 
 - Rules enforcement is per peer; nothing stops a raw doc edit (file edit, modified client) from making an illegal position. The next move is judged from whatever the position is. Same for two people moving an open (hot) seat's color at the same moment: each peer accepts its own drop, both merge.
 - Multi-piece drags on a rules board bounce back; promotion by drag is always a queen.
+- Takeback asks nobody (a bot cannot object, a person is not asked), and the board must still match its record: a rules game whose pieces were rearranged by hand (free play in between, then rules on) restarts the record, so earlier moves cannot be taken back.
+- Undo is refused for every step touching a rules board, including a bounced illegal drag or a drag of a captured piece: there is no per-gesture undo in a game, only takeback.
 - `--as` is unauthenticated: any local process can claim a seat holder's name.
 - A seated agent that dies keeps its seat until someone frees it (menu) — bots stand up on Ctrl-C/kill of the node process only (killing the `pnpm` wrapper may not forward the signal).
 - Long waits are long-polls of ≤290 s; MCP clients may time out a tool call sooner; `chess_wait_for_turn` defaults to 240 s and says "call again".
