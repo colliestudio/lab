@@ -44,6 +44,12 @@ body {
   opacity: 0.75;
   white-space: nowrap;
 }
+#toolbar button.active {
+  background: rgba(120, 170, 255, 0.4);
+}
+#toolbar .json-btn {
+  font-family: ui-monospace, Menlo, monospace;
+}
 #toolbar .help-btn {
   font-weight: 700;
   min-width: 30px;

@@ -146,7 +146,23 @@ handBtn.addEventListener('click', () => {
   if (!app.presence) return newHandFor(app, { ...loadPlayer() });
   app.view.openMenu(newHandEntries(app), handBtn, 'New hand for');
 });
-bar.append(handBtn, helpBtn, status);
+// JSON: the board as .canvas text in a side panel (CodeMirror loads on first open)
+const jsonBtn = document.createElement('button');
+jsonBtn.textContent = '{ }';
+jsonBtn.title = 'See and edit the board as .canvas JSON';
+jsonBtn.className = 'json-btn';
+let jsonPanel: Promise<import('./core/jsonPanel').JsonPanel> | undefined;
+const toggleJson = async (want?: boolean) => {
+  jsonPanel ??= import('./core/jsonPanel').then((m) =>
+    m.mountJsonPanel(app, document.getElementById('table')!, (open) => jsonBtn.classList.toggle('active', open)),
+  );
+  const p = await jsonPanel;
+  if (want === undefined) p.toggle();
+  else if (want) p.open();
+};
+jsonBtn.addEventListener('click', () => void toggleJson());
+if (localStorage.getItem('canvas-poc:json-open') === '1') void toggleJson(true);
+bar.append(handBtn, jsonBtn, helpBtn, status);
 app.onNotify(flash);
 mountHelp(app, helpBtn);
 mountZoomControl(app);

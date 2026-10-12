@@ -1,0 +1,113 @@
+.jp {
+  position: fixed;
+  z-index: 9;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  width: 460px;
+  background: #101a15;
+  border-left: 1px solid #2c4034;
+  color: #e8efe9;
+  font: 13px system-ui, sans-serif;
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.3);
+}
+.jp[hidden] {
+  display: none;
+}
+.jp-grip {
+  position: absolute;
+  left: -4px;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: col-resize;
+  z-index: 2;
+}
+.jp-grip:hover {
+  background: rgba(120, 170, 255, 0.35);
+}
+.jp-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: #0c1410;
+  border-bottom: 1px solid #2c4034;
+}
+.jp-title {
+  flex: 1;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 12px;
+  opacity: 0.8;
+}
+.jp-head button {
+  border: 0;
+  border-radius: 6px;
+  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.12);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.jp-head button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.24);
+}
+.jp-head button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.jp-head .jp-apply:not(:disabled) {
+  background: #2f6b45;
+}
+.jp-head .jp-warn {
+  background: #8a5a1c;
+}
+.jp-head button[hidden] {
+  display: none;
+}
+.jp-auto {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  opacity: 0.8;
+  cursor: pointer;
+}
+.jp-host {
+  flex: 1;
+  min-height: 0;
+}
+.jp-host .cm-editor {
+  height: 100%;
+}
+.jp-host .cm-scroller {
+  overflow: auto;
+}
+.jp-selected {
+  background: rgba(255, 210, 90, 0.18);
+  box-shadow: 0 0 0 1px rgba(255, 210, 90, 0.35);
+}
+.jp-status {
+  padding: 6px 10px;
+  background: #0c1410;
+  border-top: 1px solid #2c4034;
+  font-size: 12px;
+  line-height: 1.35;
+  opacity: 0.85;
+  max-height: 4.5em;
+  overflow: auto;
+}
+.jp-status[data-state='error'] {
+  color: #ff9d8f;
+  opacity: 1;
+}
+.jp-status[data-state='dirty'] {
+  color: #ffd27a;
+  opacity: 1;
+}
+.jp-status[data-state='ok'] {
+  color: #9be3ae;
+  opacity: 1;
+}
