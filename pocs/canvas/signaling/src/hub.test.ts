@@ -26,3 +26,18 @@ describe('signaling hub', () => {
     expect(sent[0][1]).toEqual({ type: 'publish', topic: 'room', data: { hi: 1 }, clients: 2 });
   });
 });
+
+describe('sandbox host routing (Worker)', async () => {
+  const { sandboxResponse } = await import('./sandbox');
+  const env = { SANDBOX_HOST: 'canvas-frames.example', APP_ORIGINS: 'https://canvas.lab.collie.studio' };
+  it('serves frames only on <label>.<SANDBOX_HOST>, with the app as the only ancestor', async () => {
+    expect(sandboxResponse(new URL('https://canvas.lab.collie.studio/worker'), env)).toBeUndefined();
+    expect(sandboxResponse(new URL('https://p-dice-1.canvas-frames.example/worker'), {})).toBeUndefined();
+    const r = sandboxResponse(new URL('https://p-dice-1.canvas-frames.example/worker'), env)!;
+    expect(r.status).toBe(200);
+    expect(r.headers.get('content-security-policy')).toContain('frame-ancestors https://canvas.lab.collie.studio;');
+    expect(await r.text()).toContain("navigation.addEventListener('navigate'");
+    expect(sandboxResponse(new URL('https://a.b.canvas-frames.example/page'), env)!.status).toBe(400);
+    expect(sandboxResponse(new URL('https://x.canvas-frames.example/page'), { SANDBOX_HOST: env.SANDBOX_HOST })!.status).toBe(500);
+  });
+});
