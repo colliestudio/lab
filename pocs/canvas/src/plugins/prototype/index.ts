@@ -167,7 +167,18 @@ export const prototypePlugin: Plugin = {
     const selPage = () => app.selected().find(isPage);
     app.registerKey({ key: 'i', label: 'Interact with the page', when: () => !!selPage(), run: () => setLive(selPage()!.id, !live.has(selPage()!.id)) });
     app.registerKey({ key: 'shift+enter', label: 'Play the prototype', run: () => play() });
-    app.registerKey({ key: 'enter', label: 'Edit the page', when: () => !!selPage(), run: () => void edit(selPage()!) });
+    // Enter is shared (event storm edits a sticky with it): keep the binding registered before this one
+    const prevEnter = app.keys.get('enter');
+    app.registerKey({
+      key: 'enter',
+      label: 'Edit the page',
+      when: (a) => !!selPage() || (!!prevEnter && (!prevEnter.when || prevEnter.when(a))),
+      run: (a) => {
+        const p = selPage();
+        if (p) void edit(p);
+        else prevEnter?.run(a);
+      },
+    });
 
     // ------------------------------------------------------------ menus
     const linkLabel = async (from: CanvasNode, to: CanvasNode, label = '') => {
