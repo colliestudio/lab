@@ -227,8 +227,10 @@ export function mountJsonPanel(app: App, table: HTMLElement, onToggle?: (open: b
     const cur = session.current();
     if (cur !== session.text) {
       if (!dirty()) {
+        stale = false;
         show(session.refresh());
         markSelection(false);
+        paintStatus();
       } else if (!stale) {
         stale = true;
         paintStatus();
@@ -293,6 +295,8 @@ export function mountJsonPanel(app: App, table: HTMLElement, onToggle?: (open: b
       if (u.docChanged && from === 'user') {
         flashMsg = '';
         validate();
+        // typed back to the text last shown while the board moved on: catch up now
+        if (stale && !dirty()) follow();
         clearTimeout(autoTimer);
         if (auto.checked) autoTimer = setTimeout(() => !errorMsg && dirty() && doApply(), AUTO_DELAY);
       }
@@ -369,6 +373,3 @@ export function mountJsonPanel(app: App, table: HTMLElement, onToggle?: (open: b
   paintStatus();
   return panel;
 }
-
-/** Whether the panel was left open last time. */
-export const jsonPanelWasOpen = () => localStorage.getItem(OPEN_KEY) === '1';
