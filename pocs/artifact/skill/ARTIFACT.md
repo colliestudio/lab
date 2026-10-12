@@ -1,9 +1,11 @@
 ---
 name: artifact
-description: Make an artifact: a page that shows what you did, found or propose (status, review, plan, explainer, investigation, decision walk), written as React with a component kit and built into one HTML file. Use when a person needs to read or decide something technical and prose in chat is not enough.
+description: Build an HTML page (React + component kit, one file) for a status, review, plan, explainer or investigation. Only when the user asks for one ("make it a page/visual/artifact") or says yes to your offer. Default is an answer in chat; never start one unasked.
 ---
 
 # artifact
+
+**Chat first.** Most asks ("give me a status", "summarize the review") want a report in the conversation, not a page. Build an artifact only when asked or when the user accepts an offer. Offer at most once per topic, and only when a page would clearly beat chat (many items to compare, a flow over time, decisions to batch, something to present or share); otherwise just answer.
 
 An artifact is a directory `x.artifact/`. You write the page; the kit gives you parts (`COMPONENTS.md` next to this file lists them with props); the host adds the feedback layer (comments, decisions, present, download). You pick the structure and the layout: nothing here is a required shape.
 
