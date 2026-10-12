@@ -13,6 +13,8 @@ body {
 }
 #toolbar {
   position: fixed;
+  flex-wrap: wrap;
+  max-width: calc(100vw - 24px);
   z-index: 10;
   left: 12px;
   top: 12px;
@@ -257,11 +259,14 @@ body {
   opacity: 0.4;
 }
 #toolbar .player.speaking i {
-  box-shadow: 0 0 0 2px #fff, 0 0 0 5px #4cd37b;
+  box-shadow: 0 0 0 2px #4cd37b, 0 0 6px 3px rgba(76, 211, 123, 0.7);
 }
 .cv-cursor.speaking span {
   box-shadow: 0 0 0 2px #fff, 0 0 0 4px #4cd37b;
 }
 .cv-cursor.voice-muted span::after {
   content: ' 🔇';
+}
+#toolbar .players {
+  gap: 12px;
 }

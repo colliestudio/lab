@@ -85,5 +85,6 @@ export function mountVoice(app: App, room: Room, bar: HTMLElement): VoiceChat {
   setInterval(refresh, 500);
   refresh();
   window.addEventListener('beforeunload', () => chat.leave());
+  (window as any).__voiceStats = () => chat.stats();
   return chat;
 }
