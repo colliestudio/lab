@@ -16,16 +16,17 @@ const USAGE = `artifact: agent-written pages (React + a component kit), one self
   artifact dev <dir> [--port N]          live-reload server on 127.0.0.1 (default 4177)
   artifact check <dir>                   bundle + types + render + evidence + size; exit 1 on errors
   artifact build <dir> -o out.html       one HTML file, everything inlined; reports sizes
-  artifact shot <dir> [--theme light|dark|both] [--present 2,3|all] [--page id|all] [--split] [--height N] [-o outdir] [--width N] [--no-chrome]
+  artifact shot <dir> [--theme light|dark|both] [--present 2,3|all] [--page id|all] [--split] [--height N] [-o outdir] [--width N] [--no-chrome] [--motion]
                                          PNGs of the page to look at; default <dir>/.shots. --present takes 1-based slide numbers (every step is shot);
                                          --split cuts the page into --height-tall (default 800) PNGs: name-p1.png, p2…
+                                         shots run with prefers-reduced-motion: reduce (count-ups and transitions settle); --motion keeps animations
 `;
 
 export async function main(argv: string[]): Promise<number> {
   const [cmd, ...rest] = argv;
   const { values, positionals } = parseArgs({
     args: rest, allowPositionals: true,
-    options: { kind: { type: "string" }, port: { type: "string" }, host: { type: "string" }, o: { type: "string", short: "o" }, theme: { type: "string" }, present: { type: "string" }, width: { type: "string" }, "no-chrome": { type: "boolean" }, "no-types": { type: "boolean" }, help: { type: "boolean", short: "h" }, split: { type: "boolean" }, page: { type: "string" }, selector: { type: "string" }, wait: { type: "string" }, height: { type: "string" }, full: { type: "boolean" }, steps: { type: "string" }, repos: { type: "string" }, workspaces: { type: "string" }, repo: { type: "string" }, branches: { type: "string" }, fields: { type: "string" }, count: { type: "boolean" }, base: { type: "string" }, since: { type: "string" }, name: { type: "string" }, limit: { type: "string" }, force: { type: "boolean" } },
+    options: { kind: { type: "string" }, port: { type: "string" }, host: { type: "string" }, o: { type: "string", short: "o" }, theme: { type: "string" }, present: { type: "string" }, width: { type: "string" }, "no-chrome": { type: "boolean" }, motion: { type: "boolean" }, "no-types": { type: "boolean" }, help: { type: "boolean", short: "h" }, split: { type: "boolean" }, page: { type: "string" }, selector: { type: "string" }, wait: { type: "string" }, height: { type: "string" }, full: { type: "boolean" }, steps: { type: "string" }, repos: { type: "string" }, workspaces: { type: "string" }, repo: { type: "string" }, branches: { type: "string" }, fields: { type: "string" }, count: { type: "boolean" }, base: { type: "string" }, since: { type: "string" }, name: { type: "string" }, limit: { type: "string" }, force: { type: "boolean" } },
   });
   const dir = positionals[0];
   if (values.help) { console.log(USAGE); return 0; }
@@ -66,7 +67,7 @@ export async function main(argv: string[]): Promise<number> {
     case "shot": {
       const { shot } = await import("./shot.ts");
       const themes = values.theme === "both" ? (["light", "dark"] as const) : values.theme === "dark" ? (["dark"] as const) : (["light"] as const);
-      const paths = await shot(dir, { out: values.o, themes: [...themes], present: values.present, split: values.split, page: values.page, height: values.height ? Number(values.height) : undefined, width: values.width ? Number(values.width) : undefined, chrome: !values["no-chrome"] });
+      const paths = await shot(dir, { out: values.o, themes: [...themes], present: values.present, split: values.split, page: values.page, height: values.height ? Number(values.height) : undefined, width: values.width ? Number(values.width) : undefined, chrome: !values["no-chrome"], motion: values.motion });
       for (const p of paths) console.log(p);
       return 0;
     }

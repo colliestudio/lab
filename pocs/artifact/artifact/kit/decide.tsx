@@ -1,11 +1,11 @@
-import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { Badge, Source, Status, type SourceProps, type StatusValue, type Tone } from "./layout.tsx";
 import { meta } from "./registry.ts";
 import { fmtAsOf } from "./util.ts";
 import { imageSrc } from "./registry.ts";
 import { useAnswers } from "./feedback.ts";
 import { ZoomImg } from "./zoom.tsx";
-import { usePresent } from "./present.ts";
+import { NoStepsCtx, usePresent } from "./present.ts";
 import { cx } from "./util.ts";
 
 export type Grade = "best" | "ok" | "weak" | "bad" | "na";
@@ -138,9 +138,10 @@ export function Gallery({ items, id, layout, hint }: { items: GalleryItem[]; id?
   const [i, setI] = useState(0);
   const root = useRef<HTMLDivElement>(null);
   const present = usePresent();
+  const off = useContext(NoStepsCtx);
   const tiles = layout ? layout === "tiles" : items.some((it) => it.thumb || it.detail || it.summary);
   useEffect(() => {
-    if (!present.active || !root.current) return;
+    if (!present.active || off || !root.current) return;
     setI(Math.min(items.length - 1, root.current.querySelectorAll("[data-step]:not([data-present-hidden])").length));
   }, [present.active, present.step, present.slide, items.length]);
   const n = items.length, cur = items[Math.min(i, n - 1)];
@@ -153,7 +154,7 @@ export function Gallery({ items, id, layout, hint }: { items: GalleryItem[]; id?
     setI(next);
     requestAnimationFrame(() => root.current?.querySelectorAll<HTMLElement>("[data-gi]")[next]?.focus());
   };
-  const markers = items.slice(1).map((_, k) => <span key={k} data-step hidden />);
+  const markers = off ? [] : items.slice(1).map((_, k) => <span key={k} data-step hidden />);
   if (tiles) {
     return (
       <div className="a-gallery tiles" ref={root} data-c="gallery" data-aid={id}>

@@ -2,7 +2,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
-import { buildArtifact, formatMessages, listPages } from "./build.ts";
+import { buildArtifact, formatMessages } from "./build.ts";
 
 const NAMES = ["Google Chrome for Testing", "Chromium", "chrome-headless-shell", "headless_shell", "chrome"];
 
@@ -30,7 +30,7 @@ export async function findChrome(): Promise<string> {
   throw new Error(`no Chromium found (looked in ${bases.join(", ")} and PATH): run \`npx playwright-core install chromium\` or set ARTIFACT_CHROME=/path/to/chrome`);
 }
 
-export interface ShotOpts { out?: string; themes?: ("light" | "dark")[]; present?: string; width?: number; height?: number; chrome?: boolean; split?: boolean; page?: string }
+export interface ShotOpts { out?: string; themes?: ("light" | "dark")[]; present?: string; width?: number; height?: number; chrome?: boolean; split?: boolean; page?: string; /** keep animations and view transitions (shots default to prefers-reduced-motion: reduce so count-ups and transitions are settled) */ motion?: boolean }
 
 /** Writes `<name>-<theme>.png` (full page) and, with `present`, `<name>-<theme>-present-<n>.png` (viewport). Returns the paths. */
 export async function shot(dir: string, o: ShotOpts = {}): Promise<string[]> {
@@ -47,10 +47,19 @@ export async function shot(dir: string, o: ShotOpts = {}): Promise<string[]> {
   const browser = await chromium.launch({ executablePath: await findChrome() });
   const paths: string[] = [];
   try {
-    const pageIds: (string | undefined)[] = o.page === "all" ? ["home", ...listPages(abs).map((p) => p.id)] : o.page ? [o.page] : [undefined];
+    let pageIds: (string | undefined)[] = o.page ? [o.page] : [undefined];
+    if (o.page === "all") {
+      // the real list, including pages a `pages/[id].tsx` expands from data
+      const c0 = await browser.newContext({ viewport: { width: 800, height: 600 } });
+      const p0 = await c0.newPage();
+      await p0.goto("file://" + file);
+      await p0.waitForFunction(() => (window as unknown as { __artifactPages?: string[] }).__artifactPages, null, { timeout: 10_000 });
+      pageIds = await p0.evaluate(() => (window as unknown as { __artifactPages: string[] }).__artifactPages);
+      await c0.close();
+    }
     for (const theme of o.themes ?? ["light"]) for (const pid of pageIds) {
       const base = pid ? `${name}-${pid}` : name;
-      const ctx = await browser.newContext({ viewport: { width: o.width ?? 1280, height: o.height ?? 800 }, colorScheme: theme });
+      const ctx = await browser.newContext({ viewport: { width: o.width ?? 1280, height: o.height ?? 800 }, colorScheme: theme, reducedMotion: o.motion ? "no-preference" : "reduce" });
       const page = await ctx.newPage();
       const errs: string[] = [];
       page.on("pageerror", (e) => errs.push(e.message));
@@ -68,7 +77,7 @@ export async function shot(dir: string, o: ShotOpts = {}): Promise<string[]> {
         await Promise.all([...document.images].map((i) => (i.complete ? null : new Promise((r) => { i.onload = i.onerror = () => r(null); }))));
       });
       await page.waitForTimeout(200);
-      await page.addStyleTag({ content: o.chrome === false ? ".h-bar,.h-corner{display:none!important}" : ".h-bar{position:static!important}" });
+      await page.addStyleTag({ content: o.chrome === false ? ".h-bar,.h-corner,.h-hint,.h-dot{display:none!important}" : ".h-bar{position:static!important}.h-hint{display:none!important}" });
       if (o.split) {
         // viewport-sized slices of the full page: each PNG is readable on its own
         const dims = await page.evaluate(() => ({ h: document.documentElement.scrollHeight, w: document.documentElement.clientWidth }));
@@ -148,7 +157,7 @@ export async function capture(url: string, o: CaptureOpts): Promise<string> {
       }
     }
     // the sticky host bar would be drawn mid-capture: hide it for element shots, unstick it for full pages
-    await page.addStyleTag({ content: o.selector ? ".h-bar,.h-corner{display:none!important}" : ".h-bar{position:static!important}" }).catch(() => {});
+    await page.addStyleTag({ content: o.selector ? ".h-bar,.h-corner,.h-hint{display:none!important}" : ".h-bar{position:static!important}.h-hint{display:none!important}" }).catch(() => {});
     mkdirSync(dirname(resolve(o.out)), { recursive: true });
     const jpeg = /\.jpe?g$/i.test(o.out);
     const opts = { path: resolve(o.out), ...(jpeg ? { type: "jpeg" as const, quality: o.quality ?? 72 } : { type: "png" as const }) };

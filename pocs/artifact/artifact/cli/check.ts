@@ -62,6 +62,9 @@ export async function check(dir: string, opts: { types?: boolean } = {}): Promis
         const ids = [...html.matchAll(/data-section="([^"]+)"/g)].map((m) => m[1]);
         const dup = ids.filter((x, i) => ids.indexOf(x) !== i);
         for (const d of new Set(dup)) rep.errors.push(`${tag}duplicate Section id "${d}" (set id= on one of them)`);
+        if (/data-section=""/.test(html)) rep.errors.push(`${tag}a Section/Slide has an empty id: present mode skips it (give it an id= or a title)`);
+        const vt = [...html.matchAll(/view-transition-name:\s*([^;"]+)/g)].map((m) => m[1].trim()).filter((n) => n !== "none");
+        for (const d of new Set(vt.filter((x, i) => vt.indexOf(x) !== i))) rep.warnings.push(`${tag}view-transition-name "${d}" is on more than one element: the browser skips the whole transition. Use <Morph name when={false}> and navigate(id, { morph }) to name one pair`);
         if (!ids.length && meta.shell !== "bare") rep.warnings.push(`${tag}no <Section>: the outline and present mode have nothing to walk`);
         for (const w of advise(html, meta).warnings) rep.warnings.push(tag + w);
       }

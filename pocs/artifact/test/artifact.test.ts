@@ -1177,7 +1177,7 @@ test("feedback across pages: decisions on other pages count, drawer groups by pa
       const md = await p.evaluate(() => navigator.clipboard.readText());
       assert.match(md, /## Checkout \(page: checkout\)[\s\S]*- \*\*d-pay\*\* \(page: checkout\) — Add a second payment provider\?\n {2}- answer: Yes, add one \[a\]/);
       assert.match(md, /## Returns \(page: returns\)[\s\S]*d-refund[\s\S]*d-cap[\s\S]*not decided/);
-      assert.match(md, /Feedback on[\s\S]*\(page: returns\) — "/);
+      assert.match(md, /Feedback on[\s\S]*- \[Returns › [^\]]+\] on [^\n]*: Check the label wording/);
       assert.match(md, /Check the label wording/);
       // jumping to a decision on another page navigates there
       await p.locator(".h-panel .h-decisions li", { hasText: "d-pay" }).locator(".h-note-on").click();

@@ -9,6 +9,38 @@
   --a-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 [data-theme="midnight"] { --a-hl: #3b6fd144; }
+/* the Collie mono token is ui-monospace alone, which Chrome resolves to Courier */
+:root, [data-theme="midnight"] { --collie-font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+/* Categorical colours for tags, lanes, themes: --a-cat-N (solid), -ink (text on soft), -soft (tint), -line, N = 1..8; both themes. `.a-cat-N` sets --tint, --tint-ink, --tint-soft, --tint-line from them. */
+:root {
+  --a-cat-1: oklch(.62 .17 255); --a-cat-1-ink: oklch(.42 .14 255); --a-cat-1-soft: oklch(.96 .03 255); --a-cat-1-line: oklch(.82 .08 255);
+  --a-cat-2: oklch(.62 .17 55); --a-cat-2-ink: oklch(.42 .14 55); --a-cat-2-soft: oklch(.96 .03 55); --a-cat-2-line: oklch(.82 .08 55);
+  --a-cat-3: oklch(.62 .17 150); --a-cat-3-ink: oklch(.42 .14 150); --a-cat-3-soft: oklch(.96 .03 150); --a-cat-3-line: oklch(.82 .08 150);
+  --a-cat-4: oklch(.62 .17 305); --a-cat-4-ink: oklch(.42 .14 305); --a-cat-4-soft: oklch(.96 .03 305); --a-cat-4-line: oklch(.82 .08 305);
+  --a-cat-5: oklch(.62 .17 350); --a-cat-5-ink: oklch(.42 .14 350); --a-cat-5-soft: oklch(.96 .03 350); --a-cat-5-line: oklch(.82 .08 350);
+  --a-cat-6: oklch(.62 .17 200); --a-cat-6-ink: oklch(.42 .14 200); --a-cat-6-soft: oklch(.96 .03 200); --a-cat-6-line: oklch(.82 .08 200);
+  --a-cat-7: oklch(.62 .17 95); --a-cat-7-ink: oklch(.42 .14 95); --a-cat-7-soft: oklch(.96 .03 95); --a-cat-7-line: oklch(.82 .08 95);
+  --a-cat-8: oklch(.62 .17 20); --a-cat-8-ink: oklch(.42 .14 20); --a-cat-8-soft: oklch(.96 .03 20); --a-cat-8-line: oklch(.82 .08 20);
+}
+[data-theme="midnight"] {
+  --a-cat-1: oklch(.72 .15 255); --a-cat-1-ink: oklch(.84 .11 255); --a-cat-1-soft: oklch(.27 .05 255); --a-cat-1-line: oklch(.42 .08 255);
+  --a-cat-2: oklch(.72 .15 55); --a-cat-2-ink: oklch(.84 .11 55); --a-cat-2-soft: oklch(.27 .05 55); --a-cat-2-line: oklch(.42 .08 55);
+  --a-cat-3: oklch(.72 .15 150); --a-cat-3-ink: oklch(.84 .11 150); --a-cat-3-soft: oklch(.27 .05 150); --a-cat-3-line: oklch(.42 .08 150);
+  --a-cat-4: oklch(.72 .15 305); --a-cat-4-ink: oklch(.84 .11 305); --a-cat-4-soft: oklch(.27 .05 305); --a-cat-4-line: oklch(.42 .08 305);
+  --a-cat-5: oklch(.72 .15 350); --a-cat-5-ink: oklch(.84 .11 350); --a-cat-5-soft: oklch(.27 .05 350); --a-cat-5-line: oklch(.42 .08 350);
+  --a-cat-6: oklch(.72 .15 200); --a-cat-6-ink: oklch(.84 .11 200); --a-cat-6-soft: oklch(.27 .05 200); --a-cat-6-line: oklch(.42 .08 200);
+  --a-cat-7: oklch(.72 .15 95); --a-cat-7-ink: oklch(.84 .11 95); --a-cat-7-soft: oklch(.27 .05 95); --a-cat-7-line: oklch(.42 .08 95);
+  --a-cat-8: oklch(.72 .15 20); --a-cat-8-ink: oklch(.84 .11 20); --a-cat-8-soft: oklch(.27 .05 20); --a-cat-8-line: oklch(.42 .08 20);
+}
+.a-cat-1 { --tint: var(--a-cat-1); --tint-ink: var(--a-cat-1-ink); --tint-soft: var(--a-cat-1-soft); --tint-line: var(--a-cat-1-line); }
+.a-cat-2 { --tint: var(--a-cat-2); --tint-ink: var(--a-cat-2-ink); --tint-soft: var(--a-cat-2-soft); --tint-line: var(--a-cat-2-line); }
+.a-cat-3 { --tint: var(--a-cat-3); --tint-ink: var(--a-cat-3-ink); --tint-soft: var(--a-cat-3-soft); --tint-line: var(--a-cat-3-line); }
+.a-cat-4 { --tint: var(--a-cat-4); --tint-ink: var(--a-cat-4-ink); --tint-soft: var(--a-cat-4-soft); --tint-line: var(--a-cat-4-line); }
+.a-cat-5 { --tint: var(--a-cat-5); --tint-ink: var(--a-cat-5-ink); --tint-soft: var(--a-cat-5-soft); --tint-line: var(--a-cat-5-line); }
+.a-cat-6 { --tint: var(--a-cat-6); --tint-ink: var(--a-cat-6-ink); --tint-soft: var(--a-cat-6-soft); --tint-line: var(--a-cat-6-line); }
+.a-cat-7 { --tint: var(--a-cat-7); --tint-ink: var(--a-cat-7-ink); --tint-soft: var(--a-cat-7-soft); --tint-line: var(--a-cat-7-line); }
+.a-cat-8 { --tint: var(--a-cat-8); --tint-ink: var(--a-cat-8-ink); --tint-soft: var(--a-cat-8-soft); --tint-line: var(--a-cat-8-line); }
+
 
 .a-muted { color: var(--a-muted); font-size: 0.92em; }
 .a-pad { padding: var(--collie-space-150); }

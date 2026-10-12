@@ -3,13 +3,15 @@ import { meta, decisions as registryDecisions, type Source as Src } from "../kit
 import { Badge, Source } from "../kit/layout.tsx";
 import { fmtAsOf, fmtDate, plural, slug } from "../kit/util.ts";
 import { shell } from "../kit/shell.ts";
-import { useComments, useAnswerState, makeStore, Composer, FeedbackPanel, DecisionList, feedbackMarkdown, anchorFor, quoteAnchor, findAnchor, type Anchor, type Comment } from "./comments.tsx";
+import { useComments, useAnswerState, makeStore, Composer, FeedbackPanel, DecisionList, feedbackMarkdown, anchorFor, quoteAnchor, locate, type Anchor, type Comment, type StoredAnchor } from "./comments.tsx";
+import { setHighlight } from "./anchor.ts";
 import { FeedbackCtx, decisionsMarkdown, reachable, type DecisionRow } from "../kit/feedback.ts";
 import { usePresent } from "./present.ts";
 import { Boundary } from "./Boundary.tsx";
-import { allPages, groups, home, isMulti, pageById, pages } from "../kit/pages.ts";
+import { allPages, groups, home, isMulti, layout, pageById } from "../kit/pages.ts";
 import { hrefFor, parseHash, HOME } from "../kit/route.ts";
-import { useRoute } from "../kit/router.tsx";
+import { holdScroll, savedScroll, useRoute } from "../kit/router.tsx";
+import { hostApi, useHostPresentControl } from "../kit/host.ts";
 import { Status } from "../kit/layout.tsx";
 import { PresentCtx } from "../kit/present.ts";
 
@@ -84,20 +86,24 @@ function PageNav({ current }: { current: string }) {
 
 /** Small dots at the corner of commented elements (blank-page artifacts have no section bar to show them). */
 function Markers({ root, list, page, onOpen }: { root: React.RefObject<HTMLElement | null>; list: Comment[]; page: string; onOpen: () => void }) {
-  const [dots, setDots] = useState<{ x: number; y: number; n: number }[]>([]);
+  const [dots, setDots] = useState<{ x: number; y: number; n: number; tip: string }[]>([]);
   useEffect(() => {
     let raf = 0;
     const calc = () => {
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => {
         const el = root.current; if (!el) return;
-        const m = new Map<HTMLElement, number>();
-        for (const c of list) { if (c.anchor.page && c.anchor.page !== page) continue; const t = findAnchor(el, c.anchor.id); if (t) m.set(t, (m.get(t) ?? 0) + 1); }
-        const out: { x: number; y: number; n: number }[] = [];
-        for (const [t, n] of m) {
+        const m = new Map<Element | Range, string[]>();
+        for (const c of list) {
+          if (c.anchor.page && c.anchor.page !== page) continue;
+          const l = locate(el, c.anchor), t = l.range ?? l.el;
+          if (t) m.set(t, [...(m.get(t) ?? []), c.body]);
+        }
+        const out: { x: number; y: number; n: number; tip: string }[] = [];
+        for (const [t, bodies] of m) {
           const r = t.getBoundingClientRect();
           if ((!r.width && !r.height) || r.bottom < 0 || r.top > innerHeight) continue;
-          out.push({ x: Math.round(Math.max(8, Math.min(r.right - 4, innerWidth - 14))), y: Math.round(Math.max(4, Math.min(r.top - 4, innerHeight - 14))), n });
+          out.push({ x: Math.round(Math.max(8, Math.min(r.right - 4, innerWidth - 14))), y: Math.round(Math.max(4, Math.min(r.top - 4, innerHeight - 14))), n: bodies.length, tip: bodies.map((b) => (b.length > 160 ? b.slice(0, 159) + "…" : b)).join("\n\n") });
         }
         setDots((p) => (JSON.stringify(p) === JSON.stringify(out) ? p : out));
       });
@@ -108,7 +114,7 @@ function Markers({ root, list, page, onOpen }: { root: React.RefObject<HTMLEleme
     const t = setInterval(calc, 700);
     return () => { cancelAnimationFrame(raf); mo.disconnect(); removeEventListener("scroll", calc, true); removeEventListener("resize", calc); clearInterval(t); };
   }, [root, list, page]);
-  return <>{dots.map((d, i) => <button key={i} className="h-dot" style={{ left: d.x, top: d.y }} onClick={onOpen} aria-label={`${d.n} comment${d.n > 1 ? "s" : ""} here`} title={`${d.n} comment${d.n > 1 ? "s" : ""}`} />)}</>;
+  return <>{dots.map((d, i) => <button key={i} className="h-dot" style={{ left: d.x, top: d.y }} onClick={onOpen} aria-label={`${d.n} comment${d.n > 1 ? "s" : ""} here`} data-tip={d.tip} />)}</>;
 }
 
 const typing = (e: KeyboardEvent) => { const t = e.target as HTMLElement; return t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName); };
@@ -119,6 +125,7 @@ export function Host() {
   const route = useRoute();
   const route_ = { page: route.page, section: route.anchor };
   const page = pageById(route.page) ?? home();
+  const Layout = layout();
   const { items, active } = useOutline(content, page.id);
   const [dark, setDark] = useState(document.documentElement.dataset.theme === "midnight");
   const [mode, setMode] = useState(false);          // comment mode
@@ -174,13 +181,20 @@ export function Host() {
   };
   const present = usePresent(content, head, page.title, summary, (dir) => { if (tourRef.current.on) goTour(dir); });
 
+  const control = useHostPresentControl();
+  const ownPresent = meta.present === "artifact"; // the artifact runs present mode: the host's slide walk is off unless nothing else is wanted
+  const hasPresent = !!control || !ownPresent;
+  const startPresent = () => { if (control) control.start(); else if (!ownPresent) { tourRef.current.on = false; present.start(); } };
   useEffect(() => { document.title = page.id === HOME ? meta.title : `${page.title} · ${meta.title}`; }, [page]);
   useEffect(() => {
     // after a route change: open and scroll to the section, or go to the top of the new page
     const t = setTimeout(() => {
       const el = route_.section ? document.getElementById(route_.section) : null;
       if (el) { for (let e: Element | null = el; e; e = e.parentElement) { if (e.matches?.(".a-section")) e.removeAttribute("data-folded"); if (e.tagName === "DETAILS") (e as HTMLDetailsElement).open = true; } el.scrollIntoView({ block: "start" }); }
-      else if (route.page !== lastPage.current) scrollTo({ top: 0, behavior: "instant" });
+      else if (route.page !== lastPage.current) {
+        const y = route.restore ? savedScroll(route.page) : undefined;
+        if (y != null) holdScroll(y); else scrollTo({ top: 0, behavior: "instant" });
+      }
       lastPage.current = route.page;
       doJump();
     }, 30);
@@ -217,13 +231,13 @@ export function Host() {
       if (typing(e) || e.metaKey || e.ctrlKey || e.altKey) return;
       if (present.active) return;
       if (e.key === "c") setMode((m) => { if (!m) { setPanel(true); setTab("comments"); } return !m; });
-      else if (e.key === "p") { tourRef.current.on = false; present.start(); }
+      else if (e.key === "p") startPresent();
       else if (e.key === "?") setHelp((h) => !h);
       else if (e.key === "Escape") { setMode(false); setOpen(null); setHelp(false); setMenu(false); setSel(null); }
     };
     addEventListener("keydown", k);
     return () => removeEventListener("keydown", k);
-  }, [present.active, present.start]);
+  }, [present.active, present.start, control, ownPresent]);
 
   // comment mode: hover outline + click to comment
   const hover = useRef<HTMLElement | null>(null);
@@ -256,21 +270,21 @@ export function Host() {
     const el = content.current!;
     const alt = (e: MouseEvent) => {
       if (!e.altKey || mode || present.active) return;
-      const a = anchorFor(e.target as HTMLElement, el, bare);
+      const a = anchorFor(e.target as HTMLElement, el, true);
       if (!a) return;
       e.preventDefault(); e.stopPropagation(); setOpen(a);
     };
     const up = () => setTimeout(() => {
       const s = getSelection();
-      const a = bare && s && !s.isCollapsed && !mode && !present.active ? quoteAnchor(s, el, true) : null;
+      const a = s && !s.isCollapsed && !mode && !present.active ? quoteAnchor(s, el, true) : null;
       if (!a || !s) { setSel(null); return; }
-      const r = s.getRangeAt(0).getBoundingClientRect();
-      setSel({ a, x: Math.min(r.right, innerWidth - 90), y: Math.min(r.bottom + 6, innerHeight - 40) });
+      const rs = s.getRangeAt(0).getClientRects(), r = rs[rs.length - 1] ?? s.getRangeAt(0).getBoundingClientRect();
+      setSel({ a, x: Math.max(8, Math.min(r.right + 6, innerWidth - 100)), y: r.bottom + 40 > innerHeight ? Math.max(8, r.top - 38) : r.bottom + 8 });
     }, 0);
     const down = (e: MouseEvent) => { if (!(e.target as HTMLElement).closest?.(".h-selbtn")) setSel(null); };
-    el.addEventListener("click", alt, true); el.addEventListener("mouseup", up); document.addEventListener("mousedown", down);
-    return () => { el.removeEventListener("click", alt, true); el.removeEventListener("mouseup", up); document.removeEventListener("mousedown", down); };
-  }, [mode, bare, present.active]);
+    el.addEventListener("click", alt, true); document.addEventListener("mouseup", up); document.addEventListener("keyup", up); document.addEventListener("mousedown", down);
+    return () => { el.removeEventListener("click", alt, true); document.removeEventListener("mouseup", up); document.removeEventListener("keyup", up); document.removeEventListener("mousedown", down); };
+  }, [mode, present.active]);
   useEffect(() => {
     if (!menu) return;
     const f = (e: MouseEvent) => { if (!(e.target as HTMLElement).closest?.(".h-corner")) setMenu(false); };
@@ -282,13 +296,40 @@ export function Host() {
     const el = content.current!;
     const mark = () => {
       el.querySelectorAll("[data-commented]").forEach((n) => n.removeAttribute("data-commented"));
-      for (const c of cm.list) { if (c.anchor.page && c.anchor.page !== page.id) continue; findAnchor(el, c.anchor.id)?.setAttribute("data-commented", ""); }
+      const ranges: Range[] = [];
+      for (const c of cm.list) {
+        if (c.anchor.page && c.anchor.page !== page.id) continue;
+        const l = locate(el, c.anchor);
+        if (l.range) ranges.push(l.range); else l.el?.setAttribute("data-commented", ""); // a quote is marked on its words, anything else on its element
+      }
+      setHighlight("a-comment", ranges);
     };
     mark();
     const mo = new MutationObserver(() => { mo.disconnect(); mark(); mo.observe(el, { childList: true, subtree: true }); });
     mo.observe(el, { childList: true, subtree: true });
-    return () => mo.disconnect();
-  }, [cm.list]);
+    return () => { mo.disconnect(); setHighlight("a-comment", []); };
+  }, [cm.list, page.id]);
+
+  // hovering a comment in the drawer shows what it is about; jumping flashes it
+  const [hoverC, setHoverC] = useState<Comment | null>(null);
+  useEffect(() => {
+    if (!hoverC || (hoverC.anchor.page && hoverC.anchor.page !== page.id)) return;
+    const l = locate(content.current!, hoverC.anchor);
+    if (l.range) setHighlight("a-focus", [l.range]); else l.el?.setAttribute("data-focus", "");
+    return () => { setHighlight("a-focus", []); l.el?.removeAttribute("data-focus"); };
+  }, [hoverC, page.id]);
+  const flash = (l: { el: HTMLElement | null; range: Range | null }) => {
+    if (l.range) { setHighlight("a-flash", [l.range]); setTimeout(() => setHighlight("a-flash", []), 1600); }
+    else if (l.el) { const e = l.el; e.setAttribute("data-flash", ""); setTimeout(() => e.removeAttribute("data-flash"), 1600); }
+  };
+  // first-run hint, once
+  const [hint, setHint] = useState(false);
+  useEffect(() => {
+    if (localStorage.getItem("artifact-hint")) return;
+    const t = setTimeout(() => setHint(true), 2500), t2 = setTimeout(() => dismissHint(), 20000);
+    return () => { clearTimeout(t); clearTimeout(t2); };
+  }, []);
+  const dismissHint = () => { setHint(false); localStorage.setItem("artifact-hint", "1"); };
 
   useEffect(() => {
     // a link to something collapsed opens it (and what contains it)
@@ -315,6 +356,9 @@ export function Host() {
     setTimeout(() => URL.revokeObjectURL(link.href), 4000);
   }, []);
 
+  // what artifact code reaches through openFeedback(), download(), startPresent(), toggleTheme()
+  useEffect(() => { Object.assign(hostApi, { openFeedback: () => { setPanel(true); setMenu(false); }, download, startPresent, toggleTheme: () => setTheme(!dark) }); });
+
   const copyText = useCallback(async (md: string, flag: string) => {
     try { await navigator.clipboard.writeText(md); } catch {
       const ta = document.createElement("textarea"); ta.value = md; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove();
@@ -322,23 +366,26 @@ export function Host() {
     setCopied(flag); setTimeout(() => setCopied(""), 1600);
   }, []);
   const decisionsMd = () => decisionsMarkdown(meta.title, rows);
-  const allMd = () => `${decisionsMd()}\n${cm.list.length ? feedbackMarkdown(meta.title, cm.list) : ""}`.trimEnd() + "\n";
-  const jumpTo = useRef<{ did?: string; anchor?: string } | null>(null);
+  const commentsMd = () => feedbackMarkdown(meta.title, cm.list, (id) => (isMulti() ? pageById(id ?? HOME)?.title : undefined));
+  const allMd = () => `${decisionsMd()}\n${cm.list.length ? commentsMd() : ""}`.trimEnd() + "\n";
+  const jumpTo = useRef<{ did?: string; anchor?: StoredAnchor } | null>(null);
   const doJump = () => {
     const j = jumpTo.current; if (!j) return;
     const root = content.current;
-    const el = j.did ? root?.querySelector<HTMLElement>(`[data-did="${CSS.escape(j.did)}"]`) : j.anchor && root ? findAnchor(root, j.anchor) : null;
-    if (!el) return;
+    const l = j.did ? { el: root?.querySelector<HTMLElement>(`[data-did="${CSS.escape(j.did)}"]`) ?? null, range: null } : j.anchor && root ? locate(root, j.anchor) : { el: null, range: null };
+    if (!l.el) return;
     jumpTo.current = null;
-    if (present.active) present.goTo(el); else el.scrollIntoView({ block: "center", behavior: "smooth" });
+    const target = l.range ? ((l.range.startContainer.nodeType === 1 ? l.range.startContainer : l.range.startContainer.parentElement) as HTMLElement) : l.el;
+    if (present.active) present.goTo(target); else target.scrollIntoView({ block: "center", behavior: "smooth" });
+    flash(l);
   };
   /** Jump to a decision or comment, going to its page first when it lives on another one. */
-  const jump = (target: { did?: string; anchor?: string }, onPage?: string) => {
+  const jump = (target: { did?: string; anchor?: StoredAnchor }, onPage?: string) => {
     jumpTo.current = target;
     if (onPage && onPage !== page.id) { location.hash = hrefFor(onPage); } else doJump();
   };
   const jumpDecision = (r: DecisionRow) => jump({ did: r.id }, r.page);
-  const jumpComment = (c: { anchor: { id: string; page?: string } }) => jump({ anchor: c.anchor.id }, c.anchor.page);
+  const jumpComment = (c: Comment) => jump({ anchor: c.anchor }, c.anchor.page);
 
   const sources = (meta.sources ?? []).map(normSource);
   const decided = rows.filter((r) => r.answer).length;
@@ -355,7 +402,7 @@ export function Host() {
         )}
         <span className="h-spacer" />
         <button className="h-btn" onClick={() => setPanel(!panel)} aria-pressed={panel} title="Feedback: answer the decisions and leave comments, then copy it all back to the author">{feedbackLabel}</button>
-        <button className="h-btn" onClick={() => { tourRef.current.on = false; present.start(); }} title="Present (p): walk through this page full screen">Present</button>
+        <button className="h-btn" onClick={startPresent} title="Present (p): walk through this page full screen">Present</button>
         {hasTour && <button className="h-btn" onClick={() => { tourRef.current.on = true; if (page.id === tourIds[0]) present.start(); else { tourRef.current.pending = "first"; location.hash = hrefFor(tourIds[0]); } }} title="Tour: present the pages in the author's order">Tour</button>}
         <button className="h-btn" aria-pressed={!outlineOff} onClick={() => { setOutlineOff(!outlineOff); localStorage.setItem("artifact-outline", outlineOff ? "on" : "off"); }} title="Show or hide the outline on the left">Outline</button>
         <button className="h-btn" onClick={() => setTheme(!dark)} title="Switch between the light and dark theme">{dark ? "Light" : "Dark"}</button>
@@ -421,7 +468,7 @@ export function Host() {
             ))}
           </header>}
           <FeedbackCtx.Provider value={{ interactive: true, answers: am.answers, answer: am.answer }}>
-            <PresentCtx.Provider value={present.state}><article className="a-content" ref={content} data-page={page.id}><Boundary key={page.id}><page.Component /></Boundary></article></PresentCtx.Provider>
+            <PresentCtx.Provider value={present.state}><article className="a-content" ref={content} data-page={page.id}>{Layout ? <Layout><Boundary key={page.id}><page.Component {...page.props} /></Boundary></Layout> : <Boundary key={page.id}><page.Component {...page.props} /></Boundary>}</article></PresentCtx.Provider>
           </FeedbackCtx.Provider>
           {isMulti() && !bare && <PageNav current={page.id} />}
           {rows.length > 0 && (!tourRef.current.on || page.id === tourIds[tourIds.length - 1]) && (
@@ -436,18 +483,17 @@ export function Host() {
           )}
         </main>
         {panel && <FeedbackPanel cm={cm} rows={rows} tab={rows.length ? tab : "comments"} setTab={setTab} mode={mode} onMode={() => setMode(!mode)} copied={copied}
-          onCopyComments={() => copyText(feedbackMarkdown(meta.title, cm.list), "comments")} onCopyDecisions={() => copyText(decisionsMd(), "decisions")} onCopyAll={() => copyText(allMd(), "all")}
-          onClearAnswers={am.clear} onJumpDecision={jumpDecision} onJumpComment={jumpComment} pageTitle={(id) => (id ? pageById(id)?.title : undefined)} onClose={() => { setPanel(false); setMode(false); }} />}
+          onCopyComments={() => copyText(commentsMd(), "comments")} onCopyDecisions={() => copyText(decisionsMd(), "decisions")} onCopyAll={() => copyText(allMd(), "all")}
+          onClearAnswers={am.clear} onJumpDecision={jumpDecision} onJumpComment={jumpComment} onHover={setHoverC} pageTitle={(id) => (id ? pageById(id)?.title : undefined)} onClose={() => { setPanel(false); setMode(false); }} />}
       </div>
       {bare && !present.active && (
         <>
-          <Markers root={content} list={cm.list} page={page.id} onOpen={() => { setPanel(true); setTab("comments"); }} />
           <div className="h-corner" data-open={menu ? "" : undefined}>
             {menu && (
               <div className="h-corner-menu" role="menu" aria-label="Page menu">
                 <button role="menuitem" onClick={() => { setPanel(!panel); setMenu(false); }}>{feedbackLabel}</button>
-                <button role="menuitem" onClick={() => { setMenu(false); tourRef.current.on = false; present.start(); }}>Present <kbd>p</kbd></button>
-                {hasTour && <button role="menuitem" onClick={() => { setMenu(false); tourRef.current.on = true; if (page.id === tourIds[0]) present.start(); else { tourRef.current.pending = "first"; location.hash = hrefFor(tourIds[0]); } }}>Tour</button>}
+                {hasPresent && <button role="menuitem" onClick={() => { setMenu(false); startPresent(); }}>Present <kbd>p</kbd></button>}
+                {hasTour && !ownPresent && <button role="menuitem" onClick={() => { setMenu(false); tourRef.current.on = true; if (page.id === tourIds[0]) present.start(); else { tourRef.current.pending = "first"; location.hash = hrefFor(tourIds[0]); } }}>Tour</button>}
                 {canDownload && <button role="menuitem" onClick={() => { setMenu(false); download(); }}>Download</button>}
                 <button role="menuitem" onClick={() => { setMenu(false); setTheme(!dark); }}>{dark ? "Light theme" : "Dark theme"}</button>
                 <button role="menuitem" onClick={() => { setMenu(false); setHelp(true); }}>Shortcuts <kbd>?</kbd></button>
@@ -464,10 +510,16 @@ export function Host() {
               <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden><circle cx="2.5" cy="7" r="1.3" fill="currentColor" /><circle cx="7" cy="7" r="1.3" fill="currentColor" /><circle cx="11.5" cy="7" r="1.3" fill="currentColor" /></svg>
             </button>
           </div>
-          {sel && <button className="h-selbtn" style={{ left: sel.x, top: sel.y }} onClick={() => { setOpen(sel.a); setSel(null); getSelection()?.removeAllRanges(); }}>Comment</button>}
         </>
       )}
-      {open && <Composer anchor={open} onCancel={() => setOpen(null)} onSave={(body) => { cm.add(open, body, isMulti() ? page.id : undefined); setOpen(null); }} existing={cm.list.filter((c) => c.anchor.id === open.id && (!c.anchor.page || c.anchor.page === page.id))} />}
+      {!present.active && (
+        <>
+          <Markers root={content} list={cm.list} page={page.id} onOpen={() => { setPanel(true); setTab("comments"); }} />
+          {sel && <button className="h-selbtn" style={{ left: sel.x, top: sel.y }} onMouseDown={(e) => e.preventDefault()} onClick={() => { setOpen(sel.a); setSel(null); dismissHint(); getSelection()?.removeAllRanges(); }}>Comment</button>}
+          {hint && <div className="h-hint" role="note">Select text or alt-click anything to comment.<button onClick={dismissHint} aria-label="Dismiss">×</button></div>}
+        </>
+      )}
+      {open && <Composer anchor={open} pageTitle={isMulti() ? page.title : undefined} onCancel={() => setOpen(null)} onSave={(body) => { cm.add(open, body, isMulti() ? page.id : undefined); setOpen(null); dismissHint(); }} existing={cm.list.filter((c) => c.anchor.id === open.id && (!c.anchor.page || c.anchor.page === page.id))} />}
       {present.active && (
         <div className="h-present-bar" data-slide={present.state.slide} data-slides={present.state.slides} data-step={present.state.step} data-steps={present.state.steps}>
           <button onClick={present.prev}>←</button>

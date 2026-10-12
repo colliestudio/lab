@@ -31,6 +31,11 @@ export function listPages(dir: string): { id: string; file: string }[] {
   return readdirSync(d).filter((f) => /\.(tsx|jsx|ts|mdx)$/.test(f) && !f.startsWith(".")).sort().map((f) => ({ id: f.replace(/\.[^.]+$/, ""), file: join(d, f) }));
 }
 
+/** layout.tsx next to index.tsx: wraps every page and stays mounted across routes. */
+export function findLayout(dir: string): string | undefined {
+  for (const f of ["layout.tsx", "layout.jsx", "layout.ts"]) if (existsSync(join(dir, f))) return join(dir, f);
+}
+
 export function findEntry(dir: string): string {
   for (const f of ["index.tsx", "index.jsx", "index.ts", "index.mdx"]) if (existsSync(join(dir, f))) return join(dir, f);
   throw new Error(`no index.tsx in ${dir}`);
@@ -44,8 +49,9 @@ function plugin(state: { collected?: Collected; dir: string; decisions?: Decisio
       b.onResolve({ filter: /^artifact:pages$/ }, () => ({ path: "pages", namespace: "artifact-pages" }));
       b.onLoad({ filter: /.*/, namespace: "artifact-pages" }, () => {
         const ps = listPages(state.dir);
-        const lines = [`import * as home from ${JSON.stringify(findEntry(state.dir))};`, ...ps.map((p, i) => `import * as p${i} from ${JSON.stringify(p.file)};`)];
-        lines.push(`export default { home, pages: [${ps.map((p, i) => `{ id: ${JSON.stringify(p.id)}, mod: p${i} }`).join(", ")}] };`);
+        const lay = findLayout(state.dir);
+        const lines = [`import * as home from ${JSON.stringify(findEntry(state.dir))};`, ...(lay ? [`import * as layout from ${JSON.stringify(lay)};`] : []), ...ps.map((p, i) => `import * as p${i} from ${JSON.stringify(p.file)};`)];
+        lines.push(`export default { home, ${lay ? "layout, " : ""}pages: [${ps.map((p, i) => `{ id: ${JSON.stringify(p.id)}, file: ${JSON.stringify(p.file.split(/[\\/]/).slice(-2).join("/"))}, mod: p${i} }`).join(", ")}] };`);
         return { contents: lines.join("\n"), loader: "js", resolveDir: repoRoot };
       });
       b.onResolve({ filter: /^artifact:registry$/ }, () => ({ path: "registry", namespace: "artifact-registry" }));
@@ -97,7 +103,7 @@ const options = (dir: string, state: { dir: string }, o: BuildOpts): esbuild.Bui
   minify: o.minify ?? !o.dev, sourcemap: false, metafile: true, logLevel: "silent",
   jsx: "automatic", tsconfigRaw: { compilerOptions: { jsx: "react-jsx" } },
   nodePaths: [join(repoRoot, "node_modules")],
-  define: { "process.env.NODE_ENV": JSON.stringify(o.dev ? "development" : "production") },
+  define: { "process.env.NODE_ENV": JSON.stringify(o.dev ? "development" : "production"), __ARTIFACT_DEV__: JSON.stringify(!!o.dev) },
   loader: { ...Object.fromEntries(Object.keys(IMAGE_MIME).map((e) => [e, "dataurl"])), ".md": "text", ".txt": "text" },
   plugins: [mdx({ jsxImportSource: "react" }), plugin(state as never)],
   legalComments: "none",
@@ -182,7 +188,7 @@ export async function renderStatic(dir: string, opts: { collect?: boolean } = {}
   const base = options(abs, state, { minify: false });
   const r = await esbuild.build({
     ...base,
-    stdin: { contents: `import pages from "artifact:pages";\nimport { renderToString } from "react-dom/server";\nimport { createElement } from "react";\nconst r = (id, C) => { globalThis.__artifactPage = id; return renderToString(createElement(C)); };\nglobalThis.__html = () => ({ home: r("home", pages.home.default), pages: pages.pages.map((p) => ({ id: p.id, html: r(p.id, p.mod.default) })) });`, resolveDir: repoRoot, loader: "tsx" },
+    stdin: { contents: `import { allPages, layout } from ${JSON.stringify(join(repoRoot, "artifact/kit/pages.ts"))};\nimport { renderToString } from "react-dom/server";\nimport { createElement } from "react";\nconst r = (p) => { globalThis.__artifactPage = p.id; const L = layout(); const el = createElement(p.Component, p.props); return renderToString(L ? createElement(L, null, el) : el); };\nglobalThis.__html = () => { const ps = allPages(); return { home: r(ps[0]), pages: ps.slice(1).map((p) => ({ id: p.id, html: r(p) })) }; };`, resolveDir: repoRoot, loader: "tsx" },
     platform: "node", format: "cjs", write: false, outdir: "out", metafile: false,
     external: ["mermaid", "elkjs", "elkjs/*"],
   }).catch((e) => ({ errors: e.errors ?? [{ text: String(e) }], outputFiles: [] as never }));

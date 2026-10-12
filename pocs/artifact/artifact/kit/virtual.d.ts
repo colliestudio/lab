@@ -1,3 +1,4 @@
+declare const __ARTIFACT_DEV__: boolean | undefined;
 declare module "artifact:registry" {
   import type { Registry } from "./registry.ts";
   const registry: Registry;
@@ -15,6 +16,7 @@ declare module "*.replay" { const b64: string; export default b64 }
 declare module "*.css?text" { const css: string; export default css }
 declare module "artifact:pages" {
   import type { ComponentType } from "react";
-  const data: { home: { default: ComponentType; page?: object }; pages: { id: string; mod: { default: ComponentType; page?: object } }[] };
+  type Mod = { default: ComponentType<any>; page?: object; pages?: unknown; Layout?: ComponentType<{ children?: import("react").ReactNode }> };
+  const data: { home: Mod; layout?: Mod; pages: { id: string; file?: string; mod: Mod }[] };
   export default data;
 }

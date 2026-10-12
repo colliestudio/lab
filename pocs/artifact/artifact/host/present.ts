@@ -37,7 +37,7 @@ export function usePresent(root: React.RefObject<HTMLElement | null>, head: Reac
     const first = out.length;
     const flush = () => { if (loose.length) out.push({ els: loose, title: out.length === first ? wrapped ?? "Intro" : "More" }); loose = []; };
     for (const e of Array.from(c.children) as HTMLElement[]) {
-      if (e.dataset.section) { flush(); out.push({ els: [e], title: e.dataset.title ?? "" }); } else loose.push(e);
+      if (e.dataset.section) { flush(); out.push({ els: [e], title: e.dataset.title ?? "" }); } else if (!e.hasAttribute("data-chrome")) loose.push(e); // data-chrome: fixed UI that is not a slide
     }
     flush();
     if (summary?.current) out.push({ els: [summary.current], title: "Summary" }); // generated when the page has decisions

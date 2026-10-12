@@ -1,5 +1,6 @@
 import { Children, Fragment, createContext, isValidElement, useContext, useState, type CSSProperties, type ReactNode } from "react";
 import { ageOf, cx, slug } from "./util.ts";
+import { NoStepsCtx } from "./present.ts";
 
 export type Tone = "neutral" | "info" | "success" | "warn" | "critical" | "accent";
 
@@ -301,7 +302,19 @@ export function Source({ label, href, kind, from, inline }: SourceProps & { inli
 
 /** A present-mode mark: hidden until reached when presenting, plain content otherwise. */
 export function Step({ children }: { children?: ReactNode }) {
-  return <div data-step>{children}</div>;
+  return useContext(NoStepsCtx) ? <>{children}</> : <div data-step>{children}</div>;
+}
+
+/**
+ * A present-mode slide with no heading and no folding: the host's slide walk (and the outline) treat it like a Section.
+ * Use it to turn your own markup into slides: `<Slide id="intro" title="Where we are">…</Slide>`. `id` must be unique
+ * and non-empty (it defaults to the title's slug); `className` is yours.
+ */
+export function Slide({ id, title, children, className }: { id?: string; title?: string; children?: ReactNode; className?: string }) {
+  const level = useContext(LevelCtx);
+  const sid = id || slug(title ?? "");
+  if (!sid && typeof console !== "undefined") console.warn("[artifact] <Slide> needs an id or a title: present mode skips a slide without an id");
+  return <section id={sid || undefined} className={cx("a-slide", className)} data-section={sid} data-title={title || sid} data-level={level}>{children}</section>;
 }
 
 /** A quiet "▸ more" disclosure for detail the reader can skip: `<More label="Method and sources">…</More>`. */

@@ -1,9 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Answer, DecisionRow } from "../kit/feedback.ts";
+import { contextOf, labelFor, norm, textOf, textRange, whereFor } from "./anchor.ts";
 
-export interface Anchor { id: string; label: string; excerpt: string; el: HTMLElement }
-export interface Comment { id: string; anchor: { id: string; label: string; excerpt: string; page?: string }; body: string; created: string }
+/**
+ * What a comment is about. `id` (a data-aid, id or CSS path, plus `~"quote"` for selections) is hidden re-anchoring data; readers see
+ * `label` (a human description of the element), `where` (the Section/Slide it sits in) and, for a text selection, `quote`
+ * with the text just `before`/`after` it (so the same words elsewhere are not confused with it).
+ */
+export interface StoredAnchor { id: string; label: string; excerpt: string; page?: string; where?: string; quote?: string; before?: string; after?: string }
+export interface Anchor extends Omit<StoredAnchor, "page"> { el: HTMLElement; range?: Range }
+export interface Comment { id: string; anchor: StoredAnchor; body: string; created: string }
 
 const SEL = "[data-aid], [data-c], [data-section] > .a-h, p, li, pre, blockquote, h1, h2, h3, h4, figure, tr, td, th";
 const short = (s: string, n = 70) => { const t = s.replace(/\s+/g, " ").trim(); return t.length > n ? t.slice(0, n - 1) + "…" : t; };
@@ -51,26 +58,42 @@ export function anchorFor(target: HTMLElement, root: HTMLElement, any = false): 
   if (el && root.contains(el)) {
     const node = anchorNode(el);
     const id = idFor(node, root);
-    return { id, label: id, excerpt: short(node.textContent ?? ""), el: node };
+    return { id, label: labelFor(node), where: whereFor(node, root), excerpt: short(textOf(node)), el: node };
   }
   if (!any) return null;
   const b = blockOf(target, root);
   if (!b) return null;
   const id = b.dataset.aid ?? (b.id && !b.id.startsWith(":") ? b.id : "~" + pathTo(b, root));
-  return { id, label: id, excerpt: short(b.getAttribute("aria-label") || b.textContent || b.getAttribute("alt") || b.tagName.toLowerCase()), el: b };
+  return { id, label: labelFor(b), where: whereFor(b, root), excerpt: short(b.getAttribute("aria-label") || textOf(b) || b.getAttribute("alt") || b.tagName.toLowerCase()), el: b };
 }
 
-/** An anchor for selected text: the element holding it plus the quote (`<element id>~"the quote"`). */
-export function quoteAnchor(sel: Selection, root: HTMLElement, any = false): Anchor | null {
-  const text = sel.toString().replace(/\s+/g, " ").trim();
-  if (text.length < 3 || sel.rangeCount === 0) return null;
-  const n = sel.getRangeAt(0).commonAncestorContainer;
+/** An anchor for selected text: the element holding it, the quote and the words around it (`<element id>~"the quote"`). */
+export function quoteAnchor(sel: Selection, root: HTMLElement, any = true): Anchor | null {
+  const text = norm(sel.toString());
+  if (text.length < 2 || sel.rangeCount === 0) return null;
+  const range = sel.getRangeAt(0);
+  const n = range.commonAncestorContainer;
   const host = (n.nodeType === 1 ? n : n.parentElement) as HTMLElement | null;
-  if (!host || !root.contains(host)) return null;
+  if (!host || !root.contains(host) || host.closest(".h-panel, .h-composer, .h-corner, .h-selbtn, .h-pop")) return null;
   const base = anchorFor(host, root, any);
   if (!base) return null;
   const id = `${base.id}${QUOTE}${text.slice(0, 80)}"`;
-  return { id, label: id, excerpt: short(text, 120), el: base.el };
+  const ctx = contextOf(range, base.el);
+  return { id, label: base.label, where: base.where, excerpt: short(text, 120), quote: text, before: ctx.before, after: ctx.after, el: base.el, range: range.cloneRange() };
+}
+
+/** Where an anchor is on the page now: its element, and the exact text range for a quote (found by quote + context, else the element only). */
+export function locate(root: HTMLElement, a: Pick<StoredAnchor, "id" | "quote" | "before" | "after">): { el: HTMLElement | null; range: Range | null } {
+  const el = findAnchor(root, a.id);
+  if (!a.quote) return { el, range: null };
+  const range = (el && textRange(el, a.quote, a.before, a.after)) || textRange(root, a.quote, a.before, a.after);
+  return { el: el ?? (range ? (range.commonAncestorContainer.nodeType === 1 ? range.commonAncestorContainer : range.commonAncestorContainer.parentElement) as HTMLElement : null), range };
+}
+
+/** What readers see for a comment: "Page › Section" and the quote or element label. */
+export function describe(a: StoredAnchor, pageTitle?: string): { crumb: string; main: string; quote?: string } {
+  const label = a.label && a.label !== a.id ? a.label : a.excerpt ? `"${short(a.excerpt, 60)}"` : "element";
+  return { crumb: [pageTitle, a.where].filter(Boolean).join(" › "), main: a.quote ? `"${short(a.quote, 120)}"` : label, quote: a.quote };
 }
 
 /** The element an anchor id points at (also after a reload, when auto ids have to be recomputed). */
@@ -119,7 +142,11 @@ export function useComments(store: FeedbackStore) {
   const [list, setList] = useState<Comment[]>(() => store.list());
   return {
     list,
-    add: (a: Anchor, body: string, page?: string) => { store.add({ id: "c" + Date.now().toString(36), anchor: { id: a.id, label: a.label, excerpt: a.excerpt, ...(page ? { page } : {}) }, body, created: new Date().toISOString() }); setList(store.list()); },
+    add: (a: Anchor, body: string, page?: string) => {
+      const { el: _e, range: _r, ...rest } = a;
+      store.add({ id: "c" + Date.now().toString(36), anchor: { ...rest, ...(page ? { page } : {}) }, body, created: new Date().toISOString() });
+      setList(store.list());
+    },
     remove: (id: string) => { store.remove(id); setList(store.list()); },
     clear: () => { store.clear(); setList(store.list()); },
   };
@@ -134,24 +161,31 @@ export function useAnswerState(store: FeedbackStore) {
   };
 }
 
-export function feedbackMarkdown(title: string, list: Comment[]): string {
+/** `- [Page › Section] on "quoted text": the comment` per comment, in the order given. */
+export function feedbackMarkdown(title: string, list: Comment[], pageTitle?: (id?: string) => string | undefined): string {
   const lines = [`# Feedback on "${title}"`, ""];
   for (const c of list) {
-    lines.push(`- **${c.anchor.id}**${c.anchor.page ? ` (page: ${c.anchor.page})` : ""} — "${c.anchor.excerpt}"`);
-    for (const l of c.body.trim().split("\n")) lines.push(`  ${l}`);
+    const d = describe(c.anchor, pageTitle?.(c.anchor.page));
+    const [first, ...rest] = c.body.trim().split("\n");
+    lines.push(`- ${d.crumb ? `[${d.crumb}] ` : ""}on ${d.main}: ${first}`);
+    for (const l of rest) lines.push(`  ${l}`);
   }
   return lines.join("\n") + "\n";
 }
 
-export function Composer({ anchor, onSave, onCancel, existing }: { anchor: Anchor; onSave: (b: string) => void; onCancel: () => void; existing: Comment[] }) {
+export function Composer({ anchor, onSave, onCancel, existing, pageTitle }: { anchor: Anchor; onSave: (b: string) => void; onCancel: () => void; existing: Comment[]; pageTitle?: string }) {
   const [body, setBody] = useState("");
   const ref = useRef<HTMLTextAreaElement>(null);
   useEffect(() => { ref.current?.focus(); }, []);
-  const r = anchor.el.getBoundingClientRect();
+  const r = (anchor.range?.getBoundingClientRect().height ? anchor.range.getBoundingClientRect() : anchor.el.getBoundingClientRect());
+  const d = describe(anchor, pageTitle);
   const top = Math.min(innerHeight - 220, Math.max(56, r.bottom + 8)), left = Math.min(innerWidth - 360, Math.max(8, r.left));
   return createPortal(
     <div className="h-composer" style={{ top, left }} role="dialog" aria-label="Add comment">
-      <div className="h-composer-on"><b>{anchor.id}</b> {anchor.excerpt}</div>
+      <div className="h-composer-on">
+        <div className="h-crumb">Commenting on{d.crumb ? ` · ${d.crumb}` : ""}</div>
+        {anchor.quote ? <q className="h-quote">{short(anchor.quote, 160)}</q> : <div className="h-what">{d.main}</div>}
+      </div>
       {existing.map((c) => <div key={c.id} className="h-composer-prev">{c.body}</div>)}
       <textarea ref={ref} value={body} rows={3} placeholder="Comment for the agent…" onChange={(e) => setBody(e.target.value)}
         onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && body.trim()) onSave(body.trim()); if (e.key === "Escape") onCancel(); }} />
@@ -185,10 +219,10 @@ export function DecisionList({ rows, onJump }: { rows: DecisionRow[]; onJump?: (
   );
 }
 
-export function FeedbackPanel({ cm, rows, tab, setTab, mode, onMode, copied, onCopyComments, onCopyDecisions, onCopyAll, onClearAnswers, onJumpDecision, onJumpComment, pageTitle, onClose }: {
+export function FeedbackPanel({ cm, rows, tab, setTab, mode, onMode, copied, onCopyComments, onCopyDecisions, onCopyAll, onClearAnswers, onJumpDecision, onJumpComment, onHover, pageTitle, onClose }: {
   cm: ReturnType<typeof useComments>; rows: DecisionRow[]; tab: "decisions" | "comments"; setTab: (t: "decisions" | "comments") => void;
   mode: boolean; onMode: () => void; copied: string; onCopyComments: () => void; onCopyDecisions: () => void; onCopyAll: () => void;
-  onClearAnswers: () => void; onJumpDecision: (r: DecisionRow) => void; onJumpComment: (c: Comment) => void; pageTitle: (id?: string) => string | undefined; onClose: () => void;
+  onClearAnswers: () => void; onJumpDecision: (r: DecisionRow) => void; onJumpComment: (c: Comment) => void; onHover: (c: Comment | null) => void; pageTitle: (id?: string) => string | undefined; onClose: () => void;
 }) {
   const [sure, setSure] = useState<"" | "comments" | "answers">("");
   useEffect(() => { if (!sure) return; const t = setTimeout(() => setSure(""), 3000); return () => clearTimeout(t); }, [sure]);
@@ -217,15 +251,19 @@ export function FeedbackPanel({ cm, rows, tab, setTab, mode, onMode, copied, onC
             {rows.length > 0 && <button className="h-btn" onClick={onCopyAll} disabled={!decided && !cm.list.length} title="Copy decisions and comments together">{copied === "all" ? "Copied" : "Copy all feedback"}</button>}
             <button className="h-btn" disabled={!cm.list.length} onClick={() => { if (sure === "comments") { cm.clear(); setSure(""); } else setSure("comments"); }} title="Delete every comment on this page (stored in this browser)">{sure === "comments" ? "Click again to clear" : "Clear all"}</button>
           </div>
-          {cm.list.length === 0 && <p className="a-muted">Nothing yet. Press <kbd>c</kbd> or "Add comment", then click any element.</p>}
-          {cm.list.map((c, i) => (
-            <div key={c.id} className="h-note">
-              {c.anchor.page && c.anchor.page !== cm.list[i - 1]?.anchor.page && <div className="h-pagehead">{pageTitle(c.anchor.page) ?? c.anchor.page}</div>}
-              <button className="h-note-on" onClick={() => onJumpComment(c)} title="Jump to the element">{c.anchor.id}</button>
-              <div>{c.body}</div>
-              <button className="h-note-del" onClick={() => cm.remove(c.id)}>Delete</button>
-            </div>
-          ))}
+          {cm.list.length === 0 && <p className="a-muted">Nothing yet. Select text or alt-click anything on the page to comment.</p>}
+          {cm.list.map((c, i) => {
+            const d = describe(c.anchor, undefined);
+            return (
+              <div key={c.id} className="h-note" onMouseEnter={() => onHover(c)} onMouseLeave={() => onHover(null)}>
+                {c.anchor.page && c.anchor.page !== cm.list[i - 1]?.anchor.page && <div className="h-pagehead">{pageTitle(c.anchor.page) ?? c.anchor.page}</div>}
+                {d.crumb && <div className="h-note-crumb">{d.crumb}</div>}
+                <button className="h-note-on" onClick={() => onJumpComment(c)} title="Show it on the page">{d.quote ? <q>{short(d.quote, 120)}</q> : d.main}</button>
+                <div>{c.body}</div>
+                <button className="h-note-del" onClick={() => cm.remove(c.id)}>Delete</button>
+              </div>
+            );
+          })}
         </>
       )}
     </aside>

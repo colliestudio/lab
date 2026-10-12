@@ -46,7 +46,8 @@ html[data-commenting] .a-content { cursor: crosshair; }
 html[data-commenting] .a-content [data-hover] { outline: 2px solid var(--collie-color-accent-solid); outline-offset: 2px; background: color-mix(in srgb, var(--collie-color-accent-solid) 7%, transparent); }
 .a-content [data-commented] { box-shadow: -6px 0 0 -3px var(--collie-color-warning-solid); background: color-mix(in srgb, var(--collie-color-warning-solid) 9%, transparent); }
 .h-composer { position: fixed; z-index: 50; width: 22rem; background: var(--collie-color-canvas); border: 1px solid var(--collie-color-border); border-radius: 10px; box-shadow: var(--collie-shadow-overlay); padding: 0.7rem; display: grid; gap: 0.5rem; font-size: var(--collie-text-sm); }
-.h-composer-on { color: var(--collie-color-fg-muted); font-size: var(--collie-text-xs); overflow: hidden; max-height: 3.2em; } .h-composer-on b { color: var(--collie-color-fg); font-family: var(--a-mono); }
+.h-composer-on { display: grid; gap: 0.2rem; font-size: var(--collie-text-xs); max-height: 7em; overflow: hidden; } .h-crumb { color: var(--collie-color-fg-muted); }
+.h-quote { quotes: "\201C" "\201D"; font-style: italic; color: var(--collie-color-fg); border-left: 3px solid var(--collie-color-warning-solid); padding-left: 0.5rem; font-size: var(--collie-text-sm); } .h-what { color: var(--collie-color-fg); font-size: var(--collie-text-sm); }
 .h-composer-prev { background: var(--collie-color-warning-subtle); border-radius: 6px; padding: 0.3rem 0.5rem; }
 .h-composer textarea { font: inherit; width: 100%; padding: 0.5rem; border: 1px solid var(--collie-color-border); border-radius: 6px; background: var(--collie-color-canvas); color: inherit; resize: vertical; }
 .h-composer-actions { display: flex; justify-content: flex-end; gap: 0.4rem; }
@@ -55,7 +56,10 @@ html[data-commenting] .a-content [data-hover] { outline: 2px solid var(--collie-
 .h-panel { position: sticky; top: 3rem; align-self: start; max-height: calc(100vh - 3.5rem); overflow: auto; padding: 1rem; border-left: 1px solid var(--collie-color-border-subtle); font-size: var(--collie-text-sm); background: var(--collie-color-canvas); width: 18rem; }
 .h-panel-head { display: flex; justify-content: space-between; margin-bottom: 0.6rem; } .h-panel-head button { all: unset; cursor: pointer; font-size: 1.3rem; line-height: 1; color: var(--collie-color-fg-muted); }
 .h-note { border: 1px solid var(--collie-color-border-subtle); border-radius: 8px; padding: 0.5rem 0.6rem; margin-bottom: 0.5rem; display: grid; gap: 0.3rem; }
-.h-note-on { all: unset; cursor: pointer; font-family: var(--a-mono); font-size: var(--collie-text-xs); color: var(--collie-color-fg-accent); word-break: break-all; }
+.h-note-on { all: unset; cursor: pointer; font-size: var(--collie-text-sm); color: var(--collie-color-fg); } .h-note-on:hover { text-decoration: underline; }
+.h-note-on q { quotes: "\201C" "\201D"; font-style: italic; }
+.h-note-crumb { font-size: var(--collie-text-xs); color: var(--collie-color-fg-muted); }
+.h-note:hover { border-color: var(--collie-color-warning-solid); }
 .h-note-del { all: unset; cursor: pointer; font-size: var(--collie-text-xs); color: var(--collie-color-fg-muted); justify-self: end; }
 
 /* present */
@@ -150,3 +154,13 @@ html[data-present] .h-pagenav { display: none; }
 .h-selbtn { position: fixed; z-index: 45; font: inherit; font-size: var(--collie-text-xs); padding: 0.25em 0.7em; border: 1px solid var(--collie-color-border); border-radius: 999px; background: var(--collie-color-canvas); color: var(--collie-color-fg); box-shadow: var(--collie-shadow-overlay); cursor: pointer; }
 html[data-present] .h-corner, html[data-present] .h-dot { display: none; }
 @media (prefers-reduced-motion: reduce) { ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; } .h-corner-btn { transition: none; } html { scroll-behavior: auto; } }
+
+::highlight(a-comment) { background-color: color-mix(in srgb, var(--collie-color-warning-solid) 32%, transparent); }
+::highlight(a-focus) { background-color: color-mix(in srgb, var(--collie-color-warning-solid) 65%, transparent); }
+::highlight(a-flash) { background-color: color-mix(in srgb, var(--collie-color-accent-solid) 45%, transparent); }
+.a-content [data-focus], .a-content [data-flash] { outline: 2px solid var(--collie-color-warning-solid); outline-offset: 2px; }
+.a-content [data-flash] { outline-color: var(--collie-color-accent-solid); }
+.h-dot[data-tip]:hover::after { content: attr(data-tip); position: absolute; right: 14px; top: -4px; width: max-content; max-width: 18rem; white-space: pre-wrap; text-align: left; background: var(--collie-color-canvas); color: var(--collie-color-fg); border: 1px solid var(--collie-color-border); border-radius: 8px; box-shadow: var(--collie-shadow-overlay); padding: 0.4rem 0.6rem; font-size: var(--collie-text-xs); line-height: 1.4; pointer-events: none; }
+.h-hint { position: fixed; z-index: 40; left: 50%; bottom: 1rem; transform: translateX(-50%); display: flex; align-items: center; gap: 0.6rem; padding: 0.35rem 0.5rem 0.35rem 0.9rem; border-radius: 999px; background: var(--collie-color-canvas); border: 1px solid var(--collie-color-border-subtle); box-shadow: var(--collie-shadow-overlay); color: var(--collie-color-fg-muted); font-size: var(--collie-text-xs); }
+.h-hint button { all: unset; cursor: pointer; padding: 0 0.4rem; font-size: 1rem; line-height: 1; color: var(--collie-color-fg-muted); }
+html[data-present] .h-hint, html[data-present] .h-selbtn { display: none; }
