@@ -92,3 +92,14 @@ html[data-present] .h-head[data-header="compact"] h1 { font-size: clamp(2.4rem, 
 /* present mode always uses the full width: wide/full pages and the outline toggle must not leave a stale grid */
 html[data-present] .h-layout, html[data-present] .h-layout:has(.a-page), html[data-present] .h-layout:has(.h-main), html[data-present] .h-layout:has(.h-panel) { grid-template-columns: minmax(0, 1fr) !important; max-width: none !important; }
 html[data-present] .h-main, html[data-present] .h-main[data-width] { max-width: 78rem !important; margin: 0 auto; padding-inline: clamp(1rem, 4vw, 3rem) !important; width: 100%; }
+
+/* bar: groups, labels, help */
+.h-bar { gap: 0.5rem; flex-wrap: wrap; row-gap: 0.3rem; position: sticky; }
+.h-group { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.15rem 0.4rem 0.15rem 0.5rem; border: 1px solid var(--collie-color-border-subtle); border-radius: 8px; background: var(--collie-color-surface); }
+.h-label { font-size: var(--collie-text-xs); color: var(--collie-color-fg-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.h-group .h-btn { box-shadow: none; padding: 0.2em 0.6em; }
+.h-btn, .h-seg button { padding: 0.25em 0.65em; }
+.h-help { width: 1.9rem; padding-inline: 0; border-radius: 50%; font-weight: var(--collie-weight-strong); }
+.h-pop { position: absolute; right: 1rem; top: 100%; margin-top: 6px; z-index: 30; width: 24rem; max-width: calc(100vw - 2rem); background: var(--collie-color-canvas); border: 1px solid var(--collie-color-border); border-radius: 10px; box-shadow: var(--collie-shadow-overlay); padding: 0.7rem 0.9rem; display: grid; gap: 0.35rem; font-size: var(--collie-text-sm); }
+.h-pop > div { display: grid; grid-template-columns: 3rem 1fr; gap: 0.5rem; align-items: baseline; } .h-pop > div.a-muted { display: block; }
+.h-pop kbd { font-family: var(--a-mono); font-size: 11px; border: 1px solid var(--collie-color-border); border-bottom-width: 2px; border-radius: 4px; padding: 0 0.4em; text-align: center; background: var(--collie-color-surface); }

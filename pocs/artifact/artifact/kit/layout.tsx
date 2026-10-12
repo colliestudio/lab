@@ -303,7 +303,15 @@ export function Step({ children }: { children?: ReactNode }) {
 /** Opt-in zoom: content tagged with a depth level (1 = headline … 4 = detail); the reader's 1–4 keys hide deeper levels. */
 export function Depth({ level, children, inline }: { level: 1 | 2 | 3 | 4; children?: ReactNode; inline?: boolean }) {
   const T = inline ? "span" : "div";
-  return <T data-depth-level={level}>{children}</T>;
+  // where this content is hidden, a stub says so; clicking it shows that level
+  const stub = level > 1 && (
+    <T className="a-depth-stub" data-depth-stub={level} role="button" tabIndex={0} title={`Show detail level ${level}`}
+      onClick={() => window.dispatchEvent(new CustomEvent("artifact-depth", { detail: level }))}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") window.dispatchEvent(new CustomEvent("artifact-depth", { detail: level })); }}>
+      {inline ? "…" : `▸ more at detail ${level}`}
+    </T>
+  );
+  return <><T data-depth-level={level}>{children}</T>{stub}</>;
 }
 
 /** A claim that may have drifted: says X, now Y. */

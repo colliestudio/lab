@@ -6,6 +6,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { createRequire as cr } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { htmlEscape, shell } from "../kit/shell.ts";
 import { collect, IMAGE_MIME, slimReplay, type Collected } from "./evidence.ts";
 import { parsePatch } from "../../src/parse/patch.ts";
 
@@ -91,11 +92,10 @@ const options = (dir: string, state: { dir: string }, o: BuildOpts): esbuild.Bui
 // literals (even with the u flag, where the old `<\!--` spelling is a syntax error: it broke highlight.js's JSX grammar).
 const escJs = (s: string) => s.replace(/<(\/script|!--)/gi, "\\x3C$1");
 const escCss = (s: string) => s.replace(/<\/style/gi, "\\3C /style");
-export const htmlEscape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+export { htmlEscape };
 
 export function page(title: string, css: string, js: string, extra = ""): string {
-  return `<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">` +
-    `<title>${htmlEscape(title)}</title><style>${escCss(css)}</style></head><body><div id="root"></div>${extra}<script>${escJs(js)}</script></body></html>\n`;
+  return shell(title, escCss(css), escJs(js), extra);
 }
 
 function parts(meta: esbuild.Metafile): { name: string; bytes: number }[] {

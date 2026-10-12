@@ -72,7 +72,7 @@ export default function Hello() {
       </Section>
 
       <Section id="when" title="When it happened (time axis)">
-        <TimeAxis
+        <TimeAxis title="Six quiet weeks, then 36 hours of impact" lead="Left of the hatched break: weeks. Right of it: hours."
           segments={[{ from: "2026-09-01T00:00:00Z", to: "2026-10-12T00:00:00Z", label: "6 weeks" }, { from: "2026-10-12T00:00:01Z", to: "2026-10-13T12:00:00Z", weight: 2, label: "36 hours" }]}
           bands={[{ from: "2026-09-12T00:00:00Z", to: "2026-10-12T09:00:00Z", label: "gap exists", tone: "warn" }, { from: "2026-10-12T09:00:00Z", to: "2026-10-13T06:00:00Z", label: "no way out", tone: "critical" }]}
           events={[

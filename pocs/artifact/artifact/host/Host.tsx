@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { meta, type Source as Src } from "../kit/registry.ts";
 import { Badge, Source } from "../kit/layout.tsx";
-import { fmtAsOf, fmtDate, plural } from "../kit/util.ts";
+import { fmtAsOf, fmtDate, plural, slug } from "../kit/util.ts";
+import { shell } from "../kit/shell.ts";
 import { useComments, Composer, CommentsPanel, feedbackMarkdown, anchorFor, findAnchor, type Anchor } from "./comments.tsx";
 import { usePresent } from "./present.ts";
 import { PresentCtx } from "../kit/present.ts";
@@ -41,6 +42,17 @@ function useOutline(root: React.RefObject<HTMLElement | null>) {
 }
 
 const normSource = (s: string | Src): Src => (typeof s === "string" ? (/^https?:/.test(s) ? { label: s.replace(/^https?:\/\//, ""), href: s } : { label: s }) : s);
+/** The page as the single HTML file it came in: re-fetch it, or rebuild it from its own style/script text (never the live DOM). */
+async function pageSource(): Promise<string> {
+  try {
+    const r = await fetch(location.href, { cache: "no-store" });
+    if (r.ok) { const t = await r.text(); if (t.includes('id="a-js"') && !t.includes("/__events")) return t; }
+  } catch { /* file:// blocks fetch: use the inlined source */ }
+  return shell(meta.title, document.getElementById("a-css")?.textContent ?? "", document.getElementById("a-js")?.textContent ?? "");
+}
+const canDownload = meta.host?.download ?? meta.download ?? true;
+const SHORTCUTS: [string, string][] = [["p", "Present: ← → or space step, ↑ ↓ scroll, Esc leaves"], ["c", "Comment mode: click any element to comment"], ["1–4", "Detail level (pages that use it)"], ["?", "This list"], ["Esc", "Close dialogs, leave comment mode"]];
+const DETAIL = ["Headline", "Key", "Supporting", "Everything"];
 const typing = (e: KeyboardEvent) => { const t = e.target as HTMLElement; return t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName); };
 
 export function Host({ children }: { children: ReactNode }) {
@@ -49,9 +61,12 @@ export function Host({ children }: { children: ReactNode }) {
   const [dark, setDark] = useState(document.documentElement.dataset.theme === "midnight");
   const [depthUsed, setDepthUsed] = useState(false);
   const [depth, setDepth] = useState<number>(meta.depth ?? 4);
+  const [toast, setToast] = useState("");
+  const [depthCounts, setDepthCounts] = useState<Record<number, number>>({});
   const [mode, setMode] = useState(false);          // comment mode
   const [open, setOpen] = useState<Anchor | null>(null);
   const [panel, setPanel] = useState(false);
+  const [help, setHelp] = useState(false);
   const [outlineOff, setOutlineOff] = useState(localStorage.getItem("artifact-outline") === "off");
   const [allSources, setAllSources] = useState(false);
   const [copied, setCopied] = useState("");
@@ -63,13 +78,31 @@ export function Host({ children }: { children: ReactNode }) {
   useEffect(() => { document.title = meta.title; }, []);
   useEffect(() => {
     const el = content.current!;
-    const scan = () => setDepthUsed(!!el.querySelector("[data-depth-level]"));
+    const scan = () => {
+      const counts: Record<number, number> = {};
+      for (const n of [2, 3, 4]) counts[n] = el.querySelectorAll(`[data-depth-level="${n}"]`).length;
+      setDepthUsed(counts[2] + counts[3] + counts[4] > 0); // level 1 never hides, so alone it needs no control
+      setDepthCounts((p) => (JSON.stringify(p) === JSON.stringify(counts) ? p : counts));
+    };
     scan();
     const mo = new MutationObserver(scan);
     mo.observe(el, { childList: true, subtree: true });
     return () => mo.disconnect();
   }, []);
   useEffect(() => { document.documentElement.dataset.depth = String(depth); }, [depth]);
+  const changeDepth = useCallback((n: number) => {
+    setDepth(n);
+    const el = content.current;
+    const hidden = el ? [...el.querySelectorAll<HTMLElement>("[data-depth-level]")].filter((e) => Number(e.dataset.depthLevel) > n && !e.parentElement?.closest("[data-depth-level]")).length : 0;
+    setToast(n >= 4 ? `Detail ${n} (${DETAIL[n - 1]}): everything shown` : hidden ? `Detail ${n} (${DETAIL[n - 1]}): ${plural(hidden, "block")} hidden; "▸ more" stubs mark them` : `Detail ${n} (${DETAIL[n - 1]}): nothing on this page is hidden at this level`);
+    clearTimeout((changeDepth as unknown as { t?: number }).t);
+    (changeDepth as unknown as { t?: number }).t = window.setTimeout(() => setToast(""), 2600);
+  }, []);
+  useEffect(() => {
+    const f = (e: Event) => changeDepth(Number((e as CustomEvent).detail));
+    addEventListener("artifact-depth", f);
+    return () => removeEventListener("artifact-depth", f);
+  }, [changeDepth]);
   const setTheme = (d: boolean) => {
     setDark(d); localStorage.setItem("artifact-theme", d ? "dark" : "light");
     if (d) document.documentElement.dataset.theme = "midnight"; else delete document.documentElement.dataset.theme;
@@ -89,14 +122,15 @@ export function Host({ children }: { children: ReactNode }) {
     const k = (e: KeyboardEvent) => {
       if (typing(e) || e.metaKey || e.ctrlKey || e.altKey) return;
       if (present.active) return;
-      if (depthUsed && /^[1-4]$/.test(e.key)) setDepth(Number(e.key));
+      if (depthUsed && /^[1-4]$/.test(e.key)) changeDepth(Number(e.key));
       else if (e.key === "c") setMode((m) => !m);
       else if (e.key === "p") present.start();
-      else if (e.key === "Escape") { setMode(false); setOpen(null); }
+      else if (e.key === "?") setHelp((h) => !h);
+      else if (e.key === "Escape") { setMode(false); setOpen(null); setHelp(false); }
     };
     addEventListener("keydown", k);
     return () => removeEventListener("keydown", k);
-  }, [depthUsed, present.active, present.start]);
+  }, [depthUsed, present.active, present.start, changeDepth]);
 
   // comment mode: hover outline + click to comment
   const hover = useRef<HTMLElement | null>(null);
@@ -137,6 +171,15 @@ export function Host({ children }: { children: ReactNode }) {
     return () => mo.disconnect();
   }, [cm.list]);
 
+  const download = useCallback(async () => {
+    const blob = new Blob([await pageSource()], { type: "text/html" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `${slug(meta.title) || "artifact"}.html`;
+    document.body.appendChild(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(link.href), 4000);
+  }, []);
+
   const copy = useCallback(async () => {
     const md = feedbackMarkdown(meta.title, cm.list);
     try { await navigator.clipboard.writeText(md); } catch {
@@ -149,20 +192,35 @@ export function Host({ children }: { children: ReactNode }) {
   const compact = meta.header !== "full";
   return (
     <div className="h-root">
-      <div className="h-bar">
+      <div className="h-bar" role="toolbar" aria-label="Page tools">
         <span className="h-bar-title">{meta.title}</span>
         <span className="h-spacer" />
         {depthUsed && (
-          <span className="h-seg" title="Detail level (keys 1–4)">
-            {[1, 2, 3, 4].map((n) => <button key={n} aria-pressed={depth === n} onClick={() => setDepth(n)}>{n}</button>)}
+          <span className="h-group" title="How much detail to show">
+            <span className="h-label">Detail</span>
+            <span className="h-seg">
+              {[1, 2, 3, 4].map((n) => <button key={n} aria-pressed={depth === n} onClick={() => changeDepth(n)} title={`${n} · ${DETAIL[n - 1]} (key ${n})${n > 1 ? `: ${plural(depthCounts[n] ?? 0, "block")} at this level` : ": always shown"}`}>{n}</button>)}
+            </span>
           </span>
         )}
-        <button className="h-btn" aria-pressed={mode} onClick={() => setMode(!mode)} title="Comment on any element (c)">Comment</button>
-        <button className="h-btn" onClick={() => setPanel(!panel)} aria-pressed={panel}>{cm.list.length ? plural(cm.list.length, "note") : "Notes"}</button>
-        <button className="h-btn" onClick={copy} disabled={!cm.list.length} title="Copy the comments as Markdown to paste back to the agent">{copied || "Copy feedback"}</button>
-        <button className="h-btn" onClick={() => present.start()} title="Present (p): arrow keys step through sections">Present</button>
-        <button className="h-btn" aria-pressed={!outlineOff} onClick={() => { setOutlineOff(!outlineOff); localStorage.setItem("artifact-outline", outlineOff ? "on" : "off"); }} title="Show or hide the outline to give the page the full width">Outline</button>
-        <button className="h-btn" onClick={() => setTheme(!dark)} aria-label="Toggle theme">{dark ? "Light" : "Dark"}</button>
+        <span className="h-group" role="group" aria-label="Comments">
+          <span className="h-label">Comments</span>
+          <button className="h-btn" aria-pressed={mode} onClick={() => setMode(!mode)} title="Comment mode (c): click any element on the page to leave a comment for the author">Add</button>
+          <button className="h-btn" onClick={() => setPanel(!panel)} aria-pressed={panel} title="List and delete your comments">{cm.list.length ? `List (${cm.list.length})` : "List"}</button>
+          <button className="h-btn" onClick={copy} disabled={!cm.list.length} title="Copy all comments as Markdown to paste back to the author or agent">{copied || "Copy"}</button>
+        </span>
+        <button className="h-btn" onClick={() => present.start()} title="Present (p): walk through the sections full screen">Present</button>
+        <button className="h-btn" aria-pressed={!outlineOff} onClick={() => { setOutlineOff(!outlineOff); localStorage.setItem("artifact-outline", outlineOff ? "on" : "off"); }} title="Show or hide the outline on the left">Outline</button>
+        <button className="h-btn" onClick={() => setTheme(!dark)} title="Switch between the light and dark theme">{dark ? "Light" : "Dark"}</button>
+        {canDownload && <button className="h-btn" onClick={download} title="Save this page as one self-contained HTML file">Download</button>}
+        <button className="h-btn h-help" aria-pressed={help} onClick={() => setHelp(!help)} title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">?</button>
+        {help && (
+          <div className="h-pop" role="dialog" aria-label="Keyboard shortcuts">
+            <b>Shortcuts</b>
+            {SHORTCUTS.filter(([k]) => k !== "1–4" || depthUsed).map(([k, d]) => <div key={k}><kbd>{k}</kbd><span>{d}</span></div>)}
+            {depthUsed && <div className="a-muted">Detail: {DETAIL.map((d, i) => `${i + 1} ${d}`).join(" · ")}</div>}
+          </div>
+        )}
       </div>
       <div className="h-layout" data-outline={outlineOff ? "off" : undefined}>
         <nav className="h-outline" aria-label="Outline">
@@ -195,6 +253,7 @@ export function Host({ children }: { children: ReactNode }) {
         </main>
         {panel && <CommentsPanel cm={cm} onClose={() => setPanel(false)} />}
       </div>
+      {toast && <div className="h-toast" role="status">{toast}</div>}
       {open && <Composer anchor={open} onCancel={() => setOpen(null)} onSave={(body) => { cm.add(open, body); setOpen(null); }} existing={cm.list.filter((c) => c.anchor.id === open.id)} />}
       {present.active && (
         <div className="h-present-bar" data-slide={present.state.slide} data-slides={present.state.slides} data-step={present.state.step} data-steps={present.state.steps}>

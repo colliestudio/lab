@@ -19,7 +19,7 @@ export function usePresentStep(): number { const p = useContext(PresentCtx); ret
  * Register `n` present steps for a custom component without writing empty `<Step>`s: render `markers` once (anywhere in
  * the component) and read `step` (0..n revealed). Outside present mode `step` is `n` (everything shown).
  */
-export function usePresentSteps(n: number): { step: number; markers: ReactNode } {
+export function usePresentSteps(n: number): { step: number; active: boolean; markers: ReactNode } {
   const p = useContext(PresentCtx);
   const box = useRef<HTMLSpanElement>(null);
   const [step, setStep] = useState(n);
@@ -28,5 +28,5 @@ export function usePresentSteps(n: number): { step: number; markers: ReactNode }
     setStep(box.current.querySelectorAll("[data-step]:not([data-present-hidden])").length);
   }, [p.active, p.step, p.slide, n]);
   const markers = createElement("span", { ref: box, hidden: true, "data-steps-group": "" }, Array.from({ length: n }, (_, i) => createElement("span", { key: i, "data-step": "" })));
-  return { step: p.active ? step : n, markers };
+  return { step: p.active ? step : n, active: p.active, markers };
 }

@@ -37,6 +37,9 @@ export function niceTimeTicks(from: number, to: number, n = 5): number[] {
 
 /** Tick label: time of day for short spans, date for long ones, in `timeZone` (default UTC). */
 export function tickLabel(t: number, spanMs: number, timeZone = "UTC"): string {
+  const date: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", timeZone };
+  // midnight in a short span is where the day changes: say which day
+  if (spanMs <= 2 * 86400e3 && new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone }).format(t) === "00:00") return new Intl.DateTimeFormat("en-GB", date).format(t);
   const o: Intl.DateTimeFormatOptions = spanMs <= 2 * 86400e3 ? { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone } : { day: "numeric", month: "short", timeZone };
   return new Intl.DateTimeFormat("en-GB", o).format(t);
 }

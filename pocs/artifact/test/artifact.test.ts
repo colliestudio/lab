@@ -519,7 +519,7 @@ test("inline script escaping keeps regex literals with the u flag valid (JSX hig
   const html = page("t", "a{}", `globalThis.__r = [/<!--/u.test("<!--"), "</script>".length, "<!--".length].join();`);
   assert.equal(html.match(/<\/script>/g)?.length, 1, "only the closing tag");
   assert.doesNotMatch(html, /<!--/);
-  const js = html.slice(html.indexOf("<script>") + 8, html.lastIndexOf("</script>"));
+  const js = html.slice(html.indexOf('<script id="a-js">') + 18, html.lastIndexOf("</script>"));
   new Function(js)();
   assert.equal((globalThis as unknown as { __r: string }).__r, "true,9,4");
 });
@@ -737,5 +737,65 @@ export default () => <><Section title="One"><Walk /></Section><Section title="Tw
     } finally { await b.close(); }
     const paths = await shot(d, { out: join(d, "../sp"), themes: ["light"], split: true, height: 800, chrome: false });
     assert.ok(paths.length >= 3 && paths.every((q) => /-p\d+\.png$/.test(q)), paths.join());
+  } finally { cleanup(d); }
+});
+
+test("Download saves the same single HTML file; settings can turn it off; Detail control follows Depth content", async (t) => {
+  const { findChrome } = await import("../artifact/cli/shot.ts");
+  let exe: string;
+  try { exe = await findChrome(); } catch { return t.skip("no Chromium available"); }
+  const { chromium } = await import("playwright-core");
+  const mk = (index: string, metaExtra: object = {}) => {
+    const d = fixture(index);
+    writeFileSync(join(d, "artifact.json"), JSON.stringify({ title: "My Great Page", kind: "k", audience: "a", summary: "s", ...metaExtra }));
+    return d;
+  };
+  const withDepth = mk(`import { Section, Depth } from "artifact"; export default () => <Section title="A"><p>top</p><Depth level={3}><p>DEEP</p></Depth></Section>;`);
+  const plain = mk(`import { Section, Depth } from "artifact"; export default () => <Section title="A"><Depth level={1}><p>only headline</p></Depth></Section>;`, { host: { download: false } });
+  const b = await chromium.launch({ executablePath: exe });
+  try {
+    const out = join(withDepth, "../d.html");
+    const built = (await buildArtifact(withDepth)).html;
+    writeFileSync(out, built);
+    const ctx = await b.newContext({ acceptDownloads: true });
+    const p = await ctx.newPage();
+    await p.goto("file://" + out);
+    await p.waitForSelector(".a-content");
+    const [dl] = await Promise.all([p.waitForEvent("download"), p.getByRole("button", { name: "Download" }).click()]);
+    assert.equal(dl.suggestedFilename(), "my-great-page.html");
+    const path = await dl.path();
+    assert.equal(readFileSync(path, "utf8"), built, "byte-identical to the built file (rebuilt from its own style/script text under file://)");
+    // Detail control: toast + stub
+    await p.keyboard.press("2");
+    assert.match(await p.locator(".h-toast").innerText(), /Detail 2 \(Key\): 1 block hidden/);
+    assert.ok(await p.locator('div.a-depth-stub[data-depth-stub="3"]').isVisible(), "a stub marks the hidden block");
+    await p.locator('div.a-depth-stub[data-depth-stub="3"]').click();
+    assert.ok(await p.getByText("DEEP").isVisible());
+    // no Depth content at level 2+ → no Detail control; download disabled by settings
+    const out2 = join(plain, "../p.html");
+    writeFileSync(out2, (await buildArtifact(plain)).html);
+    const p2 = await ctx.newPage();
+    await p2.goto("file://" + out2);
+    await p2.waitForSelector(".a-content");
+    assert.equal(await p2.locator(".h-seg").count(), 0);
+    assert.equal(await p2.getByRole("button", { name: "Download" }).count(), 0);
+    await p2.keyboard.press("?");
+    assert.ok(await p2.locator(".h-pop").isVisible());
+  } finally { await b.close(); cleanup(withDepth); cleanup(plain); }
+});
+
+test("time axis: midnight ticks show the date; break gets a label; usePresentSteps reports active", async () => {
+  assert.equal(tickLabel(Date.parse("2026-10-13T00:00:00Z"), 3600e3 * 36), "13 Oct");
+  assert.equal(tickLabel(Date.parse("2026-10-12T12:00:00Z"), 3600e3 * 36), "12:00");
+  const d = fixture(`import { TimeAxis, usePresentSteps, Section } from "artifact";
+function W() { const { active, step, markers } = usePresentSteps(2); return <i>{markers}{String(active)}-{step}</i>; }
+export default () => <Section title="T"><TimeAxis title="Heading" lead="How to read" segments={[{ from: "2026-09-01T00:00:00Z", to: "2026-10-12T00:00:00Z", label: "weeks" }, { from: "2026-10-12T00:00:01Z", to: "2026-10-13T12:00:00Z", label: "36 hours" }]} events={[{ at: "2026-09-02T00:00:00Z", label: "a", lane: "code" }]} /><W /></Section>;`);
+  try {
+    const s = await renderStatic(d);
+    assert.ok("html" in s, JSON.stringify(s));
+    const h = s.html.replace(/<!-- -->/g, "");
+    assert.match(h, /a-ta-breaklab[^>]*>zoomed in: 36 hours/);
+    assert.match(h, /Heading/); assert.match(h, /a-ta-gutter-name[^>]*>code/);
+    assert.match(h, /false-2/);
   } finally { cleanup(d); }
 });
