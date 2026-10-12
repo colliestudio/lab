@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { Store, parse, serialize, type CommandCtx } from '../../core';
 import { registerCoreCommands } from '../../core/commands';
-import { CSP, TAG, readMessage, srcdoc } from './bridge';
+import { TAG, readMessage } from './bridge';
+import { fromFrame, pageDocument } from '../../sandbox/page';
 import { registerPrototypeLogic } from './logic';
 import { FIELD, flowOrder, isNote, isPage, note, page, pages, resolveLink, startPage, titleOf } from './model';
 import { History } from './history';
@@ -155,13 +156,21 @@ describe('prototype pages', () => {
 });
 
 describe('sandbox bridge', () => {
-  it('srcdoc starts with the CSP, then the bridge, then the page', () => {
-    const d = srcdoc('<h1>Hi</h1>', { name: '</script><script>alert(1)</script>' });
-    expect(d.indexOf(CSP)).toBeGreaterThan(0);
-    expect(d.indexOf(CSP)).toBeLessThan(d.indexOf('<script>'));
+  it('the page document is the bridge, then the page (no CSP meta: the frame host sends the header)', () => {
+    const d = pageDocument('<h1>Hi</h1>', { name: '</script><script>alert(1)</script>' });
+    expect(d).not.toContain('Content-Security-Policy');
+    expect(d.indexOf('<script>')).toBeLessThan(d.indexOf('<h1>Hi</h1>'));
     expect(d.endsWith('<h1>Hi</h1>')).toBe(true);
     // state can't break out of the bridge script
     expect(d.match(/<\/script>/g)!.length).toBe(1);
+  });
+  it('trusts a message only from the frame itself, on the sandbox origin it was opened on', () => {
+    const frame = { contentWindow: {}, src: 'http://page-ab12.localhost:5227/page' } as unknown as HTMLIFrameElement;
+    const msg = (source: unknown, origin: string) => ({ source, origin }) as unknown as MessageEvent;
+    expect(fromFrame(frame, msg(frame.contentWindow, 'http://page-ab12.localhost:5227'))).toBe(true);
+    expect(fromFrame(frame, msg(frame.contentWindow, 'https://evil.example'))).toBe(false);
+    expect(fromFrame(frame, msg(frame.contentWindow, 'null'))).toBe(false);
+    expect(fromFrame(frame, msg({}, 'http://page-ab12.localhost:5227'))).toBe(false);
   });
   it('accepts only tagged, well-formed messages', () => {
     expect(readMessage({ tag: TAG, kind: 'goto', target: 'Plan' })).toEqual({ kind: 'goto', target: 'Plan' });

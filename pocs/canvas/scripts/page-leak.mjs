@@ -90,12 +90,21 @@ try {
 
   // typing into an interactive evil page
   const typedId = await page.evaluate(() => app.doc.nodes.find((n) => n['x-page']?.title === 'Evil typed').id);
-  await page.evaluate((id) => { app.store.select([id]); app.view.fit([id]); }, typedId);
+  await page.evaluate((id) => { app.store.select([id]); app.view.fit(60, app.doc.nodes.filter((n) => n.id === id)); }, typedId);
   const t = page.locator(`[data-node-id="${typedId}"]`);
   await t.locator('[data-action="live"]').click();
   await t.frameLocator('iframe').locator('#i').pressSequentially('hunter2', { delay: 60 });
   await page.waitForTimeout(1500);
 
+  // control: the pages really rendered and stayed put (blocked is not "never loaded")
+  const intact = [];
+  for (const k of ['location', 'meta', 'navigation', 'link']) {
+    const id = await page.evaluate((k) => app.doc.nodes.find((n) => n['x-page']?.title === 'Evil ' + k).id, k);
+    const text = await page.locator(`[data-node-id="${id}"] iframe`).contentFrame().locator('h1').textContent({ timeout: 3000 }).catch(() => null);
+    if (text === 'Innocent') intact.push(k);
+  }
+  const typedValue = await t.frameLocator('iframe').locator('#i').inputValue().catch(() => null);
+  console.log(`pages still showing their own content: ${intact.length}/4; interactive input holds "${typedValue}"`);
   const leaked = (name) => hits.filter((h) => h.startsWith('/' + name));
   const rows = Object.keys(evil).map((k) => [k, leaked(k)]);
   for (const [k, l] of rows) console.log(`${k.padEnd(11)} ${l.length ? 'LEAK  ' + decodeURIComponent(l[0]).slice(0, 90) : 'blocked'}`);
@@ -103,7 +112,7 @@ try {
   if (errors.length) console.log('page errors:', errors.join(' | '));
   const anyLeak = hits.length > 0;
   const anyIdle = idle.length > 0;
-  const ok = expect === 'leak' ? anyLeak && anyIdle : !anyLeak;
+  const ok = expect === 'leak' ? anyLeak && anyIdle : !anyLeak && intact.length === 4 && typedValue === 'hunter2';
   console.log(ok ? `OK (expected ${expect})` : `FAIL (expected ${expect})`);
   if (!ok) code = 1;
 } catch (e) {

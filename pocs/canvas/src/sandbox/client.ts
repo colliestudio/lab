@@ -62,8 +62,14 @@ export function openFrame(kind: FrameKind, opts: { hint?: string; query?: Record
   let nav: () => void = () => {};
   let loads = 0;
   let allowed = 1;
-  frame.addEventListener('load', () => ++loads > allowed && nav());
+  let attached = false;
+  frame.addEventListener('load', () => {
+    attached = true;
+    if (++loads > allowed) nav();
+  });
   const onMsg = (e: MessageEvent) => {
+    // the frame was removed (a re-render replaced it): stop listening
+    if (attached && !frame.isConnected) return void window.removeEventListener('message', onMsg);
     if (e.source !== frame.contentWindow || e.origin !== origin) return;
     fn(e.data);
   };

@@ -1,5 +1,5 @@
 import type { App } from '../../core';
-import { pageFrame, readMessage } from './bridge';
+import { fromFrame, pageFrame, readMessage } from './bridge';
 import { History } from './history';
 import { docHeight, isNote, isPage, note, outgoing, page, resolveLink, titleOf } from './model';
 
@@ -33,7 +33,7 @@ export class Player {
 
   constructor(private app: App) {
     window.addEventListener('message', (e) => {
-      if (!this.frame || e.source !== this.frame.contentWindow) return;
+      if (!this.frame || !fromFrame(this.frame, e)) return;
       const m = readMessage(e.data);
       if (!m) return;
       if (m.kind === 'set') {

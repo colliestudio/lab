@@ -1,11 +1,11 @@
 import { openFrame } from './client';
 
 // HTML pages (the prototype idea's agent-made pages) on the sandbox origin. Same call shape as the
-// prototype branch's `pageFrame(html, vw, vh, scale, state)` in src/plugins/prototype/bridge.ts, so
-// that plugin can switch by changing one import (and replace a frame instead of setting `srcdoc`
-// to re-render). The bridge script below is the prototype's, unchanged in behavior: clicks on
-// `[data-goto]` / `[data-back]`, `data-store` fields, `window.canvas`. The CSP now comes from the
-// frame host's response header instead of a meta tag, plus the navigation guard.
+// prototype plugin's former srcdoc `pageFrame(html, vw, vh, scale, state)`. A page is re-rendered by
+// replacing its frame, not by reassigning `srcdoc`. The bridge script below is what the srcdoc
+// frames ran: clicks on `[data-goto]` / `[data-back]`, `data-store` fields, `window.canvas`. The
+// CSP now comes from the frame host's response header instead of a meta tag, plus the navigation
+// guard.
 
 export const TAG = 'canvas-page/1';
 
@@ -93,7 +93,7 @@ export function sandboxPage(html: string, opts: { state?: Record<string, string>
   return { frame: sf.frame, origin: sf.origin, onPageMessage: (f) => (onPage = f), onHostNote: (f) => (onNote = f), destroy: sf.destroy };
 }
 
-/** Drop-in for the prototype's `pageFrame` (same arguments and frame styling). */
+/** A frame for a page laid out at `vw` x `vh` and scaled by `scale`, with the prototype's frame styling. */
 export function pageFrame(html: string, vw: number, vh: number, scale: number, state?: Record<string, string>): HTMLIFrameElement {
   const p = sandboxPage(html, { state });
   const f = p.frame;
@@ -102,4 +102,18 @@ export function pageFrame(html: string, vw: number, vh: number, scale: number, s
   f.style.height = `${vh}px`;
   f.style.transform = `scale(${scale})`;
   return f;
+}
+
+/**
+ * Is this message from `frame` itself? The window must be the frame's and the origin must still be
+ * the sandbox origin the frame was opened on, so a frame that ended up somewhere else (a browser
+ * without the navigation guard) can't keep talking.
+ */
+export function fromFrame(frame: HTMLIFrameElement, e: MessageEvent): boolean {
+  if (e.source !== frame.contentWindow) return false;
+  try {
+    return e.origin === new URL(frame.src).origin;
+  } catch {
+    return false;
+  }
 }

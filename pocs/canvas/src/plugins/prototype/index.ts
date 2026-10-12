@@ -1,6 +1,6 @@
 import './prototype.css';
 import type { CanvasNode, MenuEntry, Plugin } from '../../core';
-import { pageFrame, readMessage } from './bridge';
+import { fromFrame, pageFrame, readMessage } from './bridge';
 import { NOTE_H, autoLinkChanges } from './commands';
 import { mountEdges, type EdgeLayer } from './edges';
 import { editNote, editPage } from './editor';
@@ -41,10 +41,15 @@ export const prototypePlugin: Plugin = {
       const b = box?.querySelector<HTMLElement>('[data-action="live"]');
       if (b) b.title = on ? 'Interacting: clicks go to the page (I to stop)' : 'Interact with the page (I)';
     };
+    const frameOf = (n: CanvasNode) => {
+      const f = page(n);
+      return pageFrame(f.html, f.vw, docHeight(n), n.width / f.vw, state);
+    };
+    /** Show the page from its start again (with the current session state): a fresh frame, never a navigation of the old one. */
     const reload = (id: string) => {
       const n = app.node(id);
-      const f = app.view.boxOf(id)?.querySelector<HTMLIFrameElement>('iframe');
-      if (f && isPage(n)) f.srcdoc = pageFrame(page(n).html, page(n).vw, 1, 1, state).srcdoc;
+      const old = app.view.boxOf(id)?.querySelector<HTMLIFrameElement>('iframe');
+      if (old && isPage(n)) old.replaceWith(frameOf(n));
     };
 
     /** Glide the view so page `id` is in the middle (zoom kept unless it doesn't fit). */
@@ -87,7 +92,7 @@ export const prototypePlugin: Plugin = {
     window.addEventListener('message', (e) => {
       const m = readMessage(e.data);
       if (!m) return;
-      const frame = [...app.view.world.querySelectorAll<HTMLIFrameElement>('iframe.pg-frame')].find((f) => f.contentWindow === e.source);
+      const frame = [...app.view.world.querySelectorAll<HTMLIFrameElement>('iframe.pg-frame')].find((f) => fromFrame(f, e));
       const id = frame?.closest<HTMLElement>('[data-node-id]')?.dataset.nodeId;
       // only a page you're interacting with may act: an idle thumbnail's script can't move your view
       if (!id || !live.has(id)) return;
@@ -117,14 +122,12 @@ export const prototypePlugin: Plugin = {
       renderKey: (n) => JSON.stringify([page(n), n.width, n.height]),
       render(n, el) {
         const f = page(n);
-        const vh = docHeight(n);
-        const s = n.width / f.vw;
         el.classList.toggle('pg-live', live.has(n.id));
         el.innerHTML = `<div class="pg-page${f.start ? ' pg-start' : ''}">
           <div class="pg-bar"><span class="pg-title">${f.start ? '<b class="pg-flag" title="Start page">▶</b>' : ''}${esc(f.title)}</span>
           <button data-action="live" title="Interact with the page (I)">✋</button><button data-action="play" title="Play from here (⇧↵)">▶</button></div>
           <div class="pg-body" style="height:${n.height - HEADER}px"></div></div>`;
-        el.querySelector('.pg-body')!.append(pageFrame(f.html, f.vw, vh, s, state));
+        el.querySelector('.pg-body')!.append(frameOf(n));
       },
       onAction(n, action) {
         if (action === 'live') setLive(n.id, !live.has(n.id));
