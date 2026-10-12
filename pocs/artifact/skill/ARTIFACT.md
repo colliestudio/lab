@@ -31,6 +31,7 @@ artifact check notes/status-1012.artifact           # bundle, types, render, evi
 artifact build notes/status-1012.artifact -o status.html   # one self-contained file
 artifact shot notes/status-1012.artifact --theme both --present all   # PNGs in <dir>/.shots/: Read them
 artifact capture http://127.0.0.1:5211 -o <dir>/evidence/app.jpg --selector main --wait 800   # screenshot a running app (--steps steps.json; .jpg is ~4x smaller)
+artifact record http://127.0.0.1:5211 -o <dir>/evidence/flow.replay --steps 'say:Add a card; click:text=New card; type:#title=Fix login; key:Enter'   # or --script journey.mjs
 artifact gather gh-prs <dir> --repos owner/a,owner/b --since ISO   # → data/gh-prs.json; also board --workspaces a,b; git-log --repo p --ref origin/main [--branches 'idea/*' --base main]; trim with --fields / --count
 ```
 
@@ -70,6 +71,14 @@ Put `pages/<id>.tsx` files next to `index.tsx` (home). Each exports a default co
 ## Evidence
 
 Reference files by string literal: `evidence/x.patch` (git diff output), `x.replay` (Collie Demo), `x.png`, source files for `<Code>`. The build inlines what you reference, parses patches (the raw patch is not in the output), re-zips replays without trace.zip and turns images into data URIs. `import shot from "./evidence/x.png"` also works. Paths must stay inside `evidence/` (no `..`, no symlinks out). Only string literals starting at `evidence/` count (or a whole-string value in `data/*.json`); `` `evidence/${id}.jpg` `` is a glob over the files there. Build fails on missing evidence; `check` warns about unused files. Recordings are not redacted: check for secrets before sharing. Text props (`Decision why`, question strings) are plain text: use nodes for `<code>`.
+
+## Recordings
+
+A recording beats a screenshot for anything that moves or has a before/after (drag, undo, a flow). Clips 10-40 s, one flow each, `say:"…"` = a chapter (say what to watch for); ~25-60 KB.
+
+- `artifact record <url|file> -o evidence/x.replay --steps '…'`: `say:t; click:<css|text=…|button name>; type:<sel>=<text>; key:Enter; go:<url>; wait:<ms|sel>; hover:; scroll:<px>; drag:<a>-><b>; pause:<ms>` (`;` or newline; or a capture-style JSON array). `--script j.mjs` for real flows: `export default async ({page, say, click, type, go, pause, key, drag, …}) => {}` (run a CLI with `execFile`, `await pause()` to watch it). Options: `--width/--height`, `--theme dark`, `--max` s (90), `--no-network/--no-console`, `--fast` (no human pacing). Record the running app, not a page that embeds screenshots (huge snapshots).
+- `<Replay src steps={[2,3]} loop/>`: first frame + play, chapters (click to seek), decoded only when scrolled near; `loop` = silent autoplay clip; in present mode one step plays it.
+- Passwords are masked, nothing else is redacted: check before sharing. `build` lists recording sizes; `check` warns over 300 KB.
 
 ## Custom components and CSS
 

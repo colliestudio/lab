@@ -239,7 +239,16 @@ a.a-source:hover { border-color: var(--collie-color-border-accent); }
 /* flow, replay */
 .a-flow { margin: var(--collie-space-150) 0; } .a-flow-svg { overflow-x: auto; } .a-flow-svg svg { max-width: none; height: auto; }
 .a-replay { margin: var(--collie-space-150) 0; }
-.a-replay-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; flex: 1 0 auto; min-width: 200px; max-width: 360px; overflow-y: auto; }
+.a-replay-body { display: flex; flex-direction: column; gap: 14px; align-items: flex-start; }
+.a-replay-body.side { flex-direction: row; }
+.a-replay-stage { position: relative; min-width: 0; flex: 0 1 auto; border-radius: 10px; overflow: hidden; border: 1px solid var(--a-line); background: var(--a-card); }
+.a-replay-ph { position: absolute; left: 0; top: 0; display: grid; place-items: center; padding: 16px; text-align: center; color: var(--a-muted); font-size: 13px; background: var(--a-card); }
+.a-replay-play { position: absolute; left: 0; top: 0; width: 100%; display: grid; place-items: center; border: 0; padding: 0; cursor: pointer; background: transparent; }
+.a-replay-play span { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%; background: rgba(20, 20, 20, .66); color: #fff; font-size: 20px; padding-left: 4px; transition: transform .15s, background .15s; }
+.a-replay-play:hover span, .a-replay-play:focus-visible span { transform: scale(1.06); background: rgba(20, 20, 20, .82); }
+.a-replay-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; flex: 1 1 200px; min-width: 200px; max-width: 360px; overflow-y: auto; align-self: stretch; }
+.a-replay-body:not(.side) .a-replay-steps { flex-direction: row; flex-wrap: wrap; max-width: none; width: 100%; flex: none; }
+.a-replay-body:not(.side) .a-replay-steps li { flex: 1 1 200px; max-width: 320px; }
 .a-replay-steps button { display: grid; grid-template-columns: 20px 1fr auto; gap: 6px; width: 100%; text-align: left; align-items: start; padding: 6px 8px; border: 1px solid var(--a-line); border-radius: 8px; background: var(--a-card); cursor: pointer; font: inherit; font-size: 12.5px; line-height: 1.35; color: inherit; }
 .a-replay-steps button.on { border-color: var(--collie-color-border-warning); background: var(--collie-color-warning-subtle); }
 .a-replay-steps button.off { opacity: 0.6; font-style: italic; } .a-replay-steps .n { font-weight: 700; color: var(--collie-color-fg-warning); } .a-replay-steps .t { color: var(--a-muted); font-size: 11px; font-variant-numeric: tabular-nums; }

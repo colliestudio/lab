@@ -12,6 +12,9 @@ const USAGE = `artifact: agent-written pages (React + a component kit), one self
   artifact new <dir> [--kind k]          scaffold <dir>.artifact with a small example
   artifact capture <url|file.html> -o evidence/x.png|.jpg [--selector css] [--wait ms|css] [--width N] [--height N] [--theme dark] [--full] [--steps steps.json]
                                          screenshot a running app into evidence (jpg is ~4x smaller)
+  artifact record <url|file.html> -o evidence/x.replay (--steps 'say:…; click:text=Save; type:#name=Ada; key:Enter; wait:500; drag:.a->.b' | --script journey.mjs)
+                                         [--width N] [--height N] [--theme dark] [--max seconds, 90] [--no-network] [--no-console] [--inline-images] [--fast]
+                                         a seekable DOM recording for <Replay>; each say:"…" is a chapter. Not redacted (passwords are masked): check before sharing
   artifact gather gh-prs|board|git-log <dir> [options]   (--fields a,b / --count trim output; git-log --branches 'idea/*' --base main = unique commits per branch)   write <dir>/data/<kind>.json (see ARTIFACT.md)
   artifact dev <dir> [--port N]          live-reload server on 127.0.0.1 (default 4177)
   artifact check <dir>                   bundle + types + render + evidence + size; exit 1 on errors
@@ -26,7 +29,7 @@ export async function main(argv: string[]): Promise<number> {
   const [cmd, ...rest] = argv;
   const { values, positionals } = parseArgs({
     args: rest, allowPositionals: true,
-    options: { kind: { type: "string" }, port: { type: "string" }, host: { type: "string" }, o: { type: "string", short: "o" }, theme: { type: "string" }, present: { type: "string" }, width: { type: "string" }, "no-chrome": { type: "boolean" }, motion: { type: "boolean" }, "no-types": { type: "boolean" }, help: { type: "boolean", short: "h" }, split: { type: "boolean" }, page: { type: "string" }, selector: { type: "string" }, wait: { type: "string" }, height: { type: "string" }, full: { type: "boolean" }, steps: { type: "string" }, repos: { type: "string" }, workspaces: { type: "string" }, repo: { type: "string" }, branches: { type: "string" }, fields: { type: "string" }, count: { type: "boolean" }, base: { type: "string" }, since: { type: "string" }, name: { type: "string" }, limit: { type: "string" }, force: { type: "boolean" } },
+    options: { kind: { type: "string" }, port: { type: "string" }, host: { type: "string" }, o: { type: "string", short: "o" }, theme: { type: "string" }, present: { type: "string" }, width: { type: "string" }, "no-chrome": { type: "boolean" }, motion: { type: "boolean" }, "no-types": { type: "boolean" }, help: { type: "boolean", short: "h" }, split: { type: "boolean" }, page: { type: "string" }, selector: { type: "string" }, wait: { type: "string" }, height: { type: "string" }, full: { type: "boolean" }, steps: { type: "string" }, repos: { type: "string" }, workspaces: { type: "string" }, repo: { type: "string" }, branches: { type: "string" }, fields: { type: "string" }, count: { type: "boolean" }, base: { type: "string" }, since: { type: "string" }, name: { type: "string" }, limit: { type: "string" }, force: { type: "boolean" }, script: { type: "string" }, max: { type: "string" }, "no-network": { type: "boolean" }, "no-console": { type: "boolean" }, "inline-images": { type: "boolean" }, fast: { type: "boolean" }, "body-limit": { type: "string" } },
   });
   const dir = positionals[0];
   if (values.help) { console.log(USAGE); return 0; }
@@ -59,6 +62,8 @@ export async function main(argv: string[]): Promise<number> {
       writeFileSync(out, r.html);
       console.log(`${out}  ${fmtBytes(r.bytes)}  (js ${fmtBytes(r.js)}, css ${fmtBytes(r.css)})`);
       console.log("  " + r.parts.slice(0, 6).map((p) => `${p.name} ${fmtBytes(p.bytes)}`).join(" · "));
+      const recs = Object.entries(r.collected.sizes).filter(([p]) => p.endsWith(".replay"));
+      if (recs.length) console.log("  recordings (inlined, decoded when scrolled to): " + recs.map(([p, n]) => `${p.replace(/^evidence\//, "")} ${fmtBytes(n)}`).join(" · "));
       const pg = r.parts.filter((x) => x.name.startsWith("page "));
       if (pg.length) console.log("  pages: " + pg.map((x) => `${x.name.slice(5)} ${fmtBytes(x.bytes)}`).join(" · ") + " (their own source; shared parts above)");
       if (r.bytes > WARN_BYTES) console.warn(`warning: over ${fmtBytes(WARN_BYTES)}; large files are slow to open and share`);
@@ -77,6 +82,17 @@ export async function main(argv: string[]): Promise<number> {
       const w = (x?: string) => (x ? Number(x) : undefined);
       const p = await capture(dir, { out: values.o, selector: values.selector, wait: values.wait, width: w(values.width), height: w(values.height), theme: values.theme === "dark" ? "dark" : "light", full: values.full, steps: values.steps });
       console.log(`${p}  ${fmtBytes(statSync(p).size)}`);
+      return 0;
+    }
+    case "record": {
+      if (!values.o) { console.error("record needs -o evidence/x.replay"); return 2; }
+      if (!values.steps && !values.script) { console.error("record needs --steps '…' or --script journey.mjs"); return 2; }
+      const { record } = await import("./record.ts");
+      const n = (x?: string) => (x ? Number(x) : undefined);
+      const r = await record(dir, { out: values.o, steps: values.steps, script: values.script, width: n(values.width), height: n(values.height), theme: values.theme === "dark" ? "dark" : "light", max: n(values.max), network: !values["no-network"], console: !values["no-console"], bodyLimit: n(values["body-limit"]), fast: values.fast, inlineImages: values["inline-images"] });
+      console.log(`${r.path}  ${fmtBytes(r.bytes)}  ${(r.durationMs / 1000).toFixed(1)}s  ${r.steps.length} steps, ${r.events} events`);
+      for (const w of r.warnings) console.warn("warning: " + w);
+      console.warn("warning: recordings are not redacted (password inputs are masked; page text, typed text and fetch bodies are kept): check for secrets before sharing");
       return 0;
     }
     case "dev": {

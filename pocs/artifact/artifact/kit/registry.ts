@@ -13,9 +13,11 @@ export interface PatchFile {
   path: string; oldPath?: string; change: "added" | "changed" | "removed";
   additions: number; deletions: number; binary: boolean; hunks: PatchHunk[];
 }
+/** Read at build time from a recording: chapters (`rel` ms from the first frame), stage size and length. */
+export interface ReplayMeta { screen: boolean; viewport: { width: number; height: number }; duration: number; steps: { rel: number; text: string; kind?: string }[] }
 export type Evidence =
   | { k: "patch"; files: PatchFile[] }
-  | { k: "replay"; b64: string }
+  | { k: "replay"; b64: string; meta: ReplayMeta }
   | { k: "image" | "file"; url: string }
   | { k: "text"; text: string };
 /** A decision found by rendering every page at build time (so other pages' decisions count in the progress). */

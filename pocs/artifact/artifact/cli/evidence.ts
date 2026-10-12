@@ -2,9 +2,9 @@
 // compact registry the kit reads at runtime (parsed patches, replays without trace.zip, data URIs, text).
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { extname, join, relative, resolve, sep } from "node:path";
-import { unzipSync, zipSync } from "fflate";
+import { strFromU8, unzipSync, zipSync } from "fflate";
 import { parsePatch } from "../../src/parse/patch.ts";
-import type { Evidence, Meta, PatchFile, Registry } from "../kit/registry.ts";
+import type { Evidence, Meta, PatchFile, Registry, ReplayMeta } from "../kit/registry.ts";
 
 export const IMAGE_MIME: Record<string, string> = {
   ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp", ".svg": "image/svg+xml", ".avif": "image/avif",
@@ -119,10 +119,24 @@ export function slimReplay(bytes: Uint8Array): string {
   return Buffer.from(zipSync(files, { level: 9 })).toString("base64");
 }
 
+/** What the page needs before it decodes a recording (chapters, size of the stage, length), so the zip stays an inert string until the reader scrolls to it. */
+export function replayMeta(bytes: Uint8Array): ReplayMeta {
+  const files = unzipSync(bytes, { filter: (f) => ["manifest.json", "steps.json", "rrweb.json"].includes(f.name) });
+  const read = <T,>(n: string, d: T): T => (files[n] ? JSON.parse(strFromU8(files[n])) : d);
+  const manifest = read<{ viewport?: { width: number; height: number }; startedAt?: string }>("manifest.json", {});
+  const events = read<{ timestamp: number }[]>("rrweb.json", []);
+  const steps = read<{ t: number; text: string; kind?: string }[]>("steps.json", []);
+  const t0 = events[0]?.timestamp ?? (manifest.startedAt ? Date.parse(manifest.startedAt) : steps[0]?.t ?? 0);
+  return {
+    screen: events.length > 0, viewport: manifest.viewport ?? { width: 1280, height: 800 }, duration: events.length ? events[events.length - 1].timestamp - t0 : 0,
+    steps: steps.map((s) => ({ rel: Math.max(0, s.t - t0), text: s.text, ...(s.kind ? { kind: s.kind } : {}) })),
+  };
+}
+
 export function encodeEvidence(path: string, abs: string, src: string): Evidence {
   const ext = extname(path).toLowerCase();
   if (ext === ".patch" || ext === ".diff") return { k: "patch", files: patchFiles(readFileSync(abs, "utf8"), neededFiles(src, path)) };
-  if (ext === ".replay") return { k: "replay", b64: slimReplay(readFileSync(abs)) };
+  if (ext === ".replay") { const raw = readFileSync(abs); return { k: "replay", b64: slimReplay(raw), meta: replayMeta(raw) }; }
   if (IMAGE_MIME[ext]) return { k: "image", url: `data:${IMAGE_MIME[ext]};base64,${readFileSync(abs).toString("base64")}` };
   if (TEXT_EXT.has(ext)) return { k: "text", text: readFileSync(abs, "utf8") };
   return { k: "file", url: `data:application/octet-stream;base64,${readFileSync(abs).toString("base64")}` };
