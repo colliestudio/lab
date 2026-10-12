@@ -9,6 +9,8 @@ import * as decoding from 'lib0/decoding';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { Host, makeActor, type Actor } from './host';
 import { queryNodes } from './query';
+import { parseBridgeArgs } from './args';
+import { makeGuard } from './guard';
 
 // canvas bridge: a Node process that owns one .canvas file and hosts its live document.
 //  - Browsers join over WebSocket (the y-websocket protocol): ?bridge=ws://localhost:5222
@@ -18,12 +20,21 @@ import { queryNodes } from './query';
 //  - <dir>/.canvas-bridge/<name>.ystate keeps the Yjs history across restarts (so open tabs and
 //    the restarted bridge agree on identity); delete it any time, the file wins.
 //
-// Usage: tsx bridge/server.ts <file.canvas> [--port 5222] [--host 127.0.0.1]
+// Usage: tsx bridge/server.ts <file.canvas> [--port 5222] [--host 127.0.0.1] [--allow-origin URL]…
+//  Binds 127.0.0.1 by default. A browser app on another origin (the vite dev server) must be listed:
+//  --allow-origin http://mini.internal:5284 (or $CANVAS_ALLOW_ORIGIN, comma separated); see guard.ts.
 
-const args = process.argv.slice(2);
-const file = resolve(args.find((a) => !a.startsWith('--')) ?? 'board.canvas');
-const port = Number(args[args.indexOf('--port') + 1]) || Number(process.env.CANVAS_BRIDGE_PORT) || 5222;
-const bindHost = args[args.indexOf('--host') + 1] && args.includes('--host') ? args[args.indexOf('--host') + 1] : '127.0.0.1';
+let opts: ReturnType<typeof parseBridgeArgs>;
+try {
+  opts = parseBridgeArgs(process.argv.slice(2));
+} catch (e) {
+  console.error(`canvas bridge: ${(e as Error).message}\nusage: tsx bridge/server.ts <file.canvas> [--port N] [--host H] [--allow-origin URL]…`);
+  process.exit(2);
+}
+const file = resolve(opts.file);
+const port = opts.port ?? (Number(process.env.CANVAS_BRIDGE_PORT) || 5222);
+const bindHost = opts.host ?? '127.0.0.1';
+const guard = makeGuard({ port, allowOrigins: [...opts.allowOrigins, ...(process.env.CANVAS_ALLOW_ORIGIN?.split(',') ?? [])] });
 const stateDir = join(dirname(file), '.canvas-bridge');
 const statePath = join(stateDir, `${basename(file)}.ystate`);
 const IDLE_MS = 3 * 60_000;
@@ -168,7 +179,15 @@ host.onSeat((a, joined) => {
 setInterval(() => host.sweep(IDLE_MS), 10_000);
 
 const http = createServer((req, res) => void api(req, res));
-const wss = new WebSocketServer({ server: http });
+const refuse = (what: string, req: IncomingMessage, why: string) => log(`refused ${what} ${req.url ?? ''}: ${why}`);
+const wss = new WebSocketServer({
+  server: http,
+  verifyClient: ({ req }, done) => {
+    const why = guard.check(req.headers, 'GET');
+    if (why) refuse('WebSocket', req, why);
+    done(!why, 403, 'Forbidden');
+  },
+});
 wss.on('connection', (ws) => {
   conns.set(ws, new Set());
   ws.binaryType = 'arraybuffer';
@@ -212,9 +231,15 @@ function actorOf(b: { as?: string; kind?: string } | undefined, req: IncomingMes
 }
 
 async function api(req: IncomingMessage, res: ServerResponse) {
-  const url = new URL(req.url ?? '/', `http://${req.headers.host}`);
+  const why = guard.check(req.headers, req.method);
+  if (why) {
+    refuse(req.method ?? 'request', req, why);
+    res.writeHead(403, { 'content-type': 'application/json' });
+    return void res.end(JSON.stringify({ error: why }) + '\n');
+  }
+  const url = new URL(req.url ?? '/', 'http://bridge');
   const reply = (code: number, v: unknown) => {
-    res.writeHead(code, { 'content-type': 'application/json', 'access-control-allow-origin': '*' });
+    res.writeHead(code, { 'content-type': 'application/json' });
     res.end(JSON.stringify(v, null, 2) + '\n');
   };
   try {
@@ -289,7 +314,7 @@ async function api(req: IncomingMessage, res: ServerResponse) {
   }
 }
 
-http.listen(port, bindHost, () => log(`canvas bridge: ${file} on http://${bindHost}:${port} (browsers: ?bridge=ws://${bindHost}:${port})`));
+http.listen(port, bindHost, () => log(`canvas bridge: ${file} on http://${bindHost}:${port} (browsers: ?bridge=ws://${bindHost}:${port}; app origins allowed: ${guard.origins.join(', ')})`));
 const stop = () => {
   clearTimeout(writeTimer);
   writeOut();
