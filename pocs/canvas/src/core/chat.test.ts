@@ -80,7 +80,7 @@ describe('chat', () => {
 
   it('chatLine and validMessage', () => {
     const d = new Y.Doc();
-    const m = sendChat(d, bot, 'hello', { node: 'n1', now: Date.UTC(2026, 9, 12, 12, 3) })!;
+    const m = sendChat(d, bot, 'hello', { node: 'n1', now: new Date(2026, 9, 12, 12, 3).getTime() })!; // local time
     expect(chatLine(m, 'Deck')).toBe('[12:03] Bot W (agent): hello  (re: Deck)');
     expect(validMessage(m)).toBe(true);
     expect(validMessage({ id: 1 })).toBe(false);

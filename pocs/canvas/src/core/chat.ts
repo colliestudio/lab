@@ -93,7 +93,8 @@ export function splitMentions(text: string, names: readonly string[]): { text: s
 
 /** One line for a terminal or an agent: "[12:03] Alice: hello  (re: Deck)". */
 export function chatLine(m: ChatMessage, nodeTitle?: string): string {
-  const t = new Date(m.time).toISOString().slice(11, 16);
+  const d = new Date(m.time); // local time, like the panel
+  const t = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   const tag = m.from.kind ? ` (${m.from.kind})` : '';
   return `[${t}] ${m.from.name}${tag}: ${m.text}${m.node ? `  (re: ${nodeTitle ?? m.node})` : ''}`;
 }
