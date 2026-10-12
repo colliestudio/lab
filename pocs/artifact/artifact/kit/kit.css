@@ -107,6 +107,14 @@ h4.a-h, h5.a-h { font-size: var(--collie-text-md); }
 .a-questions { border: 1px solid var(--collie-color-border-warning); background: var(--collie-color-warning-subtle); border-radius: var(--a-radius); padding: var(--collie-space-150) var(--collie-space-200); margin: var(--collie-space-200) 0; }
 .a-questions-title { font-size: var(--collie-text-sm); text-transform: uppercase; letter-spacing: 0.05em; font-weight: var(--collie-weight-strong); color: var(--collie-color-fg-warning); margin-bottom: var(--collie-space-100); }
 .a-questions ol { margin: 0; padding-left: 1.3em; display: grid; gap: var(--collie-space-100); }
+.a-dindex { border: 1px solid var(--a-line); background: var(--a-card); border-radius: var(--a-radius); padding: var(--collie-space-150) var(--collie-space-200); margin: var(--collie-space-200) 0; font-size: var(--collie-text-sm); }
+.a-dindex-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem 0.8rem; margin-bottom: var(--collie-space-100); }
+.a-dindex-title { font-weight: var(--collie-weight-strong); }
+.a-dindex-bar { width: 5rem; height: 3px; border-radius: 2px; background: var(--a-line); overflow: hidden; } .a-dindex-bar i { display: block; height: 100%; background: var(--collie-color-accent-solid); }
+.a-dindex-accept { margin-left: auto; font: inherit; font-size: var(--collie-text-xs); padding: 0.2em 0.7em; border: 1px solid var(--a-line); border-radius: var(--collie-radius-sm); background: none; color: var(--collie-color-fg-accent); cursor: pointer; } .a-dindex-accept:hover { border-color: var(--collie-color-border-accent); }
+.a-dindex ol { margin: 0; padding-left: 1.3em; display: grid; gap: 0.3rem; } .a-dindex li::marker { color: var(--a-muted); }
+.a-dindex a { color: var(--collie-color-fg); text-decoration: none; font-weight: var(--collie-weight-medium); } .a-dindex a:hover { text-decoration: underline; }
+.a-dindex-a { color: var(--collie-color-fg-success); font-weight: var(--collie-weight-medium); } .a-dindex-a::before { content: "→ "; color: var(--a-muted); }
 .a-questions ul { margin: 0.3em 0 0; padding-left: 1.2em; }
 
 .a-decision { border: 1px solid var(--collie-color-border-warning); border-radius: var(--a-radius); padding: var(--collie-space-150) var(--collie-space-200); background: var(--a-card); margin: var(--collie-space-150) 0; box-shadow: var(--collie-shadow-raised); }

@@ -26,16 +26,17 @@ export function Decision({ question, options, recommend, owner = "needs a decisi
   const isRec = (i: number) => recommend === i || (typeof recommend === "string" && (recommend === opts[i].text || recommend === opts[i].key));
   const recIdx = opts.findIndex((_, i) => isRec(i));
   const recText = recIdx >= 0 ? opts[recIdx].text : undefined;
+  const recKey = recIdx >= 0 ? opts[recIdx].key : undefined;
   // build-time collection (server render with the collector on): every page's decisions end up in the registry
   const collector = (globalThis as { __artifactDecisions?: unknown[]; __artifactPage?: string });
-  if (typeof document === "undefined" && collector.__artifactDecisions) collector.__artifactDecisions.push({ id: did, question: qText, recommended: recText, owner, page: collector.__artifactPage ?? "home", when: conds.length ? conds : undefined });
+  if (typeof document === "undefined" && collector.__artifactDecisions) collector.__artifactDecisions.push({ id: did, question: qText, recommended: recText, recommendedKey: recKey, owner, page: collector.__artifactPage ?? "home", when: conds.length ? conds : undefined });
   const [other, setOther] = useState(false);
   const [draft, setDraft] = useState("");
   const [noteOpen, setNoteOpen] = useState(false);
   const save = (choice: string, label: string, extra: { custom?: string; rec?: boolean } = {}) =>
     ctx.answer(did, { choice, label, ...extra, note: ans?.note, at: new Date().toISOString() });
   return (
-    <div className={cx("a-decision", ans && "answered")} data-c="decision" id={id} data-aid={id} data-did={did} data-q={qText} data-owner={owner} data-rec={recText}>
+    <div className={cx("a-decision", ans && "answered")} data-c="decision" id={id} data-aid={id} data-did={did} data-q={qText} data-owner={owner} data-rec={recText} data-reckey={recKey}>
       <div className="a-decision-head"><Badge tone={ans ? "success" : "warn"}>{ans ? "decided" : owner}</Badge>{source && <span className="a-muted"> recommendation: {source}</span>}</div>
       <div className="a-decision-q">{question}</div>
       {why && <div className="a-muted">{why}</div>}

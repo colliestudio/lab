@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { Answer, DecisionRow } from "../kit/feedback.ts";
+import { acceptRecommended, type Answer, type DecisionRow } from "../kit/feedback.ts";
+import { plural } from "../kit/util.ts";
 import { contextOf, labelFor, norm, textOf, textRange, whereFor } from "./anchor.ts";
 
 /**
@@ -179,6 +180,7 @@ export function useAnswerState(store: FeedbackStore) {
       store.setAnswer(id, next); setAnswers(store.answers());
     },
     editNote: (id: string, note: string) => { store.updateAnswer(id, { note: note.trim() || undefined, edited: new Date().toISOString() }); setAnswers(store.answers()); },
+    acceptAll: (rows: DecisionRow[]) => { const mine = { ...store.answers() }; const n = acceptRecommended(rows, mine, (id, a) => store.setAnswer(id, a)); setAnswers(store.answers()); return n; },
     clear: () => { store.clearAnswers(); setAnswers(store.answers()); },
   };
 }
@@ -267,13 +269,12 @@ export function DecisionList({ rows, onJump, onEditNote }: { rows: DecisionRow[]
   );
 }
 
-export function FeedbackPanel({ cm, rows, tab, setTab, mode, onMode, copied, onCopyComments, onCopyDecisions, onCopyAll, onClearAnswers, onEditNote, onJumpDecision, onJumpComment, onHover, pageTitle, onClose }: {
+export function FeedbackPanel({ cm, rows, tab, setTab, mode, onMode, copied, onCopyComments, onCopyDecisions, onCopyAll, onClearAnswers, onAcceptAll, onEditNote, onJumpDecision, onJumpComment, onHover, pageTitle, onClose }: {
   cm: ReturnType<typeof useComments>; rows: DecisionRow[]; tab: "decisions" | "comments"; setTab: (t: "decisions" | "comments") => void;
   mode: boolean; onMode: () => void; copied: string; onCopyComments: () => void; onCopyDecisions: () => void; onCopyAll: () => void;
-  onClearAnswers: () => void; onEditNote: (r: DecisionRow, note: string) => void; onJumpDecision: (r: DecisionRow) => void; onJumpComment: (c: Comment) => void; onHover: (c: Comment | null) => void; pageTitle: (id?: string) => string | undefined; onClose: () => void;
+  onClearAnswers: () => void; onAcceptAll: () => void; onEditNote: (r: DecisionRow, note: string) => void; onJumpDecision: (r: DecisionRow) => void; onJumpComment: (c: Comment) => void; onHover: (c: Comment | null) => void; pageTitle: (id?: string) => string | undefined; onClose: () => void;
 }) {
   const [sure, setSure] = useState<"" | "comments" | "answers">("");
-  useEffect(() => { if (!sure) return; const t = setTimeout(() => setSure(""), 3000); return () => clearTimeout(t); }, [sure]);
   const [editing, setEditing] = useState<string | null>(null);
   const decided = rows.filter((r) => r.answer).length;
   return (
@@ -288,8 +289,16 @@ export function FeedbackPanel({ cm, rows, tab, setTab, mode, onMode, copied, onC
           <div className="h-panel-actions h-panel-fixed">
             <button className="h-btn" disabled={!decided} onClick={onCopyDecisions} title="Copy every decision and its answer as Markdown to paste back to the author or agent">{copied === "decisions" ? "Copied" : "Copy decisions"}</button>
             <button className="h-btn" disabled={!decided && !cm.list.length} onClick={onCopyAll} title="Copy decisions and comments together">{copied === "all" ? "Copied" : "Copy all feedback"}</button>
-            <button className="h-btn" disabled={!decided} onClick={() => { if (sure === "answers") { onClearAnswers(); setSure(""); } else setSure("answers"); }}>{sure === "answers" ? "Click again to clear" : "Clear answers"}</button>
+            {rows.some((r) => !r.answer && r.recommendedKey) && <button className="h-btn" onClick={onAcceptAll} title="Answer every open decision with its recommendation; you can still change each one">Accept all recommendations</button>}
+            <button className="h-btn" disabled={!decided} onClick={() => setSure("answers")}>Clear answers</button>
           </div>
+          {sure && (
+            <div className="h-confirm" role="alertdialog" aria-label="Confirm clear">
+              <span>{sure === "answers" ? `Clear ${plural(decided, "answer")}?` : `Clear ${plural(cm.list.length, "comment")}?`}</span>
+              <button className="h-btn" autoFocus onClick={() => { if (sure === "answers") onClearAnswers(); else cm.clear(); setSure(""); }}>Clear</button>
+              <button className="h-btn" onClick={() => setSure("")}>Cancel</button>
+            </div>
+          )}
           <div className="h-panel-body" tabIndex={0} role="region" aria-label="Decisions">
             <DecisionList rows={rows} onJump={onJumpDecision} onEditNote={onEditNote} />
           </div>
@@ -300,8 +309,15 @@ export function FeedbackPanel({ cm, rows, tab, setTab, mode, onMode, copied, onC
             <button className="h-btn" aria-pressed={mode} onClick={onMode} title="Comment mode (c): click any element on the page to leave a comment">{mode ? "Click an element…" : "Add comment"}</button>
             <button className="h-btn" onClick={onCopyComments} disabled={!cm.list.length} title="Copy all comments as Markdown to paste back to the author or agent">{copied === "comments" ? "Copied" : "Copy comments"}</button>
             {rows.length > 0 && <button className="h-btn" onClick={onCopyAll} disabled={!decided && !cm.list.length} title="Copy decisions and comments together">{copied === "all" ? "Copied" : "Copy all feedback"}</button>}
-            <button className="h-btn" disabled={!cm.list.length} onClick={() => { if (sure === "comments") { cm.clear(); setSure(""); } else setSure("comments"); }} title="Delete every comment on this page (stored in this browser)">{sure === "comments" ? "Click again to clear" : "Clear all"}</button>
+            <button className="h-btn" disabled={!cm.list.length} onClick={() => setSure("comments")} title="Delete every comment (stored in this browser)">Clear all</button>
           </div>
+          {sure && (
+            <div className="h-confirm" role="alertdialog" aria-label="Confirm clear">
+              <span>{sure === "answers" ? `Clear ${plural(decided, "answer")}?` : `Clear ${plural(cm.list.length, "comment")}?`}</span>
+              <button className="h-btn" autoFocus onClick={() => { if (sure === "answers") onClearAnswers(); else cm.clear(); setSure(""); }}>Clear</button>
+              <button className="h-btn" onClick={() => setSure("")}>Cancel</button>
+            </div>
+          )}
           <div className="h-panel-body" tabIndex={0} role="region" aria-label="Comments">
           {cm.list.length === 0 && <p className="a-muted">Nothing yet. Select text or alt-click anything on the page to comment.</p>}
           {cm.list.map((c, i) => {

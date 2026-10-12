@@ -4,7 +4,7 @@ import registry from "artifact:registry";
 
 export interface Source { label: string; href?: string; kind?: string; from?: string }
 export interface Meta {
-  title: string; kind?: string; audience?: string; summary?: string; created?: string; tour?: string[]; present?: "artifact"; download?: boolean; host?: { download?: boolean }; timeZone?: string; repo?: string; header?: "compact" | "full"; shell?: "bare" | "doc"; asOf?: string; width?: "narrow" | "normal" | "wide" | "full";
+  title: string; kind?: string; audience?: string; summary?: string; created?: string; tour?: string[]; present?: "artifact"; download?: boolean; host?: { download?: boolean }; timeZone?: string; repo?: string; header?: "compact" | "full"; shell?: "page" | "bare" | "doc"; asOf?: string; width?: "narrow" | "normal" | "wide" | "full";
   sources?: (string | Source)[];
 }
 export interface PatchLine { t: " " | "+" | "-"; s: string }
@@ -22,7 +22,7 @@ export type Evidence =
   | { k: "text"; text: string };
 /** A decision found by rendering every page at build time (so other pages' decisions count in the progress). */
 export interface DecisionMeta {
-  id: string; question: string; recommended?: string; owner?: string; page: string;
+  id: string; question: string; recommended?: string; recommendedKey?: string; owner?: string; page: string;
   when?: { decision: string; is?: string | number | (string | number)[]; not?: string | number | (string | number)[]; answered?: boolean; unanswered?: boolean }[];
 }
 export interface Registry { meta: Meta; data: Record<string, unknown>; evidence: Record<string, Evidence>; decisions?: DecisionMeta[] }

@@ -11,6 +11,11 @@ export function Page({ children, width = "normal" }: { children: ReactNode; widt
   return <div className="a-page" data-width={width}>{children}</div>;
 }
 
+/** Lets one block (Grid, Table, Img, Compare, Diff) use more width than the text column of the "page" shell. A plain wrapper elsewhere. */
+export function Wide({ children }: { children: ReactNode }) {
+  return <div className="a-wide">{children}</div>;
+}
+
 /**
  * Wrapper the kit's heavy components (Diff, Code, Table, Replay, Flow) use: open by default; with `collapsed` the block
  * starts as a one-line stub that opens on click.

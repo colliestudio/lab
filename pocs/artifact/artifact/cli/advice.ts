@@ -62,6 +62,14 @@ export function advise(html: string, meta: Pick<Meta, "summary">): Advice {
     const visible = textOf(s, (n) => attr(n, "data-step") != null || ["h2", "h3", "button"].includes(n.tag)).trim();
     if (hasStep && !visible) out.push(`present: the slide "${attr(s, "data-title")}" is empty at step 0 (everything is in <Step>): put its lead line outside the Steps`);
   }
+
+  // 5. every Decision batched in the last Section: put each next to its evidence, and what is asked of the reader up top
+  const tops = all.filter((n) => attr(n, "data-section") != null && !inside(n, (a) => attr(a, "data-section") != null));
+  const decs = all.filter((n) => attr(n, "data-c") === "decision");
+  if (tops.length >= 3 && decs.length) {
+    const last = tops[tops.length - 1];
+    if (decs.every((d) => inside(d, (a) => a === last))) out.push(`all ${decs.length} Decision${decs.length > 1 ? "s are" : " is"} in the last Section: put each next to the evidence it depends on, and list what you need from the reader up top (<DecisionIndex />)`);
+  }
   return { warnings: out, stats: { screens } };
 }
 

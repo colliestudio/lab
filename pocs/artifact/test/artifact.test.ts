@@ -155,13 +155,17 @@ test("cli: new → check → build", async () => {
       assert.equal(await main(["new", join(root, "demo"), "--kind", "explainer"]), 0);
       const dir = join(root, "demo.artifact");
       assert.equal(JSON.parse(readFileSync(join(dir, "artifact.json"), "utf8")).kind, "explainer");
+      assert.equal(await main(["check", dir]), 1, "template summary/audience are errors until written");
+      const j = JSON.parse(readFileSync(join(dir, "artifact.json"), "utf8"));
+      writeFileSync(join(dir, "artifact.json"), JSON.stringify({ ...j, summary: "A real takeaway.", audience: "the team", sources: ["https://example.com/thread"] }));
       assert.equal(await main(["check", dir]), 0);
       assert.equal(await main(["build", dir, "-o", join(root, "out/demo.html")]), 0);
     } finally { console.log = log; }
     const html = readFileSync(join(root, "out/demo.html"), "utf8");
     assert.match(html, /<title>Demo<\/title>/);
     assert.throws(() => scaffold(join(root, "demo")), /not empty/);
-    assert.equal(JSON.parse(readFileSync(join(root, "demo.artifact/artifact.json"), "utf8")).shell, "bare", "new artifacts start on a blank page");
+    assert.equal(JSON.parse(readFileSync(join(root, "demo.artifact/artifact.json"), "utf8")).shell, "page", "new artifacts start on the calm page shell");
+    assert.ok(!existsSync(join(root, "demo.artifact/data")), "no sample data files");
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -833,7 +837,7 @@ test("comments: one drawer with add / list / copy / clear, behind a store interf
       await p.getByRole("button", { name: "Copy comments" }).click();
       assert.match(await p.evaluate(() => navigator.clipboard.readText()), /Looks off/);
       await p.getByRole("button", { name: "Clear all" }).click();
-      await p.getByRole("button", { name: "Click again to clear" }).click();
+      await p.getByRole("button", { name: "Clear", exact: true }).click();
       assert.equal(await p.locator(".h-note").count(), 0);
       assert.ok(await p.locator('[data-c="stages"]').isVisible());
     } finally { await b.close(); }

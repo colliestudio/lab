@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { advise, smallMaps, unpublishedCommits } from "./advice.ts";
 import { sourceText } from "./evidence.ts";
+import { TEMPLATE_AUDIENCE, TEMPLATE_SUMMARY } from "./scaffold.ts";
 import { buildArtifact, findEntry, fmtBytes, formatMessages, renderStatic, repoRoot } from "./build.ts";
 
 // A render that needs the browser (not a bug in the artifact): the error text starts with one of these ReferenceErrors.
@@ -43,6 +44,16 @@ export async function check(dir: string, opts: { types?: boolean } = {}): Promis
   if (r.warnings.length) rep.warnings.push(await formatMessages(r.warnings, "warning"));
   const { meta } = r.collected.registry;
   for (const k of ["kind", "audience", "summary"] as const) if (!meta[k]) rep.warnings.push(`artifact.json: no ${k} (readers see the header; say who it's for)`);
+  if (meta.summary === TEMPLATE_SUMMARY) rep.errors.push("artifact.json: summary is still the template text (it is the page's headline: write the takeaway)");
+  if (meta.audience === TEMPLATE_AUDIENCE) rep.errors.push("artifact.json: audience is still the template text (say who this is for)");
+  if (!(meta.sources ?? []).length) rep.warnings.push("artifact.json: no sources (list where the facts came from: links, files, threads)");
+  {
+    const src = sourceText(dir);
+    if (!/useData\(\s*[^"'`\s)]/.test(src)) for (const key of Object.keys(r.collected.registry.data)) {
+      const k = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      if (!new RegExp(`["'\`](data/)?${k}(\\.json)?["'\`]`).test(src)) rep.warnings.push(`unused data: data/${key}.json (no useData("${key}") in the source)`);
+    }
+  }
   for (const u of r.collected.unsafe) rep.errors.push(`evidence path leaves evidence/: ${u} (paths must stay inside evidence/, no .. or symlinks elsewhere)`);
   for (const m of r.collected.missing) rep.errors.push(`missing evidence: ${m} (referenced in the source, not in evidence/)`);
   for (const u of r.collected.unreferenced) rep.warnings.push(`unused evidence: ${u} (never mentioned in the source, so not inlined)`);

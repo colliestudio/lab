@@ -121,7 +121,8 @@ const typing = (e: KeyboardEvent) => { const t = e.target as HTMLElement; return
 
 export function Host() {
   const content = useRef<HTMLElement>(null);
-  const bare = meta.shell === "bare"; // the artifact owns the layout: the host adds only the feedback layer and a corner menu
+  // "page": a calm title + column frame; "bare": the artifact owns the layout; both add only the feedback layer and a corner menu. Missing = "doc" (old reader chrome).
+  const kind = meta.shell ?? "doc", calm = kind === "page", lean = kind !== "doc";
   const route = useRoute();
   const route_ = { page: route.page, section: route.anchor };
   const page = pageById(route.page) ?? home();
@@ -134,6 +135,12 @@ export function Host() {
   const [help, setHelp] = useState(false);
   const [outlineOff, setOutlineOff] = useState(localStorage.getItem("artifact-outline") === "off");
   const [allSources, setAllSources] = useState(false);
+  useEffect(() => {
+    if (!allSources) return;
+    const off = (e: Event) => { if (e instanceof KeyboardEvent ? e.key === "Escape" : !(e.target as HTMLElement).closest?.(".h-psrc")) setAllSources(false); };
+    addEventListener("keydown", off); addEventListener("mousedown", off);
+    return () => { removeEventListener("keydown", off); removeEventListener("mousedown", off); };
+  }, [allSources]);
   const [copied, setCopied] = useState("");
   const [more, setMore] = useState(false);
   const store = useMemo(() => makeStore(`${meta.title}|${meta.created ?? ""}`), []);
@@ -144,7 +151,7 @@ export function Host() {
   const rows: DecisionRow[] = useMemo(() => {
     const out = new Map<string, DecisionRow>();
     const order = allPages().map((p) => p.id);
-    for (const d of registryDecisions) if (reachable(d, am.answers)) out.set(d.id, { id: d.id, question: d.question, recommended: d.recommended, owner: d.owner, page: d.page, pageTitle: pageById(d.page)?.title });
+    for (const d of registryDecisions) if (reachable(d, am.answers)) out.set(d.id, { id: d.id, question: d.question, recommended: d.recommended, recommendedKey: d.recommendedKey, owner: d.owner, page: d.page, pageTitle: pageById(d.page)?.title });
     for (const r of rawRows) if (!out.has(r.id)) out.set(r.id, { ...r, page: isMulti() ? page.id : undefined, pageTitle: isMulti() ? page.title : undefined });
     const list = [...out.values()];
     if (isMulti()) list.sort((a, b) => order.indexOf(a.page ?? HOME) - order.indexOf(b.page ?? HOME));
@@ -203,7 +210,7 @@ export function Host() {
   useEffect(() => {
     const el = content.current!;
     const scan = () => {
-      const next = [...el.querySelectorAll<HTMLElement>('[data-c="decision"]')].map((d) => ({ id: d.dataset.did ?? d.id, question: d.dataset.q ?? "", recommended: d.dataset.rec || undefined, owner: d.dataset.owner }));
+      const next = [...el.querySelectorAll<HTMLElement>('[data-c="decision"]')].map((d) => ({ id: d.dataset.did ?? d.id, question: d.dataset.q ?? "", recommended: d.dataset.rec || undefined, recommendedKey: d.dataset.reckey || undefined, owner: d.dataset.owner }));
       setRawRows((p) => (JSON.stringify(p) === JSON.stringify(next) ? p : next));
     };
     scan();
@@ -245,13 +252,13 @@ export function Host() {
     if (!mode) return;
     const el = content.current!;
     const over = (e: MouseEvent) => {
-      const a = anchorFor(e.target as HTMLElement, el, bare);
+      const a = anchorFor(e.target as HTMLElement, el, lean);
       if (hover.current !== a?.el) { hover.current?.removeAttribute("data-hover"); hover.current = a?.el ?? null; a?.el.setAttribute("data-hover", ""); }
     };
     const click = (e: MouseEvent) => {
       const t = e.target as HTMLElement;
       if (t.closest("a, button")) { e.preventDefault(); }
-      const a = anchorFor(t, el, bare);
+      const a = anchorFor(t, el, lean);
       if (!a) return;
       e.preventDefault(); e.stopPropagation();
       setOpen(a);
@@ -264,7 +271,7 @@ export function Host() {
       hover.current?.removeAttribute("data-hover"); hover.current = null;
       delete document.documentElement.dataset.commenting;
     };
-  }, [mode, bare]);
+  }, [mode, lean]);
   // alt-click comments on any element without comment mode; selecting text offers a small "Comment" button (blank-page artifacts)
   useEffect(() => {
     const el = content.current!;
@@ -392,8 +399,8 @@ export function Host() {
   const feedbackLabel = ["Feedback", rows.length ? `${decided}/${rows.length} decided` : "", cm.list.length ? plural(cm.list.length, "note") : ""].filter(Boolean).join(" · ").replace("Feedback ·", "Feedback:");
   const compact = meta.header !== "full";
   return (
-    <div className="h-root" data-shell={bare ? "bare" : undefined}>
-      {!bare && <div className="h-bar" role="toolbar" aria-label="Page tools">
+    <div className="h-root" data-shell={lean ? kind : undefined}>
+      {!lean && <div className="h-bar" role="toolbar" aria-label="Page tools">
         <span className="h-bar-title">{meta.title}</span>
         {isMulti() && (
           <select className="h-pagesel" aria-label="Go to page" value={page.id} onChange={(e) => { location.hash = hrefFor(e.target.value); }}>
@@ -420,7 +427,7 @@ export function Host() {
         )}
       </div>}
       <div className="h-layout" data-outline={outlineOff ? "off" : undefined}>
-        {!bare && <nav className="h-outline" aria-label={isMulti() ? "Pages" : "Outline"}>
+        {!lean && <nav className="h-outline" aria-label={isMulti() ? "Pages" : "Outline"}>
           {isMulti() && (
             <div className="h-pages">
               <a href={hrefFor(HOME)} className={cx("h-page", page.id === HOME && "on")}>{home().title}</a>
@@ -443,7 +450,7 @@ export function Host() {
           ))}
         </nav>}
         <main className="h-main" data-width={meta.width}>
-          {!bare && <header className="h-head" data-header={compact ? "compact" : "full"} ref={head}>
+          {!lean && <header className="h-head" data-header={compact ? "compact" : "full"} ref={head}>
             {page.id !== HOME && (
               <div className="h-crumbs"><a href={hrefFor(HOME)}>{meta.title}</a>{page.group && <> › <span>{page.group}</span></>}</div>
             )}
@@ -467,10 +474,30 @@ export function Host() {
               </div>
             ))}
           </header>}
+          {calm && <header className="h-phead" ref={head}>
+            {isMulti() && (
+              <nav className="h-ppages" aria-label="Pages">
+                {allPages().map((p) => <a key={p.id} href={hrefFor(p.id)} aria-current={p.id === page.id ? "page" : undefined}>{p.title}</a>)}
+              </nav>
+            )}
+            <h1>{page.title}</h1>
+            {page.summary && <p className="h-psummary">{page.summary}</p>}
+            <div className="h-pmeta">
+              {page.id === HOME && meta.kind && <span>{meta.kind}</span>}
+              {page.id !== HOME && page.status && <Status s={page.status as never} />}
+              {meta.asOf ? <span title="gathered at">as of {fmtAsOf(meta.asOf, meta.timeZone)}</span> : meta.created && <span>{fmtDate(meta.created)}</span>}
+              {sources.length > 0 && (
+                <span className="h-psrc">
+                  <button aria-expanded={allSources} onClick={() => setAllSources(!allSources)}>{plural(sources.length, "source")}</button>
+                  {allSources && <div className="h-psrc-pop" role="dialog" aria-label="Sources">{sources.map((s, i) => <Source key={i} {...s} />)}</div>}
+                </span>
+              )}
+            </div>
+          </header>}
           <FeedbackCtx.Provider value={{ interactive: true, answers: am.answers, answer: am.answer }}>
             <PresentCtx.Provider value={present.state}><article className="a-content" ref={content} data-page={page.id}>{Layout ? <Layout><Boundary key={page.id}><page.Component {...page.props} /></Boundary></Layout> : <Boundary key={page.id}><page.Component {...page.props} /></Boundary>}</article></PresentCtx.Provider>
           </FeedbackCtx.Provider>
-          {isMulti() && !bare && <PageNav current={page.id} />}
+          {isMulti() && !lean && <PageNav current={page.id} />}
           {rows.length > 0 && (!tourRef.current.on || page.id === tourIds[tourIds.length - 1]) && (
             <section className="h-summary-slide" ref={summary} data-title="Summary">
               <h2 className="a-h">Summary: {decided}/{rows.length} decided</h2>
@@ -482,11 +509,16 @@ export function Host() {
             </section>
           )}
         </main>
+        {calm && items.length > 5 && !panel && !present.active && (
+          <nav className="h-ptoc" aria-label="On this page">
+            {items.filter((it) => it.level === Math.min(...items.map((x) => x.level))).map((it) => <a key={it.id} href={`#${it.id}`} className={it.id === active ? "on" : ""}>{it.title}</a>)}
+          </nav>
+        )}
         {panel && <FeedbackPanel cm={cm} rows={rows} tab={rows.length ? tab : "comments"} setTab={setTab} mode={mode} onMode={() => setMode(!mode)} copied={copied}
           onCopyComments={() => copyText(commentsMd(), "comments")} onCopyDecisions={() => copyText(decisionsMd(), "decisions")} onCopyAll={() => copyText(allMd(), "all")}
-          onClearAnswers={am.clear} onEditNote={(r, n) => am.editNote(r.id, n)} onJumpDecision={jumpDecision} onJumpComment={jumpComment} onHover={setHoverC} pageTitle={(id) => (id ? pageById(id)?.title : undefined)} onClose={() => { setPanel(false); setMode(false); }} />}
+          onClearAnswers={am.clear} onAcceptAll={() => am.acceptAll(rows)} onEditNote={(r, n) => am.editNote(r.id, n)} onJumpDecision={jumpDecision} onJumpComment={jumpComment} onHover={setHoverC} pageTitle={(id) => (id ? pageById(id)?.title : undefined)} onClose={() => { setPanel(false); setMode(false); }} />}
       </div>
-      {bare && !present.active && (
+      {lean && !present.active && (
         <>
           <div className="h-corner" data-open={menu ? "" : undefined}>
             {menu && (

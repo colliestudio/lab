@@ -3,7 +3,7 @@ import { Badge, Source, Status, type SourceProps, type StatusValue, type Tone } 
 import { meta } from "./registry.ts";
 import { fmtAsOf } from "./util.ts";
 import { imageSrc } from "./registry.ts";
-import { useAnswers } from "./feedback.ts";
+import { FeedbackCtx, acceptRecommended, useAnswers } from "./feedback.ts";
 import { ZoomImg } from "./zoom.tsx";
 import { NoStepsCtx, usePresent } from "./present.ts";
 import { cx } from "./util.ts";
@@ -204,13 +204,14 @@ export function Stats({ items }: { items: { value: ReactNode; label: ReactNode; 
 
 /** The decisions on this page, with their recommendation and (in a host) the reader's answers, linking to each `<Decision>`. */
 export function DecisionIndex({ title = "Decisions on this page" }: { title?: ReactNode }) {
-  const [list, setList] = useState<{ id: string; q: string; rec?: string; owner?: string }[]>([]);
+  const [list, setList] = useState<{ id: string; did: string; q: string; rec?: string; recKey?: string; owner?: string }[]>([]);
+  const ctx = useContext(FeedbackCtx);
   const answers = useAnswers();
   useEffect(() => {
     const scan = () => {
       const els = [...document.querySelectorAll<HTMLElement>('[data-c="decision"]')];
       els.forEach((e, n) => { if (!e.id) e.id = `decision-${n + 1}`; });
-      const next = els.map((e) => ({ id: e.id, did: e.dataset.did ?? e.id, q: e.dataset.q ?? "", rec: e.dataset.rec || undefined, owner: e.dataset.owner }));
+      const next = els.map((e) => ({ id: e.id, did: e.dataset.did ?? e.id, q: e.dataset.q ?? "", rec: e.dataset.rec || undefined, recKey: e.dataset.reckey || undefined, owner: e.dataset.owner }));
       setList((p) => (JSON.stringify(p) === JSON.stringify(next) ? p : next));
     };
     scan();
@@ -219,15 +220,24 @@ export function DecisionIndex({ title = "Decisions on this page" }: { title?: Re
     return () => mo.disconnect();
   }, []);
   if (!list.length) return null;
-  const done = list.filter((d) => answers[(d as { did?: string }).did ?? d.id]).length;
+  const done = list.filter((d) => answers[d.did]).length;
+  const open = list.filter((d) => !answers[d.did] && d.recKey);
   return (
-    <div className="a-questions" data-c="decisions-index">
-      <div className="a-questions-title">{title}{done > 0 && ` · ${done}/${list.length} decided`}</div>
+    <div className="a-dindex" data-c="decisions-index">
+      <div className="a-dindex-head">
+        <span className="a-dindex-title">{title}</span>
+        <span className="a-muted">{done}/{list.length} decided</span>
+        <span className="a-dindex-bar" aria-hidden><i style={{ width: `${(100 * done) / list.length}%` }} /></span>
+        {ctx.interactive && open.length > 0 && (
+          <button className="a-dindex-accept" title="Answer every open decision with its recommendation; you can still change each one"
+            onClick={() => acceptRecommended(open.map((d) => ({ id: d.did, recommended: d.rec, recommendedKey: d.recKey })), answers, ctx.answer)}>Accept all recommendations</button>
+        )}
+      </div>
       <ol>{list.map((d) => {
-        const a = answers[(d as { did?: string }).did ?? d.id];
+        const a = answers[d.did];
         return (
-          <li key={d.id}><a href={`#${d.id}`}><b>{d.q}</b></a>
-            {a ? <> → <Badge tone="success">{a.choice === "unsure" ? "discuss" : a.label}</Badge>{a.note && <span className="a-muted"> ({a.note})</span>}</> : d.rec && <span className="a-muted"> → {d.rec}</span>}
+          <li key={d.id}><a href={`#${d.id}`}>{d.q}</a>
+            {a ? <> <span className="a-dindex-a">{a.choice === "unsure" ? "discuss" : a.label}</span>{a.note && <span className="a-muted"> ({a.note})</span>}</> : d.rec && <span className="a-muted"> · recommended: {d.rec}</span>}
             {d.owner && !a && <> <Badge tone="warn">{d.owner}</Badge></>}</li>
         );
       })}</ol>

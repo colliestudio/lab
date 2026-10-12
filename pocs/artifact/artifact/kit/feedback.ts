@@ -48,7 +48,7 @@ export function matchesAnswer(a: Answer | undefined, want: Want | undefined): bo
 }
 
 export interface DecisionRow {
-  id: string; question: string; recommended?: string; owner?: string; answer?: Answer;
+  id: string; question: string; recommended?: string; recommendedKey?: string; owner?: string; answer?: Answer;
   /** the page it lives on (multi-page artifacts) */
   page?: string; pageTitle?: string;
 }
@@ -86,4 +86,18 @@ export function decisionsMarkdown(title: string, rows: DecisionRow[]): string {
     if (multi) lines.push("");
   }
   return lines.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd() + "\n";
+}
+
+/**
+ * Answer every unanswered decision in `items` with its recommendation (the caller passes only the visible ones).
+ * The answers stay editable. Returns how many it answered.
+ */
+export function acceptRecommended(items: { id: string; recommended?: string; recommendedKey?: string }[], answers: Record<string, Answer>, answer: (id: string, a: Answer) => void): number {
+  let n = 0;
+  for (const d of items) {
+    if (answers[d.id] || !d.recommendedKey || d.recommended == null) continue;
+    answer(d.id, { choice: d.recommendedKey, label: d.recommended, rec: true, at: new Date().toISOString() });
+    n++;
+  }
+  return n;
 }

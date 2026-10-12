@@ -147,8 +147,8 @@ html[data-present] .h-pagenav { display: none; }
 .h-root[data-shell="bare"] .h-layout, .h-root[data-shell="bare"] .h-layout:has(.h-panel), .h-root[data-shell="bare"] .h-layout:has(.a-page), .h-root[data-shell="bare"] .h-layout:has(.h-main) { display: block !important; max-width: none !important; margin: 0 !important; }
 .h-root[data-shell="bare"] .h-main, html[data-present] .h-root[data-shell="bare"] .h-main, html[data-present] .h-root[data-shell="bare"] .h-main[data-width] { max-width: none !important; width: 100%; padding: 0 !important; margin: 0 !important; font-size: inherit; }
 .h-root[data-shell="bare"] .a-content, .h-root[data-shell="bare"] .a-content > :first-child { max-width: none; margin-top: 0; }
-.h-root[data-shell="bare"] .h-panel, html[data-present] .h-panel { position: fixed !important; right: 0; top: 0; bottom: 0; height: 100vh; height: 100dvh; max-width: 100vw; align-self: stretch; z-index: 35; box-shadow: var(--collie-shadow-overlay); }
-.h-root[data-shell="bare"] .a-content [data-commented] { box-shadow: none; background: none; }
+.h-root:is([data-shell="bare"], [data-shell="page"]) .h-panel, html[data-present] .h-panel { position: fixed !important; right: 0; top: 0; bottom: 0; height: 100vh; height: 100dvh; max-width: 100vw; align-self: stretch; z-index: 35; box-shadow: var(--collie-shadow-overlay); }
+.h-root:is([data-shell="bare"], [data-shell="page"]) .a-content [data-commented] { box-shadow: none; background: none; }
 .h-root[data-shell="bare"] .h-summary-slide { margin: 0 auto; max-width: 62rem; padding: 2rem; }
 .h-corner { position: fixed; right: 0.9rem; bottom: 0.9rem; z-index: 36; display: flex; flex-direction: column; align-items: flex-end; gap: 0.4rem; font-size: var(--collie-text-sm); }
 .h-corner-btn { width: 2rem; height: 2rem; padding: 0; display: grid; place-items: center; border-radius: 50%; border: 1px solid var(--collie-color-border); background: var(--collie-color-canvas); color: var(--collie-color-fg); cursor: pointer; opacity: 0.25; transition: opacity 0.2s; box-shadow: var(--collie-shadow-raised); }
@@ -173,3 +173,45 @@ html[data-present] .h-corner, html[data-present] .h-dot { display: none; }
 .h-hint { position: fixed; z-index: 40; left: 50%; bottom: 1rem; transform: translateX(-50%); display: flex; align-items: center; gap: 0.6rem; padding: 0.35rem 0.5rem 0.35rem 0.9rem; border-radius: 999px; background: var(--collie-color-canvas); border: 1px solid var(--collie-color-border-subtle); box-shadow: var(--collie-shadow-overlay); color: var(--collie-color-fg-muted); font-size: var(--collie-text-xs); }
 .h-hint button { all: unset; cursor: pointer; padding: 0 0.4rem; font-size: 1rem; line-height: 1; color: var(--collie-color-fg-muted); }
 html[data-present] .h-hint, html[data-present] .h-selbtn { display: none; }
+
+/* shell "page": the calm default. A title, a summary, a quiet meta line and one readable column. */
+.h-root[data-shell="page"] .h-layout, .h-root[data-shell="page"] .h-layout:has(.h-panel), .h-root[data-shell="page"] .h-layout:has(.a-page), .h-root[data-shell="page"] .h-layout:has(.h-main) { display: block !important; max-width: none !important; margin: 0 !important; }
+.h-root[data-shell="page"] .h-main { max-width: 47rem; width: 100%; margin: 0 auto; padding: clamp(2.5rem, 9vh, 5.5rem) 1.5rem 8rem; font-size: 1.0625rem; line-height: 1.7; }
+.h-root[data-shell="page"] .h-main[data-width="narrow"] { max-width: 40rem; }
+.h-root[data-shell="page"] .h-main[data-width="wide"] { max-width: 72rem; }
+.h-root[data-shell="page"] .h-main[data-width="full"] { max-width: none; }
+html[data-present] .h-root[data-shell="page"] .h-main { max-width: 70rem; font-size: 1.25rem; padding: 1.5rem clamp(1rem, 4vw, 3rem) 0; }
+.h-phead { margin-bottom: 2.75rem; }
+.h-phead h1 { font-size: clamp(2rem, 4.2vw, 2.7rem); line-height: 1.12; letter-spacing: -0.03em; font-weight: var(--collie-weight-strong); margin: 0; text-wrap: balance; }
+.h-psummary { font-size: 1.3rem; line-height: 1.5; color: var(--collie-color-fg-muted); margin: 0.9rem 0 0; text-wrap: pretty; }
+.h-pmeta { display: flex; flex-wrap: wrap; align-items: center; gap: 0.2rem 0.55rem; margin-top: 1.1rem; font-size: var(--collie-text-sm); color: var(--collie-color-fg-muted); }
+.h-pmeta > * + *::before { content: "·"; margin-right: 0.55rem; color: var(--collie-color-border); }
+.h-pmeta > .h-psrc::before { content: none; }
+.h-psrc { position: relative; display: inline-flex; align-items: center; gap: 0.55rem; }
+.h-psrc::before { content: "·"; color: var(--collie-color-border); }
+.h-psrc > button { all: unset; cursor: pointer; text-decoration: underline; text-decoration-color: var(--collie-color-border); text-underline-offset: 3px; } .h-psrc > button:hover, .h-psrc > button:focus-visible { color: var(--collie-color-fg); }
+.h-psrc-pop { position: absolute; top: calc(100% + 0.5rem); left: 0; z-index: 25; width: min(30rem, calc(100vw - 3rem)); display: flex; flex-wrap: wrap; gap: 0.4rem; padding: 0.7rem; background: var(--collie-color-canvas); border: 1px solid var(--collie-color-border); border-radius: 10px; box-shadow: var(--collie-shadow-overlay); color: var(--collie-color-fg); }
+.h-ppages { display: flex; flex-wrap: wrap; gap: 0.2rem 1rem; margin-bottom: 1.6rem; font-size: var(--collie-text-sm); }
+.h-ppages a { color: var(--collie-color-fg-muted); text-decoration: none; padding-bottom: 2px; border-bottom: 1px solid transparent; } .h-ppages a:hover { color: var(--collie-color-fg); }
+.h-ppages a[aria-current] { color: var(--collie-color-fg); border-bottom-color: var(--collie-color-fg); }
+html[data-present] .h-phead { padding: 12vh 0 2rem; margin: 0; } html[data-present] .h-phead h1 { font-size: clamp(2.4rem, 5vw, 3.6rem); } html[data-present] .h-psummary { font-size: 1.5rem; }
+.h-root[data-shell="page"] .a-content > :first-child { margin-top: 0; }
+.h-root[data-shell="page"] .a-content > .a-section { margin: 3.75rem 0; }
+.h-root[data-shell="page"] .a-content > .a-section:first-child { margin-top: 0; }
+.h-root[data-shell="page"] .a-content > .a-section + .a-section { padding-top: 2.25rem; border-top: 1px solid var(--collie-color-border-subtle); }
+.h-root[data-shell="page"] .a-section > h2.a-h { font-size: 1.5rem; letter-spacing: -0.02em; border: 0; padding: 0; margin-bottom: 0.5rem; }
+.h-root[data-shell="page"] .a-section > h3.a-h, .h-root[data-shell="page"] .a-section-body > h3.a-h { font-size: 1.15rem; margin-top: 2rem; }
+.h-root[data-shell="page"] .a-lead { font-size: 1.1rem; line-height: 1.6; margin: 0 0 1.25rem; }
+.h-root[data-shell="page"] :is(.a-content, .a-section-body) > :is(p, ul, ol) { margin-block: 0.9rem; }
+.h-root[data-shell="page"] :is(.a-content, .a-section-body) > :is(.a-card, .a-callout, .a-table-wrap, .a-figure, .a-stats, .a-grid, .a-dindex, .a-decision, .a-compare, .a-stack, .a-wide) { margin-block: 1.25rem; }
+.h-root[data-shell="page"] .a-wide { margin-inline: min(0px, calc((100% - min(72rem, 100vw - 3rem)) / 2)); }
+.h-ptoc { display: none; }
+@media (min-width: 1500px) {
+  .h-ptoc { display: flex; flex-direction: column; position: fixed; top: 7rem; left: calc(50% + 38rem); width: 11.5rem; max-height: calc(100vh - 12rem); overflow: auto; font-size: var(--collie-text-xs); opacity: 0.45; transition: opacity 0.2s; }
+  .h-ptoc:hover, .h-ptoc:focus-within { opacity: 1; }
+  .h-ptoc a { color: var(--collie-color-fg-muted); text-decoration: none; padding: 0.22rem 0 0.22rem 0.7rem; border-left: 1px solid var(--collie-color-border-subtle); line-height: 1.35; } .h-ptoc a:hover { color: var(--collie-color-fg); }
+  .h-ptoc a.on { color: var(--collie-color-fg); border-left-color: var(--collie-color-fg); }
+  html[data-present] .h-ptoc { display: none; }
+}
+.h-confirm { flex: none; display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.6rem; margin-bottom: 0.4rem; border: 1px solid var(--collie-color-border-critical); background: var(--collie-color-critical-subtle); border-radius: 8px; font-size: var(--collie-text-sm); } .h-confirm span { flex: 1; }
+.h-root[data-shell="page"] .a-decision:not(.answered) { border-color: var(--a-line); border-left: 3px solid var(--collie-color-border-warning); } .h-root[data-shell="page"] .a-decision.answered { border-left: 3px solid var(--collie-color-success-solid, var(--a-line)); }
