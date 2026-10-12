@@ -79,10 +79,23 @@ describe('the JSON panel and hidden cards', () => {
     expect(j.apply(j.text)).toMatchObject({ ok: true, line: null });
     const t = JSON.parse(j.text);
     t.nodes.find((n: any) => n.id === 'l0').color = '4';
-    t.nodes.find((n: any) => n.id === 'c0').text = 'forged'; // typing over a masked field is a real edit...
-    const r = j.apply(JSON.stringify(t));
-    expect(r.ok).toBe(true);
+    t.nodes.find((n: any) => n.id === 'c0').color = '2'; // another field of a masked card is fine
+    expect(j.apply(JSON.stringify(t))).toMatchObject({ ok: true });
     expect(app.node('l0')!.color).toBe('4');
-    expect(app.node('c0')!['x-cards']).toMatchObject({ face: 'AS' }); // the face itself is never touched
+    expect(app.node('c0')).toMatchObject({ color: '2', 'x-cards': { face: 'AS' } });
+    // ...but nobody rewrites a face they can't see (another player's hand card, a face-down card)
+    for (const [id, f] of [['c0', 'face'], ['k0', 'face'], ['c0', 'text']] as const) {
+      const u = JSON.parse(j.text);
+      const node = u.nodes.find((n: any) => n.id === id);
+      if (f === 'face') node['x-cards'].face = 'KH';
+      else node.text = 'K♥';
+      expect(j.apply(JSON.stringify(u))).toMatchObject({ ok: false, error: expect.stringContaining("can't be edited") });
+    }
+    // nor deletes the masked field (it would take the face with it)
+    const u = JSON.parse(j.text);
+    delete u.nodes.find((n: any) => n.id === 'k0')['x-cards'];
+    expect(j.apply(JSON.stringify(u))).toMatchObject({ ok: false });
+    expect((app.node('c0')!['x-cards'] as any).face).toBe('AS');
+    expect((app.node('k0')!['x-cards'] as any).face).toBe('5S');
   });
 });

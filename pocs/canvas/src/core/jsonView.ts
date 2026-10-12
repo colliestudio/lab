@@ -9,7 +9,7 @@ import type { Store } from './store';
 // An edit goes back through the bridge's 3-way field merge: only what the person changed relative to
 // the text they started from is applied, so what others changed meanwhile survives.
 
-/** What a masked field shows instead of its value (a card's face). Never written back. */
+/** What a masked field shows instead of its value (a card's face). Read-only: never written back. */
 export const MASK = '▒ hidden ▒';
 
 export type Redactor = (node: CanvasNode, ctx: { doc: DocView; viewer: string }) => CanvasNode | null;
@@ -36,13 +36,22 @@ export function redactedDoc(store: Store, redactors: readonly Redactor[], viewer
 /** Canonical text of what `viewer` may see. */
 export const viewText = (store: Store, redactors: readonly Redactor[], viewer: string) => stableSerialize(redactedDoc(store, redactors, viewer));
 
-/** A masked value must never reach the doc: drop any field (or plugin sub-field) that still says MASK. */
-function unmask(c: Change): Change | null {
-  if (c.op === 'set') return c.value === MASK ? null : c;
-  if (c.op !== 'add') return c;
-  const clean = (o: Record<string, unknown>): Record<string, unknown> =>
-    Object.fromEntries(Object.entries(o).flatMap(([k, v]) => (v === MASK ? [] : [[k, v && typeof v === 'object' && !Array.isArray(v) ? clean(v as Record<string, unknown>) : v]])));
-  return { op: 'add', node: clean(c.node as unknown as Record<string, unknown>) as unknown as CanvasNode };
+const hasMask = (v: unknown): boolean => v === MASK || (!!v && typeof v === 'object' && Object.values(v).some(hasMask));
+
+/**
+ * Why `c` may not be applied, if it touches a value this viewer can't see. Masked values are
+ * read-only: writing over one would change a secret blind (another player's card face), and a copy
+ * of one would write the mask itself.
+ */
+function maskError(c: Change, base: Map<string, CanvasNode>): string | undefined {
+  if (c.op === 'add') return hasMask(c.node) ? `${c.node.id}: a hidden value (${MASK}) can't be copied` : undefined;
+  if (c.op !== 'set') return;
+  const dot = c.key.indexOf('.');
+  const was = base.get(c.id) as Record<string, unknown> | undefined;
+  const top = was?.[dot < 0 ? c.key : c.key.slice(0, dot)];
+  const before = dot < 0 ? top : (top as Record<string, unknown> | undefined)?.[c.key.slice(dot + 1)];
+  if (hasMask(before)) return `${c.id}: hidden values (${MASK}) can't be edited`;
+  if (hasMask(c.value)) return `${c.id}: a hidden value (${MASK}) can't be copied`;
 }
 
 export type Plan = { ok: true; changes: Change[]; summary: FileDiff['summary']; text: string } | { ok: false; error: string };
@@ -111,11 +120,14 @@ export class JsonSession {
     const nextDoc = { nodes: next.nodes, edges: next.edges, extra: next.extra };
     if (diffFile(this.base, nextDoc).extra) return { ok: false, error: 'top-level fields other than nodes and edges are read-only here' };
     const d = mergeFile(this.base, cur, nextDoc);
-    const changes = d.changes.flatMap((c) => {
-      const u = unmask(c);
-      return u ? [u] : [];
-    });
-    return { ok: true, changes, summary: d.summary, text: `edited the JSON: ${describeDiff(d.summary)}` };
+    const baseById = new Map(this.base.nodes.map((n) => [n.id, n]));
+    for (const c of d.changes) {
+      const masked = maskError(c, baseById);
+      if (masked) return { ok: false, error: masked };
+      // a new node's id may belong to one this viewer can't see (or one added meanwhile): adding would replace it
+      if (c.op === 'add' && live.get(c.node.id)) return { ok: false, error: `${c.node.id}: that id is already used on the board` };
+    }
+    return { ok: true, changes: d.changes, summary: d.summary, text: `edited the JSON: ${describeDiff(d.summary)}` };
   }
 
   /**

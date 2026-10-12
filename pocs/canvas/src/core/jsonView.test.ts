@@ -124,17 +124,22 @@ describe('redaction', () => {
     expect(JSON.parse(withLink.j.text).edges).toHaveLength(1);
   });
 
-  it('applying an untouched masked view changes nothing; a masked value is never written; hidden nodes survive', () => {
+  it('applying an untouched masked view changes nothing; masked values are read-only; hidden nodes survive', () => {
     const { s, j } = setup([redactor], 'other');
     expect(j.apply(j.text)).toMatchObject({ ok: true, line: null });
     // editing another field of the masked node is fine, and the secret stays
     const r = j.apply(edit(j.text, (d) => (d.nodes[1].color = '4')));
     expect(r).toMatchObject({ ok: true, line: 'edited the JSON: 1 changed' });
     expect(s.doc.get('b')).toMatchObject({ text: 'B', color: '4' });
-    // a pasted node that still carries the mask loses that field
-    j.apply(edit(j.text, (d) => d.nodes.push(n('z', { text: MASK, label: 'L' }))));
-    expect(s.doc.get('z')).toMatchObject({ label: 'L' });
-    expect(s.doc.get('z')!.text).toBeUndefined();
+    // masked values are read-only: no typing over one, no copying one into another node
+    expect(j.apply(edit(j.text, (d) => (d.nodes[1].text = 'guess')))).toMatchObject({ ok: false, error: expect.stringContaining("can't be edited") });
+    expect(j.apply(edit(j.text, (d) => d.nodes.push(n('z', { text: MASK, label: 'L' }))))).toMatchObject({ ok: false, error: expect.stringContaining("can't be copied") });
+    expect(j.apply(edit(j.text, (d) => (d.nodes[0].text = MASK)))).toMatchObject({ ok: false });
+    expect(s.doc.get('b')!.text).toBe('B');
+    expect(s.doc.get('z')).toBeUndefined();
+    // a new node can't take the id of one the viewer can't see
+    expect(j.apply(edit(j.text, (d) => d.nodes.push(n('c', { text: 'mine now' }))))).toMatchObject({ ok: false, error: expect.stringContaining('already used') });
+    expect(s.doc.get('c')!.text).toBe('C');
     // deleting everything visible does not delete the node the viewer can't see
     j.apply(edit(j.text, (d) => (d.nodes = [])));
     expect(s.doc.get('c')).toBeDefined();
