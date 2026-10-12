@@ -3,7 +3,7 @@ import { Awareness } from 'y-protocols/awareness';
 import { parse } from '../src/core/io';
 import { Store, type DispatchResult } from '../src/core/store';
 import { registerCoreCommands } from '../src/core/commands';
-import type { CanvasDoc, CanvasNode, Change } from '../src/core/doc';
+import type { CanvasDoc, CanvasNode } from '../src/core/doc';
 import type { LogActor } from '../src/core/log';
 import { registerBoardLogic } from '../src/plugins/board/logic';
 import { registerChessLogic } from '../src/plugins/chess/logic';
