@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { imageSrc } from "./registry.ts";
-import { cx } from "./util.ts";
+import { cx, niceTicks } from "./util.ts";
 
 type Row = Record<string, unknown>;
 export interface Column<R = Row> {
@@ -61,9 +61,10 @@ export function Img({ src, alt = "", caption, id }: { src: string; alt?: string;
 
 export interface CompareItem { label?: ReactNode; src?: string; node?: ReactNode; caption?: ReactNode }
 /** N things side by side with captions: screenshots, before/after, variants. Each item has `src` (image) or `node` (anything). */
-export function Compare({ items, id }: { items: CompareItem[]; id?: string }) {
+export function Compare({ items, id, caption }: { items: CompareItem[]; id?: string; caption?: ReactNode }) {
   return (
-    <div className="a-compare" data-c="compare" data-aid={id} style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}>
+    <div data-c="compare" data-aid={id}>
+    <div className="a-compare" style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}>
       {items.map((it, i) => (
         <figure key={i} className="a-figure">
           {it.label != null && <div className="a-compare-label">{it.label}</div>}
@@ -71,6 +72,8 @@ export function Compare({ items, id }: { items: CompareItem[]; id?: string }) {
           {it.caption && <figcaption>{it.caption}</figcaption>}
         </figure>
       ))}
+    </div>
+    {caption && <div className="a-muted">{caption}</div>}
     </div>
   );
 }
@@ -87,17 +90,18 @@ export function Chart({ data, series, kind = "bar", height = 180, unit = "", id,
 }) {
   const ss = series ?? [{ name: "", points: data ?? [] }];
   const labels = ss[0]?.points.map((p) => p.label) ?? [];
-  const max = Math.max(1, ...ss.flatMap((s) => s.points.map((p) => p.value)));
-  const W = Math.max(320, labels.length * 56), padL = 36, padB = 22, padT = 14, H = height;
+  const { ticks, max } = niceTicks(Math.max(0, ...ss.flatMap((s) => s.points.map((p) => p.value))));
+  const fmt = (t: number) => `${t}${unit}`;
+  const padL = Math.ceil(Math.max(...ticks.map((t) => fmt(t).length)) * 6.4) + 14, padB = 22, padT = 14, H = height;
+  const W = Math.max(480, padL + labels.length * 64 + 8);
   const iw = W - padL - 8, ih = H - padB - padT;
   const x = (i: number) => padL + (iw / labels.length) * (i + 0.5);
   const y = (v: number) => padT + ih - (v / max) * ih;
-  const ticks = [0, 0.5, 1].map((f) => Math.round(max * f * 10) / 10);
   const bw = Math.min(36, (iw / labels.length) * 0.6 / ss.length);
   return (
     <figure className="a-chart" data-c="chart" data-aid={id}>
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ maxWidth: W }} role="img" aria-label={ss.map((s) => s.name).join(", ") || "chart"}>
-        {ticks.map((t) => <g key={t}><line x1={padL} x2={W - 8} y1={y(t)} y2={y(t)} className="grid" /><text x={padL - 6} y={y(t) + 4} textAnchor="end">{t}{unit}</text></g>)}
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ maxWidth: W * 1.5 }} role="img" aria-label={ss.map((s) => s.name).join(", ") || "chart"}>
+        {ticks.map((t) => <g key={t}><line x1={padL} x2={W - 8} y1={y(t)} y2={y(t)} className="grid" /><text x={padL - 6} y={y(t) + 4} textAnchor="end">{fmt(t)}</text></g>)}
         {labels.map((l, i) => <text key={i} x={x(i)} y={H - 6} textAnchor="middle">{l}</text>)}
         {ss.map((s, si) => kind === "line" ? (
           <g key={si} style={{ color: PAL[si % PAL.length] }}>

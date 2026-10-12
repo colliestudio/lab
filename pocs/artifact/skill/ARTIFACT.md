@@ -22,9 +22,10 @@ artifact new notes/status-1012 --kind status   # scaffold with a small example
 artifact dev notes/status-1012.artifact        # live reload at http://127.0.0.1:4177 (loopback only; use your own proxy/forward to view elsewhere; --port N)
 artifact check notes/status-1012.artifact      # errors: bundle, types, render, missing evidence, size
 artifact build notes/status-1012.artifact -o status.html   # one file, share it
+artifact shot notes/status-1012.artifact --theme both --present all   # PNGs in <dir>/.shots/: Read them to see your page
 ```
 
-Run `check` until it says ok; look at it once in `dev` (both themes, press `p` to present). `index.tsx` may define its own components; `import { ... } from "artifact"` for the kit.
+Run `check` until it says ok, then `shot` and look at the PNGs (both themes; `--present all` for the slides; `--no-chrome` hides the host bar). `summary` in artifact.json is printed large under the title and is slide 1 when presenting: make it your headline and don't repeat it in a Callout. `index.tsx` may define its own components; `import { ... } from "artifact"` for the kit.
 
 ## Taste (guidance, not rules)
 
@@ -38,22 +39,26 @@ Run `check` until it says ok; look at it once in `dev` (both themes, press `p` t
 
 ## Kit (all from "artifact")
 
-Layout: `<Page width="wide">` `<Section id? title lead?>` (nest for subsections) `<Stack row gap>` `<Grid cols={3} | min="16rem">` `<Card title aside tone href footer>` `<CardGrid items={[{title, body, status, href}]}/>` `<Lanes lanes={[{title, children}]}/>` `<Tabs><Tab label="A">…</Tab></Tabs>` `<Callout tone="info|success|warn|critical" title>`
+Layout: `<Page width="wide">` `<Section id? title lead?>` (nest for subsections) `<Stack row gap>` `<Grid cols={3} | min="16rem">` `<Card title aside tone href footer>` `<CardGrid items={[{title, body, status, href}]}/>` `<Lanes lanes={[{title, children}]}/>` `<Tabs><Tab label="A">…</Tab></Tabs>` `<Callout tone="info|success|warn|critical" title>`. `<Page width="wide|full">` (or `"width"` in artifact.json) widens the page.
 
-Status and facts: `<Badge tone>` `<Status s="ok|done|merged|warn|risk|stale|blocked|failed|todo|open|planned|doing|review|info">label?</Status>` `<PR n={42} title state="open|draft|merged|closed" checks="pass|fail|pending" stack={[2,3]} href />` (also inside Table cells) `<Stale says="3 open" now="1 open" asOf="Oct 12" />` `<Source label href kind="pr|thread|commit|file|doc" from="where it came from" />`
+Status and facts: `<Badge tone>` `<Status s="ok|done|merged|warn|risk|stale|blocked|failed|todo|open|planned|doing|review|info">label?</Status>` `<PR n={42} title state="open|draft|merged|closed" checks="pass|fail|pending" stack={[2,3]} href conflict updatedAt="ISO" asOf="gather time" review="approved|changes" />` (also inside Table cells) `<Stale says="3 open" now="1 open" asOf="Oct 12" />` `<Source label href kind="pr|thread|commit|file|doc" from="provenance, shown as \"via …\"" inline />` (`inline` = small dotted link for table cells) `<Ago iso asOf />`
 
-Reading flow: `<Steps items={[{title, body, status}]}/>` `<Questions items={["q" | {q, why, options, owner}]}/>` `<Decision question options={[{label, note}]} recommend={0} owner="Alex" why />` `<Checklist items={["x" | {text, done, note, status}]}/>` `<Timeline items={[{when, title, body, status, lane?}]}/>` (give items a `lane` for one column per actor/agent)
+Reading flow: `<Steps items={[{title, body, status}]}/>` `<Questions items={["q" | {q, why, options, owner}]}/>` `<Decision id="d1" question options={[{label, note}]} recommend={0} owner="Alex" why />` (`id` is a real anchor; `<DecisionIndex />` lists all decisions with their recommendation; open question with a lean = Decision, not Questions) `<Checklist items={["x" | {text, done, note, status}]}/>` `<Actions items={[{title, why, effort, rec, owner, tone, status, sources:[{label,href}]}]}/>` ranked do-first list; `<Facts items={[["main","ok"]]}/>` key/value rows; `<Scorecard options rows={[{name, weight, cells:[{grade:"best|ok|weak|bad|na", text}]}]} recommend={0} verdict={[…]}/>` (alias `Matrix`); `<RiskMatrix risks={[{id,title,like:"low|med|high",impact,mitigation}]}/>` grid + table, chips link to rows; `<Timeline items={[{when, title, body, status, lane?}]}/>` (give items a `lane` for one column per actor/agent)
 
-Data: `<Table columns={["name", {key:"state", label, render:(v,row)=>…, align, sort}]} rows={rows} />` (sortable; a row field `href` links the first cell) `<Chart data={[{label, value}]} kind="bar|line" unit />` or `series={[{name, points}]}` `<Compare items={[{label, src:"evidence/a.png", node?, caption}]}/>` `<Img src="evidence/x.png" caption />`
+Data: `<Table columns={["name", {key:"state", label, render:(v,row)=>…, align, sort}]} rows={rows} />` (sortable; a row field `href` links the first cell) `<Chart data={[{label, value}]} kind="bar|line" unit />` or `series={[{name, points}]}` `<Compare items={[{label, src:"evidence/a.png", node?, caption}]} caption/>` `<Gallery items={[{label, src|node, aside, caption}]}/>` (one at a time with a detail pane; each item is a present step) `<Img src="evidence/x.png" caption />`
 
 Technical:
-- `<Map nodes={[{id,label,group?,state?,note?,href?}]} edges={[{from,to,label?}]} groups={[{id,label}]} />` boxes and arrows laid out for you; click a node to focus it and its neighbours. `state` colours (ok, done, warn, blocked, todo, new, changed…). Up to ~12 nodes reads well.
+- `<Map nodes={[{id,label,group?,state?,note?,href?}]} edges={[{from,to,label?}]} groups={[{id,label}]} />` boxes and arrows laid out for you; scales to fit its column (Fit / 100% / + / − and drag to pan; also in present mode); click a node to focus it and its neighbours; node `section="id"` adds a "go to section" link. `state` colours (ok, done, warn, blocked, todo, new, changed…). Up to ~12 nodes reads well; costs 1.5 MB (ELK).
 - `<Diff patch="evidence/x.patch" file="src/a.ts" hunks="1,3" notes={{12: "why"}} />` parsed at build; only requested files are inlined. Give `file` as a string literal so pruning works.
-- `<Code file="evidence/a.ts" ranges="1-10,40-52" highlight="4" title />` or `code={str}` / string child; several ranges with gaps marked.
+- `<Code file="evidence/a.ts" ranges="1-10,40-52" highlight="4" notes={{4:"why"}} path="src/a.ts" href="https://…" />` or `code={str}` / string child; several ranges with gaps marked.
 - `<Replay src="evidence/x.replay" steps={[2,3]} caption />` Collie Demo recording with clickable steps. Adds ~120 KB.
 - `<Flow chart={"sequenceDiagram\n…"} />` Mermaid (sequence, flow, state, ER, gantt, pie). Adds ~3 MB: prefer `<Map>` for boxes and arrows, use Flow for sequence diagrams.
 
-Opt-in: `<Depth level={1..4}>` content shown by the reader's 1–4 keys (1 = headline … 4 = detail; unmarked content always shows). `<Step>` marks reveal one by one in present mode. `useData("name")` reads data/name.json.
+Opt-in: `<Depth level={1..4}>` content shown by the reader's 1–4 keys (1 = headline … 4 = detail; unmarked content always shows). `<Step>` marks reveal one by one in present mode (the newest scrolls into view). `useData("name")` reads data/name.json. Custom components can follow present mode with `usePresent()` (`{active, slide, step, steps}`) or `usePresentStep()` (-1 when not presenting).
+
+## Custom components and CSS
+
+Write components inline in index.tsx or next to it. `import "./mine.css"` bundles a local stylesheet into the page; use the tokens so both themes work: `var(--collie-color-fg|fg-muted|canvas|surface|border-subtle|accent-subtle|success-subtle|…)`, `--a-card`, `--a-line`, `--a-muted`, `--a-radius`, `--collie-space-*`. Source files you cite (`evidence/*.ts`) are not typechecked.
 
 ## Evidence
 
@@ -69,7 +74,7 @@ Reference files by string literal, `evidence/x.patch` (git diff output), `eviden
 
 ## Host features the reader has
 
-Outline (from Sections), theme toggle, **Present** (`p`: → / ← step through Sections and `<Step>`s), **Comment** (`c`, click any element; stored in the reader's browser) then **Copy feedback** (Markdown with element ids: paste it back to you), Depth keys when you used `<Depth>`.
+Outline (from Sections), theme toggle, header sources collapse after 3, **Present** (`p`: title slide, then → / ← through Sections and `<Step>`s; ↑/↓ scroll a tall slide; `#links` jump between slides), **Comment** (`c`, click any element; stored in the reader's browser) then **Copy feedback** (Markdown with element ids: paste it back to you), Depth keys when you used `<Depth>`.
 
 ## Limits
 

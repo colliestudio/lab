@@ -352,3 +352,21 @@ test("shot saves PNGs of the page and a present slide", async (t) => {
     for (const p of paths) assert.ok(readFileSync(p).subarray(1, 4).toString() === "PNG", p);
   } finally { cleanup(d); }
 });
+
+test("niceTicks gives round values and ageOf counts from the gather time", async () => {
+  const { niceTicks } = await import("../artifact/kit/util.ts");
+  assert.deepEqual(niceTicks(200.5).ticks, [0, 50, 100, 150, 200, 250]);
+  assert.deepEqual(niceTicks(7).ticks, [0, 2, 4, 6, 8]);
+  assert.deepEqual(niceTicks(0).ticks, [0, 1]);
+  const { ageOf } = await import("../artifact/kit/util.ts");
+  assert.equal(ageOf("2026-10-10T10:00:00Z", "2026-10-12T10:00:00Z").text, "2 d ago");
+  assert.equal(ageOf("2026-10-12T09:40:00Z", "2026-10-12T10:00:00Z").text, "20 min ago");
+});
+
+test("hello sample: all components render server-side and Decision ids are real ids", async () => {
+  const s = await renderStatic("samples/hello.artifact");
+  assert.ok("html" in s, JSON.stringify(s));
+  assert.match(s.html, /id="d-ship"/);
+  assert.match(s.html, /data-c="scorecard"/);
+  assert.match(s.html, /conflicts/);
+});

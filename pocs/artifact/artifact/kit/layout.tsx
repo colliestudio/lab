@@ -1,5 +1,5 @@
 import { Children, createContext, isValidElement, useContext, useState, type CSSProperties, type ReactNode } from "react";
-import { cx, slug } from "./util.ts";
+import { ageOf, cx, slug } from "./util.ts";
 
 export type Tone = "neutral" | "info" | "success" | "warn" | "critical" | "accent";
 
@@ -179,8 +179,11 @@ export function Decision({ question, options, recommend, owner = "needs a decisi
   question: ReactNode; options?: (ReactNode | { label: ReactNode; note?: ReactNode })[]; recommend?: number | string;
   owner?: string; why?: ReactNode; id?: string;
 }) {
+  const recOpt = options?.[typeof recommend === "number" ? recommend : -1];
+  const recText = typeof recommend === "string" ? recommend : recOpt && typeof recOpt === "object" && !isValidElement(recOpt) && "label" in (recOpt as object) ? String((recOpt as { label: ReactNode }).label) : typeof recOpt === "string" ? recOpt : undefined;
   return (
-    <div className="a-decision" data-c="decision" data-aid={id}>
+    <div className="a-decision" data-c="decision" id={id} data-aid={id} data-q={typeof question === "string" ? question : undefined} data-owner={owner}
+      data-rec={recText}>
       <div className="a-decision-head"><Badge tone="warn">{owner}</Badge></div>
       <div className="a-decision-q">{question}</div>
       {why && <div className="a-muted">{why}</div>}
@@ -236,7 +239,11 @@ export function Timeline({ items }: { items: TimelineItem[] }) {
 
 export interface SourceProps { label: ReactNode; href?: string; kind?: string; from?: string }
 /** A citation: a PR, thread, commit, file or doc, with where the claim came from. */
-export function Source({ label, href, kind, from }: SourceProps) {
+export function Source({ label, href, kind, from, inline }: SourceProps & { inline?: boolean }) {
+  if (inline) {
+    const t = [kind, from].filter(Boolean).join(" · ");
+    return href ? <a className="a-src-inline" href={href} target="_blank" rel="noreferrer" title={t}>{label}</a> : <span className="a-src-inline" title={t}>{label}</span>;
+  }
   const inner = <><span className="a-src-kind">{kind ?? (href ? "link" : "src")}</span><span>{label}</span>{from && <span className="a-src-from">{from}</span>}</>;
   return href
     ? <a className="a-source" data-c="source" href={href} target="_blank" rel="noreferrer">{inner}</a>
@@ -264,18 +271,25 @@ export function Stale({ says, now, asOf, source }: { says: ReactNode; now?: Reac
   );
 }
 
+/** Relative time: `<Ago iso="2026-10-12T10:00:00Z" asOf={meta.asOf} />`. */
+export function Ago({ iso, asOf }: { iso: string; asOf?: string }) { return <time dateTime={iso} title={iso}>{ageOf(iso, asOf).text}</time>; }
+
 const CHECK: Record<string, Tone> = { pass: "success", passing: "success", success: "success", fail: "critical", failing: "critical", failure: "critical", pending: "warn", running: "warn" };
 /** A pull request chip: number, title, state, checks, place in a stack. Fits inside Table cells. */
-export function PR({ n, title, state = "open", checks, stack, href, author }: {
+export function PR({ n, title, state = "open", checks, stack, href, author, conflict, updatedAt, asOf, review }: {
   n: number | string; title?: ReactNode; state?: "open" | "draft" | "merged" | "closed" | string; checks?: "pass" | "fail" | "pending" | string;
-  stack?: [number, number]; href?: string; author?: string;
+  stack?: [number, number]; href?: string; author?: string; conflict?: boolean; updatedAt?: string; asOf?: string; review?: string;
 }) {
+  const age = updatedAt ? ageOf(updatedAt, asOf) : undefined;
   const body = <><span className="a-pr-n">#{n}</span>{title && <span className="a-pr-title">{title}</span>}</>;
   return (
     <span className="a-pr" data-c="pr">
       {href ? <a href={href} target="_blank" rel="noreferrer">{body}</a> : body}
       <Status s={state} />
       {checks && <Badge tone={CHECK[checks] ?? "neutral"} title="checks">checks {checks}</Badge>}
+      {conflict && <Badge tone="critical" title="merge conflict with the base">conflicts</Badge>}
+      {review && <Badge tone={review === "approved" ? "success" : review === "changes" ? "critical" : "neutral"} title="review">{review}</Badge>}
+      {age && <Badge tone={age.days >= 2 && state !== "merged" ? "warn" : "neutral"} title={`last updated ${updatedAt}`}>{age.text}</Badge>}
       {stack && <Badge title="place in the stack">{stack[0]}/{stack[1]}</Badge>}
       {author && <span className="a-muted">{author}</span>}
     </span>

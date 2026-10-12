@@ -1,6 +1,6 @@
 import {
   Badge, Callout, Card, CardGrid, Chart, Checklist, Code, Compare, Decision, Depth, Diff, Flow, Grid, Lanes, Map, PR, Questions,
-  Replay, Section, Source, Stale, Status, Step, Steps, Table, Tab, Tabs, Timeline, useData,
+  Replay, Scorecard, Facts, Actions, RiskMatrix, Gallery, DecisionIndex, Section, Source, Stale, Status, Step, Steps, Table, Tab, Tabs, Timeline, useData,
 } from "artifact";
 
 type Pr = { n: number; title: string; state: string; checks: string; owner: string; stack: [number, number]; href: string };
@@ -36,10 +36,32 @@ export default function Hello() {
       </Section>
 
       <Section id="decision" title="What needs a decision">
-        <Decision question="Ship the kit before the demos are redone?" recommend={0} owner="Alex"
+        <DecisionIndex />
+        <Decision id="d-ship" question="Ship the kit before the demos are redone?" recommend={0} owner="Alex"
           options={[{ label: "Yes, ship now", note: "Demos follow in a second pass." }, { label: "Wait for the demos" }]}
           why="Both paths work; waiting costs about a day." />
         <Questions items={[{ q: "Is 5 MB the right size warning?", why: "Recordings dominate." }, "Keep the name?"]} />
+      </Section>
+
+      <Section id="options" title="Options, scored">
+        <Scorecard options={["Ship now", "Wait for demos", "Cut scope"]} recommend={0} verdict={["Do this", "Costs a day", "Loses the map"]}
+          rows={[
+            { name: "Time to value", weight: "high", cells: [{ grade: "best", text: "today" }, { grade: "weak", text: "tomorrow" }, { grade: "ok", text: "today" }] },
+            { name: "Risk", cells: [{ grade: "ok", text: "known gaps" }, { grade: "best", text: "lowest" }, { grade: "weak", text: "rework later" }] },
+            { name: "Reader value", cells: [{ grade: "best", text: "full kit" }, { grade: "best", text: "full kit" }, { grade: "bad", text: "partial" }] },
+          ]} />
+        <Actions items={[
+          { title: "Merge the kit", why: "Demos are blocked on it.", effort: "10 min", rec: "Merge after the review fixes.", owner: "Alex", sources: [{ label: "review.md", from: "vault" }] },
+          { title: "Redo the collie-ui explainer", why: "Proves the kit on a real page.", effort: "1 h", status: "todo" },
+        ]} />
+        <Grid cols={2}>
+          <Card title="Facts"><Facts items={[["main", "up to date"], ["board", <Status key="s" s="doing" />], ["last run", <PR key="p" n={44} state="open" conflict updatedAt="2026-10-10T10:00:00Z" asOf="2026-10-12T10:00:00Z" review="changes" />]]} /></Card>
+          <RiskMatrix risks={[{ id: "R1", title: "Bundle too big", like: "high", impact: "med", mitigation: "Avoid Flow" }, { id: "R2", title: "Host bugs", like: "med", impact: "high" }, { id: "R3", title: "Name clash", like: "low", impact: "low" }]} />
+        </Grid>
+        <Gallery items={[
+          { label: "Before", src: "evidence/before.svg", aside: <p>The fixed viewer.</p> },
+          { label: "After", src: "evidence/after.svg", aside: <p>Free-form.</p>, caption: "One at a time, with a detail pane" },
+        ]} />
       </Section>
 
       <Section id="map" title="How the pieces fit">

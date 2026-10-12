@@ -20,3 +20,22 @@ export const fmtDate = (s?: string) => {
   const d = new Date(s);
   return isNaN(+d) ? s : d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 };
+
+/** Round tick values (1, 2, 2.5, 5 × 10ⁿ) covering 0…max. */
+export function niceTicks(maxIn: number, count = 5): { ticks: number[]; max: number } {
+  if (!(maxIn > 0)) return { ticks: [0, 1], max: 1 };
+  const p = 10 ** Math.floor(Math.log10(maxIn / count));
+  const step = [1, 2, 2.5, 5, 10, 20].map((m) => m * p).find((st) => Math.ceil(maxIn / st - 1e-9) <= count)!;
+  const n = Math.ceil(maxIn / step - 1e-9);
+  const ticks = Array.from({ length: n + 1 }, (_, i) => Math.round(i * step * 1e6) / 1e6);
+  return { ticks, max: ticks[ticks.length - 1] };
+}
+
+/** "3d ago" for an ISO time, measured from `asOf` (the gather time) or now. */
+export function ageOf(iso: string, asOf?: string): { text: string; days: number } {
+  const ms = (asOf ? Date.parse(asOf) : Date.now()) - Date.parse(iso);
+  if (isNaN(ms)) return { text: String(iso), days: 0 };
+  const m = Math.max(0, ms / 60000);
+  const text = m < 1 ? "just now" : m < 60 ? `${Math.round(m)} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`;
+  return { text, days: m / 1440 };
+}
