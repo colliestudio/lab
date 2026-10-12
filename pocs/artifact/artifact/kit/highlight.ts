@@ -35,6 +35,13 @@ export function highlight(code: string, lang?: string): string {
  * into per-line HTML, re-opening any spans that cross line breaks.
  */
 export function highlightLines(lines: string[], lang?: string): string[] {
+  const out = highlightSplit(lines, lang);
+  // Safety net: if the highlighter lost or moved a line, show the source uncoloured rather than wrong.
+  const text = (h: string) => h.replace(/<[^>]*>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#x27;|&#39;/g, "'").replace(/&amp;/g, "&");
+  return out.length === lines.length && out.every((h, i) => text(h) === lines[i]) ? out : lines.map(esc);
+}
+
+function highlightSplit(lines: string[], lang?: string): string[] {
   const html = highlight(lines.join("\n"), lang);
   const out: string[] = [];
   let open: string[] = [];

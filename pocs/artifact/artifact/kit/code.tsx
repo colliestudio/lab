@@ -15,23 +15,26 @@ const Html = ({ html }: { html: string }) => <span dangerouslySetInnerHTML={{ __
  * Source lines. Give `code` (or a string child) or `file="evidence/x.ts"`; `ranges="1-10,30-40"` shows only those lines
  * (gaps are marked), `highlight="5,7-8"` marks lines, `start` is the first line's number for inline `code`.
  */
-export function Code({ code, file, lang, ranges, highlight, title, start = 1, children, id }: {
+export function Code({ code, file, lang, ranges, highlight, title, path, href, notes, start = 1, children, id }: {
   code?: string; file?: string; lang?: string; ranges?: string | [number, number][]; highlight?: string | number[];
-  title?: ReactNode; start?: number; children?: string; id?: string;
+  title?: ReactNode; path?: string; href?: string; notes?: Record<number, ReactNode>; start?: number; children?: string; id?: string;
 }) {
   const text = (code ?? children ?? (file ? getEvidence(file, "text").text : "")).replace(/\n$/, "");
-  const language = lang ?? langOf(file ?? (typeof title === "string" ? title : undefined));
+  const language = lang ?? langOf(path ?? file ?? (typeof title === "string" ? title : undefined));
   const html = useMemo(() => highlightLines(text.split("\n"), language), [text, language]);
   const want = useMemo(() => parseNums(ranges as string), [ranges]);
   const hl = useMemo(() => new Set(parseNums(highlight as string) ?? []), [highlight]);
   const shown = html.map((h, i) => ({ h, n: start + i })).filter((l) => !want || want.includes(l.n));
   return (
     <figure className="a-code" data-c="code" data-aid={id}>
-      {(title || file) && <figcaption className="a-code-title">{title ?? file}</figcaption>}
+      {(title || path || file) && (
+        <figcaption className="a-code-title">{href ? <a href={href} target="_blank" rel="noreferrer">{title ?? path ?? file}</a> : title ?? path ?? file}</figcaption>
+      )}
       <pre><code>{shown.map((l, i) => (
         <Fragment key={l.n}>
           {i > 0 && l.n - shown[i - 1].n > 1 && <span className="a-gap">⋯ {l.n - shown[i - 1].n - 1} lines hidden</span>}
           <span className={cx("a-ln", hl.has(l.n) && "hl")}><span className="n">{l.n}</span><Html html={l.h} /></span>
+          {notes?.[l.n] != null && <span className="a-note">{notes[l.n]}</span>}
         </Fragment>
       ))}</code></pre>
     </figure>

@@ -323,3 +323,20 @@ test("patch pruning reads file= only at the tag's own level", () => {
   assert.deepEqual(neededFiles(`<Diff patch="evidence/a.patch" file={["a.ts", "b.ts"]} />`, "evidence/a.patch"), ["a.ts", "b.ts"]);
   assert.equal(neededFiles(`<Diff patch="evidence/a.patch" file={pick} />`, "evidence/a.patch"), null);
 });
+
+test("check does not typecheck source files under evidence/", async () => {
+  const d = fixture(`export default () => <p>x</p>;`, (dir) => {
+    writeFileSync(join(dir, "evidence/broken.ts"), `import x from "not-a-module"; export const y: number = "no";`);
+  });
+  try { assert.deepEqual((await check(d)).errors, []); } finally { cleanup(d); }
+});
+
+test("highlightLines keeps every line on JSX and falls back to plain when it can't", async () => {
+  const { highlightLines } = await import("../artifact/kit/highlight.ts");
+  const src = `function D() {\n  return (\n    <Dialog>\n      <Trigger render={<Button tone="x" />} />\n      <Panel footer={\n        <>\n          <Close render={<B />} />\n        </>\n      }>\n        <Text>a &amp; b &lt; c</Text>\n      </Panel>\n    </Dialog>\n  );\n}`.split("\n");
+  for (const lang of ["typescript", "tsx", "javascript", undefined]) {
+    const out = highlightLines(src, lang);
+    assert.equal(out.length, src.length);
+    out.forEach((h, i) => assert.equal(h.replace(/<[^>]*>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&").replace(/&quot;/g, '"'), src[i]));
+  }
+});

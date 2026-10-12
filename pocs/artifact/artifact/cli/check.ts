@@ -25,7 +25,7 @@ function typecheck(dir: string): string[] {
         },
       },
       include: [resolve(dir) + "/**/*.ts", resolve(dir) + "/**/*.tsx", join(repoRoot, "artifact/kit/virtual.d.ts")],
-      exclude: [resolve(dir) + "/node_modules"],
+      exclude: [resolve(dir) + "/node_modules", resolve(dir) + "/evidence"],
     }));
     const r = spawnSync(join(nm, ".bin/tsc"), ["-p", tmp, "--pretty", "false"], { encoding: "utf8" });
     return (r.stdout + r.stderr).split("\n").filter((l) => /error TS\d+/.test(l)).map((l) => l.replace(resolve(dir) + "/", ""));
