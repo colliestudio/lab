@@ -8,6 +8,7 @@ import { clockPlugin } from './plugins/clock';
 import { battleLinePlugin } from './plugins/battleline';
 import { matsPlugin } from './plugins/mats';
 import { boardPlugin } from './plugins/board';
+import { stormPlugin } from './plugins/eventstorm';
 import { mountHelp, removeHelpNote } from './help';
 
 const BRIDGE = new URLSearchParams(location.search).get('bridge');
@@ -28,6 +29,7 @@ app.use(clockPlugin);
 app.use(battleLinePlugin);
 app.use(matsPlugin);
 app.use(boardPlugin);
+app.use(stormPlugin);
 app.store.migrations.push(removeHelpNote);
 
 
