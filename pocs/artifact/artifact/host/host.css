@@ -88,3 +88,7 @@ html[data-present] .h-head[data-header="compact"] h1 { font-size: clamp(2.4rem, 
 .h-main[data-width="full"] { padding-inline: 1.5rem; }
 .h-more-hint { opacity: 0.8; }
 .h-layout[data-outline="off"], .h-layout[data-outline="off"]:has(.a-page), .h-layout[data-outline="off"]:has(.h-main), .h-layout[data-outline="off"]:has(.h-panel) { grid-template-columns: minmax(0, 1fr) !important; }
+
+/* present mode always uses the full width: wide/full pages and the outline toggle must not leave a stale grid */
+html[data-present] .h-layout, html[data-present] .h-layout:has(.a-page), html[data-present] .h-layout:has(.h-main), html[data-present] .h-layout:has(.h-panel) { grid-template-columns: minmax(0, 1fr) !important; max-width: none !important; }
+html[data-present] .h-main, html[data-present] .h-main[data-width] { max-width: 78rem !important; margin: 0 auto; padding-inline: clamp(1rem, 4vw, 3rem) !important; width: 100%; }

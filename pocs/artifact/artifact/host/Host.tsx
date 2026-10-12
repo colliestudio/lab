@@ -199,8 +199,8 @@ export function Host({ children }: { children: ReactNode }) {
       {present.active && (
         <div className="h-present-bar" data-slide={present.state.slide} data-slides={present.state.slides} data-step={present.state.step} data-steps={present.state.steps}>
           <button onClick={present.prev}>←</button>
-          <span>{present.label}</span>
-          {more && <span className="h-more-hint" title="This slide continues below: scroll or press ↓">↓ more</span>}
+          <span className="h-present-label">{present.label}</span>
+          {more && <span className="h-more-hint h-present-hint" title="This slide continues below: scroll or press ↓">↓ more</span>}
           <button onClick={present.next}>→</button>
           <button onClick={present.stop}>Exit</button>
         </div>

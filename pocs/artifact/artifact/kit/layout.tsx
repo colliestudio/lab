@@ -158,11 +158,11 @@ export function Steps({ items, children }: { items?: (ReactNode | { title: React
 
 type Q = string | { q: ReactNode; why?: ReactNode; options?: ReactNode[]; owner?: string; status?: string };
 /** Things the reader has to answer: `items={["Ship now?", {q, why, options, owner}]}`. */
-export function Questions({ items, title = "Questions" }: { items: Q[]; title?: ReactNode }) {
+export function Questions({ items, title = "Questions", start }: { items: Q[]; title?: ReactNode; start?: number }) {
   return (
     <div className="a-questions" data-c="questions">
       <div className="a-questions-title">{title}</div>
-      <ol>{items.map((q, i) => {
+      <ol start={start}>{items.map((q, i) => {
         const o = typeof q === "string" ? { q } : q;
         return (
           <li key={i}>
@@ -216,12 +216,15 @@ export function Checklist({ items }: { items: (string | { text: ReactNode; done?
   );
 }
 
-export interface TimelineItem { when?: ReactNode; title: ReactNode; body?: ReactNode; tone?: Tone; status?: StatusValue; href?: string; lane?: string }
+export interface TimelineItem { when?: ReactNode; title: ReactNode; body?: ReactNode; tone?: Tone; status?: StatusValue; href?: string; lane?: string; group?: string }
+const BUCKET_MIN = { minute: 1, "10min": 10, hour: 60, day: 1440 } as const;
 /**
- * Events in order. With `lane` on items (an actor, an agent) the page becomes a swimlane grid: one column per lane,
- * one row per distinct `when` (items with the same `when` share a row), so 12 events in 3 lanes take as few rows as there are times.
+ * Events in order. With `lane` on items (an actor, an agent) the page becomes a swimlane grid: one column per lane and
+ * one row per distinct time. Fewer rows: `bucket="hour"` (or "10min", "day", or minutes as a number) puts ISO `when`s in the
+ * same row per bucket; `group` on an item names its row explicitly; `compact` also pulls a row up into the previous one
+ * when no lane is used twice.
  */
-export function Timeline({ items }: { items: TimelineItem[] }) {
+export function Timeline({ items, bucket, compact }: { items: TimelineItem[]; bucket?: keyof typeof BUCKET_MIN | number; compact?: boolean }) {
   const lanes = [...new Set(items.map((i) => i.lane).filter((x): x is string => !!x))];
   const body = (it: TimelineItem) => (
     <div className={cx("a-tl-item", it.tone && `tone-${it.tone}`)}>
@@ -231,20 +234,47 @@ export function Timeline({ items }: { items: TimelineItem[] }) {
     </div>
   );
   if (!lanes.length) return <div className="a-timeline" data-c="timeline">{items.map((it, i) => <div key={i} className="a-tl-row">{body(it)}</div>)}</div>;
-  const rowKeys: string[] = [];
-  const keyOf = (it: TimelineItem, i: number) => (it.when != null ? `w:${typeof it.when === "string" || typeof it.when === "number" ? it.when : i}` : `i:${i}`);
-  items.forEach((it, i) => { const k = keyOf(it, i); if (!rowKeys.includes(k)) rowKeys.push(k); });
-  const whenOf = (k: string) => items.find((it, i) => keyOf(it, i) === k)?.when;
+  const step = (typeof bucket === "number" ? bucket : bucket ? BUCKET_MIN[bucket] : 0) * 60000;
+  const keyOf = (it: TimelineItem, i: number) => {
+    if (it.group) return `g:${it.group}`;
+    const t = step && typeof it.when === "string" ? Date.parse(it.when) : NaN;
+    if (!isNaN(t)) return `b:${Math.floor(t / step)}`;
+    return it.when != null ? `w:${typeof it.when === "string" || typeof it.when === "number" ? it.when : i}` : `i:${i}`;
+  };
+  let rows: { label: ReactNode; idx: number[] }[] = [];
+  items.forEach((it, i) => {
+    const k = keyOf(it, i);
+    let r = rows.find((x) => keyOf(items[x.idx[0]], x.idx[0]) === k);
+    if (!r) { r = { label: it.group ?? it.when, idx: [] }; rows.push(r); }
+    r.idx.push(i);
+  });
+  const laneOf = (i: number) => items[i].lane ?? "*";
+  if (compact) {
+    const merged: typeof rows = [];
+    for (const r of rows) {
+      const prev = merged[merged.length - 1];
+      const used = new Set(prev?.idx.map(laneOf));
+      if (prev && !r.idx.some((i) => used.has(laneOf(i)) || laneOf(i) === "*") && !prev.idx.some((i) => laneOf(i) === "*")) { prev.idx.push(...r.idx); prev.label = prev.label === r.label ? prev.label : <>{prev.label}<span className="a-muted"> +</span></>; }
+      else merged.push({ ...r, idx: [...r.idx] });
+    }
+    rows = merged;
+  }
+  // a bucketed row shows its range: first – last `when`
+  const label = (r: (typeof rows)[number]) => {
+    if (!step) return r.label;
+    const ws = r.idx.map((i) => items[i].when).filter((w): w is string => typeof w === "string");
+    return ws.length > 1 && ws[0] !== ws[ws.length - 1] ? `${ws[0]}–${ws[ws.length - 1]}` : r.label;
+  };
   return (
     <div className="a-timeline lanes" data-c="timeline" style={{ gridTemplateColumns: `max-content repeat(${lanes.length}, minmax(9rem, 1fr))` }}>
       <div className="a-tl-lane-head" />
       {lanes.map((l) => <div key={l} className="a-tl-lane-head">{l}</div>)}
-      {rowKeys.map((k, r) => (
-        <Fragment key={k}>
-          <div className="a-tl-when a-tl-whencell" style={{ gridRow: r + 2, gridColumn: 1 }}>{whenOf(k)}</div>
-          {lanes.map((l, c) => <div key={l} className="a-tl-cell" style={{ gridRow: r + 2, gridColumn: c + 2 }} />)}
-          {items.map((it, i) => keyOf(it, i) !== k ? null : (
-            <div key={i} className="a-tl-ev" style={{ gridRow: r + 2, gridColumn: it.lane ? lanes.indexOf(it.lane) + 2 : `2 / -1`, zIndex: 1 }}>{body(it)}</div>
+      {rows.map((r, n) => (
+        <Fragment key={n}>
+          <div className="a-tl-when a-tl-whencell" style={{ gridRow: n + 2, gridColumn: 1 }}>{label(r)}</div>
+          {lanes.map((l, c) => <div key={l} className="a-tl-cell" style={{ gridRow: n + 2, gridColumn: c + 2 }} />)}
+          {r.idx.map((i) => (
+            <div key={i} className="a-tl-ev" style={{ gridRow: n + 2, gridColumn: items[i].lane ? lanes.indexOf(items[i].lane!) + 2 : `2 / -1`, zIndex: 1 }}>{body(items[i])}</div>
           ))}
         </Fragment>
       ))}

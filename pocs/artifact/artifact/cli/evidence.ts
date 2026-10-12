@@ -142,10 +142,11 @@ export function collect(dir: string): Collected {
   const scan = src.replace(/\bfrom\s*(["'])[^"']*\1/g, "").replace(/\bimport\s*\(\s*(["'])[^"']*\1\s*\)/g, "").replace(/\bimport\s*(["'])[^"']*\1/g, "");
   const evDir = join(dir, "evidence");
   const have = walk(evDir, () => false).map((f) => "evidence/" + f.split("\\").join("/"));
-  const dynamic = /evidence\/[^"'`\s]*\$\{/.test(scan);
   const refs = new Set<string>();
   // hard references are string literals that start at the path: "evidence/x", './evidence/x'
-  for (const m of scan.matchAll(/(["'`])(?:\.\/)?(evidence\/[^"'`\n]+?)\1/g)) refs.add(m[2]);
+  // a template literal with ${…} (`evidence/${id}.jpg`) is a glob over the files in evidence/: every match is inlined
+  const globs: string[] = [];
+  for (const m of scan.matchAll(/(["'`])(?:\.\/)?(evidence\/[^"'`\n]+?)\1/g)) { if (m[1] === "`" && m[2].includes("${")) globs.push(m[2]); else refs.add(m[2]); }
   const data: Record<string, unknown> = {};
   for (const f of walk(join(dir, "data"), () => false).filter((f) => f.endsWith(".json"))) {
     const v = JSON.parse(readFileSync(join(dir, "data", f), "utf8"));
@@ -157,7 +158,15 @@ export function collect(dir: string): Collected {
     };
     visit(v);
   }
-  const want = dynamic ? new Set([...have, ...refs]) : refs;
+  const dynamic = globs.length > 0;
+  const missingGlobs: string[] = [];
+  for (const g of globs) {
+    const re = new RegExp("^" + g.split(/\$\{[^}]*\}/).map((x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("[^/]*") + "$");
+    const hits = have.filter((f) => re.test(f));
+    if (!hits.length) missingGlobs.push(g);
+    hits.forEach((h) => refs.add(h));
+  }
+  const want = refs;
   const evidence: Record<string, Evidence> = {}, sizes: Record<string, number> = {}, missing: string[] = [], unsafe: string[] = [];
   const evReal = existsSync(evDir) ? realpathSync(evDir) : evDir;
   for (const p of [...want].sort()) {
@@ -168,5 +177,6 @@ export function collect(dir: string): Collected {
     evidence[p] = encodeEvidence(p, abs, src);
     sizes[p] = JSON.stringify(evidence[p]).length;
   }
+  missing.push(...missingGlobs.map((g) => `${g} (matches no file in evidence/)`));
   return { registry: { meta, data, evidence }, missing, unreferenced: have.filter((p) => !(p in evidence) && !unsafe.includes(p)), sizes, dynamic, unsafe };
 }

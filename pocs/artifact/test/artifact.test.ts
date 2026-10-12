@@ -594,3 +594,64 @@ test("shot --present all captures every step, not just the first", async (t) => 
     assert.ok(names.some((n) => n!.endsWith("present-2.png")) && names.some((n) => n!.endsWith("present-2-s1.png")) && names.some((n) => n!.endsWith("present-2-s2.png")), names.join());
   } finally { cleanup(d); }
 });
+
+test("template-literal evidence paths are globs over evidence/", async () => {
+  const d = fixture(`import { Img } from "artifact";
+const ids = ["a", "b"];
+export default () => <>{ids.map((id) => <Img key={id} src={\`evidence/demo-\${id}.png\`} />)}</>;`, (dir) => {
+    writeFileSync(join(dir, "evidence/demo-a.png"), PNG); writeFileSync(join(dir, "evidence/demo-b.png"), PNG);
+  });
+  try {
+    const r = await buildArtifact(d);
+    assert.deepEqual(r.collected.missing, []);
+    assert.deepEqual(Object.keys(r.collected.registry.evidence).sort(), ["evidence/demo-a.png", "evidence/demo-b.png"]);
+    assert.ok(r.collected.unreferenced.includes("evidence/shot.png"), "files the glob does not match stay out");
+    const bad = fixture(`export default () => <p>{\`evidence/nothing-\${1}.png\`}</p>;`);
+    try { assert.equal((await buildArtifact(bad)).collected.missing.length, 1); } finally { cleanup(bad); }
+  } finally { cleanup(d); }
+});
+
+test("timeline bucket, group and compact reduce swimlane rows", async () => {
+  const d = fixture(`import { Timeline } from "artifact";
+const ev = [
+  { when: "2026-10-12T20:14:00Z", lane: "a", title: "A1" }, { when: "2026-10-12T20:19:00Z", lane: "b", title: "B1" },
+  { when: "2026-10-12T20:41:00Z", lane: "a", title: "A2" }, { when: "2026-10-12T21:05:00Z", lane: "c", title: "C1" },
+];
+export default () => <><Timeline items={ev} /><Timeline items={ev} bucket="hour" /><Timeline items={ev} compact />
+<Timeline items={[{ when: "x", group: "G", lane: "a", title: "g1" }, { when: "y", group: "G", lane: "b", title: "g2" }]} /></>;`);
+  try {
+    const s = await renderStatic(d);
+    assert.ok("html" in s, JSON.stringify(s));
+    const tl = s.html.split('data-c="timeline"').slice(1).map((x) => (x.match(/a-tl-whencell/g) ?? []).length);
+    assert.deepEqual(tl, [4, 2, 2, 1], "plain 4 rows, hourly 2, compact merges a/b then a collides, group names one row");
+  } finally { cleanup(d); }
+});
+
+test("present mode keeps the full width on wide pages, and captures hide the host bar", async (t) => {
+  const { shot, capture, findChrome } = await import("../artifact/cli/shot.ts");
+  let exe: string;
+  try { exe = await findChrome(); } catch { return t.skip("no Chromium available"); }
+  const { chromium } = await import("playwright-core");
+  const d = fixture(`import { Section, Step } from "artifact"; export default () => <><Section title="One"><p>some text</p><Step><p>step</p></Step></Section><Section title="Two"><p>more</p></Section></>;`);
+  writeFileSync(join(d, "artifact.json"), JSON.stringify({ title: "Wide", kind: "k", audience: "a", summary: "s", width: "wide" }));
+  const out = join(d, "../w.html");
+  try {
+    writeFileSync(out, (await buildArtifact(d)).html);
+    const b = await chromium.launch({ executablePath: exe });
+    try {
+      const p = await (await b.newContext({ viewport: { width: 1280, height: 800 } })).newPage();
+      await p.goto("file://" + out);
+      await p.waitForSelector(".a-content");
+      await p.keyboard.press("p");
+      await p.waitForSelector(".h-present-bar");
+      await p.keyboard.press("ArrowRight");
+      const w = await p.locator(".a-content").evaluate((e) => e.clientWidth);
+      assert.ok(w > 900, `present content is ${w}px wide`);
+      assert.match(await p.locator(".h-present-label").innerText(), /^2\/3/);
+    } finally { await b.close(); }
+    const paths = await shot(d, { out: join(d, "../shots"), themes: ["light"], present: "all" });
+    assert.ok(paths.length >= 4, paths.join());
+    const png = await capture(out, { out: join(d, "../cap.png"), selector: ".a-content" });
+    assert.ok(readFileSync(png).length > 100);
+  } finally { cleanup(d); }
+});

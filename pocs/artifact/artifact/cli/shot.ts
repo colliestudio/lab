@@ -131,6 +131,8 @@ export async function capture(url: string, o: CaptureOpts): Promise<string> {
         else if ("goto" in s) await page.goto(s.goto);
       }
     }
+    // the sticky host bar would be drawn mid-capture: hide it for element shots, unstick it for full pages
+    await page.addStyleTag({ content: o.selector ? ".h-bar{display:none!important}" : ".h-bar{position:static!important}" }).catch(() => {});
     mkdirSync(dirname(resolve(o.out)), { recursive: true });
     const jpeg = /\.jpe?g$/i.test(o.out);
     const opts = { path: resolve(o.out), ...(jpeg ? { type: "jpeg" as const, quality: o.quality ?? 72 } : { type: "png" as const }) };
