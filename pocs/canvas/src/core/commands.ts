@@ -123,4 +123,13 @@ export function registerCoreCommands(store: Store) {
       .filter((n) => n && typeof n.id === 'string' && [n.x, n.y, n.width, n.height].every(isNum))
       .map((n, i): Change => ({ op: 'add', node: { ...n, z: n.z ?? doc.topZ + 1 + i } }));
   });
+  /**
+   * Apply field-level changes made outside the commands (the JSON panel's edit): one undo step, logged
+   * with a line that carries counts only. The changes are plain data from a parsed, validated text.
+   */
+  store.register('core.patch', (_doc, a: { changes: Change[]; text: string; targets?: string[] }) => {
+    if (!Array.isArray(a?.changes) || typeof a.text !== 'string') return [];
+    const targets = isIds(a.targets) ? a.targets.slice(0, 20) : undefined;
+    return { changes: a.changes, events: a.changes.length ? [{ type: 'core.patch', text: a.text, targets, cue: 'pulse' }] : [] };
+  });
 }

@@ -1,8 +1,8 @@
 import './cards.css';
 import './standard';
-import { loadPlayer, type App, type CanvasNode, type Command, type DocView, type MenuEntry, type Plugin, type Store } from '../../core';
+import { MASK, loadPlayer, type App, type CanvasNode, type Command, type DocView, type MenuEntry, type Plugin, type Store } from '../../core';
 import { DROP_ADD, PUT_DOWN_STEP, SORT_MODES, commands, dropMode, incomingCount, kindOf, outCount, sortPrefOf, type DealSeat, type DropMode, type Kind, type SortMode } from './commands';
-import { CARD_H, CARD_W, FIELD, PACK, allowsShowing, areaOf, capacityOf, card, enterOf, pileAt, hasFixedFrame, cardsIn, concealedFrom, deckFacing, deckIdOf, handOf, hiddenFrom, hidesCount, homeFor, isBlind, isCard, isCardish, isDeck, isHand, isHomeDeck, isShown, isSpot, isSpreadOut, isStacked, layoutOf, packOf, roomIn, shownIn, type Layout } from './deck';
+import { CARD_H, CARD_W, FIELD, PACK, allowsShowing, areaOf, capacityOf, card, enterOf, pileAt, hasFixedFrame, cardsIn, concealedFrom, deckFacing, deckIdOf, handOf, hiddenFrom, hidesCount, homeFor, isBlind, isCard, isCardish, isDeck, isHand, isHomeDeck, isShown, isSpot, isSpreadOut, isStacked, layoutOf, packOf, roomIn, shownIn, type CardField, type Layout } from './deck';
 import { mountHandUx, VIEW_AS_KEY, type HandUx } from './handUx';
 import { repairImport, shapeExport } from './io';
 import { cardLayouts, handSlotIndex, laneOf, liftedDrop, rowTop, slotIndex, slots, thresholdY } from './layout';
@@ -564,6 +564,17 @@ export const cardsPlugin: Plugin = {
       const up = h ? !hiddenFrom(doc, node, viewer, ux.asOthers()) : card(node).faceUp;
       return { up, shown: !!h && shownIn(h, node), color: h ? showColor(h) : '', inHand: !!h, mine: !!h && h.owner === viewer };
     };
+    // text views (the JSON panel): a card's face is secret unless this viewer can see it; hidden-count cards don't exist for others
+    app.registerRedactor((n, { doc, viewer }) => {
+      const live = doc.get(n.id);
+      if (!live || !isCard(live)) return n;
+      if (concealedFrom(doc, live, viewer, ux.asOthers())) return null;
+      const h = handOf(doc, live);
+      const up = h ? !hiddenFrom(doc, live, viewer, ux.asOthers()) : card(live).faceUp;
+      const f = n[FIELD] as CardField | undefined;
+      // the node's text is the face's label ("A♠") too
+      return up || !f ? n : { ...n, ...(n.text !== undefined && { text: MASK }), [FIELD]: { ...f, face: MASK } };
+    });
     /** Briefly outline a card that just landed on the table, so you notice it's not in a hand. */
     const flashLanded = (id: string) =>
       requestAnimationFrame(() => {

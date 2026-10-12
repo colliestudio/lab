@@ -175,6 +175,14 @@ export class View {
         this.boxKeys.delete(id);
       }
     }
+    for (const fn of this.renderListeners) fn();
+  }
+
+  private renderListeners = new Set<() => void>();
+  /** Called after every render (any doc change, selection change, or a plugin's view-only toggle). */
+  onRender(fn: () => void) {
+    this.renderListeners.add(fn);
+    return () => this.renderListeners.delete(fn);
   }
 
   /** JSON Canvas edges between rendered nodes: straight lines box edge to box edge, arrow at `toEnd` (default arrow). */

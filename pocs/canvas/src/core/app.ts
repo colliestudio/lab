@@ -1,6 +1,6 @@
 import './core.css';
 import { registerCoreCommands } from './commands';
-import type { CanvasNode, CarrierOf, DuplicateRule, LayoutRule, ParentOf } from './doc';
+import type { CanvasNode, CarrierOf, DocView, DuplicateRule, LayoutRule, ParentOf } from './doc';
 import type { KeyBinding, Kit, MenuItem, MenuProvider, ObjectType, Plugin } from './plugin';
 import { Store, type Command, type DispatchResult, type DocFilter } from './store';
 import { View } from './view';
@@ -32,6 +32,12 @@ export class App {
   private notifiers = new Set<(msg: string) => void>();
   /** Privacy rules: is `node` hidden from `viewer` (its content must not leak via presence either)? */
   readonly hiders: ((node: CanvasNode, viewer: string) => boolean)[] = [];
+  /**
+   * Text views of the doc (the JSON panel) show a node as this viewer may see it: return the node
+   * with secret fields masked (a card's face), or null to leave it out entirely (hidden-count cards).
+   * Runs on the exported node; `doc` is the live doc for lookups.
+   */
+  readonly redactors: ((node: CanvasNode, ctx: { doc: DocView; viewer: string }) => CanvasNode | null)[] = [];
   /** Where others see my pointer: a rule may park it (e.g. over my private cards → at my hand's tab). */
   readonly cursorRules: ((p: { x: number; y: number }, app: App) => { x: number; y: number } | undefined)[] = [];
 
@@ -125,6 +131,9 @@ export class App {
   /** A rule saying a node is hidden from a viewer: no presence outlines on it, never broadcast. */
   registerHider(fn: (node: CanvasNode, viewer: string) => boolean) {
     this.hiders.push(fn);
+  }
+  registerRedactor(fn: (node: CanvasNode, ctx: { doc: DocView; viewer: string }) => CanvasNode | null) {
+    this.redactors.push(fn);
   }
   registerCursorRule(fn: (p: { x: number; y: number }, app: App) => { x: number; y: number } | undefined) {
     this.cursorRules.push(fn);
