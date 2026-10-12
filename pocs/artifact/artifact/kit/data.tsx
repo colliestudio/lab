@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { imageSrc } from "./registry.ts";
+import { ZoomImg } from "./zoom.tsx";
 import { cx, niceTicks } from "./util.ts";
 
 type Row = Record<string, unknown>;
@@ -50,10 +50,16 @@ export function Table<R extends Row = Row>({ columns, rows, sortable = true, den
 }
 
 /** An image from evidence (inlined at build), a data URL or an http URL. */
-export function Img({ src, alt = "", caption, id }: { src: string; alt?: string; caption?: ReactNode; id?: string }) {
+export function Img({ src, alt = "", caption, id, fit, height, thumb, zoom = true }: {
+  src: string; alt?: string; caption?: ReactNode; id?: string;
+  /** "cover" crops to fill `height` (top-aligned), "contain" shows it whole inside `height`. `thumb` = cover at 16:9, no lightbox. */
+  fit?: "cover" | "contain"; height?: number | string; thumb?: boolean; zoom?: boolean;
+}) {
+  const f = thumb ? "cover" : fit;
+  const style: React.CSSProperties | undefined = f ? { width: "100%", objectFit: f, objectPosition: "center top", ...(thumb ? { aspectRatio: "16 / 9" } : { height }) } : undefined;
   return (
     <figure className="a-figure" data-c="figure" data-aid={id}>
-      <img src={imageSrc(src)} alt={alt} loading="lazy" />
+      <ZoomImg src={src} alt={alt} style={style} zoom={zoom && !thumb} />
       {caption && <figcaption>{caption}</figcaption>}
     </figure>
   );
@@ -68,7 +74,7 @@ export function Compare({ items, id, caption }: { items: CompareItem[]; id?: str
       {items.map((it, i) => (
         <figure key={i} className="a-figure">
           {it.label != null && <div className="a-compare-label">{it.label}</div>}
-          <div className="a-compare-body">{it.src ? <img src={imageSrc(it.src)} alt={typeof it.label === "string" ? it.label : ""} loading="lazy" /> : it.node}</div>
+          <div className="a-compare-body">{it.src ? <ZoomImg src={it.src} alt={typeof it.label === "string" ? it.label : ""} /> : it.node}</div>
           {it.caption && <figcaption>{it.caption}</figcaption>}
         </figure>
       ))}

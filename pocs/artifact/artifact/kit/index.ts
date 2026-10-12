@@ -7,5 +7,5 @@ export { Map, type MapNodeIn, type MapEdgeIn } from "./map.tsx";
 export { Flow } from "./flow.tsx";
 export * from "./present.ts";
 export { Replay } from "./replay.tsx";
-export { useData, meta } from "./registry.ts";
+export { useData, meta, imageSrc } from "./registry.ts";
 export { useTheme } from "./theme.ts";

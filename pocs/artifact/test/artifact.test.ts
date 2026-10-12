@@ -370,3 +370,19 @@ test("hello sample: all components render server-side and Decision ids are real 
   assert.match(s.html, /data-c="scorecard"/);
   assert.match(s.html, /conflicts/);
 });
+
+test("tiles gallery, stats and image helpers render", async () => {
+  const d = fixture(`import { Gallery, Stats, Img, imageSrc, Section } from "artifact";
+export default () => <Section title="G"><Stats items={[{ value: 3, label: "things", href: "#x" }]} />
+<Gallery items={[{ label: "one", thumb: "evidence/shot.png", status: "done", summary: "S1", detail: <p>DETAIL-ONE</p> }, { label: "two", summary: "S2", detail: <p>DETAIL-TWO</p> }]} />
+<Img src="evidence/shot.png" thumb /><Img src="evidence/shot.png" fit="cover" height={80} /><i>{imageSrc("evidence/shot.png").slice(0, 10)}</i></Section>;`);
+  try {
+    const s = await renderStatic(d);
+    assert.ok("html" in s, JSON.stringify(s));
+    assert.match(s.html, /data-c="stats"/);
+    assert.match(s.html, /class="a-tile"/);
+    assert.match(s.html, /DETAIL-ONE/);
+    assert.doesNotMatch(s.html, /DETAIL-TWO/, "only the selected tile's detail is open");
+    assert.match(s.html, /data:image\/png/);
+  } finally { cleanup(d); }
+});

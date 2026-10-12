@@ -1,6 +1,6 @@
 import {
-  Badge, Callout, Card, CardGrid, Chart, Checklist, Code, Compare, Decision, Depth, Diff, Flow, Grid, Lanes, Map, PR, Questions,
-  Replay, Scorecard, Facts, Actions, RiskMatrix, Gallery, DecisionIndex, Section, Source, Stale, Status, Step, Steps, Table, Tab, Tabs, Timeline, useData,
+  Badge, Callout, Card, CardGrid, Img, Chart, Checklist, Code, Compare, Decision, Depth, Diff, Flow, Grid, Lanes, Map, PR, Questions,
+  Replay, Stats, Scorecard, Facts, Actions, RiskMatrix, Gallery, DecisionIndex, Section, Source, Stale, Status, Step, Steps, Table, Tab, Tabs, Timeline, useData,
 } from "artifact";
 
 type Pr = { n: number; title: string; state: string; checks: string; owner: string; stack: [number, number]; href: string };
@@ -13,6 +13,8 @@ export default function Hello() {
       <Callout tone="info" title="Where we are">
         The kit builds one HTML file from <code>index.tsx</code>. Two of three PRs are on track; <b>one is blocked on a decision</b> (below).
       </Callout>
+
+      <Stats items={[{ value: 16, label: "branches" }, { value: 150, label: "commits", sub: "this week" }, { value: 0, label: "merged", tone: "warn" }, { value: 5, label: "decisions", tone: "accent", href: "#decision" }]} />
 
       <Section id="status" title="Status at a glance">
         <Grid cols={3}>
@@ -58,6 +60,11 @@ export default function Hello() {
           <Card title="Facts"><Facts items={[["main", "up to date"], ["board", <Status key="s" s="doing" />], ["last run", <PR key="p" n={44} state="open" conflict updatedAt="2026-10-10T10:00:00Z" asOf="2026-10-12T10:00:00Z" review="changes" />]]} /></Card>
           <RiskMatrix risks={[{ id: "R1", title: "Bundle too big", like: "high", impact: "med", mitigation: "Avoid Flow" }, { id: "R2", title: "Host bugs", like: "med", impact: "high" }, { id: "R3", title: "Name clash", like: "low", impact: "low" }]} />
         </Grid>
+        <Gallery layout="tiles" hint="Click a tile to open its detail."
+          items={[
+            { label: "viewer", thumb: "evidence/before.svg", status: "done", summary: "The fixed review viewer.", badges: <Badge>3 PRs</Badge>, detail: <Card title="viewer">Detail opens under the grid; put Tabs, Diff or Img in here.</Card> },
+            { label: "artifact kit", thumb: "evidence/after.svg", status: "doing", summary: "Free-form pages.", badges: <Badge tone="warn">1 open</Badge>, detail: <Card title="artifact kit"><Img src="evidence/after.svg" caption="Click the image to enlarge it." /></Card> },
+          ]} />
         <Gallery items={[
           { label: "Before", src: "evidence/before.svg", aside: <p>The fixed viewer.</p> },
           { label: "After", src: "evidence/after.svg", aside: <p>Free-form.</p>, caption: "One at a time, with a detail pane" },

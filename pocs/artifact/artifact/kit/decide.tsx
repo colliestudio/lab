@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Badge, Source, Status, type SourceProps, type Tone } from "./layout.tsx";
 import { imageSrc } from "./registry.ts";
+import { ZoomImg } from "./zoom.tsx";
 import { usePresent } from "./present.ts";
 import { cx } from "./util.ts";
 
@@ -120,29 +121,79 @@ export function RiskMatrix({ risks }: { risks: Risk[] }) {
   );
 }
 
-/** One variant at a time with a detail pane; follows present steps (each item is a step). `items={[{label, src | node, aside, caption}]}` */
-export function Gallery({ items, id }: { items: { label: ReactNode; src?: string; node?: ReactNode; aside?: ReactNode; caption?: ReactNode }[]; id?: string }) {
+export interface GalleryItem {
+  label: ReactNode; id?: string;
+  src?: string; node?: ReactNode; aside?: ReactNode; caption?: ReactNode;          // variants: the shown thing + a side pane
+  thumb?: string; status?: string; badges?: ReactNode; summary?: ReactNode; detail?: ReactNode;  // tiles: a card, detail opens below
+}
+/**
+ * Variants one at a time (pills + `src`/`node` + `aside`), or, when items have `thumb`/`detail`, a grid of tiles
+ * (thumbnail, status, badges, summary) where the selected tile's `detail` opens under the grid. Arrow keys move
+ * between items; each item is one present step.
+ */
+export function Gallery({ items, id, layout, hint }: { items: GalleryItem[]; id?: string; layout?: "pills" | "tiles"; hint?: ReactNode }) {
   const [i, setI] = useState(0);
   const root = useRef<HTMLDivElement>(null);
   const present = usePresent();
+  const tiles = layout ? layout === "tiles" : items.some((it) => it.thumb || it.detail || it.summary);
   useEffect(() => {
     if (!present.active || !root.current) return;
     setI(Math.min(items.length - 1, root.current.querySelectorAll("[data-step]:not([data-present-hidden])").length));
   }, [present.active, present.step, present.slide, items.length]);
-  const cur = items[Math.min(i, items.length - 1)];
+  const n = items.length, cur = items[Math.min(i, n - 1)];
   const key = (e: React.KeyboardEvent) => {
-    if (e.key === "ArrowRight") setI((i + 1) % items.length); else if (e.key === "ArrowLeft") setI((i - 1 + items.length) % items.length);
+    if (present.active) return;
+    const move = e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1 : 0;
+    if (!move) return;
+    e.preventDefault();
+    const next = (i + move + n) % n;
+    setI(next);
+    requestAnimationFrame(() => root.current?.querySelectorAll<HTMLElement>("[data-gi]")[next]?.focus());
   };
+  const markers = items.slice(1).map((_, k) => <span key={k} data-step hidden />);
+  if (tiles) {
+    return (
+      <div className="a-gallery tiles" ref={root} data-c="gallery" data-aid={id}>
+        {hint && <p className="a-muted">{hint}</p>}
+        <div className="a-tiles" role="group" onKeyDown={key}>
+          {items.map((it, k) => (
+            <button key={k} data-gi className="a-tile" aria-pressed={k === i} onClick={() => setI(k)}>
+              <div className="a-tile-thumb">{it.thumb ? <img src={imageSrc(it.thumb)} alt="" loading="lazy" /> : <span>no image</span>}</div>
+              <div className="a-tile-body">
+                <div className="a-tile-head"><b>{it.label}</b>{it.status && <Status s={it.status} />}</div>
+                {it.summary && <div className="a-tile-sum">{it.summary}</div>}
+                {it.badges && <div className="a-tile-badges">{it.badges}</div>}
+              </div>
+            </button>
+          ))}
+        </div>
+        {cur.detail && <div className="a-tile-detail" id={cur.id ? `${cur.id}` : undefined}>{cur.detail}</div>}
+        {markers}
+      </div>
+    );
+  }
   return (
     <div className="a-gallery" ref={root} data-c="gallery" data-aid={id}>
-      <div className="a-pills" role="tablist" onKeyDown={present.active ? undefined : key}>
-        {items.map((it, n) => <button key={n} role="tab" aria-selected={n === i} tabIndex={n === i ? 0 : -1} onClick={() => setI(n)}>{it.label}</button>)}
+      <div className="a-pills" role="tablist" onKeyDown={key}>
+        {items.map((it, k) => <button key={k} data-gi role="tab" aria-selected={k === i} tabIndex={k === i ? 0 : -1} onClick={() => setI(k)}>{it.label}</button>)}
       </div>
       <div className="a-gallery-body">
-        <div className="a-gallery-main">{cur.src ? <img src={imageSrc(cur.src)} alt="" /> : cur.node}{cur.caption && <div className="a-muted">{cur.caption}</div>}</div>
+        <div className="a-gallery-main">{cur.src ? <ZoomImg src={cur.src} /> : cur.node}{cur.caption && <div className="a-muted">{cur.caption}</div>}</div>
         {cur.aside && <div className="a-gallery-aside">{cur.aside}</div>}
       </div>
-      {items.slice(1).map((_, n) => <span key={n} data-step hidden />)}
+      {markers}
+    </div>
+  );
+}
+
+/** Headline numbers in a row: `items={[{value: 16, label: "branches", tone: "success", href}]}`. */
+export function Stats({ items }: { items: { value: ReactNode; label: ReactNode; tone?: Tone; href?: string; sub?: ReactNode }[] }) {
+  return (
+    <div className="a-stats" data-c="stats">
+      {items.map((s, i) => {
+        const inner = <><b className={cx(s.tone && `tone-${s.tone}`)}>{s.value}</b><span>{s.label}</span>{s.sub && <small>{s.sub}</small>}</>;
+        return s.href ? <a key={i} className="a-stat" href={s.href}>{inner}</a> : <div key={i} className="a-stat">{inner}</div>;
+      })}
     </div>
   );
 }
