@@ -75,9 +75,9 @@ export type Change =
   | { op: 'add'; node: CanvasNode }
   | { op: 'set'; id: string; key: string; value: unknown }
   | { op: 'del'; id: string }
-  /** Add or replace an edge (JSON Canvas edge, whole object). Ignored if either end is missing. */
+  /** Add or replace an edge (both ends must exist when applied, else it's skipped). */
   | { op: 'edge'; edge: CanvasEdge }
-  | { op: 'delEdge'; id: string };
+  | { op: 'unedge'; id: string };
 
 export const set = (id: string, key: string, value: unknown): Change => ({ op: 'set', id, key, value });
 
