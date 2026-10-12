@@ -66,10 +66,16 @@ export function client(opts: { url?: string; as?: string; kind?: 'agent' | 'tool
       if (!r.ok) throw new Error(r.error ?? 'failed');
       return r.message;
     },
-    chatRead: async (o = {}) => json(`/chat/read?${qs({ as, kind, limit: o.limit ? String(o.limit) : undefined, new: o.onlyNew ? '1' : undefined })}`),
+    chatRead: async (o = {}) => {
+      const r = await json(`/chat/read?${qs({ as, kind, limit: o.limit ? String(o.limit) : undefined, new: o.onlyNew ? '1' : undefined })}`);
+      if (!Array.isArray(r)) throw new Error(r?.error ?? 'unexpected reply');
+      return r;
+    },
     chatWait: async (timeoutS = 50) => {
       const r = await json(`/chat/wait?${qs({ as, kind, timeout: String(timeoutS) })}`);
-      return Array.isArray(r) ? r : [];
+      if (Array.isArray(r)) return r;
+      if (r?.waiting) return [];
+      throw new Error(r?.error ?? 'unexpected reply');
     },
     resolve: async (ref) => resolveNode(await (async () => parse(await req('/doc')))(), ref).id,
   };

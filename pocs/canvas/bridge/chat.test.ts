@@ -59,6 +59,20 @@ describe('host chat', () => {
     expect((await h.waitChat(bot, 30))!.map((m) => m.text)).toEqual(['later']);
   });
 
+  it('skips malformed entries a peer wrote (no sender, unformattable time, overlong text)', async () => {
+    const h = new Host();
+    h.readChat(bot);
+    const arr = chatArray(h.ydoc);
+    arr.push([{ id: 'x1', text: 'no from' } as never]);
+    arr.push([{ id: 'x2', time: 1e20, from: person, text: 'bad time' } as never]);
+    arr.push([{ id: 'x3', time: 1, from: person, text: 'x'.repeat(5000) } as never]);
+    expect(h.readChat(bot, { onlyNew: true })).toEqual([]);
+    const w = h.waitChat(bot, 5000);
+    arr.push([{ id: 'x4', text: 'still bad' } as never]);
+    sendChat(h.ydoc, person, 'fine');
+    expect((await w)!.map((m) => m.text)).toEqual(['fine']);
+  });
+
   it('a message about a node moves the actor cursor there', () => {
     const h = new Host();
     h.dispatch(bot, 'board.add', { type: 'text', text: 'Deck', x: 10, y: 20 });

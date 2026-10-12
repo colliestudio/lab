@@ -98,8 +98,26 @@ export function chatLine(m: ChatMessage, nodeTitle?: string): string {
   return `[${t}] ${m.from.name}${tag}: ${m.text}${m.node ? `  (re: ${nodeTitle ?? m.node})` : ''}`;
 }
 
-/** Drop malformed entries a hand-edited or old doc might hold. */
+/**
+ * Drop malformed entries: any peer can write to the array, so readers check what senders promise
+ * (a time `Date` can format, text within the limit, a sender with id, name and color).
+ */
 export const validMessage = (m: unknown): m is ChatMessage => {
   const x = m as ChatMessage;
-  return !!x && typeof x.id === 'string' && typeof x.text === 'string' && typeof x.time === 'number' && !!x.from && typeof x.from.id === 'string' && typeof x.from.name === 'string';
+  return (
+    !!x &&
+    typeof x.id === 'string' &&
+    typeof x.text === 'string' &&
+    x.text.length <= CHAT_MAX_TEXT &&
+    Number.isFinite(x.time) &&
+    Math.abs(x.time) <= 8.64e15 &&
+    !!x.from &&
+    typeof x.from.id === 'string' &&
+    typeof x.from.name === 'string' &&
+    typeof x.from.color === 'string' &&
+    (x.node === undefined || typeof x.node === 'string')
+  );
 };
+
+/** The well-formed messages, oldest first. */
+export const chatMessages = (ydoc: Y.Doc) => chatArray(ydoc).toArray().filter(validMessage);

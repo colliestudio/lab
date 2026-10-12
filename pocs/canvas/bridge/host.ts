@@ -7,7 +7,7 @@ import type { CanvasDoc, CanvasNode, Change } from '../src/core/doc';
 import type { LogActor } from '../src/core/log';
 import { registerBoardLogic } from '../src/plugins/board/logic';
 import { registerChessLogic } from '../src/plugins/chess/logic';
-import { after, chatArray, sendChat, type ChatMessage } from '../src/core/chat';
+import { after, chatArray, chatMessages, sendChat, type ChatMessage } from '../src/core/chat';
 import { views, type View } from './views';
 import { describeDiff, diffFile, stableSerialize } from './canonical';
 
@@ -175,20 +175,19 @@ export class Host {
 
   /** The last message the actor has been shown; first contact starts at the end of the chat. */
   private chatCursor(actor: Actor): string {
-    const all = chatArray(this.ydoc);
-    if (!this.chatSeen.has(actor.id)) this.chatSeen.set(actor.id, all.length ? all.get(all.length - 1).id : ''); // '' = before the first message
+    if (!this.chatSeen.has(actor.id)) this.chatSeen.set(actor.id, chatMessages(this.ydoc).at(-1)?.id ?? ''); // '' = before the first message
     return this.chatSeen.get(actor.id)!;
   }
 
   private markSeen(actor: Actor) {
-    const all = chatArray(this.ydoc);
-    if (all.length) this.chatSeen.set(actor.id, all.get(all.length - 1).id);
+    const last = chatMessages(this.ydoc).at(-1);
+    if (last) this.chatSeen.set(actor.id, last.id);
   }
 
   /** Others' messages since the actor last looked (does not move the cursor). */
   private chatNew(actor: Actor): ChatMessage[] {
     const seen = this.chatCursor(actor);
-    return after(chatArray(this.ydoc).toArray(), seen).filter((m) => m.from.id !== actor.id);
+    return after(chatMessages(this.ydoc), seen).filter((m) => m.from.id !== actor.id);
   }
 
   /**
@@ -197,7 +196,7 @@ export class Host {
    */
   readChat(actor: Actor, opts: { limit?: number; onlyNew?: boolean } = {}): ChatMessage[] {
     this.seat(actor);
-    const out = opts.onlyNew ? this.chatNew(actor) : chatArray(this.ydoc).toArray().slice(-Math.max(1, opts.limit ?? 20));
+    const out = opts.onlyNew ? this.chatNew(actor) : chatMessages(this.ydoc).slice(-Math.max(1, opts.limit ?? 20));
     this.markSeen(actor);
     return out;
   }

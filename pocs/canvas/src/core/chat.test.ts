@@ -85,5 +85,10 @@ describe('chat', () => {
     expect(validMessage(m)).toBe(true);
     expect(validMessage({ id: 1 })).toBe(false);
     expect(validMessage(null)).toBe(false);
+    expect(validMessage({ ...m, time: Number.NaN })).toBe(false);
+    expect(validMessage({ ...m, time: 1e20 })).toBe(false);
+    expect(validMessage({ ...m, text: 'x'.repeat(CHAT_MAX_TEXT + 1) })).toBe(false);
+    expect(validMessage({ ...m, from: { id: 'a', name: 'A' } })).toBe(false);
+    expect(validMessage({ ...m, node: 5 })).toBe(false);
   });
 });

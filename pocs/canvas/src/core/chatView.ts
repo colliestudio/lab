@@ -1,6 +1,6 @@
 import type * as Y from 'yjs';
 import type { App } from './app';
-import { chatArray, mentions, sendChat, splitMentions, unread, validMessage, type ChatMessage } from './chat';
+import { chatArray, chatMessages, mentions, sendChat, splitMentions, unread, validMessage, type ChatMessage } from './chat';
 import { anchorOf, jumpTo } from './logView';
 import { ago } from './log';
 
@@ -31,7 +31,7 @@ export function mountChat(app: App, bar: HTMLElement, key: string, parent: HTMLE
     }
   };
   const me = () => app.me();
-  const msgs = () => arr.toArray().filter(validMessage);
+  const msgs = () => chatMessages(app.store.ydoc);
 
   // ---- toolbar button
   const btn = el('button', 'chat-btn', 'Chat');
