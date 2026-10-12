@@ -1,6 +1,8 @@
 # frames: navigation and structure for big canvases
 
-Branch `idea/frames`, port 5219.
+Branch `idea/frames` (merge-ready as `task-3.14-frames`), port 5219.
+
+**Portals are off by default.** Turn them on with `?portals=1` (remembered in this browser, so rooms entered through a portal keep it; `?portals=0` turns them off). Frames, outline, minimap, keys, present and follow always ship on. Why: a portal joins the other room as a full peer, so read-only and "a room you can't see" need the host (see Implications). The portal code, its tests and the demo stay; with the flag off a `.canvas` file node is an ordinary file node, the outline and minimap don't list portals, the "Portal to another room" kit is absent, and the demo has no portal.
 
 ## Idea
 
@@ -11,13 +13,13 @@ Frames turn a big canvas into named places: a frame is a titled region whose con
 - **Frame** = JSON Canvas `group` (label = title). `x-frame` holds what the spec has no field for: `order` (slide position) and `skip` (left out of the slides). A plain group with no `x-` fields (an Obsidian group) is a frame too. Other plugins' groups (decks, kanban boards) are not.
 - **Membership is geometry**, as in JSON Canvas: a node whose center is inside a frame rides on it (core rider rule), the innermost frame if they nest. Frames register their rider rule last, so a piece rides its board and the board rides the frame. Riders move and come to front with the frame; Delete takes them along (menu: "Remove frame, keep contents").
 - **No snowplow**: while a pointer is down, membership is frozen as it was at the press, so a frame dragged over loose objects passes them by; geometry decides again on release (drop it over something and it's in). `Store.invalidate()` (new) rebuilds the snapshot when the freeze ends.
-- **Frames are backdrops**: created below everything; only the title bar and resize corner take the pointer, the body passes clicks to what's under it (or the table, for box select).
-- **Order**: explicit `order` first, then reading order (rows, then left to right). Reordering writes an explicit order on every frame. Commands: `frames.create` (around ids or a box), `rename`, `resize`, `reorder`, `skip`, `unframe`, `createPortal`, `retarget`.
+- **Frames are backdrops**: created below everything; only the title bar and resize corner take the pointer, the body passes clicks to what's under it (or the table, for box select). Pressing a frame raises it with its contents (core `raise`), so `frames.sink` puts frames back under every other node right after the press and on release (not undoable, keeps their order among themselves). Without it a dragged frame covered unrelated notes.
+- **Order**: explicit `order` first, then reading order (rows, then left to right). Slide order is written down (`frames.pin`, every frame gets its current place) the moment a frame can move: pressing a frame title or any press while a frame is selected, arrow keys on a selected frame, creating a frame (the new one goes last) and starting a presentation. After that, dragging a frame never reorders the talk; reordering is the outline's ↑↓ or the menu. Plain groups nobody touched (an Obsidian vault) stay in reading order, and cost no writes until someone presses a frame. Chosen over "pin only on first present" because the outline shows slide numbers all the time, so a drag before any present already reshuffled what you could see. Commands: `frames.create` (around ids or a box), `rename`, `resize`, `reorder`, `skip`, `unframe`, `createPortal`, `retarget`.
 - **Navigation**: `1`–`9` go to frame N, `[` `]` previous/next (relative to the frame the camera is on), `⇧F` frames the selection, `O` folds the outline. Camera moves are animated (zoom geometric, ease in/out) and keep clear of the toolbar and outline (insets).
 - **Outline panel** (top right): frames in order with slide numbers, object counts and the portals inside each; click = fly there, double-click = rename/enter, ↑↓ = reorder. Minimap of the whole canvas with the view rectangle; click/drag moves the view.
 - **Present** (`⌘↵`, ▶ Present, or a frame's menu "Present from here"): full screen, UI hidden, one slide per frame (skipped frames left out), ←/→/Space/PageUp/Down/Home/End, Esc ends. Deleting the current frame mid-talk moves to the slide that took its place (or the last one).
 - **Follow the presenter**: the presenter's awareness carries `present: {frame, index, count, title}` (ephemeral, never in the doc). Peers get a banner "Carol is presenting · 2/3 · Sprint board [Follow]"; following flies their camera on every slide change; taking the camera (drag/wheel) stops following; the banner goes when the presentation ends. Peer states are validated before use.
-- **Portal** = JSON Canvas `file` node pointing at `<room>.canvas` (the same shape as Obsidian Advanced Canvas portals), `x-portal.room` naming the live room (without it, the file's base name is the room).
+- **Portal** (behind `?portals=1`) = JSON Canvas `file` node pointing at `<room>.canvas` (the same shape as Obsidian Advanced Canvas portals), `x-portal.room` naming the live room (without it, the file's base name is the room).
   - **Loading**: one `Y.Doc` per portal room (shared by all portals into it, refcounted, closed 2 s after the last one goes), loaded from this device's copy (`y-indexeddb`, the room's own DB name) and kept live by a second `y-webrtc` provider into that room with no awareness state (invisible, not a player). Same-browser tabs sync over BroadcastChannel with no server.
   - **Reading**: a `Store` over that doc borrows the app's containment/rider/layout rules (`Store.adoptViewRules`, new core API), and the portal draws it with the app's own `ObjectType.render`ers, scaled to fit. Renderers get `ctx.viewer` = me, so another room's private hands stay private. Read-only: nothing dispatches into the other doc, no repairs or migrations run on it.
   - **Budget**: a portal under 220 px wide on screen, or beyond the 3 largest on screen, draws a snapshot (one SVG rect per object); off-screen portals draw nothing. The doc keeps syncing in all modes (cheap); only DOM work stops. A portal inside a portal is a label (one level deep).
@@ -29,13 +31,15 @@ Frames turn a big canvas into named places: a frame is a titled region whose con
 - `src/plugins/frames/`: `model.ts` (frame/portal model, membership, order, `outline()`), `commands.ts`, `camera.ts` (fit with insets, interpolation, `flyTo`), `portals.ts` (`PortalRooms`, `PortalViews`), `outline.ts`, `present.ts` (`Presenter`, `attachFollow`, `presentersIn`), `nav.ts` (trail, breadcrumb), `demo.ts`, `frames.css`, `index.ts`.
 - Core: `Store.adoptViewRules(from)`, `Store.invalidate()` (+2 core tests).
 - Shell (`main.ts`): plugin registered last, breadcrumb in the toolbar, follow attached on room join, per-room camera key.
-- Tests: 17 unit (model, commands incl. chess-in-frame, JSON Canvas round trip, freeze, camera, nav, awareness validation, portal rooms live + refcount) + 4 DOM (live/snapshot/off modes with the chess renderers, self-portal, enter, present stepping). 252 total pass, typecheck clean.
-- Headless Chromium e2e (scripts in `/tmp/frames-e2e`, not committed): demo seed, outline, key jumps, frame drag carries contents, frame dragged over a loose note leaves it, portal live/snapshot, a move in the chess room's tab shows in the index portal, double-click enter + breadcrumb back, follow-the-presenter across two browser contexts over the real signaling (5192). No page errors.
+- Tests: 20 unit (model, commands incl. chess-in-frame, JSON Canvas round trip, freeze, camera, nav, awareness validation, portal rooms live + refcount, pin, sink) + 9 DOM (portals on/off, live/snapshot/off modes with the chess renderers, self-portal, enter, order pinned on press / arrow key / present, present stepping). 259 total pass, typecheck and build clean.
+- Headless Chrome e2e (Playwright `channel: 'chrome'`, scripts not committed; re-run for the merge on 5287 + own signaling 5289): flag off by default (no portal kit/element/outline rows), a frame dragged past the others keeps its slide number, the frame menu has one Delete, `?portals=1` shows the live portal and it follows a move in the room's tab, the flag survives entering a room, `?portals=0` turns it off, follow-the-presenter across two browser contexts over signaling. No page errors. Earlier (before the merge work, `/tmp/frames-e2e`): demo seed, outline, key jumps, frame drag carries contents, frame dragged over a loose note leaves it, portal live/snapshot, a move in the chess room's tab shows in the index portal, double-click enter + breadcrumb back, follow-the-presenter across two browser contexts over the real signaling (5192). No page errors.
 
 ## Demo
 
-1. Open `http://mini.internal:5219`.
-2. Add… → **Frames demo: 3 frames + a portal into a chess room**. It lands right of what's on the table and seeds the room `frames-demo-chess` on this device.
+Portal steps (2 portal part, 4–6) need `?portals=1`.
+
+1. Open `http://mini.internal:5219/?portals=1`.
+2. Add… → **Frames demo: 3 frames + a portal into a chess room** (without the flag: **Frames demo: 3 frames**). It lands right of what's on the table and seeds the room `frames-demo-chess` on this device.
 3. Press `1`, `2`, `3` or `[` `]`; click rows in the outline; drag in the minimap.
 4. Zoom out (`0`): the portal turns into a snapshot; zoom in and it's live again.
 5. Open `http://mini.internal:5219/?room=frames-demo-chess` in a second tab and move a piece: the portal in the first tab follows.
@@ -76,6 +80,15 @@ Frames turn a big canvas into named places: a frame is a titled region whose con
 - Portal auto-connect: every portal room is joined on sight. Should far-away portals connect at all, or only show the last local copy until zoomed in?
 - `presence.awareness.setLocalStateField('present', …)` writes outside `Presence`'s own fields; fine for a POC, wants the generic presence API.
 - The chess demo room is seeded per device; on a second device the portal shows the room only if a peer that has it is online.
+
+## Known gaps (deferred on purpose)
+
+- **A portal uploads this device's copy of the other room** (can merge diverged copies into it) and **every portal room stays connected** (only rendering is budgeted). Both need the host (read-only peers, refused rooms, a connection cap); portals stay off until then.
+- **Portal chess/interaction through a portal** (Alex asked: two people playing through a portal): read-only today; needs a second `View` with scoped input and host-enforced write access. Not built.
+- **Portal previews** (ideas from Alex's review chat, not decided, not built): a plugin `preview(doc)` hook per type, presence plus the last log line on the portal, a portal that targets a frame instead of the whole room, an activity cue, hover peek, host-served snapshots for far-away portals.
+- Frame membership by center vs full containment, presence API, gesture lifecycle and z bands: core work listed above; the freeze flag and `frames.sink` stand in for the last two.
+- Membership of a frame that nobody pressed in a vault with several plain groups: slide order stays reading order until the first press, present or new frame.
+- Touch: no long-press/drag handling beyond what core gives.
 
 ## Effort
 
