@@ -75,3 +75,9 @@ html[data-present] .h-main { min-height: 100vh; }
 .h-layout:has(.a-page[data-width="wide"]), .h-layout:has(.h-main[data-width="wide"]) { max-width: 105rem; }
 .h-layout:has(.a-page[data-width="full"]), .h-layout:has(.h-main[data-width="full"]) { max-width: none; }
 .h-main[data-width="narrow"] { max-width: 44rem; }
+
+.h-head[data-header="compact"] { padding-bottom: 0.7rem; }
+.h-head[data-header="compact"] h1 { font-size: clamp(1.4rem, 2.4vw, 1.8rem); margin: 0.2rem 0 0.3rem; }
+.h-head[data-header="compact"] .h-summary { font-size: 1rem; margin: 0 0 0.5rem; }
+.h-head[data-header="compact"] + .a-content > :first-child, .h-main > .a-content > :first-child { margin-top: 1rem; }
+html[data-present] .h-head[data-header="compact"] h1 { font-size: clamp(2.4rem, 5vw, 3.6rem); } html[data-present] .h-head[data-header="compact"] .h-summary { font-size: 1.5rem; }

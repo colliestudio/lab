@@ -120,7 +120,7 @@ html[data-depth="2"] [data-depth-level="3"], html[data-depth="2"] [data-depth-le
 /* table */
 .a-table-wrap { overflow-x: auto; border: 1px solid var(--a-line); border-radius: var(--a-radius); margin: var(--collie-space-150) 0; background: var(--a-card); }
 .a-table { border-collapse: collapse; width: 100%; font-size: var(--collie-text-sm); }
-.a-table th { text-align: left; font-weight: var(--collie-weight-medium); color: var(--a-muted); background: var(--a-soft); border-bottom: 1px solid var(--a-line); padding: 0.55em 0.9em; white-space: nowrap; text-transform: capitalize; }
+.a-table th { text-align: left; font-weight: var(--collie-weight-medium); color: var(--a-muted); background: var(--a-soft); border-bottom: 1px solid var(--a-line); padding: 0.55em 0.9em; white-space: nowrap; }
 .a-table th button { all: unset; cursor: pointer; } .a-table th button:hover { color: var(--collie-color-fg); }
 .a-table td { padding: 0.55em 0.9em; border-bottom: 1px solid var(--a-line); vertical-align: top; }
 .a-table tr:last-child td { border-bottom: 0; }
@@ -281,3 +281,11 @@ a.a-stat:hover { border-color: var(--collie-color-border-accent); }
 .a-lightbox { position: fixed; inset: 0; z-index: 100; background: var(--collie-color-overlay); display: grid; place-items: center; padding: 2rem; cursor: zoom-out; }
 .a-lightbox img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 6px; box-shadow: var(--collie-shadow-overlay); background: var(--collie-color-canvas); cursor: zoom-out; }
 .a-lightbox button { position: absolute; top: 1rem; right: 1.2rem; font-size: 2rem; line-height: 1; background: none; border: 0; color: #fff; cursor: pointer; }
+
+.a-timeline.lanes { row-gap: 0; column-gap: 0; border: 1px solid var(--a-line); border-radius: var(--a-radius); overflow-x: auto; background: var(--a-card); }
+.a-timeline.lanes .a-tl-lane-head { padding: 0.45em 0.8em; background: var(--a-soft); border-bottom: 1px solid var(--a-line); }
+.a-tl-whencell { padding: 0.55em 0.8em; border-bottom: 1px solid var(--a-line); background: var(--a-soft); white-space: nowrap; }
+.a-tl-cell { border-bottom: 1px solid var(--a-line); border-left: 1px solid var(--a-line); }
+.a-tl-ev { padding: 0.5em 0.8em; border-bottom: 1px solid transparent; min-width: 0; align-self: start; }
+.a-tl-ev .a-tl-item { font-size: var(--collie-text-sm); }
+.a-diffs.nowrap .a-diff-file { overflow-x: auto; } .a-diffs.nowrap .a-diff td.c { white-space: pre; word-break: normal; }

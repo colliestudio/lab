@@ -386,3 +386,24 @@ export default () => <Section title="G"><Stats items={[{ value: 3, label: "thing
     assert.match(s.html, /data:image\/png/);
   } finally { cleanup(d); }
 });
+
+test("timeline lanes share rows by `when`", async () => {
+  const d = fixture(`import { Timeline } from "artifact";
+export default () => <Timeline items={[{ when: "Mon", lane: "you", title: "A" }, { when: "Mon", lane: "agent", title: "B" }, { when: "Tue", lane: "you", title: "C" }, { when: "Tue", lane: "lead", title: "D" }]} />;`);
+  try {
+    const s = await renderStatic(d);
+    assert.ok("html" in s, JSON.stringify(s));
+    assert.equal((s.html.match(/a-tl-whencell/g) ?? []).length, 2, "4 events, 2 times: 2 rows");
+    assert.ok(/grid-template-columns:max-content repeat\(3,/.test(s.html));
+  } finally { cleanup(d); }
+});
+
+test("artifact.json depth and header are accepted", async () => {
+  const d = fixture(`export default () => <p>x</p>;`);
+  writeFileSync(join(d, "artifact.json"), JSON.stringify({ title: "T", kind: "k", audience: "a", summary: "s", depth: 2, header: "full" }));
+  try {
+    const r = await buildArtifact(d);
+    assert.equal(r.collected.registry.meta.depth, 2);
+    assert.equal(r.collected.registry.meta.header, "full");
+  } finally { cleanup(d); }
+});

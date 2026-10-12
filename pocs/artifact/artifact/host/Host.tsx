@@ -29,7 +29,7 @@ function useOutline(root: React.RefObject<HTMLElement | null>) {
       let cur = "";
       for (const it of items) {
         const e = document.getElementById(it.id);
-        if (e && e.getBoundingClientRect().top < 120) cur = it.id;
+        if (e && e.getBoundingClientRect().top < innerHeight * 0.3) cur = it.id;
       }
       setActive(cur);
     };
@@ -48,7 +48,7 @@ export function Host({ children }: { children: ReactNode }) {
   const { items, active } = useOutline(content);
   const [dark, setDark] = useState(document.documentElement.dataset.theme === "midnight");
   const [depthUsed, setDepthUsed] = useState(false);
-  const [depth, setDepth] = useState(4);
+  const [depth, setDepth] = useState<number>(meta.depth ?? 4);
   const [mode, setMode] = useState(false);          // comment mode
   const [open, setOpen] = useState<Anchor | null>(null);
   const [panel, setPanel] = useState(false);
@@ -135,6 +135,7 @@ export function Host({ children }: { children: ReactNode }) {
   }, [cm.list]);
 
   const sources = (meta.sources ?? []).map(normSource);
+  const compact = meta.header !== "full";
   return (
     <div className="h-root">
       <div className="h-bar">
@@ -158,7 +159,7 @@ export function Host({ children }: { children: ReactNode }) {
           ))}
         </nav>
         <main className="h-main" data-width={meta.width}>
-          <header className="h-head" ref={head}>
+          <header className="h-head" data-header={compact ? "compact" : "full"} ref={head}>
             <div className="h-meta">
               {meta.kind && <Badge tone="accent">{meta.kind}</Badge>}
               {meta.audience && <span>For {meta.audience}</span>}
@@ -166,12 +167,17 @@ export function Host({ children }: { children: ReactNode }) {
             </div>
             <h1>{meta.title}</h1>
             {meta.summary && <p className="h-summary">{meta.summary}</p>}
-            {sources.length > 0 && (
+            {sources.length > 0 && (compact ? (
+              <div className="h-sources">
+                <button className="h-more" aria-expanded={allSources} onClick={() => setAllSources(!allSources)}>Sources ({sources.length}) {allSources ? "▾" : "▸"}</button>
+                {allSources && sources.map((s, i) => <Source key={i} {...s} />)}
+              </div>
+            ) : (
               <div className="h-sources"><span className="a-muted">Sources</span>
                 {(allSources ? sources : sources.slice(0, 3)).map((s, i) => <Source key={i} {...s} />)}
                 {sources.length > 3 && <button className="h-more" onClick={() => setAllSources(!allSources)}>{allSources ? "show fewer" : `+${sources.length - 3} sources`}</button>}
               </div>
-            )}
+            ))}
           </header>
           <PresentCtx.Provider value={present.state}><article className="a-content" ref={content}>{children}</article></PresentCtx.Provider>
         </main>

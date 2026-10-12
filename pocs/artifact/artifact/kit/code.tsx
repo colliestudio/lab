@@ -116,13 +116,13 @@ function DRow({ r, notes }: { r: { t: string; old?: number; nw?: number; html: s
  * A diff from evidence: `patch="evidence/x.patch"`; `file` (path or suffix, or an array) picks files, `hunks="1,3"` picks hunks
  * (1-based), `notes={{12: "why"}}` annotates new-side lines. Parsed at build time; the raw patch is not in the output.
  */
-export function Diff({ patch, file, hunks, notes }: {
-  patch: string | PatchFile[]; file?: string | string[]; hunks?: string | number[]; notes?: Record<number, ReactNode>;
+export function Diff({ patch, file, hunks, notes, wrap = true }: {
+  patch: string | PatchFile[]; file?: string | string[]; hunks?: string | number[]; notes?: Record<number, ReactNode>; wrap?: boolean;
 }) {
   const all = typeof patch === "string" ? getEvidence(patch, "patch").files : patch;
   const want = file == null ? null : Array.isArray(file) ? file : [file];
   const files = want ? all.filter((f) => want.some((w) => f.path === w || f.path.endsWith("/" + w))) : all;
   if (want && !files.length) throw new Error(`Diff: no file matching ${want.join(", ")} in ${typeof patch === "string" ? patch : "patch"}`);
   const hs = parseNums(hunks as string);
-  return <div className="a-diffs">{files.map((f) => <FileDiff key={f.path} f={f} hunks={hs} notes={notes} />)}</div>;
+  return <div className={cx("a-diffs", !wrap && "nowrap")}>{files.map((f) => <FileDiff key={f.path} f={f} hunks={hs} notes={notes} />)}</div>;
 }

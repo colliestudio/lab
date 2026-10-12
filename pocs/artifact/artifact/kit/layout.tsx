@@ -1,4 +1,4 @@
-import { Children, createContext, isValidElement, useContext, useState, type CSSProperties, type ReactNode } from "react";
+import { Children, Fragment, createContext, isValidElement, useContext, useState, type CSSProperties, type ReactNode } from "react";
 import { ageOf, cx, slug } from "./util.ts";
 
 export type Tone = "neutral" | "info" | "success" | "warn" | "critical" | "accent";
@@ -175,16 +175,16 @@ export function Questions({ items, title = "Questions" }: { items: Q[]; title?: 
 }
 
 /** A decision someone must make: options, a recommendation, who has to decide. */
-export function Decision({ question, options, recommend, owner = "needs a decision", why, id }: {
+export function Decision({ question, options, recommend, owner = "needs a decision", why, id, source }: {
   question: ReactNode; options?: (ReactNode | { label: ReactNode; note?: ReactNode })[]; recommend?: number | string;
-  owner?: string; why?: ReactNode; id?: string;
+  owner?: string; why?: ReactNode; id?: string; source?: ReactNode;
 }) {
   const recOpt = options?.[typeof recommend === "number" ? recommend : -1];
   const recText = typeof recommend === "string" ? recommend : recOpt && typeof recOpt === "object" && !isValidElement(recOpt) && "label" in (recOpt as object) ? String((recOpt as { label: ReactNode }).label) : typeof recOpt === "string" ? recOpt : undefined;
   return (
     <div className="a-decision" data-c="decision" id={id} data-aid={id} data-q={typeof question === "string" ? question : undefined} data-owner={owner}
       data-rec={recText}>
-      <div className="a-decision-head"><Badge tone="warn">{owner}</Badge></div>
+      <div className="a-decision-head"><Badge tone="warn">{owner}</Badge>{source && <span className="a-muted"> recommendation: {source}</span>}</div>
       <div className="a-decision-q">{question}</div>
       {why && <div className="a-muted">{why}</div>}
       {options && <ul className="a-options">{options.map((o, i) => {
@@ -215,24 +215,37 @@ export function Checklist({ items }: { items: (string | { text: ReactNode; done?
 }
 
 export interface TimelineItem { when?: ReactNode; title: ReactNode; body?: ReactNode; tone?: Tone; status?: string; href?: string; lane?: string }
-/** Events in order. With `lane` on items (an actor, an agent) the rows split into one column per lane. */
+/**
+ * Events in order. With `lane` on items (an actor, an agent) the page becomes a swimlane grid: one column per lane,
+ * one row per distinct `when` (items with the same `when` share a row), so 12 events in 3 lanes take as few rows as there are times.
+ */
 export function Timeline({ items }: { items: TimelineItem[] }) {
   const lanes = [...new Set(items.map((i) => i.lane).filter((x): x is string => !!x))];
-  const row = (it: TimelineItem, i: number) => (
+  const body = (it: TimelineItem) => (
     <div className={cx("a-tl-item", it.tone && `tone-${it.tone}`)}>
-      {it.when != null && <div className="a-tl-when">{it.when}</div>}
+      {!lanes.length && it.when != null && <div className="a-tl-when">{it.when}</div>}
       <div><b>{it.href ? <a href={it.href} target="_blank" rel="noreferrer">{it.title}</a> : it.title}</b>{it.status && <> <Status s={it.status} /></>}
         {it.body && <div className="a-muted">{it.body}</div>}</div>
     </div>
   );
-  if (!lanes.length) return <div className="a-timeline" data-c="timeline">{items.map((it, i) => <div key={i} className="a-tl-row">{row(it, i)}</div>)}</div>;
+  if (!lanes.length) return <div className="a-timeline" data-c="timeline">{items.map((it, i) => <div key={i} className="a-tl-row">{body(it)}</div>)}</div>;
+  const rowKeys: string[] = [];
+  const keyOf = (it: TimelineItem, i: number) => (it.when != null ? `w:${typeof it.when === "string" || typeof it.when === "number" ? it.when : i}` : `i:${i}`);
+  items.forEach((it, i) => { const k = keyOf(it, i); if (!rowKeys.includes(k)) rowKeys.push(k); });
+  const whenOf = (k: string) => items.find((it, i) => keyOf(it, i) === k)?.when;
   return (
-    <div className="a-timeline lanes" data-c="timeline" style={{ gridTemplateColumns: `repeat(${lanes.length}, minmax(10rem, 1fr))` }}>
+    <div className="a-timeline lanes" data-c="timeline" style={{ gridTemplateColumns: `max-content repeat(${lanes.length}, minmax(9rem, 1fr))` }}>
+      <div className="a-tl-lane-head" />
       {lanes.map((l) => <div key={l} className="a-tl-lane-head">{l}</div>)}
-      {items.map((it, i) => {
-        const col = it.lane ? lanes.indexOf(it.lane) + 1 : 1;
-        return <div key={i} className="a-tl-row" style={{ gridColumn: it.lane ? col : `1 / -1`, gridRow: i + 2 }}>{row(it, i)}</div>;
-      })}
+      {rowKeys.map((k, r) => (
+        <Fragment key={k}>
+          <div className="a-tl-when a-tl-whencell" style={{ gridRow: r + 2, gridColumn: 1 }}>{whenOf(k)}</div>
+          {lanes.map((l, c) => <div key={l} className="a-tl-cell" style={{ gridRow: r + 2, gridColumn: c + 2 }} />)}
+          {items.map((it, i) => keyOf(it, i) !== k ? null : (
+            <div key={i} className="a-tl-ev" style={{ gridRow: r + 2, gridColumn: it.lane ? lanes.indexOf(it.lane) + 2 : `2 / -1`, zIndex: 1 }}>{body(it)}</div>
+          ))}
+        </Fragment>
+      ))}
     </div>
   );
 }

@@ -3,6 +3,7 @@ import { ZoomImg } from "./zoom.tsx";
 import { cx, niceTicks } from "./util.ts";
 
 type Row = Record<string, unknown>;
+const cap = (k: string) => { const t = k.replace(/[-_]/g, " "); return t.charAt(0).toUpperCase() + t.slice(1); };
 export interface Column<R = Row> {
   key: string; label?: ReactNode; render?: (v: unknown, row: R, i: number) => ReactNode;
   align?: "left" | "right" | "center"; sort?: boolean | ((a: R, b: R) => number); width?: string;
@@ -15,7 +16,7 @@ const cmp = (a: unknown, b: unknown) =>
 export function Table<R extends Row = Row>({ columns, rows, sortable = true, dense, id, initialSort }: {
   columns: (string | Column<R>)[]; rows: R[]; sortable?: boolean; dense?: boolean; id?: string; initialSort?: { key: string; desc?: boolean };
 }) {
-  const cols: Column<R>[] = columns.map((c) => (typeof c === "string" ? { key: c, label: c.replace(/[-_]/g, " ") } : { label: c.key.replace(/[-_]/g, " "), ...c }));
+  const cols: Column<R>[] = columns.map((c) => (typeof c === "string" ? { key: c, label: cap(c) } : { label: cap(c.key), ...c }));
   const [sort, setSort] = useState<{ key: string; desc: boolean } | null>(initialSort ? { key: initialSort.key, desc: !!initialSort.desc } : null);
   const sorted = useMemo(() => {
     if (!sort) return rows;
