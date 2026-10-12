@@ -22,12 +22,13 @@ export function usePresent(root: React.RefObject<HTMLElement | null>, head: Reac
     const out: Slide[] = head.current ? [{ els: [head.current], title }] : [];
     let c = root.current as HTMLElement | null;
     if (!c) return out;
-    while (c && c.children.length === 1 && !(c.children[0] as HTMLElement).dataset.section) c = c.children[0] as HTMLElement;
+    const kids = (e: HTMLElement) => [...e.children].filter((k) => !k.hasAttribute("data-chrome")) as HTMLElement[]; // data-chrome: fixed UI (a Layout's frame) that is not a slide
+    while (c && kids(c).length === 1 && !kids(c)[0].dataset.section) c = kids(c)[0];
     if (!c) return out;
     // a page wrapped in one Section: its child Sections are the slides (heading and lead text come first as one slide)
-    const only = [...c.children].filter((e) => (e as HTMLElement).dataset.section);
+    const only = kids(c).filter((e) => e.dataset.section);
     let loose: HTMLElement[] = [];
-    if (only.length === 1 && c.children.length === 1 && only[0].querySelector(":scope > .a-section-body > [data-section]")) {
+    if (only.length === 1 && kids(c).length === 1 && only[0].querySelector(":scope > .a-section-body > [data-section]")) {
       const w = only[0] as HTMLElement;
       loose = [...w.children].filter((e) => !e.classList.contains("a-section-body")) as HTMLElement[]; // its heading and lead come first
       c = w.querySelector<HTMLElement>(":scope > .a-section-body")!;

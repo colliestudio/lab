@@ -74,7 +74,7 @@ const reduced = () => typeof matchMedia === "function" && matchMedia("(prefers-r
 
 // --- the view-transition helper ---
 
-type VT = { finished: Promise<unknown> };
+type VT = { finished: Promise<unknown>; ready: Promise<unknown>; updateCallbackDone: Promise<unknown> };
 type StartVT = (o: (() => void) | { update: () => void; types?: string[] }) => VT;
 const supportsTypes = () => { const V = (globalThis as { ViewTransition?: { prototype: object } }).ViewTransition; return !!V && "types" in V.prototype; };
 const DEV = typeof __ARTIFACT_DEV__ !== "undefined" && __ARTIFACT_DEV__;
@@ -92,6 +92,7 @@ export function duplicateTransitionNames(root: ParentNode = document): string[] 
   }
   return [...seen].filter(([, c]) => c > 1).map(([n]) => n);
 }
+let epoch = 0; // a newer transition owns html[data-nav-*] and the vars; an older one finishing must not wipe them
 const warned = new Set<string>();
 function warnDuplicates() {
   for (const n of duplicateTransitionNames()) if (!warned.has(n)) { warned.add(n); console.warn(`[artifact] view-transition-name "${n}" is on more than one element: the browser skips the transition. Name one element per transition (navigate({morph}) does).`); }
@@ -127,12 +128,14 @@ export function withTransition(update: () => void, o: TransitionOpts = {}): Prom
     const r = el.getBoundingClientRect();
     for (const [k, v] of Object.entries({ x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height })) root.style.setProperty(`--nav-${p}${k}`, `${Math.round(v)}px`);
   };
+  const mine = ++epoch;
   if (o.direction) root.dataset.navDir = o.direction;
   if (types.length) root.dataset.navType = types.join(" ");
   if (src) { vars("", src); nameIt(src as HTMLElement); }
   warnDuplicates();
   const cleanup = () => {
     for (const [el, prev] of named) { if (prev) el.style.setProperty("view-transition-name", prev); else el.style.removeProperty("view-transition-name"); }
+    if (mine !== epoch) return;
     delete root.dataset.navDir; delete root.dataset.navType;
     for (const p of ["", "to-"]) for (const k of ["x", "y", "w", "h"]) root.style.removeProperty(`--nav-${p}${k}`);
   };
@@ -146,6 +149,7 @@ export function withTransition(update: () => void, o: TransitionOpts = {}): Prom
   };
   try {
     const t = types.length && supportsTypes() ? d.startViewTransition({ update: run, types }) : d.startViewTransition(run);
+    t.ready.catch(() => {}); t.updateCallbackDone.catch(() => {}); // a skipped transition rejects these; nobody needs to hear
     const done = () => cleanup();
     t.finished.then(done, done);
     return t.finished.then(() => {}, () => {});
@@ -159,7 +163,10 @@ const navIdx = () => (window as unknown as { navigation?: { currentEntry?: { ind
 let lastIdx: number | null = null;
 if (typeof window !== "undefined") {
   lastIdx = navIdx();
-  addEventListener("popstate", () => { traversing = true; });
+  // Navigation API where there is one (popstate also fires for some fragment pushes); popstate elsewhere
+  const nav = (window as unknown as { navigation?: EventTarget }).navigation;
+  if (nav) nav.addEventListener("navigate", (e) => { traversing = (e as Event & { navigationType?: string }).navigationType === "traverse"; });
+  else addEventListener("popstate", () => { traversing = true; });
   addEventListener("hashchange", () => {
     const idx = navIdx();
     const back = traversing ? (idx != null && lastIdx != null ? idx < lastIdx : true) : false;

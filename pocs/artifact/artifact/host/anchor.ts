@@ -47,7 +47,7 @@ export function whereFor(el: Element, root: Element): string {
   let last = "";
   for (const h of root.querySelectorAll("h1, h2, h3, h4")) {
     if (h.contains(el) || el.contains(h)) continue;
-    if (h.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING) last = norm(h.textContent ?? ""); else break;
+    if (h.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING) last = norm((h.textContent ?? "").replace(h.querySelector(".a-perma")?.textContent ?? "\0", "")); else break;
   }
   return short(last, 70);
 }
@@ -85,8 +85,8 @@ export function textRange(root: Node, quote: string, before = "", after = ""): R
   let best = -1, bestScore = -1;
   for (let i = f.text.indexOf(q); i >= 0; i = f.text.indexOf(q, i + 1)) {
     const b = before ? norm(before) : "", a = after ? norm(after) : "";
-    const pre = f.text.slice(Math.max(0, i - b.length), i), post = f.text.slice(i + q.length, i + q.length + a.length);
-    const score = (b && pre.trim().endsWith(b.trim()) ? 1 : 0) + (a && post.trim().startsWith(a.trim()) ? 1 : 0);
+    const pre = f.text.slice(Math.max(0, i - b.length - 2), i), post = f.text.slice(i + q.length, i + q.length + a.length + 2);
+    const score = (b && pre.trimEnd().endsWith(b) ? 1 : 0) + (a && post.trimStart().startsWith(a) ? 1 : 0);
     if (score > bestScore) { best = i; bestScore = score; if (score === (b ? 1 : 0) + (a ? 1 : 0)) break; }
   }
   if (best < 0) return null;
