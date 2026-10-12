@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently -k -n app,signal -c green,blue \"vite --port 5190 --strictPort\" \"pnpm dev:signal\"",
+    "dev": "concurrently -k -n app,signal,sandbox -c green,blue,magenta \"vite --port 5190 --strictPort\" \"pnpm dev:signal\" \"pnpm dev:sandbox\"",
     "dev:app": "vite --port 5190 --strictPort",
     "dev:signal": "wrangler dev --config signaling/wrangler.toml --port 5192",
     "build": "pnpm typecheck && vite build",
@@ -12,6 +12,8 @@
     "test": "vitest run",
     "preview": "vite preview --port 5190 --strictPort",
     "deploy": "pnpm build && wrangler deploy --config signaling/wrangler.deploy.toml",
+    "dev:sandbox": "node sandbox/server.mjs --port 5227",
+    "test:leak": "node scripts/page-leak.mjs",
     "bridge": "tsx bridge/server.ts",
     "canvas": "tsx bridge/cli.ts",
     "canvas-mcp": "tsx bridge/mcp.ts"
@@ -23,6 +25,7 @@
     "@types/ws": "^8.18.2",
     "concurrently": "^10.0.6",
     "happy-dom": "^20.14.6",
+    "playwright-core": "^1.64.0",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite": "^8.3.4",

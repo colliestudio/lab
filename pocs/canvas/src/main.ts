@@ -9,6 +9,7 @@ import { battleLinePlugin } from './plugins/battleline';
 import { matsPlugin } from './plugins/mats';
 import { boardPlugin } from './plugins/board';
 import { stormPlugin } from './plugins/eventstorm';
+import { prototypePlugin } from './plugins/prototype';
 import { mountHelp, removeHelpNote } from './help';
 import { attachFollow, createFramesPlugin, portalsEnabled, enterUrl, mountBreadcrumb, trailFromUrl } from './plugins/frames';
 
@@ -32,6 +33,7 @@ app.use(battleLinePlugin);
 app.use(matsPlugin);
 app.use(boardPlugin);
 app.use(stormPlugin);
+app.use(prototypePlugin);
 // last: its rider rule (frame membership) must come after the others (a piece rides its board, the board its frame)
 const TRAIL = trailFromUrl();
 const frames = createFramesPlugin({ room: ROOM, portals: portalsEnabled(), enter: (room) => (location.href = enterUrl(room, ROOM, TRAIL)) });
@@ -73,6 +75,10 @@ const button = (label: string, title: string, run: () => void) => {
   return b;
 };
 
+function playPrototype() {
+  app.keys.get('shift+enter')?.run(app);
+}
+
 async function doSave(saveAs = false) {
   try {
     const name = await saveFile(app.store.exportDoc(), { saveAs });
@@ -105,6 +111,7 @@ const addBtn = button('Add…', 'Put something on the table: a deck of cards, a 
     'Add to the table',
   ),
 );
+button('▶ Play', 'Play the prototype pages full screen, like a clickable prototype (⇧↵)', () => playPrototype());
 button('Open…', 'Open a .canvas file (⌘O)', doOpen);
 button('Save', 'Save as .canvas (⌘S)', () => doSave());
 button('Undo', 'Undo (⌘Z)', () => app.store.undo());

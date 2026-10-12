@@ -22,6 +22,18 @@ const GROUPS: [string, [string, string][]][] = [
     ],
   ],
   [
+    'Prototype pages',
+    [
+      ['Add… › Prototype: example signup flow', 'Five linked HTML pages (a signup/checkout flow) with sticky notes. Add… › blank page / sticky note for your own'],
+      ['I, or ✋ on the page', 'Interact: clicks go into the page; its links follow the arrows and the view glides to the next page (Esc in the page stops)'],
+      ['↵, double-click', 'Edit the page: title, device, HTML with a live preview (⌘↵ saves)'],
+      ['▶ Play, ⇧↵, ▶ on a page', 'Play full screen from the selected / start page: Back (←), breadcrumb, link chips, notes (N), restart (R), Esc exits. In a room others get “Follow”'],
+      ['Right-click a page', 'Link to another page (the arrow’s label = the action), links from here, start page, device, size, add note, auto-link'],
+      ['Right-click the table', 'Arrange pages as a flow (left → right by step), auto-link every data-goto link, new page'],
+      ['In page HTML', 'data-goto="Page title or action" follows a link, data-back goes back, data-store="key" keeps a field, data-show="key" shows it, canvas.goto()/canvas.state for scripts. Pages run sandboxed: no network, no storage, no access to the canvas'],
+    ],
+  ],
+  [
     'Event log',
     [
       ['', 'What players do that matters shows twice: a short note near the object in the player’s color (“Alex shuffled the deck”, the deck wiggles) and a line in the log. Moving things around isn’t logged'],

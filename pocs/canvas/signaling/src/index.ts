@@ -1,8 +1,13 @@
 import { DurableObject } from 'cloudflare:workers';
 import { handle, relay } from './hub';
+import { sandboxResponse } from './sandbox';
 
 export interface Env {
   ROOMS: DurableObjectNamespace<SignalRoom>;
+  /** Sandbox origin: frames are served on `<label>.<SANDBOX_HOST>` (unset: no sandbox host). */
+  SANDBOX_HOST?: string;
+  /** Space-separated origins allowed to embed sandbox frames, e.g. `https://canvas.lab.collie.studio`. */
+  APP_ORIGINS?: string;
 }
 
 /**
@@ -13,6 +18,9 @@ export interface Env {
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
+    // the sandbox origin: same Worker, chosen by host name (see ideas/prototype.md § Security model)
+    const sandbox = sandboxResponse(url, env);
+    if (sandbox) return sandbox;
     if (req.headers.get('Upgrade') !== 'websocket') {
       return new Response('canvas signaling: connect with a WebSocket to /r/<room>\n', { headers: { 'content-type': 'text/plain' } });
     }
