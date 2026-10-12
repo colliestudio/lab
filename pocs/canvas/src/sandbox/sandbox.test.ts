@@ -60,6 +60,8 @@ describe('frame host', () => {
   it('page frame: Escape is reported only for a real key press, with the key the app sent', () => {
     expect(host.pageBoot).toContain("ev.isTrusted && ev.key === 'Escape'");
     expect(host.pageBoot).toContain("typeof m.key === 'string'");
+    // page scripts run inside the render handler: they must not find the key on window.event.data
+    expect(host.pageBoot).toContain('delete m.key');
   });
   it('dev: sandbox frames are not allowed to embed frames (no wildcard subdomains)', () => {
     expect(DEV_APP_ORIGINS.some((o) => o.includes('*.'))).toBe(false);

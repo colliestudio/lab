@@ -99,6 +99,7 @@ if (NAV) {
 addEventListener('securitypolicyviolation', (e) => tell({ t: 'violation', text: e.violatedDirective + ' blocked ' + (e.blockedURI || 'inline') }));`;
 
 const WORKER_BOOT = (appRes) => `(() => {
+'use strict';
 ${PRELUDE(appRes)}
 let w = null;
 addEventListener('message', (e) => {
@@ -123,6 +124,7 @@ addEventListener('load', () => P.postMessage({ t: 'boot' }, '*'), { once: true }
 // Escape: keys typed in a frame never reach the app, so the boot reports a real Escape (isTrusted: a
 // page can't fake one) with the key the app sent along with the HTML, which page scripts never see.
 const PAGE_BOOT = (appRes) => `(() => {
+'use strict';
 ${PRELUDE(appRes)}
 for (const k of ['RTCPeerConnection', 'webkitRTCPeerConnection', 'RTCDataChannel', 'RTCSessionDescription', 'RTCIceCandidate', 'RTCRtpSender', 'RTCRtpReceiver']) try { delete window[k]; } catch {}
 const onMsg = (e) => {
@@ -131,6 +133,8 @@ const onMsg = (e) => {
   if (!m || m.t !== 'render' || typeof m.html !== 'string') return;
   app = e.origin;
   const key = typeof m.key === 'string' ? m.key : null;
+  // page scripts run inside this handler and can read the message through window.event
+  delete m.key;
   removeEventListener('message', onMsg);
   document.open();
   // document.open() drops window listeners: report the page's own CSP violations again
