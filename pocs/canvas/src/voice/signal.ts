@@ -39,6 +39,26 @@ export interface VoiceEvents {
 
 const MAX_OUT = 60;
 
+type PeerState = { user?: unknown; voice?: unknown };
+
+/**
+ * A peer's voice field, or null if it isn't in voice. Awareness states come from other browsers
+ * unchecked, so a broken or hostile one must not throw here (that would stop every awareness
+ * listener). A voice peer also needs the `user` identity the player chips show: without it they
+ * would be a listener nobody sees.
+ */
+function voiceOf(s: PeerState | undefined): VoiceField | null {
+  const v = s?.voice as Partial<VoiceField> | null | undefined;
+  if (!s?.user || !v || v.on !== true || typeof v.epoch !== 'string' || !Array.isArray(v.out)) return null;
+  const ack = v.ack && typeof v.ack === 'object' ? v.ack : {};
+  return { on: true, muted: v.muted === true, epoch: v.epoch, out: v.out, ack };
+}
+
+const isMsg = (m: unknown): m is SigMsg => {
+  const x = m as SigMsg | null;
+  return !!x && Number.isSafeInteger(x.seq) && typeof x.to === 'number' && typeof x.cid === 'string' && (x.kind === 'offer' || x.kind === 'answer' || x.kind === 'ice');
+};
+
 export class VoiceSignaling {
   private epoch = '';
   private seq = 0;
@@ -98,8 +118,9 @@ export class VoiceSignaling {
   /** Everyone in voice (not me) with their mute flag. */
   peers(): { id: number; muted: boolean }[] {
     const out: { id: number; muted: boolean }[] = [];
-    for (const [id, s] of this.awareness.getStates() as Map<number, { voice?: VoiceField | null }>) {
-      if (id !== this.me && s.voice?.on) out.push({ id, muted: s.voice.muted });
+    for (const [id, s] of this.awareness.getStates() as Map<number, PeerState>) {
+      const v = id === this.me ? null : voiceOf(s);
+      if (v) out.push({ id, muted: v.muted });
     }
     return out;
   }
@@ -125,13 +146,13 @@ export class VoiceSignaling {
     if (!this._on) return;
     const mine = this.mine();
     if (!mine) return;
-    const states = this.awareness.getStates() as Map<number, { voice?: VoiceField | null }>;
+    const states = this.awareness.getStates() as Map<number, PeerState>;
     const ack = { ...mine.ack };
     let ackChanged = false;
     for (const [id, s] of states) {
       if (id === this.me) continue;
-      const v = s.voice;
-      if (!v?.on) continue;
+      const v = voiceOf(s);
+      if (!v) continue;
       let k = this.known.get(id);
       if (k && k.epoch !== v.epoch) {
         this.events.gone(id);
@@ -142,7 +163,7 @@ export class VoiceSignaling {
         this.known.set(id, k);
         this.events.peer(id, this.me > id);
       }
-      for (const m of [...v.out].sort((a, b) => a.seq - b.seq)) {
+      for (const m of v.out.filter(isMsg).sort((a, b) => a.seq - b.seq)) {
         if (m.seq <= k.seen) continue;
         k.seen = m.seq;
         if (m.to === this.me) this.events.signal(id, m);
@@ -156,7 +177,7 @@ export class VoiceSignaling {
       }
     }
     for (const id of [...this.known.keys()]) {
-      if (!states.get(id)?.voice?.on) {
+      if (!voiceOf(states.get(id))) {
         this.known.delete(id);
         delete ack[id];
         ackChanged = true;
@@ -166,8 +187,8 @@ export class VoiceSignaling {
     // drop what the receiver has acknowledged (or whose receiver left)
     const cur = this.mine() ?? mine;
     const out = cur.out.filter((m) => {
-      const r = states.get(m.to)?.voice;
-      if (!r?.on) return false;
+      const r = voiceOf(states.get(m.to));
+      if (!r) return false;
       const a = r.ack[String(this.me)];
       return !(a && a.e === this.epoch && a.s >= m.seq);
     });

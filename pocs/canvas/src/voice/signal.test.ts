@@ -88,6 +88,27 @@ describe('voice signaling', () => {
     B.awareness.emit('change', [{ added: [], updated: [], removed: [a] }, 'timeout']);
     expect(B.log.at(-1)).toBe(`gone ${a}`);
   });
+  it('survives malformed voice states and ignores voice peers without a player identity', () => {
+    const { A, B } = pair();
+    A.sig.join();
+    B.sig.join();
+    const b = B.awareness.clientID;
+    // a broken or hostile client writes junk into its voice field (another client id, as any peer can)
+    const junk = (id: number, state: unknown) => {
+      B.awareness.states.set(id, state as any);
+      B.awareness.emit('change', [{ added: [id], updated: [], removed: [] }, 'net']);
+    };
+    expect(() => junk(7001, { user: { id: 'x', name: 'x', color: '#000' }, voice: { on: true } })).not.toThrow();
+    expect(() => junk(7002, { user: { id: 'y', name: 'y', color: '#000' }, voice: { on: true, epoch: 'e', out: 'no', ack: null } })).not.toThrow();
+    expect(() => junk(7003, { user: { id: 'z', name: 'z', color: '#000' }, voice: { on: true, epoch: 'e', out: [null, { to: b, seq: 'x' }], ack: {} } })).not.toThrow();
+    // voice without a player identity would be an invisible listener (no chip): not a voice peer
+    junk(7004, { voice: { on: true, muted: false, epoch: 'e', out: [], ack: {} } });
+    expect(B.sig.peers().map((p) => p.id)).not.toContain(7004);
+    expect(B.log.some((l) => l.startsWith('peer 7004'))).toBe(false);
+    // the real peer still works
+    A.sig.send(b, 'offer', 'c1', 'sdp');
+    expect(B.got.at(-1)!.msg.data).toBe('sdp');
+  });
 });
 
 describe('speaking detector', () => {
