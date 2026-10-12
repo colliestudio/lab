@@ -76,6 +76,17 @@ describe('Host', () => {
     expect(log).toEqual(['Claude: added note “from claude”', 'Backlog.md: added note “from bot”', 'Claude: undid: added note “from claude”']);
   });
 
+  it('undo takes the top step only: an overwritten step is not skipped for the one before', () => {
+    const h = new Host();
+    h.dispatch(claude, 'board.add', { id: 'a', text: 'one' });
+    h.dispatch(claude, 'board.update', { id: 'a', text: 'two' });
+    h.dispatch(bot, 'board.update', { id: 'a', text: 'three' }); // overwrites Claude's last step
+    expect(h.undo(claude)).toBe(false); // nothing left to revert in that step
+    expect(h.store.doc.get('a')?.text).toBe('three'); // the note is still there (it was the add that got undone before)
+    expect(h.undo(claude)).toBe(true); // the step before is next
+    expect(h.store.doc.get('a')).toBeUndefined();
+  });
+
   it('syncs with a browser-side store over Yjs updates, presence per actor', () => {
     const h = new Host();
     const browser = new Store({ ydoc: new Y.Doc() });

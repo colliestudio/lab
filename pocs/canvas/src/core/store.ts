@@ -409,17 +409,23 @@ export class Store {
    * Undo / redo my last step. A step that logged events logs "undid: …" / "redid: …" (public texts),
    * so the log keeps telling what happened; the original entries stay.
    */
-  undo() {
-    this.step('undo');
+  undo(): boolean {
+    return this.step('undo');
   }
-  redo() {
-    this.step('redo');
+  redo(): boolean {
+    return this.step('redo');
   }
-  private step(kind: 'undo' | 'redo') {
+  /**
+   * Undoes exactly the top step. Yjs would pop on until a step changes something, so a step whose
+   * edits another player overwrote would be dropped silently and the one before it undone instead:
+   * hide the rest of the stack, and report false when the top step had nothing left to revert.
+   */
+  private step(kind: 'undo' | 'redo'): boolean {
     const um = this.undoManager;
     const [from, to] = kind === 'undo' ? [um.undoStack, um.redoStack] : [um.redoStack, um.undoStack];
     const events = from.at(-1)?.meta.get(STEP_EVENTS) as StepEvent[] | undefined;
     let done = false;
+    const rest = from.splice(0, Math.max(from.length - 1, 0));
     // The undo and its repairs in one transaction: one update for the other players (they never see
     // the half-restored state and repair it their own way) and one step on the redo (undo) stack.
     try {
@@ -438,11 +444,14 @@ export class Store {
     } finally {
       um.undoing = false;
       um.redoing = false;
+      from.unshift(...rest);
     }
-    if (!done || !events?.length) return;
+    if (!done) return false;
+    if (!events?.length) return true;
     to.at(-1)?.meta.set(STEP_EVENTS, events);
     const targets = [...new Set(events.flatMap((e) => e.targets ?? []))];
     this.appendLog([{ type: `core.${kind}`, text: `${kind === 'undo' ? 'undid' : 'redid'}: ${events.map((e) => e.text).join('; ')}`, targets }]);
+    return true;
   }
 
   // ------------------------------------------------------------ selection (local, not shared)

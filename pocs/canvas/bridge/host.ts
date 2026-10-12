@@ -113,11 +113,7 @@ export class Host {
 
   undo(actor: Actor, redo = false): boolean {
     const seat = this.seat(actor);
-    const um = seat.store.undoManager;
-    const n = (redo ? um.redoStack : um.undoStack).length;
-    if (redo) seat.store.redo();
-    else seat.store.undo();
-    return (redo ? um.redoStack : um.undoStack).length < n;
+    return redo ? seat.store.redo() : seat.store.undo();
   }
 
   /**
