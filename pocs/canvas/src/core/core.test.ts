@@ -219,7 +219,7 @@ describe('edge changes', () => {
     expect(s.doc.edges).toEqual([{ id: 'e', fromNode: 'a', toNode: 'b', label: 'Go' }]);
     s.dispatch('t.edges', [{ op: 'edge', edge: { id: 'e', fromNode: 'a', toNode: 'b', label: 'Next' } }]);
     expect(s.doc.edges[0].label).toBe('Next');
-    s.dispatch('t.edges', [{ op: 'delEdge', id: 'e' }]);
+    s.dispatch('t.edges', [{ op: 'unedge', id: 'e' }]);
     expect(s.doc.edges).toEqual([]);
     s.undo();
     expect(s.doc.edges[0].label).toBe('Next');

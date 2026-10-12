@@ -135,7 +135,7 @@ export const commands: Record<string, Command> = {
       events: [{ type: 'page.link', text: `linked ${titleOf(from)} → ${titleOf(to)}${label ? ` (${label})` : ''}`, targets: [from.id, to.id] }],
     };
   },
-  unlink: (doc, a: { edge: string }) => (doc.edges.some((e) => e.id === a?.edge) ? [{ op: 'delEdge', id: a.edge }] : []),
+  unlink: (doc, a: { edge: string }) => (doc.edges.some((e) => e.id === a?.edge) ? [{ op: 'unedge', id: a.edge }] : []),
   /** Make edges for the `data-goto` links in pages (all pages, or `ids`). */
   autoLink: (doc, a: { ids?: string[] }, ctx): CommandResult => {
     const { changes } = autoLinkChanges(doc, Array.isArray(a?.ids) ? a.ids : undefined, ctx.newId);
