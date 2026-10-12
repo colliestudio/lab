@@ -4,14 +4,16 @@
   "version": "0.0.0",
   "type": "module",
   "bin": {
-    "recap": "bin/recap.js"
+    "recap": "bin/recap.js",
+    "artifact": "bin/artifact.js"
   },
   "scripts": {
     "recap": "tsx src/cli.ts",
     "viewer:dev": "vite --config viewer/vite.config.ts",
     "viewer:build": "vite build --config viewer/vite.config.ts",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test 'test/**/*.test.ts'"
+    "test": "node --import tsx --test 'test/**/*.test.ts'",
+    "artifact": "tsx artifact/cli/run.ts"
   },
   "dependencies": {
     "dompurify": "^3.4.16",
@@ -35,5 +37,8 @@
     "typescript": "^7.0.2",
     "vite": "^8.3.2",
     "vite-plugin-singlefile": "^2.3.3"
-  }
+  },
+  "sideEffects": [
+    "*.css"
+  ]
 }
