@@ -39,3 +39,10 @@ export function ageOf(iso: string, asOf?: string): { text: string; days: number 
   const text = m < 1 ? "just now" : m < 60 ? `${Math.round(m)} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`;
   return { text, days: m / 1440 };
 }
+
+/** "12 Oct 2026, 13:18 UTC": a date-time in one stated zone (`timeZone` IANA name, default UTC). */
+export function fmtAsOf(iso: string, timeZone = "UTC"): string {
+  const d = new Date(iso);
+  if (isNaN(+d)) return iso;
+  try { return new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone, timeZoneName: "short" }).format(d); } catch { return iso; }
+}

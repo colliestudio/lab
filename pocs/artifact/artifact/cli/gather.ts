@@ -73,9 +73,26 @@ export function gitLog(repo: string, opts: { since?: string; ref?: string; limit
   return { repo, ref, commits };
 }
 
+export interface BranchRow { branch: string; ahead: number; at: string; subject: string }
+/** Unique commits per branch vs a base: `branches` is a ref glob (`idea/*`), the count is `base..branch`. */
+export function gitBranches(repo: string, glob: string, base: string, exec: Run = run): { repo: string; base: string; branches: BranchRow[] } {
+  const r = resolve(repo);
+  const refs = exec("git", ["-C", r, "for-each-ref", "--format=%(refname:short)%1f%(committerdate:iso-strict)%1f%(contents:subject)", `refs/heads/${glob}`, `refs/remotes/origin/${glob}`]).split("\n").filter(Boolean);
+  const seen = new Set<string>(), branches: BranchRow[] = [];
+  for (const l of refs) {
+    const [name, at, subject] = l.split("\x1f");
+    const branch = name.replace(/^origin\//, "");
+    if (seen.has(branch)) continue;
+    seen.add(branch);
+    const n = Number(exec("git", ["-C", r, "rev-list", "--count", `${base}..${name}`]).trim());
+    branches.push({ branch, ahead: n, at, subject });
+  }
+  return { repo, base, branches: branches.sort((a, b) => b.at.localeCompare(a.at)) };
+}
+
 const list = (v?: string) => (v ?? "").split(",").map((x) => x.trim()).filter(Boolean);
 
-/** `artifact gather <kind> <artifact-dir> [--repos a/b,c/d] [--since ISO|"24 hours ago"] [--workspaces dir,dir] [--repo path] [--ref r] [--name file]` */
+/** `artifact gather <kind> <artifact-dir> [--branches 'idea/*' --base main] [--repos a/b,c/d] [--since ISO|"24 hours ago"] [--workspaces dir,dir] [--repo path] [--ref r] [--name file]` */
 export function gatherCmd(kind: string, dir: string, v: Record<string, string | boolean | undefined>): number {
   const s = (k: string) => (typeof v[k] === "string" ? (v[k] as string) : undefined);
   let data: unknown;
@@ -94,7 +111,10 @@ export function gatherCmd(kind: string, dir: string, v: Record<string, string | 
     }
     case "git-log": {
       if (!s("repo")) { console.error("git-log needs --repo path"); return 2; }
-      data = gitLog(s("repo")!, { since: s("since"), ref: s("ref"), limit: s("limit") ? Number(s("limit")) : undefined });
+      if (s("branches")) {
+        data = gitBranches(s("repo")!, s("branches")!, s("base") ?? "main");
+        if (!s("name")) v = { ...v, name: "git-branches" };
+      } else data = gitLog(s("repo")!, { since: s("since"), ref: s("ref"), limit: s("limit") ? Number(s("limit")) : undefined });
       break;
     }
     default: console.error(`unknown collector ${kind} (gh-prs, board, git-log)`); return 2;

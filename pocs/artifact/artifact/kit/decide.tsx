@@ -158,7 +158,7 @@ export function Gallery({ items, id, layout, hint }: { items: GalleryItem[]; id?
         <div className="a-tiles" role="group" onKeyDown={key}>
           {items.map((it, k) => (
             <button key={k} data-gi className="a-tile" aria-pressed={k === i} onClick={() => setI(k)}>
-              <div className="a-tile-thumb">{it.thumb ? <img src={imageSrc(it.thumb)} alt="" loading="lazy" /> : <span>no image</span>}</div>
+              <div className="a-tile-thumb">{it.thumb ? <img src={imageSrc(it.thumb)} alt="" /> : <span>no image</span>}</div>
               <div className="a-tile-body">
                 <div className="a-tile-head"><b>{it.label}</b>{it.status && <Status s={it.status} />}</div>
                 {it.summary && <div className="a-tile-sum">{it.summary}</div>}

@@ -23,18 +23,21 @@ artifact dev notes/status-1012.artifact        # live reload at http://127.0.0.1
 artifact check notes/status-1012.artifact      # errors: bundle, types, render, missing evidence, size
 artifact build notes/status-1012.artifact -o status.html   # one file, share it
 artifact capture http://127.0.0.1:5211 -o notes/status-1012.artifact/evidence/app.jpg --selector main --wait 800   # screenshot a running app (--steps steps.json for click/fill/press; .jpg is ~4x smaller than .png)
-artifact gather gh-prs notes/status-1012.artifact --repos owner/a,owner/b --since "2026-10-11T00:00:00Z"   # → data/gh-prs.json; also: board --workspaces dirA,dirB; git-log --repo path --ref origin/main --since "24 hours ago"
+artifact gather gh-prs notes/status-1012.artifact --repos owner/a,owner/b --since "2026-10-11T00:00:00Z"   # → data/gh-prs.json; also: board --workspaces dirA,dirB; git-log --repo path --ref origin/main --since "24 hours ago" (or --branches 'idea/*' --base main: unique commits per branch)
 artifact shot notes/status-1012.artifact --theme both --present all   # PNGs in <dir>/.shots/: Read them to see your page
 ```
 
-Run `check` until it says ok, then `shot` and look at the PNGs (both themes; `--present all` for the slides; `--no-chrome` hides the host bar). ``artifact.json` also takes `"depth": 2` (default zoom when you use `<Depth>`) and `"header": "full"` (default is a compact header with one "Sources (n)" button). `summary` in artifact.json is printed large under the title and is slide 1 when presenting: make it your headline and don't repeat it in a Callout. `index.tsx` may define its own components; `import { ... } from "artifact"` for the kit.
+Run `check` until it says ok, then `shot` and look at the PNGs (both themes; `--present all` for the slides; `--no-chrome` hides the host bar). ``artifact.json` also takes `"depth": 2` (**the page opens at that level**: set it for any long page and put detail in `<Depth level={3|4}>`), `"asOf"` (ISO gather time, shown in the header with `"timeZone"`, default UTC), `"repo"` (a local path; `check` then warns about cited commits not on any remote branch) and `"header": "full"`. `audience` is shown as you write it. `summary` is printed large under the title and is slide 1 when presenting: make it your headline, and don't restate it in a Callout (`check` warns). `index.tsx` may define its own components; `import { ... } from "artifact"` for the kit.
 
 ## Taste (guidance, not rules)
+
+The host header and `<Decision>` cards are options, not the default shape: use them when they carry something (a decision that needs an owner), not by habit. `check` also warns (advice only) about long pages, 20+ row tables outside Depth, and present slides empty at step 0.
 
 - **Big picture first.** A reader should get the point from the top screen: one callout or sentence of conclusion, then the sections that let them check it.
 - **Say who it is for** (`audience`) and write to them. A stakeholder wants decisions and risk; a reviewer wants diffs and evidence.
 - **Cite where facts come from** (`<Source>`, header `sources`). Mark what may be out of date (`<Stale>`). Never present a guess as status.
 - **Decisions are explicit**: `<Decision>`/`<Questions>`, with your recommendation and who has to decide.
+- **Keep one time zone** and label it ("15:30 UTC"); don't mix UTC and local.
 - **Don't overload.** Pick the 5 things that matter; put the rest in `<Depth level={4}>` or leave it out. One map beats three tables.
 - Use `<Section>` for every part you want in the outline and in present mode; content outside Sections becomes loose "intro" slides.
 - Prefer real evidence (`<Diff>`, `<Replay>`, screenshots) over describing it. Pick hunks; do not paste whole patches.

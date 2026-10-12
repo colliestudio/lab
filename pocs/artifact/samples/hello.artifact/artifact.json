@@ -4,8 +4,20 @@
   "audience": "Alex, deciding what to build next",
   "summary": "A tour of the kit on one page: where things are, what changed, what needs a decision. Structure is the author's choice; this one reads big picture first, evidence below.",
   "sources": [
-    { "label": "task-5 plan", "kind": "doc", "from": "cs-vault" },
-    { "label": "PR #42 thread", "kind": "thread", "href": "https://example.com/pr/42", "from": "GitHub" }
+    {
+      "label": "task-5 plan",
+      "kind": "doc",
+      "from": "cs-vault"
+    },
+    {
+      "label": "PR #42 thread",
+      "kind": "thread",
+      "href": "https://example.com/pr/42",
+      "from": "GitHub"
+    }
   ],
-  "created": "2026-10-12"
+  "created": "2026-10-12",
+  "asOf": "2026-10-12T13:18:00Z",
+  "timeZone": "UTC",
+  "depth": 3
 }

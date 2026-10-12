@@ -178,7 +178,7 @@ html[data-depth="2"] [data-depth-level="3"], html[data-depth="2"] [data-depth-le
 /* map */
 .a-map { margin: var(--collie-space-150) 0; border: 1px solid var(--a-line); border-radius: var(--a-radius); background: var(--a-soft); padding: var(--collie-space-100); }
 .a-map { position: relative; }
-.a-map-scroll { overflow: auto; text-align: center; max-height: 90vh; } .a-map-scroll.pan { cursor: grab; } .a-map-scroll.pan:active { cursor: grabbing; }
+.a-map-scroll { overflow: auto; text-align: center; max-height: 88vh; } .a-map-scroll.pan { cursor: grab; } .a-map-scroll.pan:active { cursor: grabbing; }
 .a-map-tools { position: absolute; top: 6px; right: 8px; z-index: 2; display: flex; gap: 4px; align-items: center; font-size: 12px; background: color-mix(in srgb, var(--a-soft) 85%, transparent); padding: 2px 4px; border-radius: 6px; }
 .a-map-tools button { font: inherit; font-size: 12px; padding: 1px 7px; border: 1px solid var(--a-line); border-radius: 4px; background: var(--a-card); color: inherit; cursor: pointer; }
 .a-map-tools button[aria-pressed="true"] { border-color: var(--collie-color-border-accent); background: var(--collie-color-accent-subtle); }

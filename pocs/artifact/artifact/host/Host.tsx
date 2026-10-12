@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { meta, type Source as Src } from "../kit/registry.ts";
 import { Badge, Source } from "../kit/layout.tsx";
-import { fmtDate, plural } from "../kit/util.ts";
+import { fmtAsOf, fmtDate, plural } from "../kit/util.ts";
 import { useComments, Composer, CommentsPanel, feedbackMarkdown, anchorFor, findAnchor, type Anchor } from "./comments.tsx";
 import { usePresent } from "./present.ts";
 import { PresentCtx } from "../kit/present.ts";
@@ -162,8 +162,8 @@ export function Host({ children }: { children: ReactNode }) {
           <header className="h-head" data-header={compact ? "compact" : "full"} ref={head}>
             <div className="h-meta">
               {meta.kind && <Badge tone="accent">{meta.kind}</Badge>}
-              {meta.audience && <span>For {meta.audience}</span>}
-              {meta.created && <span>{fmtDate(meta.created)}</span>}
+              {meta.audience && <span title="audience"><span className="a-muted">Audience:</span> {meta.audience}</span>}
+              {meta.asOf ? <span title="gathered at">as of {fmtAsOf(meta.asOf, meta.timeZone)}</span> : meta.created && <span>{fmtDate(meta.created)}</span>}
             </div>
             <h1>{meta.title}</h1>
             {meta.summary && <p className="h-summary">{meta.summary}</p>}

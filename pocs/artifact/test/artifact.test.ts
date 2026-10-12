@@ -455,3 +455,61 @@ test("capture saves a jpg of one element and honours steps", async (t) => {
     assert.equal(bytes[0], 0xff); assert.equal(bytes[1], 0xd8);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+import { advise, unpublishedCommits } from "../artifact/cli/advice.ts";
+import { gitBranches } from "../artifact/cli/gather.ts";
+
+test("check advice: summary repeat, long page, big table, empty slide", async () => {
+  const rows = Array.from({ length: 25 }, (_, i) => ({ name: "row " + i }));
+  const d = fixture(`import { Callout, Section, Step, Table, Depth } from "artifact";
+export default () => <>
+  <Callout>The kit builds artifacts as one HTML file from index tsx and components</Callout>
+  <Section id="a" title="Steps only"><Step><p>hidden at step zero</p></Step></Section>
+  <Section id="b" title="Big"><Table columns={["name"]} rows={${JSON.stringify(rows)}} /></Section>
+  <Section id="c" title="Fine"><Depth level={4}><Table columns={["name"]} rows={${JSON.stringify(rows)}} /></Depth></Section>
+</>;`);
+  writeFileSync(join(d, "artifact.json"), JSON.stringify({ title: "T", kind: "k", audience: "a", summary: "The kit builds artifacts as one HTML file from index tsx and components." }));
+  try {
+    const rep = await check(d, { types: false });
+    assert.deepEqual(rep.errors, []);
+    const w = rep.warnings.join("\n");
+    assert.match(w, /first Callout repeats the summary/);
+    assert.match(w, /slide "Steps only" is empty at step 0/);
+    assert.equal((w.match(/a table with 25 rows/g) ?? []).length, 1, "only the table outside Depth");
+    const long = advise(`<div class="a-content">${"<p>" + "word ".repeat(2600) + "</p>"}</div>`, {});
+    assert.match(long.warnings.join(), /long page/);
+    assert.deepEqual(advise(`<div class="a-content">${"<p>" + "word ".repeat(2600) + "</p>"}</div>`, { depth: 2 }).warnings, []);
+  } finally { cleanup(d); }
+});
+
+test("check advice: commits missing from every remote branch (stubbed git)", () => {
+  const exec = (_c: string, args: string[]) => { if (args.includes("aaaaaaa")) return "  origin/main\n"; return ""; };
+  const bad = unpublishedCommits(`<Source label="c" kind="commit" href="https://x/commit/bbbbbbb" /><Source kind="commit" label="aaaaaaa" />`, { sources: [{ label: "ccccccc", kind: "commit" }] }, "/r", exec);
+  assert.deepEqual(bad.sort(), ["bbbbbbb", "ccccccc"]);
+});
+
+test("gather git-log --branches counts unique commits against a base", () => {
+  const root = mkdtempSync(join(tmpdir(), "art-br-"));
+  try {
+    const g = (...a: string[]) => execFileSync("git", ["-C", root, "-c", "user.name=T", "-c", "user.email=t@t", ...a], { stdio: "pipe" });
+    g("init", "-q", "-b", "main"); writeFileSync(join(root, "f"), "1"); g("add", "."); g("commit", "-q", "-m", "base");
+    for (const [b, n] of [["idea/a", 2], ["idea/b", 1], ["other/c", 3]] as const) {
+      g("checkout", "-q", "-b", b, "main");
+      for (let i = 0; i < n; i++) { writeFileSync(join(root, "f"), b + i); g("commit", "-qam", `${b} ${i}`); }
+    }
+    const r = gitBranches(root, "idea/*", "main");
+    assert.deepEqual(r.branches.map((x) => [x.branch, x.ahead]).sort(), [["idea/a", 2], ["idea/b", 1]]);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("images are eager (inlined data URIs gain nothing from lazy) and as-of is shown in one zone", async () => {
+  const d = fixture(`import { Img } from "artifact"; export default () => <Img src="evidence/shot.png" />;`);
+  try {
+    const s = await renderStatic(d);
+    assert.ok("html" in s);
+    assert.doesNotMatch(s.html, /loading="lazy"/);
+    const { fmtAsOf } = await import("../artifact/kit/util.ts");
+    assert.equal(fmtAsOf("2026-10-12T13:18:00Z"), "12 Oct 2026, 13:18 UTC");
+    assert.match(fmtAsOf("2026-10-12T13:18:00Z", "Asia/Bangkok"), /20:18/);
+  } finally { cleanup(d); }
+});

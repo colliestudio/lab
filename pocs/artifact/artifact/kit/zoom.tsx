@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { imageSrc } from "./registry.ts";
 
 /** An image that opens full size in a lightbox on click (Esc, click or × closes). */
-export function ZoomImg({ src, alt = "", zoom = true, style, className, loading = "lazy" }: {
+export function ZoomImg({ src, alt = "", zoom = true, style, className, loading = "eager" }: {
   src: string; alt?: string; zoom?: boolean; style?: CSSProperties; className?: string; loading?: "lazy" | "eager";
 }) {
   const [open, setOpen] = useState(false);

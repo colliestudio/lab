@@ -66,7 +66,7 @@ export function Map({ nodes, edges = [], groups = [], direction = "auto", focus,
   };
   if (err) return <div className="a-map-err">Map layout failed: {err}</div>;
   if (!both) return <div className="a-map" ref={wrap} style={{ height: 160 }} data-c="map" data-aid={id} />;
-  const maxH = present.active ? vh * 0.62 : height;
+  const maxH = Math.min(present.active ? vh * 0.62 : height, vh * 0.8);
   const scale = (l: Layout) => Math.min((w || 900) / l.w, maxH / l.h, 1);
   const lay = direction === "right" ? both.right : direction === "down" ? both.down
     : scale(both.right) < 0.85 && scale(both.down) > scale(both.right) + 0.1 ? both.down : both.right;

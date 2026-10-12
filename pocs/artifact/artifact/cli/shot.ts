@@ -56,6 +56,14 @@ export async function shot(dir: string, o: ShotOpts = {}): Promise<string[]> {
       // async parts (map layout, diagrams, players) settle
       await page.waitForFunction(() => !document.querySelector(".a-map:not(:has(svg)), .a-flow:has(.a-muted)"), null, { timeout: 8000 }).catch(() => {});
       await page.waitForTimeout(300);
+      // scroll through the page so anything lazy (images, players) loads before the full-page capture
+      await page.evaluate(async () => {
+        const step = Math.max(400, innerHeight - 100);
+        for (let y = 0; y < document.documentElement.scrollHeight; y += step) { scrollTo(0, y); await new Promise((r) => setTimeout(r, 60)); }
+        scrollTo(0, 0);
+        await Promise.all([...document.images].map((i) => (i.complete ? null : new Promise((r) => { i.onload = i.onerror = () => r(null); }))));
+      });
+      await page.waitForTimeout(200);
       if (o.chrome === false) await page.addStyleTag({ content: ".h-bar{display:none!important}" });
       const p = join(out, `${name}-${theme}.png`);
       await page.screenshot({ path: p, fullPage: true });

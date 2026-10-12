@@ -2,6 +2,8 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { advise, unpublishedCommits } from "./advice.ts";
+import { sourceText } from "./evidence.ts";
 import { buildArtifact, findEntry, fmtBytes, formatMessages, renderStatic, repoRoot } from "./build.ts";
 
 // A render that needs the browser (not a bug in the artifact): the error text starts with one of these ReferenceErrors.
@@ -58,6 +60,10 @@ export async function check(dir: string, opts: { types?: boolean } = {}): Promis
       const dup = ids.filter((x, i) => ids.indexOf(x) !== i);
       for (const d of new Set(dup)) rep.errors.push(`duplicate Section id "${d}" (set id= on one of them)`);
       if (!ids.length) rep.warnings.push("no <Section>: the outline and present mode have nothing to walk");
+      for (const w of advise(s.html, meta).warnings) rep.warnings.push(w);
+    }
+    if (meta.repo) {
+      for (const sha of unpublishedCommits(sourceText(dir), meta, meta.repo)) rep.warnings.push(`commit ${sha} is not on any remote branch of ${meta.repo}: a link to it will 404 for others`);
     }
   }
   rep.info.push(`html ${fmtBytes(r.bytes)} (js ${fmtBytes(r.js)}, css ${fmtBytes(r.css)})`);

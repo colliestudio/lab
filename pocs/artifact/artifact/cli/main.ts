@@ -12,7 +12,7 @@ const USAGE = `artifact: agent-written pages (React + a component kit), one self
   artifact new <dir> [--kind k]          scaffold <dir>.artifact with a small example
   artifact capture <url|file.html> -o evidence/x.png|.jpg [--selector css] [--wait ms|css] [--width N] [--height N] [--theme dark] [--full] [--steps steps.json]
                                          screenshot a running app into evidence (jpg is ~4x smaller)
-  artifact gather gh-prs|board|git-log <dir> [options]   write <dir>/data/<kind>.json (see ARTIFACT.md)
+  artifact gather gh-prs|board|git-log <dir> [options]   (git-log --branches 'idea/*' --base main = unique commits per branch)   write <dir>/data/<kind>.json (see ARTIFACT.md)
   artifact dev <dir> [--port N]          live-reload server on 127.0.0.1 (default 4177)
   artifact check <dir>                   bundle + types + render + evidence + size; exit 1 on errors
   artifact build <dir> -o out.html       one HTML file, everything inlined; reports sizes
@@ -24,7 +24,7 @@ export async function main(argv: string[]): Promise<number> {
   const [cmd, ...rest] = argv;
   const { values, positionals } = parseArgs({
     args: rest, allowPositionals: true,
-    options: { kind: { type: "string" }, port: { type: "string" }, host: { type: "string" }, o: { type: "string", short: "o" }, theme: { type: "string" }, present: { type: "string" }, width: { type: "string" }, "no-chrome": { type: "boolean" }, "no-types": { type: "boolean" }, selector: { type: "string" }, wait: { type: "string" }, height: { type: "string" }, full: { type: "boolean" }, steps: { type: "string" }, repos: { type: "string" }, workspaces: { type: "string" }, repo: { type: "string" }, since: { type: "string" }, name: { type: "string" }, limit: { type: "string" }, force: { type: "boolean" } },
+    options: { kind: { type: "string" }, port: { type: "string" }, host: { type: "string" }, o: { type: "string", short: "o" }, theme: { type: "string" }, present: { type: "string" }, width: { type: "string" }, "no-chrome": { type: "boolean" }, "no-types": { type: "boolean" }, selector: { type: "string" }, wait: { type: "string" }, height: { type: "string" }, full: { type: "boolean" }, steps: { type: "string" }, repos: { type: "string" }, workspaces: { type: "string" }, repo: { type: "string" }, branches: { type: "string" }, base: { type: "string" }, since: { type: "string" }, name: { type: "string" }, limit: { type: "string" }, force: { type: "boolean" } },
   });
   const dir = positionals[0];
   if (cmd === "gather" && positionals.length >= 2) return gatherCmd(positionals[0], positionals[1], values as Record<string, string | boolean | undefined>);
