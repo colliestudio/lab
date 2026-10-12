@@ -46,7 +46,7 @@ nohup pnpm exec wrangler dev --config signaling/wrangler.toml --port 5288 --ip 1
 nohup pnpm bridge /tmp/canvas-demos/voice/bridge/t.canvas --port 5285 > /tmp/canvas-demos/voice/bridge.log 2>&1 &   # only for bridge mode
 ```
 
-Two devices (laptop + Mini, or laptop + phone-on-the-same-tunnel is not possible; use two laptops/browsers):
+Two devices (laptop + Mini; a phone cannot use the tunnel):
 1. On the laptop: `ssh -L 5282:localhost:5282 -L 5288:localhost:5288 -L 5285:localhost:5285 <mini>`.
 2. Mini browser: `http://localhost:5282/?room=demo1&signal=ws://localhost:5288`. Laptop browser: the same URL (its localhost is the tunnel). Pick names.
 3. Click **Join voice** on both, allow the microphone. Chips get 🎙; talk: the speaker's chip and cursor label get a green ring. **Mute** turns it to 🔇 on the other side. **Near** + moving cursors apart makes the other person quieter. **Leave voice** ends it.
