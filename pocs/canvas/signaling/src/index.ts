@@ -18,7 +18,7 @@ export interface Env {
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
-    // the sandbox origin: same Worker, chosen by host name (see ideas/sandbox-origin.md)
+    // the sandbox origin: same Worker, chosen by host name (see ideas/prototype.md § Security model)
     const sandbox = sandboxResponse(url, env);
     if (sandbox) return sandbox;
     if (req.headers.get('Upgrade') !== 'websocket') {
