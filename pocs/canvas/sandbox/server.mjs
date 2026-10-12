@@ -53,7 +53,11 @@ function handler(req, res) {
 // both loopback families: *.localhost may resolve to either
 for (const addr of ['127.0.0.1', '::1']) {
   const s = http.createServer(handler);
-  s.on('error', (e) => console.error(`[sandbox] ${addr}: ${e.message}`));
+  // a port in use must fail loudly: `pnpm dev` (concurrently -k) then stops instead of the app using whatever holds the port
+  s.on('error', (e) => {
+    console.error(`[sandbox] ${addr}: ${e.message}`);
+    if (e.code === 'EADDRINUSE') process.exit(1);
+  });
   s.listen(port, addr);
 }
 if (sink) {
