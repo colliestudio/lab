@@ -36,7 +36,7 @@ Frames turn a big canvas into named places: a frame is a titled region whose con
 
 ## Demo
 
-Portal steps (2 portal part, 4–6) need `?portals=1`.
+Steps 4–6 (portals) need `?portals=1`.
 
 1. Open `http://mini.internal:5219/?portals=1`.
 2. Add… → **Frames demo: 3 frames + a portal into a chess room** (without the flag: **Frames demo: 3 frames**). It lands right of what's on the table and seeds the room `frames-demo-chess` on this device.
