@@ -10,20 +10,31 @@ export function usePresent(root: React.RefObject<HTMLElement | null>) {
   const [count, setCount] = useState(0);
   const posRef = useRef(pos); posRef.current = pos;
 
-  const slides = useCallback(() => {
-    const el = root.current;
-    return el ? [...el.querySelectorAll<HTMLElement>("[data-section]")].filter((s) => !s.parentElement?.closest("[data-section]")) : [];
+  // A slide = one top-level Section, or a run of loose elements between Sections (an intro, a closing note).
+  const slides = useCallback((): { els: HTMLElement[]; title: string }[] => {
+    let c = root.current as HTMLElement | null;
+    while (c && c.children.length === 1 && !(c.children[0] as HTMLElement).dataset.section) c = c.children[0] as HTMLElement;
+    if (!c) return [];
+    const out: { els: HTMLElement[]; title: string }[] = [];
+    let loose: HTMLElement[] = [];
+    const flush = () => { if (loose.length) out.push({ els: loose, title: loose.length && out.length === 0 ? "Intro" : "More" }); loose = []; };
+    for (const e of Array.from(c.children) as HTMLElement[]) {
+      if (e.dataset.section) { flush(); out.push({ els: [e], title: e.dataset.title ?? "" }); }
+      else loose.push(e);
+    }
+    flush();
+    return out;
   }, [root]);
-  const stepsOf = (s?: HTMLElement) => (s ? [...s.querySelectorAll<HTMLElement>("[data-step]")] : []);
+  const stepsOf = (s?: { els: HTMLElement[] }) => (s ? s.els.flatMap((e) => (e.hasAttribute("data-step") ? [e] : []).concat([...e.querySelectorAll<HTMLElement>("[data-step]")])) : []);
 
   const apply = useCallback((p: { slide: number; step: number }) => {
     const ss = slides();
+    root.current?.querySelectorAll<HTMLElement>("[data-step]").forEach((st) => st.removeAttribute("data-present-hidden"));
     ss.forEach((s, i) => {
-      s.toggleAttribute("data-present-hidden", i !== p.slide);
+      s.els.forEach((e) => e.toggleAttribute("data-present-hidden", i !== p.slide));
       if (i === p.slide) stepsOf(s).forEach((st, j) => st.toggleAttribute("data-present-hidden", j >= p.step));
     });
-    root.current?.querySelectorAll<HTMLElement>("[data-step]").forEach((st) => { if (!ss[p.slide]?.contains(st)) st.removeAttribute("data-present-hidden"); });
-    ss[p.slide]?.scrollIntoView({ block: "start" });
+    ss[p.slide]?.els[0]?.scrollIntoView({ block: "start" });
     setCount(ss.length);
   }, [root, slides]);
 
@@ -61,6 +72,6 @@ export function usePresent(root: React.RefObject<HTMLElement | null>) {
     return () => removeEventListener("keydown", k);
   }, [active, go, stop]);
 
-  const title = slides()[pos.slide]?.dataset.title ?? "";
+  const title = active ? slides()[pos.slide]?.title ?? "" : "";
   return { active, start, stop, next: () => go(1), prev: () => go(-1), label: active ? `${pos.slide + 1}/${count} ${title}` : "" };
 }
