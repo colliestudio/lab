@@ -8,6 +8,11 @@ export interface CommandCtx {
   random(): number;
   /** Clock for log entries (ms epoch); default Date.now. */
   now?(): number;
+  /**
+   * Who runs this command (set by `dispatch` from `Store.actor`): lets a plugin enforce seats, e.g.
+   * only the player seated as white moves white. Absent when nobody is known (tests, repairs).
+   */
+  actor?: LogActor | null;
 }
 
 export interface CommandResult {
@@ -45,8 +50,6 @@ export function newId(): string {
 
 export const defaultCtx: CommandCtx = { newId, random: Math.random };
 
-/** Origin of transactions made by this client's own commands (undo tracks only these). */
-const LOCAL = Symbol('local');
 /** Origin of whole-document loads (file open, new table): not undoable. */
 const LOAD = Symbol('load');
 /** Origin of local commands that can't be undone (a game clock: time doesn't go back). */
@@ -57,6 +60,10 @@ const LOG = Symbol('log');
 const REPAIR = Symbol('repair');
 /** Undo stack item meta: the public texts / targets of the events logged in that step. */
 const STEP_EVENTS = 'events';
+/** Undo stack item meta: ids of the nodes the step changed (for `undoGuards`). */
+const STEP_IDS = 'ids';
+/** Undo stack item meta: the step restores a whole table (reset), whatever it touched. */
+const STEP_WHOLE = 'whole';
 type StepEvent = { text: string; targets?: string[] };
 
 type YNode = Y.Map<unknown>;
@@ -107,6 +114,15 @@ export class Store {
    * (deterministic, idempotent) and leave alone what another player is in the middle of (a drag).
    */
   readonly repairs: Command<{ ids: string[]; undo: boolean }>[] = [];
+  /**
+   * A plugin can guard nodes it keeps consistent itself (a chess game: undoing one side's move after
+   * the other replied leaves the game fields wrong). Return the reason (shown to the player) for a
+   * guarded node. An undo whose top step changed only guarded nodes skips that step and goes on to
+   * the one below; `core.reset` is always undone whole.
+   */
+  readonly undoGuards: ((id: string, doc: DocView) => string | undefined)[] = [];
+  /** Told why an undo/redo was refused (the app shows it). */
+  onUndoRefused?: (reason: string) => void;
   /** Commands that upgrade older docs in place; run (not undoable) after every load. Must be idempotent. */
   readonly migrations: Command[] = [];
   selection: ReadonlySet<string> = new Set();
@@ -120,6 +136,11 @@ export class Store {
   private touched = new Set<string>();
 
   ctx: CommandCtx;
+  /**
+   * Origin of transactions made by this store's own commands (undo tracks only these). Per store, so
+   * several stores can share one Y.Doc with separate undo histories (the bridge: one per agent).
+   */
+  private readonly local = Symbol('local');
 
   constructor(opts: { ydoc?: Y.Doc; ctx?: CommandCtx } = {}) {
     this.ctx = opts.ctx ?? defaultCtx;
@@ -130,7 +151,7 @@ export class Store {
     this.log = this.ydoc.getArray('log');
     // captureTimeout: we decide grouping ourselves (each dispatch = one undo step unless merged)
     this.undoManager = new Y.UndoManager([this.nodes, this.edges], {
-      trackedOrigins: new Set([LOCAL]),
+      trackedOrigins: new Set([this.local]),
       captureTimeout: Number.MAX_SAFE_INTEGER,
     });
     // observers run before afterTransaction: drop the plain copies of nodes that changed
@@ -233,7 +254,7 @@ export class Store {
     if (!cmd) return fail(`unknown command: ${name}`);
     let res: CommandResult;
     try {
-      const r = cmd(this.doc, args, this.ctx);
+      const r = cmd(this.doc, args, { ...this.ctx, actor: this.actor() });
       res = Array.isArray(r) ? { changes: r } : r;
     } catch (e) {
       return fail(`${name}: ${(e as Error).message}`);
@@ -249,6 +270,15 @@ export class Store {
     // the undo step this dispatch made (or joined), if it made one
     const item = this.undoManager.undoStack.at(-1);
     const step = opts.undoable !== false && res.changes.length > 0 && !!item && (item !== top || merge) ? item : undefined;
+    if (item && opts.undoable !== false && res.changes.length > 0 && (item !== top || merge)) {
+      const ids = new Set((item.meta.get(STEP_IDS) as string[] | undefined) ?? []);
+      for (const c of res.changes) {
+        if (c.op === 'add') ids.add(c.node.id);
+        else if (c.op === 'set' || c.op === 'del') ids.add(c.id);
+      }
+      item.meta.set(STEP_IDS, [...ids]);
+    }
+    if (name === 'core.reset' && item && (item !== top || merge)) item.meta.set(STEP_WHOLE, true);
     if (res.events) this.record(res.events, step);
     if (res.select) this.select(res.select);
     return { ...res, ok: true };
@@ -291,7 +321,7 @@ export class Store {
   }
 
   /** Apply changes in one local (undoable) transaction. */
-  apply(changes: readonly Change[], origin: unknown = LOCAL) {
+  apply(changes: readonly Change[], origin: unknown = this.local) {
     if (!changes.length) return;
     this.ydoc.transact(() => {
       for (const c of changes) this.applyOne(c);
@@ -419,17 +449,51 @@ export class Store {
    * Undo / redo my last step. A step that logged events logs "undid: …" / "redid: …" (public texts),
    * so the log keeps telling what happened; the original entries stay.
    */
-  undo() {
-    this.step('undo');
+  undo(): boolean {
+    return this.step('undo');
   }
-  redo() {
-    this.step('redo');
+  redo(): boolean {
+    return this.step('redo');
   }
-  private step(kind: 'undo' | 'redo') {
+  /**
+   * Why a step is not undoable (see `undoGuards`), if it is. Only a step whose every changed node is
+   * guarded counts: a step that also changed other things (a table reset) is restored as a whole.
+   */
+  private guardedStep(item: { meta: Map<string, unknown> } | undefined): string | undefined {
+    const ids = item?.meta.get(STEP_IDS) as string[] | undefined;
+    if (!ids?.length || item?.meta.get(STEP_WHOLE)) return;
+    let why: string | undefined;
+    for (const id of ids) {
+      const w = this.undoGuards.map((g) => g(id, this.doc)).find(Boolean);
+      if (!w) return;
+      why ??= w;
+    }
+    return why;
+  }
+  /** Why the next undo/redo would skip the top step, if it would. */
+  undoBlocked(kind: 'undo' | 'redo' = 'undo'): string | undefined {
+    return this.guardedStep((kind === 'undo' ? this.undoManager.undoStack : this.undoManager.redoStack).at(-1));
+  }
+  /**
+   * Undoes exactly the top step. Yjs would pop on until a step changes something, so a step whose
+   * edits another player overwrote would be dropped silently and the one before it undone instead:
+   * hide the rest of the stack, and report false when the top step had nothing left to revert.
+   */
+  private step(kind: 'undo' | 'redo'): boolean {
     const um = this.undoManager;
     const [from, to] = kind === 'undo' ? [um.undoStack, um.redoStack] : [um.redoStack, um.undoStack];
+    // Steps a plugin guards are skipped (dropped from this history), so they don't block the ones below.
+    let skipped: string | undefined;
+    for (let top = from.at(-1), why = this.guardedStep(top); top && why; top = from.at(-1), why = this.guardedStep(top)) {
+      skipped ??= why;
+      from.pop();
+    }
+    if (skipped) this.onUndoRefused?.(skipped);
+    if (!from.length) return false;
     const events = from.at(-1)?.meta.get(STEP_EVENTS) as StepEvent[] | undefined;
+    const stepIds = from.at(-1)?.meta.get(STEP_IDS);
     let done = false;
+    const rest = from.splice(0, Math.max(from.length - 1, 0));
     // The undo and its repairs in one transaction: one update for the other players (they never see
     // the half-restored state and repair it their own way) and one step on the redo (undo) stack.
     try {
@@ -448,11 +512,15 @@ export class Store {
     } finally {
       um.undoing = false;
       um.redoing = false;
+      from.unshift(...rest);
     }
-    if (!done || !events?.length) return;
+    if (!done) return false;
+    if (stepIds) to.at(-1)?.meta.set(STEP_IDS, stepIds);
+    if (!events?.length) return true;
     to.at(-1)?.meta.set(STEP_EVENTS, events);
     const targets = [...new Set(events.flatMap((e) => e.targets ?? []))];
     this.appendLog([{ type: `core.${kind}`, text: `${kind === 'undo' ? 'undid' : 'redid'}: ${events.map((e) => e.text).join('; ')}`, targets }]);
+    return true;
   }
 
   // ------------------------------------------------------------ selection (local, not shared)

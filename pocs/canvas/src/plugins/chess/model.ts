@@ -37,6 +37,31 @@ export interface BoardField {
   /** Last move, highlighted on the board. */
   from?: string;
   to?: string;
+  // Game fields (rules mode, see game.ts). Without `rules` the board is free play: no turns, no checks.
+  /** Moves must be legal and alternate; pieces bounce back from illegal drops. */
+  rules?: boolean;
+  turn?: Color;
+  /** Subset of "KQkq". */
+  castling?: string;
+  /** En passant target square. */
+  ep?: string;
+  /** Half-moves since a capture or pawn move (fifty-move rule); full move number. */
+  half?: number;
+  full?: number;
+  /** The game so far, in SAN. */
+  moves?: string[];
+  /** FEN the moves start from, when the game did not start from the standard position (rules turned on mid-game). */
+  start?: string;
+  /** "1-0", "0-1", "1/2-1/2" once the game is over, and why ("checkmate", "resigned"…). */
+  result?: string;
+  end?: string;
+  /** Who plays which color (a person, an agent, a bot). Empty seat: anyone may move that color. */
+  white?: SeatField;
+  black?: SeatField;
+}
+export interface SeatField {
+  id: string;
+  name: string;
 }
 
 const NAMES: Record<Kind, string> = { K: 'king', Q: 'queen', R: 'rook', B: 'bishop', N: 'knight', P: 'pawn' };

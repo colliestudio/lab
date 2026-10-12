@@ -1,5 +1,5 @@
 import './style.css';
-import { App, joinRoom, loadPlayer, mountLog, mountZoomControl, savePlayer, openFile, parse, persistLocally, persistViewport, resetFileHandle, roomDbName, saveFile, type CanvasDoc } from './core';
+import { App, joinBridge, joinRoom, loadPlayer, mountChat, mountLog, mountZoomControl, savePlayer, openFile, parse, persistLocally, persistViewport, resetFileHandle, roomDbName, saveFile, type CanvasDoc } from './core';
 import { copyText, createRoomFrom, mountRoomStatus, roomFromUrl, roomLink } from './share';
 import { askName } from './nameDialog';
 import { cardsPlugin, handLabelOf, newHandEntries, newHandFor } from './plugins/cards';
@@ -7,12 +7,14 @@ import { chessPlugin } from './plugins/chess';
 import { clockPlugin } from './plugins/clock';
 import { battleLinePlugin } from './plugins/battleline';
 import { matsPlugin } from './plugins/mats';
-import { prototypePlugin } from './plugins/prototype';
+import { boardPlugin } from './plugins/board';
 import { stormPlugin } from './plugins/eventstorm';
+import { prototypePlugin } from './plugins/prototype';
 import { mountHelp, removeHelpNote } from './help';
 import { attachFollow, createFramesPlugin, portalsEnabled, enterUrl, mountBreadcrumb, trailFromUrl } from './plugins/frames';
 
-const ROOM = roomFromUrl();
+const BRIDGE = new URLSearchParams(location.search).get('bridge');
+const ROOM = BRIDGE ? null : roomFromUrl();
 const DB_NAME = ROOM ? roomDbName(ROOM) : 'canvas-poc';
 // per room: a room entered through a portal must not open at the camera of the table you came from
 const VIEW_KEY = ROOM ? `canvas-poc:view:${ROOM}` : 'canvas-poc:view';
@@ -29,8 +31,9 @@ app.use(chessPlugin);
 app.use(clockPlugin);
 app.use(battleLinePlugin);
 app.use(matsPlugin);
-app.use(prototypePlugin);
+app.use(boardPlugin);
 app.use(stormPlugin);
+app.use(prototypePlugin);
 // last: its rider rule (frame membership) must come after the others (a piece rides its board, the board its frame)
 const TRAIL = trailFromUrl();
 const frames = createFramesPlugin({ room: ROOM, portals: portalsEnabled(), enter: (room) => (location.href = enterUrl(room, ROOM, TRAIL)) });
@@ -135,7 +138,7 @@ const helpBtn = document.createElement('button');
 helpBtn.textContent = '?';
 helpBtn.title = 'Controls (?)';
 helpBtn.className = 'help-btn';
-if (!ROOM) {
+if (!ROOM && !BRIDGE) {
   const share = document.createElement('button');
   share.textContent = 'Share';
   share.title = 'Play together: copy this table into a new room and copy its link';
@@ -185,7 +188,8 @@ window.addEventListener('drop', async (e) => {
 });
 
 const view = persistViewport(app, VIEW_KEY);
-persistLocally(app, DB_NAME).then(({ empty }) => {
+if (BRIDGE) startBridge(BRIDGE);
+else persistLocally(app, DB_NAME).then(({ empty }) => {
   if (!ROOM) {
     if (empty) newTable();
     else if (view) app.viewport.set(view.x, view.y, view.zoom);
@@ -216,6 +220,7 @@ persistLocally(app, DB_NAME).then(({ empty }) => {
     },
     () => void rename(),
   );
+  mountChat(app, bar, ROOM);
   if (!stored.named) void rename(true);
   const shared = sessionStorage.getItem('canvas-poc:shared');
   sessionStorage.removeItem('canvas-poc:shared');
@@ -235,6 +240,33 @@ persistLocally(app, DB_NAME).then(({ empty }) => {
     flash('Joined the table');
   });
 });
+
+/** Bridge mode (?bridge=ws://host:5222): the table is a .canvas file a bridge process hosts; agents join it. */
+function startBridge(url: string) {
+  const stored = loadPlayer();
+  const room = joinBridge(app, url, { id: stored.id, name: stored.name, color: stored.color });
+  (window as any).room = room;
+  mountRoomStatus(
+    app,
+    room,
+    bar,
+    () => {
+      room.leave();
+      location.href = location.pathname;
+    },
+    async () => {
+      const choice = await askName(room.presence.me, { title: 'Your name and color', action: 'Save' });
+      if (choice) room.presence.setMe(savePlayer(choice));
+    },
+  );
+  mountChat(app, bar, url);
+  flash(`Connecting to the bridge at ${url}…`);
+  room.synced.then(() => {
+    app.store.undoManager.clear();
+    app.view.fit();
+    flash('Connected: this table is the bridge’s .canvas file');
+  });
+}
 
 // for poking at it from the console
 (window as any).app = app;
