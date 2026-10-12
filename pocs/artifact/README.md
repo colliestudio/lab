@@ -3,6 +3,10 @@
 Visual reviews (`.review`, after a change) and plans (`.plan`, before one) that an agent writes and a person zooms through: headline, change map, areas, annotated code, embedded Collie Demo recordings.
 Collie Studio lab prototype (task-1): local-only, format `collie-doc/0`, CLI `recap` (both names are placeholders).
 
+## Artifact kit (task-5, replaces the fixed format going forward)
+
+Agent-written React pages with a component kit, built into one HTML file: `bin/artifact.js new|dev|check|build`, kit in `artifact/kit/`, host chrome in `artifact/host/`, guide `skill/ARTIFACT.md`, example `samples/hello.artifact`. The `recap` code below keeps working, not extended.
+
 ## Quickstart
 
 ```sh

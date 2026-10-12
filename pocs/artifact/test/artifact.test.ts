@@ -203,3 +203,30 @@ test("map layout (kit): no edge outside, no label on a node", async () => {
   }
   assert.ok(!existsSync("/nonexistent"));
 });
+
+test("index.mdx: Markdown with kit components and evidence", async () => {
+  const d = fixture("");
+  rmSync(join(d, "index.tsx"));
+  writeFileSync(join(d, "index.mdx"), `import { Section, Callout, Diff } from "artifact";
+
+<Section title="Notes">
+
+Some **markdown** with a list:
+
+- one
+- two
+
+<Callout tone="warn">watch out</Callout>
+
+<Diff patch="evidence/c.patch" file="src/a.ts" />
+
+</Section>
+`);
+  try {
+    const r = await buildArtifact(d);
+    assert.deepEqual(r.errors.map((e) => e.text), []);
+    assert.match(r.html, /newLineAlpha/);
+    const s = await renderStatic(d);
+    assert.ok("html" in s && /<strong>markdown<\/strong>/.test(s.html) && s.html.includes("watch out"), JSON.stringify(s).slice(0, 300));
+  } finally { cleanup(d); }
+});

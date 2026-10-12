@@ -1,6 +1,7 @@
 // The artifact build: esbuild bundles index.tsx + the kit + the host into one IIFE, evidence and data come in as a
 // virtual module, and everything is inlined into a single HTML file.
 import * as esbuild from "esbuild";
+import mdx from "@mdx-js/esbuild";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -80,7 +81,7 @@ const options = (dir: string, state: { dir: string }, o: BuildOpts): esbuild.Bui
   nodePaths: [join(repoRoot, "node_modules")],
   define: { "process.env.NODE_ENV": JSON.stringify(o.dev ? "development" : "production") },
   loader: { ...Object.fromEntries(Object.keys(IMAGE_MIME).map((e) => [e, "dataurl"])), ".md": "text", ".txt": "text" },
-  plugins: [plugin(state as never)],
+  plugins: [mdx({ jsxImportSource: "react" }), plugin(state as never)],
   legalComments: "none",
 });
 
