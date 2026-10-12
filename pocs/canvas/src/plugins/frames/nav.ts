@@ -13,13 +13,15 @@ export function trailFromUrl(loc: Pick<Location, 'search'> = location): string[]
   return v ? v.split(',').filter(valid).slice(-12) : [];
 }
 
-/** URL of `room` (or the solo table for `~`), carrying `trail`. Keeps `?signal=`. */
+/** URL of `room` (or the solo table for `~`), carrying `trail`. Keeps `?signal=` and `?portals=1`. */
 export function roomUrl(room: string, trail: string[], loc: Pick<Location, 'href' | 'search'> = location): string {
   const u = new URL(loc.href);
-  const signal = new URLSearchParams(loc.search).get('signal');
+  const q = new URLSearchParams(loc.search);
+  const signal = q.get('signal');
   u.search = '';
   if (room !== SOLO) u.searchParams.set('room', room);
   if (signal) u.searchParams.set('signal', signal);
+  if (q.get('portals') === '1') u.searchParams.set('portals', '1');
   if (trail.length) u.searchParams.set('via', trail.join(','));
   return u.toString();
 }

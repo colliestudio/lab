@@ -105,6 +105,28 @@ describe('portals flag', () => {
   });
 });
 
+describe('outline panel', () => {
+  it('hidden while the table has no frames, shown once one exists; fold state is remembered', () => {
+    localStorage.removeItem('canvas-poc:outline-folded');
+    const { app } = setup();
+    app.store.load({ nodes: [{ id: 't', type: 'text', text: 'x', x: 0, y: 0, width: 100, height: 50 }], edges: [] });
+    return new Promise<void>((done) => {
+      const panel = document.querySelector('.fr-outline')!;
+      requestAnimationFrame(() => {
+        expect(panel.classList.contains('fr-none')).toBe(true);
+        app.dispatch('frames.create', { x: 0, y: 0 });
+        requestAnimationFrame(() => {
+          expect(panel.classList.contains('fr-none')).toBe(false);
+          panel.querySelector<HTMLElement>('.fr-ol-fold')!.click();
+          expect(localStorage.getItem('canvas-poc:outline-folded')).toBe('1');
+          localStorage.removeItem('canvas-poc:outline-folded');
+          done();
+        });
+      });
+    });
+  });
+});
+
 describe('slide order stays put', () => {
   const press = (target: Element) => target.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
   it('pressing a frame title writes the order down, so dragging it cannot reshuffle the slides', () => {

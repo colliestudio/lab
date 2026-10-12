@@ -24,21 +24,12 @@ export interface FramesOptions {
   portals?: boolean;
 }
 
-const PORTALS_KEY = 'canvas-poc:portals';
 /**
- * The portals flag for this browser: `?portals=1` turns it on (and remembers it, so rooms entered
- * through a portal keep it), `?portals=0` turns it off again.
+ * The portals flag: `?portals=1` in the URL. Not stored: the links that enter a portal or go back
+ * along the breadcrumb carry it (see `roomUrl`), so it lasts for the session's navigation only.
  */
 export function portalsEnabled(): boolean {
-  if (typeof location === 'undefined') return false;
-  try {
-    const q = new URLSearchParams(location.search).get('portals');
-    if (q === '1') localStorage.setItem(PORTALS_KEY, '1');
-    else if (q === '0') localStorage.removeItem(PORTALS_KEY);
-    return localStorage.getItem(PORTALS_KEY) === '1';
-  } catch {
-    return false;
-  }
+  return typeof location !== 'undefined' && new URLSearchParams(location.search).get('portals') === '1';
 }
 
 /**
@@ -309,6 +300,10 @@ export function createFramesPlugin(opts: FramesOptions): Plugin & { portals?: Po
         create: (a) => void seedDemo(a, portalsOn).then((ids) => ids && flyTo(a, boundsOf(a, ids), { pad: 60 })),
       });
 
+      if (portalsOn && typeof document !== 'undefined') {
+        const flag = Object.assign(document.createElement('span'), { className: 'fr-flag', textContent: 'portals on', title: 'Experimental: portals are on for this session (?portals=1)' });
+        document.getElementById('toolbar')?.append(flag);
+      }
       if (typeof document !== 'undefined') mountOutline(app, { portals: portalsOn, go, present: (id) => presenter.start(id), enter: opts.enter, rename, currentRoom: opts.room });
       // for agents and the console: what an outline reader sees
       (app as unknown as { frames?: unknown }).frames = { outline: () => outline(app.doc, { portals: portalsOn }), go: (id: string) => go(app.node(id)), present: (id?: string) => presenter.start(id) };

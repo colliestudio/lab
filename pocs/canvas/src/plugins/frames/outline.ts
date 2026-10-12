@@ -31,15 +31,27 @@ export function mountOutline(app: App, hooks: OutlineHooks) {
   setInsets(app, () => {
     if (document.body.classList.contains('fr-presenting')) return { top: 0, right: 0, bottom: 0, left: 0 };
     const tb = document.getElementById('toolbar')?.getBoundingClientRect();
-    const right = panel.classList.contains('fr-folded') ? 0 : panel.getBoundingClientRect().width + 12;
+    const right = panel.classList.contains('fr-none') || panel.classList.contains('fr-folded') ? 0 : panel.getBoundingClientRect().width + 12;
     return { top: tb ? tb.bottom : 0, right, bottom: 0, left: 0 };
   });
   const list = panel.querySelector<HTMLElement>('.fr-ol-list')!;
   const map = panel.querySelector<HTMLCanvasElement>('.fr-ol-map')!;
   map.style.width = `${MM_W}px`;
   map.style.height = `${MM_H}px`;
+  const FOLD_KEY = 'canvas-poc:outline-folded';
+  const stored = (v?: string) => {
+    try {
+      if (v === undefined) return localStorage.getItem(FOLD_KEY) === '1';
+      if (v) localStorage.setItem(FOLD_KEY, '1');
+      else localStorage.removeItem(FOLD_KEY);
+    } catch {
+      /* private mode: just not remembered */
+    }
+    return false;
+  };
+  panel.classList.toggle('fr-folded', stored());
   const fold = () => {
-    panel.classList.toggle('fr-folded');
+    stored(panel.classList.toggle('fr-folded') ? '1' : '');
     schedule();
   };
   panel.querySelector('.fr-ol-fold')!.addEventListener('click', fold);
@@ -172,7 +184,10 @@ export function mountOutline(app: App, hooks: OutlineHooks) {
     queued = true;
     requestAnimationFrame(() => {
       queued = false;
-      drawList(outline(app.doc, { portals: hooks.portals }));
+      const entries = outline(app.doc, { portals: hooks.portals });
+      // no frames, no panel: cards and chess tables don't need an outline over their content
+      panel.classList.toggle('fr-none', !entries.some((e) => e.kind === 'frame'));
+      drawList(entries);
       drawMap(dragging);
     });
   };

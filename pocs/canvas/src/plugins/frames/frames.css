@@ -362,3 +362,16 @@ body.fr-presenting .fr-follow {
   font-style: normal;
   opacity: 0.5;
 }
+
+.fr-flag {
+  align-self: center;
+  margin: 0 8px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: rgba(190, 140, 255, 0.25);
+  color: #e6d6ff;
+  font-size: 11px;
+}
+.fr-outline.fr-none {
+  display: none;
+}

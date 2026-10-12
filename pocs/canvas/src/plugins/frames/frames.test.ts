@@ -217,6 +217,11 @@ describe('nav', () => {
     expect(roomUrl('~', [], loc)).toBe('http://h:1/?signal=ws%3A%2F%2Fs');
     expect(trailFromUrl({ search: '?via=~,ok-1,<script>,a' })).toEqual(['~', 'ok-1', 'a']);
   });
+  it('the portals flag rides along the links, and only when it is on', () => {
+    const on = { href: 'http://h:1/?portals=1', search: '?portals=1' };
+    expect(enterUrl('b', null, [], on)).toBe('http://h:1/?room=b&portals=1&via=%7E');
+    expect(roomUrl('~', [], loc)).not.toContain('portals');
+  });
 });
 
 describe('presenters from awareness', () => {
