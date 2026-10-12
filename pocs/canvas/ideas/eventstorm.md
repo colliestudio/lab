@@ -19,10 +19,10 @@ An event storming kit built as one plugin on the same "pieces on a table" model 
 
 ## What's built (branch `idea/eventstorm`)
 
-- `src/plugins/eventstorm/`: `model.ts` (kinds, phases, geometry, rider rule), `commands.ts` (pure: createBoard, add, text, kind, settle, tidy, phase, lanes, dots, vote, timer, detach, reset), `markdown.ts`, `render.ts`, `logic.ts` (registers commands, rider rule, reset), `index.ts` (types, keys, inline editor, menus, kit, timer ticker), `storm.css`, `commands.test.ts` (12 tests).
+- `src/plugins/eventstorm/`: `model.ts` (kinds, phases, geometry, rider rule), `commands.ts` (pure: createBoard, add, text, kind, settle, tidy, phase, lanes, dots, vote, timer, detach, reset, repair), `markdown.ts`, `render.ts`, `logic.ts` (registers commands, rider rule, reset, repair), `index.ts` (types, keys, inline editor, menus, kit, timer ticker), `storm.css`, `commands.test.ts` (17 tests).
 - `src/main.ts`: `app.use(stormPlugin)`. `src/help.ts`: an "Event storm" group.
 - Core: **no changes**.
-- Tests: 243 pass in the whole suite (14 are eventstorm's). `pnpm typecheck` clean. Checked in headless Chromium against the dev server on 5213 (keys, typing, Tab chaining, phase snap, drag reorder, attach, votes, timebox, export, undo of create, Esc, fallback of shared keys to cards).
+- Tests: 246 pass in the whole suite (17 are eventstorm's). `pnpm typecheck` clean. Checked in headless Chromium against the dev server on 5213 (keys, typing, Tab chaining, phase snap, drag reorder, attach, votes, timebox, export, undo of create, Esc, fallback of shared keys to cards).
 
 ## Demo
 
@@ -57,7 +57,7 @@ Got in the way / gaps:
 
 ## Fit with the big vision
 
-- **Multiplayer**: all state is synced plain fields; votes per player can't clobber; the phase lives on the board, so the facilitator switches it for everyone; timer uses the clock's skew-tolerant model. Editing is local until commit (others see an empty sticky while you type, the text on Enter; live co-typing would need Y.Text). A `repairs` hook re-packs a board on every peer after a remote change leaves two stickies on one spot (two events added at the same moment); a sticky someone is dragging is left alone.
+- **Multiplayer**: all state is synced plain fields; votes per player can't clobber; the phase lives on the board, so the facilitator switches it for everyone; timer uses the clock's skew-tolerant model. Editing is local until commit (others see an empty sticky while you type, the text on Enter; live co-typing would need Y.Text). A `repairs` hook re-packs a board on every peer after a remote change leaves two events in one column or two attached stickies on one spot (two events added at the same moment, in one lane or two); an event someone is dragging is off its slot, so it never counts.
 - **Agent native**: the Markdown export is the read side (ordered, plain, no coordinates). The write side is already there: an agent can `app.dispatch('storm.add', { board, kind: 'event', after, text })` and the board lays itself out; commands validate args. Next: expose commands + `toMarkdown` as tools (MCP) so an agent can join a workshop as a participant (propose events, flag hotspots, answer "what's missing between X and Y").
 - **Local first / hosting**: everything is in the `.canvas` file; it opens in Obsidian as colored text cards. Git-tracked boards diff badly because positions are stored; the Markdown export could be committed alongside as the reviewable artifact.
 - **Host/secret model and marketplace security**: the plugin needs no secrets, no network, no private state. It overrides shared keys, which is a marketplace concern: a plugin shouldn't be able to silently take another's keys (core-managed key scopes). The privacy model (hiders, private log texts) would fit "silent brainstorm then reveal" without new trust.
@@ -66,6 +66,7 @@ Got in the way / gaps:
 
 - `by` is an argument, so the log is only as honest as the caller. Follow-up once the bridge's `CommandCtx.actor` is in poc: take the actor from the context in `logActor` (`commands.ts`) and drop `by` from the log.
 - Peers see an empty sticky while you type (text commits on Enter); live co-typing needs Y.Text.
+- A clash re-pack while someone drags an event moves that event under their pointer; the rest of the drag is offset and the drop can land in the wrong slot (needs a concurrent add mid-drag). Loose stickies on one spot are not separated.
 - Esc on a fresh sticky leaves an empty undo step.
 - Key wrappers (`chainKey`) stay until core has a list per key; no key scopes.
 - Deleting an event deletes its attached stickies; no arrows (policy → command); no MCP tools yet.

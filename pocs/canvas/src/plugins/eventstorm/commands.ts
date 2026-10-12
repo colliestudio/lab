@@ -255,10 +255,12 @@ export const settle: Command<{ ids: string[] }> = (doc, a) => {
 };
 
 /**
- * Repair (core `repairs`) after a remote change: two stickies of one slot (two events added at the
- * same moment, two commands on one event) share a spot, so the board re-packs. Every peer runs it
- * and the pack depends on the doc only. A sticky being dragged by someone else is left alone: it
- * is off any slot until the drop, so it never matches another's spot.
+ * Repair (core `repairs`) after a remote change or an undo/redo: two events in one timeline column
+ * (added at the same moment, even in two lanes) or two attached stickies on one spot (two commands
+ * on one event) re-pack the board. Every peer runs it; the pack depends on the doc only. Counted:
+ * only what the pack places (two loose stickies on one spot would re-pack the board on every remote
+ * change) and events only on a slot (an event someone is dragging is off its slot until the drop).
+ * A clash elsewhere during a drag still re-packs the dragged event.
  */
 export const repair: Command<{ ids: string[]; undo?: boolean }> = (doc, a) => {
   if (!isIds(a?.ids)) return [];
@@ -270,14 +272,15 @@ export const repair: Command<{ ids: string[]; undo?: boolean }> = (doc, a) => {
   const out: Change[] = [];
   for (const b of boards.values()) {
     const seen = new Set<string>();
-    const clash = doc.nodes.filter(isSticky).some((n) => {
-      if (boardOf(doc, n)?.id !== b.id) return false;
-      const key = `${n.x},${n.y}`;
-      const dup = seen.has(key);
+    const clash = (key: string) => {
+      if (seen.has(key)) return true;
       seen.add(key);
-      return dup;
-    });
-    if (clash) out.push(...packBoard(doc, b));
+      return false;
+    };
+    const onSlot = (e: CanvasNode) => (e.x - b.x - PAD) % COL === 0 && e.y === eventY(b, laneAt(b, center(e).y));
+    const events = eventsOn(doc, b.id);
+    const hit = events.some((e) => (onSlot(e) && clash(`${e.x}`)) || attachedTo(doc, e.id).some((s) => clash(`${s.x},${s.y}`)));
+    if (hit) out.push(...packBoard(doc, b));
   }
   return out;
 };

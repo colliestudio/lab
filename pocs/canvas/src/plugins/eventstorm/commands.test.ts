@@ -153,7 +153,8 @@ describe('event storm', () => {
     expect(texts).toContain('Alex renamed domain event “Refund paid” to “Refund done”');
   });
 
-  it('two peers add an event at the same moment: both repair, the slots do not overlap', () => {
+  /** Two synced peers on one board in the timeline phase (lanes as given). */
+  function twoPeers(lanes?: string[]) {
     const da = new Y.Doc();
     const db = new Y.Doc();
     const peer = (ydoc: Y.Doc, seed: string) => {
@@ -164,25 +165,68 @@ describe('event storm', () => {
     };
     const A = peer(da, 'a');
     const B = peer(db, 'b');
-    Y.applyUpdate(db, Y.encodeStateAsUpdate(da));
-    const id = A.dispatch('storm.createBoard', { x: 0, y: 0 }).select![0];
-    Y.applyUpdate(db, Y.encodeStateAsUpdate(da));
+    const id = A.dispatch('storm.createBoard', { x: 0, y: 0, lanes }).select![0];
     A.dispatch('storm.phase', { board: id, phase: 'timeline' });
     Y.applyUpdate(db, Y.encodeStateAsUpdate(da));
+    const sync = () => {
+      Y.applyUpdate(da, Y.encodeStateAsUpdate(db));
+      Y.applyUpdate(db, Y.encodeStateAsUpdate(da));
+    };
+    return { A, B, id, sync };
+  }
+
+  it('two peers add an event at the same moment: both repair, the slots do not overlap', () => {
+    const { A, B, id, sync } = twoPeers();
     A.dispatch('storm.add', { board: id, kind: 'event', text: 'One', by: ALEX });
-    Y.applyUpdate(db, Y.encodeStateAsUpdate(da));
+    sync();
     // offline: each adds an event after "One", then they sync
     const one = eventsOn(A.doc, id)[0].id;
     A.dispatch('storm.add', { board: id, kind: 'event', text: 'From A', after: one, by: ALEX });
     B.dispatch('storm.add', { board: id, kind: 'event', text: 'From B', after: one, by: ALEX });
-    Y.applyUpdate(da, Y.encodeStateAsUpdate(db));
-    Y.applyUpdate(db, Y.encodeStateAsUpdate(da));
+    sync();
     for (const st of [A, B]) {
       const evs = eventsOn(st.doc, id);
       expect(evs).toHaveLength(3);
       expect(new Set(evs.map((e) => `${e.x},${e.y}`)).size).toBe(3);
     }
     expect(eventsOn(A.doc, id).map((e) => e.x)).toEqual(eventsOn(B.doc, id).map((e) => e.x));
+  });
+
+  it('two peers add an event in two lanes at the same moment: one slot each', () => {
+    const { A, B, id, sync } = twoPeers(['Buyer', 'Seller']);
+    const b = A.doc.get(id)!;
+    A.dispatch('storm.add', { board: id, kind: 'event', text: 'One', by: ALEX });
+    sync();
+    const x = slotX(b, 1) + 80;
+    A.dispatch('storm.add', { board: id, kind: 'event', text: 'From A', x, y: eventY(b, 0) + 55, by: ALEX });
+    B.dispatch('storm.add', { board: id, kind: 'event', text: 'From B', x, y: eventY(b, 1) + 55, by: ALEX });
+    sync();
+    for (const st of [A, B]) expect(new Set(eventsOn(st.doc, id).map((e) => e.x)).size).toBe(3);
+  });
+
+  it('repair leaves a remote drag alone while two loose stickies share a spot', () => {
+    const { A, B, id, sync } = twoPeers();
+    const b = A.doc.get(id)!;
+    const e = A.dispatch('storm.add', { board: id, kind: 'event', text: 'One', by: ALEX }).select![0];
+    A.dispatch('storm.add', { board: id, kind: 'hotspot', x: b.x + 600, y: b.y + 150, by: ALEX });
+    A.dispatch('storm.add', { board: id, kind: 'hotspot', x: b.x + 600, y: b.y + 150, by: ALEX });
+    sync();
+    const at = A.doc.get(e)!.x;
+    B.dispatch('core.move', { ids: [e], dx: 37, dy: 0 }); // mid-drag on B
+    sync();
+    expect(A.doc.get(e)!.x).toBe(at + 37);
+    expect(B.doc.get(e)!.x).toBe(at + 37);
+  });
+
+  it('repair leaves an event alone while a remote player drags it over another column', () => {
+    const { A, B, id, sync } = twoPeers();
+    const e = A.dispatch('storm.add', { board: id, kind: 'event', text: 'One', by: ALEX }).select![0];
+    A.dispatch('storm.add', { board: id, kind: 'event', text: 'Two', after: e, by: ALEX });
+    sync();
+    const at = A.doc.get(e)!;
+    B.dispatch('core.move', { ids: [e], dx: COL, dy: 3 }); // mid-drag on B, right over "Two"'s column
+    sync();
+    expect(A.doc.get(e)).toMatchObject({ x: at.x + COL, y: at.y + 3 });
   });
 
   it('timer: start, pause keeps the time left, reset', () => {
