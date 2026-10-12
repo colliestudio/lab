@@ -1,5 +1,5 @@
 import './style.css';
-import { App, joinBridge, joinRoom, loadPlayer, mountLog, mountZoomControl, savePlayer, openFile, parse, persistLocally, persistViewport, resetFileHandle, roomDbName, saveFile, type CanvasDoc } from './core';
+import { App, joinBridge, joinRoom, loadPlayer, mountChat, mountLog, mountZoomControl, savePlayer, openFile, parse, persistLocally, persistViewport, resetFileHandle, roomDbName, saveFile, type CanvasDoc } from './core';
 import { copyText, createRoomFrom, mountRoomStatus, roomFromUrl, roomLink } from './share';
 import { askName } from './nameDialog';
 import { cardsPlugin, handLabelOf, newHandEntries, newHandFor } from './plugins/cards';
@@ -203,6 +203,7 @@ else persistLocally(app, DB_NAME).then(({ empty }) => {
     },
     () => void rename(),
   );
+  mountChat(app, bar, ROOM);
   if (!stored.named) void rename(true);
   const shared = sessionStorage.getItem('canvas-poc:shared');
   sessionStorage.removeItem('canvas-poc:shared');
@@ -241,6 +242,7 @@ function startBridge(url: string) {
       if (choice) room.presence.setMe(savePlayer(choice));
     },
   );
+  mountChat(app, bar, url);
   flash(`Connecting to the bridge at ${url}…`);
   room.synced.then(() => {
     app.store.undoManager.clear();

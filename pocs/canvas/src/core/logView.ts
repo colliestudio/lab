@@ -35,6 +35,15 @@ function animate(box: HTMLElement, cls: string, ms = 700) {
   setTimeout(() => box.classList.remove(cls), ms);
 }
 
+/** Center the view on a node (zoom kept) and pulse it: what a click on a log entry or chat reference does. */
+export function jumpTo(app: App, node: CanvasNode) {
+  const r = app.view.root;
+  const vp = app.viewport;
+  vp.set(r.clientWidth / 2 - (node.x + node.width / 2) * vp.zoom, r.clientHeight / 2 - (node.y + node.height / 2) * vp.zoom, vp.zoom);
+  const box = app.view.boxOf(node.id);
+  if (box) animate(box, 'cv-cue-pulse');
+}
+
 /** Cues + log panel. `parent`: where the panel goes (default: the page). */
 export function mountLog(app: App, parent: HTMLElement = document.body) {
   const store = app.store;
@@ -180,10 +189,7 @@ export function mountLog(app: App, parent: HTMLElement = document.body) {
     const e = li && entries().find((x) => x.id === li.dataset.id);
     const at = e && anchorOf(app, e);
     if (!at) return;
-    const r = app.view.root;
-    vp.set(r.clientWidth / 2 - (at.x + at.width / 2) * vp.zoom, r.clientHeight / 2 - (at.y + at.height / 2) * vp.zoom, vp.zoom);
-    const box = app.view.boxOf(at.id);
-    if (box) animate(box, 'cv-cue-pulse');
+    jumpTo(app, at);
   });
 
   store.log.observe((ev: Y.YArrayEvent<LogEvent>) => {
