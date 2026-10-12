@@ -347,7 +347,7 @@ test("shot saves PNGs of the page and a present slide", async (t) => {
   const d = fixture(`import { Section, Map } from "artifact"; export default () => <><Section title="A"><p>a</p></Section><Section title="B"><Map nodes={Array.from({length: 14}, (_, i) => ({ id: "n" + i, label: "A fairly long node label " + i }))} edges={Array.from({length: 13}, (_, i) => ({ from: "n" + i, to: "n" + (i + 1) }))} direction="right" /></Section></>;`);
   try {
     const out = join(d, "../shots");
-    const paths = await shot(d, { out, themes: ["dark"], present: "0,2" });
+    const paths = await shot(d, { out, themes: ["dark"], present: "1,3" });
     assert.equal(paths.length, 3);
     for (const p of paths) assert.ok(readFileSync(p).subarray(1, 4).toString() === "PNG", p);
   } finally { cleanup(d); }
@@ -653,5 +653,89 @@ test("present mode keeps the full width on wide pages, and captures hide the hos
     assert.ok(paths.length >= 4, paths.join());
     const png = await capture(out, { out: join(d, "../cap.png"), selector: ".a-content" });
     assert.ok(readFileSync(png).length > 100);
+  } finally { cleanup(d); }
+});
+
+import { layoutSegments, posOf, niceTimeTicks, stackLevels, tickLabel } from "../artifact/kit/timescale.ts";
+import { groupCycle } from "../artifact/kit/map-layout.ts";
+
+test("time axis maths: segments with their own scale, breaks, ticks, label levels", () => {
+  const day = 86400e3, t0 = Date.parse("2026-09-01T00:00:00Z"), t1 = t0 + 42 * day, h0 = t1, h1 = t1 + 36 * 3600e3;
+  const segs = layoutSegments([{ from: t0, to: t1 }, { from: h0 + 1, to: h1, weight: 2 }]);
+  assert.ok(segs[0].x1 < segs[1].x0, "a gap between the segments is the break");
+  assert.equal(Math.round(posOf(segs, t0)), 0);
+  assert.equal(Math.round(posOf(segs, h1)), 100);
+  assert.ok(posOf(segs, h0 + 18 * 3600e3) > posOf(segs, t1 - day), "the dense span is stretched");
+  assert.ok(niceTimeTicks(t0, t1).length <= 6 && niceTimeTicks(h0, h1).length >= 3);
+  assert.equal(tickLabel(Date.parse("2026-10-12T13:00:00Z"), 3600e3), "13:00");
+  assert.equal(tickLabel(Date.parse("2026-10-12T13:00:00Z"), 30 * day), "12 Oct");
+  assert.deepEqual(stackLevels([{ x: 0, w: 10 }, { x: 5, w: 10 }, { x: 12, w: 5 }, { x: 40, w: 5 }]), [0, 1, 0, 0]);
+});
+
+test("TimeAxis, usePresentSteps, Chart tone, Code notes by text render", async () => {
+  const d = fixture(`import { TimeAxis, Chart, Code, Section } from "artifact";
+export default () => <Section title="T"><TimeAxis segments={[{ from: "2026-09-01T00:00:00Z", to: "2026-10-12T00:00:00Z", label: "weeks" }, { from: "2026-10-12T00:00:01Z", to: "2026-10-13T12:00:00Z", weight: 2, label: "hours" }]}
+  bands={[{ from: "2026-09-10T00:00:00Z", to: "2026-10-12T08:00:00Z", label: "gap exists", tone: "warn" }]}
+  events={[{ at: "2026-09-01T00:00:00Z", label: "PR 1 merged", lane: "code" }, { at: "2026-10-12T10:00:00Z", label: "orders stuck", lane: "impact", tone: "critical" }, { at: "2026-10-12T10:00:00Z", to: "2026-10-13T00:00:00Z", label: "window", lane: "impact" }]} />
+<Chart data={[{ label: "a", value: 3, tone: "critical" }, { label: "b", value: 5 }]} />
+<Code code={"one\\ntwo needle\\nthree"} notes={{ needle: "found by text" }} /></Section>;`);
+  try {
+    const s = await renderStatic(d);
+    assert.ok("html" in s, JSON.stringify(s));
+    assert.match(s.html, /gap exists/); assert.match(s.html, /a-ta-break/); assert.match(s.html, /PR 1 merged/);
+    assert.match(s.html, /fill="var\(--collie-color-critical-solid\)"/);
+    assert.match(s.html, /a-note[^>]*>found by text/);
+    assert.equal(groupCycle({ groups: [{ id: "g", label: "G" }, { id: "h", label: "H" }], nodes: [{ id: "a", label: "A", group: "g" }, { id: "b", label: "B", group: "h" }], edges: [{ from: "a", to: "b" }, { from: "b", to: "a" }] }), true);
+    assert.equal(groupCycle({ groups: [], nodes: [{ id: "a", label: "A" }, { id: "b", label: "B" }], edges: [{ from: "a", to: "b" }, { from: "b", to: "a" }] }), false);
+  } finally { cleanup(d); }
+});
+
+test("findChrome scans a playwright cache for chromium-* / headless shell builds; --help prints usage", async () => {
+  const { findChrome } = await import("../artifact/cli/shot.ts");
+  const base = mkdtempSync(join(tmpdir(), "art-pw-"));
+  mkdirSync(join(base, "chromium_headless_shell-9001/chrome-headless-shell-linux64"), { recursive: true });
+  writeFileSync(join(base, "chromium_headless_shell-9001/chrome-headless-shell-linux64/chrome-headless-shell"), "");
+  mkdirSync(join(base, "chromium-9000/chrome-linux"), { recursive: true });
+  writeFileSync(join(base, "chromium-9000/chrome-linux/chrome"), "");
+  const keep = { b: process.env.PLAYWRIGHT_BROWSERS_PATH, c: process.env.ARTIFACT_CHROME };
+  process.env.PLAYWRIGHT_BROWSERS_PATH = base; delete process.env.ARTIFACT_CHROME;
+  const log = console.log; let usage = ""; console.log = (x: string) => { usage += x; };
+  try {
+    assert.match(await findChrome(), /chromium_headless_shell-9001\/.*chrome-headless-shell$/);
+    assert.equal(await main(["shot", "--help"]), 0);
+    assert.match(usage, /--split/);
+  } finally {
+    console.log = log;
+    if (keep.b === undefined) delete process.env.PLAYWRIGHT_BROWSERS_PATH; else process.env.PLAYWRIGHT_BROWSERS_PATH = keep.b;
+    if (keep.c) process.env.ARTIFACT_CHROME = keep.c;
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test("usePresentSteps registers steps; shot --split cuts the page into viewport-sized PNGs", async (t) => {
+  const { shot, findChrome } = await import("../artifact/cli/shot.ts");
+  let exe: string;
+  try { exe = await findChrome(); } catch { return t.skip("no Chromium available"); }
+  const { chromium } = await import("playwright-core");
+  const d = fixture(`import { Section, usePresentSteps } from "artifact";
+function Walk() { const { step, markers } = usePresentSteps(3); return <div id="walk">{markers}<b id="n">step {step}</b></div>; }
+export default () => <><Section title="One"><Walk /></Section><Section title="Two"><div style={{ height: 2400 }}>tall</div></Section></>;`);
+  const out = join(d, "../s.html");
+  try {
+    writeFileSync(out, (await buildArtifact(d)).html);
+    const b = await chromium.launch({ executablePath: exe });
+    try {
+      const p = await b.newPage();
+      await p.goto("file://" + out);
+      await p.waitForSelector("#n");
+      assert.equal(await p.locator("#n").innerText(), "step 3", "outside present mode everything is shown");
+      await p.keyboard.press("p"); await p.waitForSelector(".h-present-bar");
+      await p.keyboard.press("ArrowRight");
+      await p.waitForFunction(() => document.getElementById("n")?.textContent === "step 0");
+      await p.keyboard.press("ArrowRight"); await p.keyboard.press("ArrowRight");
+      await p.waitForFunction(() => document.getElementById("n")?.textContent === "step 2");
+    } finally { await b.close(); }
+    const paths = await shot(d, { out: join(d, "../sp"), themes: ["light"], split: true, height: 800, chrome: false });
+    assert.ok(paths.length >= 3 && paths.every((q) => /-p\d+\.png$/.test(q)), paths.join());
   } finally { cleanup(d); }
 });

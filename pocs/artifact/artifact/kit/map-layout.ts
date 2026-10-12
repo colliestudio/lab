@@ -106,6 +106,16 @@ function fasOrder(ids: string[], edges: { from: string; to: string }[]): Map<str
   return new Map([...head, ...tail].map((n, i) => [n, i]));
 }
 
+/** True when the map has groups and an edge runs against the order of the groups (a cycle across groups): ELK lays those out poorly. */
+export function groupCycle(map: DocMap): boolean {
+  if (!map.groups.length) return false;
+  const ids = new Set(map.nodes.map((n) => n.id));
+  const edges = map.edges.filter((e) => ids.has(e.from) && ids.has(e.to) && e.from !== e.to);
+  const back = backEdges(map, edges);
+  const gOf = new Map(map.nodes.map((n) => [n.id, n.group]));
+  return [...back].some((i) => gOf.get(edges[i].from) !== gOf.get(edges[i].to) && (gOf.get(edges[i].from) || gOf.get(edges[i].to)));
+}
+
 /**
  * Edges to hand to ELK reversed so it sees a DAG. Cycles are broken here, group-aware, instead of by ELK: with
  * groups as compound nodes ELK keeps a back edge's ports on the flow sides and routes it around whole groups (often

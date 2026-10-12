@@ -17,13 +17,23 @@ const Html = ({ html }: { html: string }) => <span dangerouslySetInnerHTML={{ __
  */
 export function Code({ code, file, lang, ranges, highlight, title, path, href, notes, start = 1, children, id }: {
   code?: string; file?: string; lang?: string; ranges?: string | [number, number][]; highlight?: string | number[];
-  title?: ReactNode; path?: string; href?: string; notes?: Record<number, ReactNode>; start?: number; children?: string; id?: string;
+  title?: ReactNode; path?: string; href?: string; notes?: Record<number | string, ReactNode>; start?: number; children?: string; id?: string;
 }) {
   const text = (code ?? children ?? (file ? getEvidence(file, "text").text : "")).replace(/\n$/, "");
   const language = lang ?? langOf(path ?? file ?? (typeof title === "string" ? title : undefined));
   const html = useMemo(() => highlightLines(text.split("\n"), language), [text, language]);
   const want = useMemo(() => parseNums(ranges as string), [ranges]);
   const hl = useMemo(() => new Set(parseNums(highlight as string) ?? []), [highlight]);
+  // notes are keyed by line number, or by text: the first line containing the key gets the note
+  const noteAt = useMemo(() => {
+    const out: Record<number, ReactNode> = {};
+    const ls = text.split("\n");
+    for (const [k, v] of Object.entries(notes ?? {})) {
+      if (/^\d+$/.test(k)) out[Number(k)] = v;
+      else { const i = ls.findIndex((l) => l.includes(k)); if (i >= 0) out[start + i] = v; }
+    }
+    return out;
+  }, [notes, text, start]);
   const [wrap, setWrap] = useState(false);
   const long = text.split("\n").some((l) => l.length > 100);
   const shown = html.map((h, i) => ({ h, n: start + i })).filter((l) => !want || want.includes(l.n));
@@ -37,7 +47,7 @@ export function Code({ code, file, lang, ranges, highlight, title, path, href, n
         <Fragment key={l.n}>
           {i > 0 && l.n - shown[i - 1].n > 1 && <span className="a-gap">⋯ {l.n - shown[i - 1].n - 1} lines hidden</span>}
           <span className={cx("a-ln", hl.has(l.n) && "hl")}><span className="n">{l.n}</span><Html html={l.h} /></span>
-          {notes?.[l.n] != null && <span className="a-note">{notes[l.n]}</span>}
+          {noteAt[l.n] != null && <span className="a-note">{noteAt[l.n]}</span>}
         </Fragment>
       ))}</code></pre>
     </figure>
@@ -46,7 +56,19 @@ export function Code({ code, file, lang, ranges, highlight, title, path, href, n
 
 const FOLD = 10, KEEP = 3, MAX = 60;
 
-function FileDiff({ f, hunks, notes }: { f: PatchFile; hunks?: number[]; notes?: Record<number, ReactNode> }) {
+/** Diff notes keyed by new-side line number, or by text (the first added/context line containing it). */
+function resolveDiffNotes(f: PatchFile, raw?: Record<number | string, ReactNode>): Record<number, ReactNode> | undefined {
+  if (!raw) return undefined;
+  const out: Record<number, ReactNode> = {};
+  for (const [k, v] of Object.entries(raw)) {
+    if (/^\d+$/.test(k)) { out[Number(k)] = v; continue; }
+    search: for (const h of f.hunks) { let n = h.newStart; for (const l of h.lines) { if (l.t === "-") continue; if (l.s.includes(k)) { out[n] = v; break search; } n++; } }
+  }
+  return out;
+}
+
+function FileDiff({ f, hunks, notes: rawNotes }: { f: PatchFile; hunks?: number[]; notes?: Record<number | string, ReactNode> }) {
+  const notes = useMemo(() => resolveDiffNotes(f, rawNotes), [f, rawNotes]);
   const [open, setOpen] = useState<Set<string>>(new Set());
   const lang = langOf(f.path);
   const toggle = (k: string) => setOpen((s) => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n; });
@@ -120,7 +142,7 @@ function DRow({ r, notes }: { r: { t: string; old?: number; nw?: number; html: s
  * (1-based), `notes={{12: "why"}}` annotates new-side lines. Parsed at build time; the raw patch is not in the output.
  */
 export function Diff({ patch, file, hunks, notes, wrap = true }: {
-  patch: string | PatchFile[]; file?: string | string[]; hunks?: string | number[]; notes?: Record<number, ReactNode>; wrap?: boolean;
+  patch: string | PatchFile[]; file?: string | string[]; hunks?: string | number[]; notes?: Record<number | string, ReactNode>; wrap?: boolean;
 }) {
   const all = typeof patch === "string" ? getEvidence(patch, "patch").files : patch;
   const want = file == null ? null : Array.isArray(file) ? file : [file];

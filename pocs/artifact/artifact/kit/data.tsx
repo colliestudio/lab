@@ -85,6 +85,7 @@ export function Compare({ items, id, caption }: { items: CompareItem[]; id?: str
   );
 }
 
+const TONE: Record<string, string> = { success: "var(--collie-color-success-solid)", warn: "var(--collie-color-warning-solid)", critical: "var(--collie-color-critical-solid)", accent: "var(--collie-color-accent-solid)", neutral: "var(--collie-color-neutral-solid)" };
 const PAL = ["var(--collie-color-accent-solid)", "var(--collie-color-success-solid)", "var(--collie-color-warning-solid)", "var(--collie-color-critical-solid)", "var(--collie-color-neutral-solid)"];
 
 /**
@@ -92,7 +93,7 @@ const PAL = ["var(--collie-color-accent-solid)", "var(--collie-color-success-sol
  * with kind="line". No axes library: a baseline, gridlines and value labels.
  */
 export function Chart({ data, series, kind = "bar", height = 180, unit = "", id, caption }: {
-  data?: { label: string; value: number }[]; series?: { name: string; points: { label: string; value: number }[] }[];
+  data?: { label: string; value: number; tone?: "success" | "warn" | "critical" | "accent" | "neutral" | string }[]; series?: { name: string; points: { label: string; value: number; tone?: string }[] }[];
   kind?: "bar" | "line"; height?: number; unit?: string; id?: string; caption?: ReactNode;
 }) {
   const ss = series ?? [{ name: "", points: data ?? [] }];
@@ -118,7 +119,7 @@ export function Chart({ data, series, kind = "bar", height = 180, unit = "", id,
         ) : (
           <g key={si} style={{ color: PAL[si % PAL.length] }}>
             {s.points.map((p, i) => (
-              <rect key={i} x={x(i) - (bw * ss.length) / 2 + si * bw} y={y(p.value)} width={bw - 2} height={padT + ih - y(p.value)} rx="3" fill="currentColor">
+              <rect key={i} x={x(i) - (bw * ss.length) / 2 + si * bw} y={y(p.value)} width={bw - 2} height={padT + ih - y(p.value)} rx="3" fill={p.tone ? TONE[p.tone] ?? p.tone : "currentColor"}>
                 <title>{`${p.label}: ${p.value}${unit}`}</title>
               </rect>
             ))}

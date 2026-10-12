@@ -4,7 +4,7 @@ import { homedir, tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { buildArtifact, formatMessages } from "./build.ts";
 
-const NAMES = ["Google Chrome for Testing", "Chromium", "chrome-headless-shell", "chrome"];
+const NAMES = ["Google Chrome for Testing", "Chromium", "chrome-headless-shell", "headless_shell", "chrome"];
 
 function walkFind(dir: string, depth = 0): string[] {
   if (depth > 6 || !existsSync(dir)) return [];
@@ -15,20 +15,22 @@ function walkFind(dir: string, depth = 0): string[] {
   });
 }
 
-/** A Chromium to drive: $ARTIFACT_CHROME, playwright's own, or the newest in the playwright cache. */
+/** A Chromium to drive: $ARTIFACT_CHROME, playwright's own, the newest in a playwright cache (any chromium-* or chromium_headless_shell-*), or one on PATH. */
 export async function findChrome(): Promise<string> {
   if (process.env.ARTIFACT_CHROME) return process.env.ARTIFACT_CHROME;
   const { chromium } = await import("playwright-core");
   try { const p = chromium.executablePath(); if (p && existsSync(p)) return p; } catch { /* not installed for this version */ }
-  for (const base of [process.env.PLAYWRIGHT_BROWSERS_PATH, join(homedir(), "Library/Caches/ms-playwright"), join(homedir(), ".cache/ms-playwright")]) {
-    if (!base || !existsSync(base)) continue;
+  const bases = [process.env.PLAYWRIGHT_BROWSERS_PATH, join(homedir(), "Library/Caches/ms-playwright"), join(homedir(), ".cache/ms-playwright")].filter((b): b is string => !!b);
+  for (const base of bases) {
+    if (!existsSync(base)) continue;
     const dirs = readdirSync(base).filter((d) => /^chromium(_headless_shell)?-\d+/.test(d)).sort((a, b) => Number(b.match(/\d+$/)?.[0]) - Number(a.match(/\d+$/)?.[0]));
     for (const d of dirs) { const f = walkFind(join(base, d))[0]; if (f) return f; }
   }
-  throw new Error("no Chromium found: run `npx playwright-core install chromium` or set ARTIFACT_CHROME=/path/to/chrome");
+  for (const dir of (process.env.PATH ?? "").split(":")) for (const n of ["google-chrome", "chromium", "chromium-browser", "chrome"]) if (dir && existsSync(join(dir, n))) return join(dir, n);
+  throw new Error(`no Chromium found (looked in ${bases.join(", ")} and PATH): run \`npx playwright-core install chromium\` or set ARTIFACT_CHROME=/path/to/chrome`);
 }
 
-export interface ShotOpts { out?: string; themes?: ("light" | "dark")[]; present?: string; width?: number; height?: number; chrome?: boolean }
+export interface ShotOpts { out?: string; themes?: ("light" | "dark")[]; present?: string; width?: number; height?: number; chrome?: boolean; split?: boolean }
 
 /** Writes `<name>-<theme>.png` (full page) and, with `present`, `<name>-<theme>-present-<n>.png` (viewport). Returns the paths. */
 export async function shot(dir: string, o: ShotOpts = {}): Promise<string[]> {
@@ -65,16 +67,28 @@ export async function shot(dir: string, o: ShotOpts = {}): Promise<string[]> {
       });
       await page.waitForTimeout(200);
       await page.addStyleTag({ content: o.chrome === false ? ".h-bar{display:none!important}" : ".h-bar{position:static!important}" });
-      const p = join(out, `${name}-${theme}.png`);
-      await page.screenshot({ path: p, fullPage: true });
-      paths.push(p);
+      if (o.split) {
+        // viewport-sized slices of the full page: each PNG is readable on its own
+        const dims = await page.evaluate(() => ({ h: document.documentElement.scrollHeight, w: document.documentElement.clientWidth }));
+        const sh = o.height ?? 800;
+        for (let y = 0, n = 1; y < dims.h; y += sh, n++) {
+          const p = join(out, `${name}-${theme}-p${n}.png`);
+          await page.screenshot({ path: p, fullPage: true, clip: { x: 0, y, width: dims.w, height: Math.min(sh, dims.h - y) } });
+          paths.push(p);
+        }
+      } else {
+        const p = join(out, `${name}-${theme}.png`);
+        await page.screenshot({ path: p, fullPage: true });
+        paths.push(p);
+      }
       if (o.present != null) {
         await page.reload(); await page.waitForSelector(".a-content"); await page.waitForTimeout(800);
         await page.keyboard.press("p");
         await page.waitForSelector(".h-present-bar");
         const read = () => page.locator(".h-present-bar").evaluate((e) => ({ slide: Number(e.getAttribute("data-slide")), slides: Number(e.getAttribute("data-slides")), step: Number(e.getAttribute("data-step")), steps: Number(e.getAttribute("data-steps")) }));
         const total = (await read()).slides;
-        const want = o.present === "all" ? null : new Set(o.present.split(",").map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n < total));
+        // --present takes the same 1-based numbers the files carry (present-2.png = slide 2)
+        const want = o.present === "all" ? null : new Set(o.present.split(",").map((x) => Number(x) - 1).filter((n) => Number.isInteger(n) && n >= 0 && n < total));
         // walk every state (slide, step) once; a slide's later steps get `-s<k>` suffixes so nothing is skipped
         for (let guard = 0; guard < 500; guard++) {
           const st = await read();

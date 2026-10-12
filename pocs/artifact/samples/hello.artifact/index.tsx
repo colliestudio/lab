@@ -1,6 +1,6 @@
 import {
   Badge, Callout, Card, CardGrid, Img, Chart, Checklist, Code, Compare, Decision, Depth, Diff, Flow, Grid, Lanes, Map, PR, Questions,
-  Replay, Stats, Scorecard, Facts, Actions, RiskMatrix, Gallery, DecisionIndex, Section, Source, Stale, Status, Step, Steps, Table, Tab, Tabs, Timeline, useData,
+  Replay, TimeAxis, Stats, Scorecard, Facts, Actions, RiskMatrix, Gallery, DecisionIndex, Section, Source, Stale, Status, Step, Steps, Table, Tab, Tabs, Timeline, useData,
 } from "artifact";
 
 type Pr = { n: number; title: string; state: string; checks: string; owner: string; stack: [number, number]; href: string };
@@ -69,6 +69,18 @@ export default function Hello() {
           { label: "Before", src: "evidence/before.svg", aside: <p>The fixed viewer.</p> },
           { label: "After", src: "evidence/after.svg", aside: <p>Free-form.</p>, caption: "One at a time, with a detail pane" },
         ]} />
+      </Section>
+
+      <Section id="when" title="When it happened (time axis)">
+        <TimeAxis
+          segments={[{ from: "2026-09-01T00:00:00Z", to: "2026-10-12T00:00:00Z", label: "6 weeks" }, { from: "2026-10-12T00:00:01Z", to: "2026-10-13T12:00:00Z", weight: 2, label: "36 hours" }]}
+          bands={[{ from: "2026-09-12T00:00:00Z", to: "2026-10-12T09:00:00Z", label: "gap exists", tone: "warn" }, { from: "2026-10-12T09:00:00Z", to: "2026-10-13T06:00:00Z", label: "no way out", tone: "critical" }]}
+          events={[
+            { at: "2026-09-01T00:00:00Z", label: "PR 1 merged", lane: "code" }, { at: "2026-09-12T00:00:00Z", label: "PR 2 merged", lane: "code", tone: "warn" },
+            { at: "2026-10-12T08:00:00Z", label: "PR 3 merged", lane: "code", tone: "critical" },
+            { at: "2026-10-12T10:00:00Z", label: "first stuck order", lane: "impact", tone: "critical" }, { at: "2026-10-12T14:00:00Z", to: "2026-10-13T04:00:00Z", label: "orders pile up", lane: "impact", tone: "warn" },
+            { at: "2026-10-13T08:00:00Z", label: "fix ships", lane: "impact", tone: "success" },
+          ]} />
       </Section>
 
       <Section id="map" title="How the pieces fit">
