@@ -18,11 +18,12 @@ import { queryNodes } from './query';
 //  - <dir>/.canvas-bridge/<name>.ystate keeps the Yjs history across restarts (so open tabs and
 //    the restarted bridge agree on identity); delete it any time, the file wins.
 //
-// Usage: tsx bridge/server.ts <file.canvas> [--port 5222]
+// Usage: tsx bridge/server.ts <file.canvas> [--port 5222] [--host 127.0.0.1]
 
 const args = process.argv.slice(2);
 const file = resolve(args.find((a) => !a.startsWith('--')) ?? 'board.canvas');
 const port = Number(args[args.indexOf('--port') + 1]) || Number(process.env.CANVAS_BRIDGE_PORT) || 5222;
+const bindHost = args[args.indexOf('--host') + 1] && args.includes('--host') ? args[args.indexOf('--host') + 1] : '127.0.0.1';
 const stateDir = join(dirname(file), '.canvas-bridge');
 const statePath = join(stateDir, `${basename(file)}.ystate`);
 const IDLE_MS = 3 * 60_000;
@@ -245,6 +246,30 @@ async function api(req: IncomingMessage, res: ServerResponse) {
         return reply(400, { error: (e as Error).message });
       }
     }
+    // chat: say / read / wait as an actor (see ideas/chat.md); the messages live in the doc
+    if (req.method === 'POST' && url.pathname === '/chat/say') {
+      const b = await body(req);
+      const actor = actorOf(b, req);
+      try {
+        const m = host.say(actor, String(b.text ?? ''), b.node ? String(b.node) : undefined);
+        log(`${actor.name}: said ${JSON.stringify(m.text.slice(0, 80))}`);
+        return reply(200, { ok: true, message: m });
+      } catch (e) {
+        return reply(400, { ok: false, error: (e as Error).message });
+      }
+    }
+    if (req.method === 'GET' && url.pathname === '/chat/read') {
+      const q = Object.fromEntries(url.searchParams) as Record<string, string | undefined>;
+      const actor = actorOf({ as: q.as, kind: q.kind }, req);
+      return reply(200, host.readChat(actor, { limit: Number(q.limit) || undefined, onlyNew: q.new === '1' || q.new === 'true' }));
+    }
+    if (req.method === 'GET' && url.pathname === '/chat/wait') {
+      const q = Object.fromEntries(url.searchParams) as Record<string, string | undefined>;
+      const actor = actorOf({ as: q.as, kind: q.kind }, req);
+      const ms = Math.min(Math.max(Number(q.timeout ?? 50), 1), 290) * 1000;
+      const msgs = await host.waitChat(actor, ms);
+      return reply(200, msgs ?? { waiting: true, error: `no new messages after ${ms / 1000}s; wait again` });
+    }
     if (req.method === 'POST' && url.pathname === '/cmd') {
       const b = await body(req);
       const actor = actorOf(b, req);
@@ -258,13 +283,13 @@ async function api(req: IncomingMessage, res: ServerResponse) {
       const done = host.undo(actor, url.pathname === '/redo');
       return reply(200, { ok: done, error: done ? undefined : `nothing to ${url.pathname.slice(1)} for ${actor.name} (each actor undoes only its own steps, while it stays seated)` });
     }
-    reply(404, { error: 'GET /doc /query /log /status /view/<name> /wait/<name>?timeout=S; POST /cmd {as,name,args} /undo {as} /redo {as}' });
+    reply(404, { error: 'GET /doc /query /log /status /view/<name> /wait/<name>?timeout=S /chat/read?new=1&limit=N /chat/wait?timeout=S; POST /chat/say {as,text,node} POST /cmd {as,name,args} /undo {as} /redo {as}' });
   } catch (e) {
     reply(500, { error: (e as Error).message });
   }
 }
 
-http.listen(port, () => log(`canvas bridge: ${file} on http://localhost:${port} (browsers: ?bridge=ws://localhost:${port})`));
+http.listen(port, bindHost, () => log(`canvas bridge: ${file} on http://${bindHost}:${port} (browsers: ?bridge=ws://${bindHost}:${port})`));
 const stop = () => {
   clearTimeout(writeTimer);
   writeOut();

@@ -3,6 +3,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import { client } from './client';
 import { COLORS, gameText, playMove, waitForTurn } from './chess';
+import { chatText } from './chatText';
 import type { GameView } from '../src/plugins/chess/game';
 
 // MCP server: the same operations as the CLI, as tools, so a Claude agent can read the board and
@@ -175,6 +176,40 @@ server.registerTool(
     await cmd('chess.resign', { id });
     return gameText(await c.view<GameView>('chess.state', { board: id }));
   }),
+);
+
+// ---------------------------------------------------------------- chat: talk to the people at the table
+// Messages show in everyone's chat panel under your name (marked as an agent). Mention a player with
+// @Name; point at a node with `node` (clicking the message jumps there).
+
+server.registerTool(
+  'chat_send',
+  {
+    description: 'Say something in the table chat, as a player. Mention people with @Name (or @all). `node` = a node (id or title) the message is about.',
+    inputSchema: { text: z.string(), node: ref.optional() },
+  },
+  tool(async (a: { text: string; node?: string }) => {
+    await c.say(a.text, a.node && (await c.resolve(a.node)));
+    return 'sent';
+  }),
+);
+
+server.registerTool(
+  'chat_read',
+  {
+    description: 'Read the table chat: the last `limit` messages (default 20), or only what is new since you last looked (`only_new`).',
+    inputSchema: { limit: z.number().optional(), only_new: z.boolean().optional() },
+  },
+  tool(async (a: { limit?: number; only_new?: boolean }) => (await chatText(c, await c.chatRead({ limit: a.limit, onlyNew: a.only_new }))) || (a.only_new ? '(nothing new)' : '(no messages)')),
+);
+
+server.registerTool(
+  'chat_wait',
+  {
+    description: 'Block until someone else says something in the table chat, then return the new messages. Returns "nothing new" after timeout_s (default 240); call again. Reply with chat_send.',
+    inputSchema: { timeout_s: z.number().optional() },
+  },
+  tool(async (a: { timeout_s?: number }) => (await chatText(c, await c.chatWait(a.timeout_s ?? 240))) || 'nothing new yet; call chat_wait again'),
 );
 
 await server.connect(new StdioServerTransport());

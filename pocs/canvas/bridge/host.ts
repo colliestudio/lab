@@ -7,6 +7,7 @@ import type { CanvasDoc, CanvasNode, Change } from '../src/core/doc';
 import type { LogActor } from '../src/core/log';
 import { registerBoardLogic } from '../src/plugins/board/logic';
 import { registerChessLogic } from '../src/plugins/chess/logic';
+import { after, chatArray, sendChat, type ChatMessage } from '../src/core/chat';
 import { views, type View } from './views';
 import { describeDiff, diffFile, stableSerialize } from './canonical';
 
@@ -46,6 +47,8 @@ export class Host {
   readonly store: Store;
   private seats = new Map<string, Seat>();
   private seatListeners = new Set<(a: Awareness, joined: boolean) => void>();
+  /** Per actor: the last chat message it has been shown (outlives its seat, so a re-seated agent loses nothing). */
+  private chatSeen = new Map<string, string>();
   /** The file as last written or read: a file edit = its diff from this (3-way merge with the live doc). */
   private base: CanvasDoc | null = null;
 
@@ -154,6 +157,76 @@ export class Host {
       const timer = setTimeout(() => done(undefined), ms);
       const keep = setInterval(() => this.seat(actor), 30_000); // waiting is being at the table
       this.ydoc.on('afterTransaction', check);
+    });
+  }
+
+  // ------------------------------------------------------------ chat
+
+  /** Say something at the table as `actor` (seats it); `node` = a node this is about (the cursor goes there). */
+  say(actor: Actor, text: string, node?: string): ChatMessage {
+    const seat = this.seat(actor);
+    if (node && !this.store.doc.get(node)) throw new Error(`no such node: ${node}`);
+    this.chatCursor(actor); // first contact: what was said before isn't "new" to it
+    const msg = sendChat(this.ydoc, { id: actor.id, name: actor.name, color: actor.color, kind: actor.kind === 'tool' ? 'tool' : 'agent' }, text, { node });
+    if (!msg) throw new Error('nothing to say: the message is empty');
+    if (node) this.point(seat, [node]);
+    return msg;
+  }
+
+  /** The last message the actor has been shown; first contact starts at the end of the chat. */
+  private chatCursor(actor: Actor): string {
+    const all = chatArray(this.ydoc);
+    if (!this.chatSeen.has(actor.id)) this.chatSeen.set(actor.id, all.length ? all.get(all.length - 1).id : ''); // '' = before the first message
+    return this.chatSeen.get(actor.id)!;
+  }
+
+  private markSeen(actor: Actor) {
+    const all = chatArray(this.ydoc);
+    if (all.length) this.chatSeen.set(actor.id, all.get(all.length - 1).id);
+  }
+
+  /** Others' messages since the actor last looked (does not move the cursor). */
+  private chatNew(actor: Actor): ChatMessage[] {
+    const seen = this.chatCursor(actor);
+    return after(chatArray(this.ydoc).toArray(), seen).filter((m) => m.from.id !== actor.id);
+  }
+
+  /**
+   * Read the chat as `actor`: the last `limit` messages, or only the new ones (`onlyNew`). Either
+   * way the actor has now seen everything up to the end (what `waitChat` goes by).
+   */
+  readChat(actor: Actor, opts: { limit?: number; onlyNew?: boolean } = {}): ChatMessage[] {
+    this.seat(actor);
+    const out = opts.onlyNew ? this.chatNew(actor) : chatArray(this.ydoc).toArray().slice(-Math.max(1, opts.limit ?? 20));
+    this.markSeen(actor);
+    return out;
+  }
+
+  /** Resolve with new messages from others (and mark them seen), or undefined after `ms`. */
+  waitChat(actor: Actor, ms: number): Promise<ChatMessage[] | undefined> {
+    this.seat(actor);
+    const first = this.chatNew(actor);
+    if (first.length) {
+      this.markSeen(actor);
+      return Promise.resolve(first);
+    }
+    return new Promise((resolve) => {
+      const arr = chatArray(this.ydoc);
+      const done = (v?: ChatMessage[]) => {
+        clearTimeout(timer);
+        clearInterval(keep);
+        arr.unobserve(check);
+        resolve(v);
+      };
+      const check = () => {
+        const n = this.chatNew(actor);
+        if (!n.length) return;
+        this.markSeen(actor);
+        done(n);
+      };
+      const timer = setTimeout(() => done(undefined), ms);
+      const keep = setInterval(() => this.seat(actor), 30_000);
+      arr.observe(check);
     });
   }
 

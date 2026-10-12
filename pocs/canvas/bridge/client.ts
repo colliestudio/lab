@@ -1,5 +1,6 @@
 import { parse } from '../src/core/io';
 import type { CanvasDoc } from '../src/core/doc';
+import type { ChatMessage } from '../src/core/chat';
 import { resolveNode, type NodeSummary } from './query';
 
 // Thin client for the bridge's HTTP API (used by the CLI and the MCP server). Agents never touch
@@ -16,6 +17,12 @@ export interface Client {
   view<T = any>(name: string, args?: Record<string, string | undefined>): Promise<T>;
   /** Long-poll a view until it's ready (e.g. chess.turn); `{waiting: true}` after `timeoutS`. */
   wait<T = any>(name: string, args?: Record<string, string | undefined>, timeoutS?: number): Promise<T | { waiting: true }>;
+  /** Say something in the table chat; `node` = id of a node it is about. */
+  say(text: string, node?: string): Promise<ChatMessage>;
+  /** Last `limit` messages, or only those since you last looked (`onlyNew`). Either marks everything as seen. */
+  chatRead(opts?: { limit?: number; onlyNew?: boolean }): Promise<ChatMessage[]>;
+  /** Long-poll for new messages from others; `[]` after `timeoutS` with none. */
+  chatWait(timeoutS?: number): Promise<ChatMessage[]>;
   /** Node id for an id or a title (see resolveNode). */
   resolve(ref: string): Promise<string>;
 }
@@ -53,6 +60,16 @@ export function client(opts: { url?: string; as?: string; kind?: 'agent' | 'tool
       const r = await json(`/wait/${name}?${qs({ ...args, as, kind, timeout: String(timeoutS) })}`);
       if (r?.error && !r.waiting) throw new Error(r.error);
       return r;
+    },
+    say: async (text, node) => {
+      const r = await json('/chat/say', { body: { as, kind, text, node } });
+      if (!r.ok) throw new Error(r.error ?? 'failed');
+      return r.message;
+    },
+    chatRead: async (o = {}) => json(`/chat/read?${qs({ as, kind, limit: o.limit ? String(o.limit) : undefined, new: o.onlyNew ? '1' : undefined })}`),
+    chatWait: async (timeoutS = 50) => {
+      const r = await json(`/chat/wait?${qs({ as, kind, timeout: String(timeoutS) })}`);
+      return Array.isArray(r) ? r : [];
     },
     resolve: async (ref) => resolveNode(await (async () => parse(await req('/doc')))(), ref).id,
   };

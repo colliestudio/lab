@@ -3,6 +3,7 @@ import { homedir } from 'node:os';
 import { client } from './client';
 import { parseBacklog } from './backlog';
 import { COLORS, gameText, playMove, runBot, waitForTurn } from './chess';
+import { chatText } from './chatText';
 import type { GameView } from '../src/plugins/chess/game';
 
 // canvas: edit a live canvas from the shell (agents, scripts, people). Talks to the bridge.
@@ -36,6 +37,10 @@ const HELP = `canvas: read and edit a live canvas through the bridge
   bot chess [--color black] [--depth 2] [--delay 600] [--keep]
                                           built-in opponent: sits, waits, moves (as --as, default "Bot")
   chess commands take --board ID when there is more than one board
+
+  chat say TEXT [--node N]                say something in the table chat (@Name mentions; --node = about a node)
+  chat read [-n 20] [--new] [--json]      last messages, or only what's new since you last looked
+  chat wait [--timeout S]                 block until someone else says something (≤290 s), print it
 
   --as NAME     who you are on the board (default $CANVAS_AS or "Claude")
   --bridge URL  default $CANVAS_BRIDGE or http://localhost:5222`;
@@ -154,6 +159,8 @@ async function main() {
       const log = await c.log(1);
       return console.log(r.changed ? log[0]?.text : `backlog: ${input.items.length} tasks, board already up to date`);
     }
+    case 'chat':
+      return chat(params[0], params.slice(1));
     case 'chess':
       return chess(params[0], params.slice(1));
     case 'bot': {
@@ -164,6 +171,30 @@ async function main() {
     }
     default:
       throw new Error(`unknown command: ${command}\n\n${HELP}`);
+  }
+}
+
+async function chat(sub: string | undefined, args: string[]) {
+  const show = async (msgs: Awaited<ReturnType<typeof c.chatRead>>) => (flags.json ? console.log(JSON.stringify(msgs, null, 2)) : msgs.length && console.log(await chatText(c, msgs)));
+  switch (sub) {
+    case 'say': {
+      if (!args.length) throw new Error('chat say TEXT [--node N]');
+      const m = await c.say(args.join(' '), flags.node && (await c.resolve(flags.node)));
+      return console.log(`sent (${m.id})`);
+    }
+    case undefined:
+    case 'read': {
+      const msgs = await c.chatRead({ limit: num('n'), onlyNew: !!flags.new });
+      if (!msgs.length && !flags.json) return console.log(flags.new ? '(nothing new)' : '(no messages)');
+      return show(msgs);
+    }
+    case 'wait': {
+      const msgs = await c.chatWait(num('timeout') ?? 290);
+      if (!msgs.length) throw new Error('timed out: nothing new');
+      return show(msgs);
+    }
+    default:
+      throw new Error(`unknown chat command: ${sub} (say | read | wait)`);
   }
 }
 
