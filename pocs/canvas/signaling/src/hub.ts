@@ -62,6 +62,12 @@ export function relay<C>(conns: Iterable<C>, topicsOf: (c: C) => readonly string
 
 export type RelayRole = 'bridge' | 'peer';
 
+/**
+ * Relay sockets one room accepts, per role. Every bridge frame fans out to every relay socket, so the
+ * caps bound what one frame costs (the runtime already caps a frame at 32 MiB).
+ */
+export const MAX_RELAY: Record<RelayRole, number> = { bridge: 4, peer: 64 };
+
 export function relayRole(url: URL): RelayRole | null {
   const r = url.searchParams.get('relay');
   return r === 'bridge' || r === 'peer' ? r : null;

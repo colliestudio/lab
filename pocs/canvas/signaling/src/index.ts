@@ -1,5 +1,5 @@
 import { DurableObject } from 'cloudflare:workers';
-import { handle, relay, relayRecipients, relayRole, QUERY_AWARENESS, type RelayRole } from './hub';
+import { handle, relay, relayRecipients, relayRole, MAX_RELAY, QUERY_AWARENESS, type RelayRole } from './hub';
 import { sandboxResponse } from './sandbox';
 
 export interface Env {
@@ -44,6 +44,7 @@ export class SignalRoom extends DurableObject<Env> {
 
   async fetch(req: Request): Promise<Response> {
     const role = relayRole(new URL(req.url));
+    if (role && this.ctx.getWebSockets(`relay-${role}`).length >= MAX_RELAY[role]) return new Response('room relay is full\n', { status: 429 });
     const pair = new WebSocketPair();
     this.ctx.acceptWebSocket(pair[1], [role ? `relay-${role}` : 'signal']);
     pair[1].serializeAttachment({ topics: [] as string[] });
