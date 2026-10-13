@@ -63,7 +63,7 @@ Run these on the machine where you work, in the canvas repo (`~/code/canvas`, or
 **1. People are already in a room** (they sent you the room link, or ask you to join "this room"):
 
 ```
-pnpm bridge join 'https://canvas.lab.collie.studio/?room=abc123' /tmp/canvas-demos/room.canvas
+pnpm bridge join 'https://canvas.lab.collie.studio/?room=abc123' /tmp/canvas-demos/room-abc123.canvas
 ```
 
 - It prints `Joined room abc123` and the file path; the toolbar of everyone in the room shows `· bridge`, and the Bridge… dialog lists the agents.

@@ -27,8 +27,13 @@ const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
   return e;
 };
 
-export function agentCommand(roomLink: string, file = '/tmp/canvas-room.canvas') {
-  return `pnpm bridge join '${roomLink}' ${file}`;
+/**
+ * One file per room: the bridge refuses a file that already holds another room's board. The link and
+ * the id come from the page's URL, so both are made shell-safe: people paste this into an agent.
+ */
+export function agentCommand(roomLink: string, roomId: string) {
+  const quoted = `'${roomLink.replace(/'/g, `'\\''`)}'`;
+  return `pnpm bridge join ${quoted} /tmp/canvas-room-${roomId.replace(/[^A-Za-z0-9_-]/g, '_')}.canvas`;
 }
 
 export function openBridgeDialog(ctx: BridgeDialogContext) {
@@ -73,8 +78,8 @@ export function openBridgeDialog(ctx: BridgeDialogContext) {
     const r = ctx.room;
     const s = section('Agents in this room', 'A bridge joins this room as one more player and brings agents in: their cursors, chat and edits show up here for everyone, and it saves the board to a .canvas file.');
     const state = el('p', 'bridge-state');
-    const cmd = el('code', 'bridge-cmd', agentCommand(r.link));
-    s.append(state, el('p', 'bridge-hint', 'Ask your agent to run this in the canvas repo, on the machine it works on:'), cmd, button('Copy command', async () => ctx.notify((await copyText(agentCommand(r.link))) ? 'Command copied' : 'Select the command and copy it')));
+    const cmd = el('code', 'bridge-cmd', agentCommand(r.link, r.id));
+    s.append(state, el('p', 'bridge-hint', 'Ask your agent to run this in the canvas repo, on the machine it works on:'), cmd, button('Copy command', async () => ctx.notify((await copyText(agentCommand(r.link, r.id))) ? 'Command copied' : 'Select the command and copy it')));
     live.push(() => {
       const b = r.bridge();
       const agents = r.agents();
