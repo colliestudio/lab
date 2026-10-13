@@ -42,6 +42,9 @@ describe('guard', () => {
     expect(g.check({ host: 'localhost:5285', 'content-type': 'text/plain' }, 'POST')).toMatch(/json/);
     expect(g.check({ host: 'localhost:5285' }, 'POST')).toMatch(/json/);
     expect(g.check({ host: 'localhost:5285', 'content-type': 'application/jsonp' }, 'POST')).toMatch(/json/);
+    // DELETE has no body (MCP session end); the Origin rule still applies
+    expect(g.check({ host: 'localhost:5285' }, 'DELETE')).toBeUndefined();
+    expect(g.check({ host: 'localhost:5285', origin: 'https://evil.example' }, 'DELETE')).toMatch(/Origin/);
   });
 });
 

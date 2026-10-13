@@ -10,7 +10,8 @@ import type { IncomingHttpHeaders } from 'node:http';
 //  - without an Origin, it isn't a browser's request from another site (an <img> or <script> GET
 //    sends no Origin, but browsers mark it with Sec-Fetch-Site): reads have effects here too (they
 //    seat the actor and mark its chat as read),
-//  - a POST says it is JSON (a cross-site form or a simple fetch cannot).
+//  - a POST says it is JSON (a cross-site form or a simple fetch cannot). DELETE (the MCP session
+//    end) has no body and needs a CORS preflight a browser never gets, so it needs no content type.
 // Reads are guarded too: the chat and the document are private. There are no CORS headers at all:
 // the browser app only uses the WebSocket.
 // `--as NAME` stays unauthenticated: any local process may act under any name.
@@ -49,7 +50,7 @@ export function makeGuard(opts: { port: number; allowOrigins?: string[] }): Guar
       if (origin !== undefined && !origins.includes(origin)) return `Origin ${origin} is not allowed${origin.startsWith('http') ? ` (start the bridge with --allow-origin ${origin})` : ''}`;
       const site = headers['sec-fetch-site'];
       if (origin === undefined && site !== undefined && site !== 'none' && site !== 'same-origin') return `a ${site} browser request without an Origin is not allowed`;
-      if (method !== 'GET' && method !== 'HEAD' && !/^application\/json\s*(;|$)/i.test(headers['content-type'] ?? '')) return 'POST needs content-type: application/json';
+      if (method !== 'GET' && method !== 'HEAD' && method !== 'DELETE' && !/^application\/json\s*(;|$)/i.test(headers['content-type'] ?? '')) return 'POST needs content-type: application/json';
       return undefined;
     },
   };

@@ -45,6 +45,10 @@ for (const target of ['board', B, 'board']) {
   writeFileSync(join(out, name), Buffer.from(img.data, 'base64'));
   console.log(`screenshot ${target}: ${t(performance.now() - t0)} round trip; ${text(r)} → ${name}`);
 }
+await call('chat_send', { canvas: board, text: `smoke test ${tag}: @all the board has two notes`, node: A });
+console.log('chat:', text(await call('chat_read', { canvas: board, limit: 3 })));
+console.log('chat only_new:', text(await call('chat_read', { canvas: board, only_new: true })));
+console.log('chess:', text(await call('chess_state', { canvas: board }).catch((e) => ({ content: [{ type: 'text', text: String(e.message) }] }))).split('\n')[0]);
 console.log(text(await call('canvas_log', { board, limit: 6 })));
 if (process.env.HOLD_MS) await new Promise((r) => setTimeout(r, Number(process.env.HOLD_MS)));
 await c.close();
