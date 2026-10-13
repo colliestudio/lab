@@ -43,6 +43,8 @@ The bridge binds `127.0.0.1` (`--host` to change) and answers only requests a lo
 
 The app is served by vite on another port than the bridge, so its origin must be allowed: `pnpm bridge board.canvas --port 5285 --allow-origin http://localhost:5284` for an app on 5284. Alex opens `http://mini.internal:5284/?bridge=ws://mini.internal:5285`: the dev proxy on the Mini rewrites `mini.internal` to `localhost` in Host and Origin before they reach vite and the bridge, so the bridge sees `localhost:5284` and the flag above is the right one. Without that proxy (a direct URL), allow the origin exactly as the address bar shows it; a refused WebSocket says which origin in the bridge log.
 
+Reaching a bridge from the deployed app, a bridge joining an existing room, one-command sharing and the pairing token: [bridge-ux.md](bridge-ux.md).
+
 ## Demo
 
 From the worktree `~/code/canvas-wt/agent-bridge` (ports are examples; `$APP` and `$BRIDGE` = the vite and bridge ports):

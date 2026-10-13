@@ -86,7 +86,7 @@ export function openBridgeDialog(ctx: BridgeDialogContext) {
   const s = section('Connect to a bridge', ctx.room ? 'Opens its board in this tab and leaves the room.' : 'Paste the address or the link the bridge printed. Opens its board in this tab.');
   const form = el('form', 'bridge-form');
   const input = el('input');
-  input.placeholder = 'wss://….trycloudflare.com  or  localhost:5222';
+  input.placeholder = 'wss://…  or the link the bridge printed';
   input.spellcheck = false;
   input.autocomplete = 'off';
   input.setAttribute('aria-label', 'Bridge address');
