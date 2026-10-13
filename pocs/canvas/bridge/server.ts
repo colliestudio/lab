@@ -207,7 +207,8 @@ host.onSeat((a, joined) => {
 setInterval(() => host.sweep(IDLE_MS), 10_000);
 
 const http = createServer((req, res) => void api(req, res));
-const refuse = (what: string, req: IncomingMessage, why: string) => log(`refused ${what} ${req.url ?? ''}: ${why}`);
+// the query may carry the pairing token: never log it
+const refuse = (what: string, req: IncomingMessage, why: string) => log(`refused ${what} ${(req.url ?? '').replace(/\?.*$/, '')}: ${why}`);
 const info = (req: IncomingMessage) => ({ url: req.url, remote: req.socket.remoteAddress });
 const wss = new WebSocketServer({
   server: http,
@@ -239,6 +240,9 @@ function attach(ws: WebSocket, relay = false) {
     } else if (type === MSG_AWARENESS) {
       awarenessProtocol.applyAwarenessUpdate(awareness, decoding.readVarUint8Array(dec), ws);
     } else if (type === MSG_QUERY_AWARENESS) {
+      // the relay sends this when a browser connects to it: introduce ourselves (our state vector makes
+      // it send everything we lack) and our presence
+      sendStep1(ws);
       sendPresence(ws);
     }
   });
@@ -249,10 +253,7 @@ function attach(ws: WebSocket, relay = false) {
     if (mine?.size) awarenessProtocol.removeAwarenessStates(awareness, [...mine], null);
   });
   // hello: our state vector, everyone's presence (browsers and seated agents)
-  const enc = encoding.createEncoder();
-  encoding.writeVarUint(enc, MSG_SYNC);
-  syncProtocol.writeSyncStep1(enc, host.ydoc);
-  send(ws, encoding.toUint8Array(enc));
+  sendStep1(ws);
   sendPresence(ws);
   if (relay) {
     // and ask the room who is there
@@ -260,6 +261,13 @@ function attach(ws: WebSocket, relay = false) {
     encoding.writeVarUint(q, MSG_QUERY_AWARENESS);
     send(ws, encoding.toUint8Array(q));
   }
+}
+
+function sendStep1(ws: WebSocket) {
+  const enc = encoding.createEncoder();
+  encoding.writeVarUint(enc, MSG_SYNC);
+  syncProtocol.writeSyncStep1(enc, host.ydoc);
+  send(ws, encoding.toUint8Array(enc));
 }
 
 function sendPresence(ws: WebSocket) {

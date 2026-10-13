@@ -269,6 +269,8 @@ function startBridge(url: string) {
   bridgeRoom = room;
   // the token came in the link's fragment: keep it with the address (for next time) and take it out of the URL
   if (location.hash) history.replaceState(null, '', location.pathname + location.search);
+  // pasting a link with a token into a tab already on this bridge only changes the #fragment: connect again with it
+  window.addEventListener('hashchange', () => /token=/.test(location.hash) && location.reload());
   mountRoomStatus(
     app,
     room,
