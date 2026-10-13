@@ -36,7 +36,7 @@ interface Session {
 const SESSION_IDLE_MS = 30 * 60_000;
 
 /** A board's client acting as `actor`, in-process (same interface the CLI uses over HTTP). */
-function localClient(b: BoardFile, actor: Actor): Client {
+export function localClient(b: BoardFile, actor: Actor): Client {
   const store = b.host.store;
   return {
     doc: async () => store.exportDoc(),
