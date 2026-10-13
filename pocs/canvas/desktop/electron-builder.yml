@@ -18,6 +18,7 @@ nodeGypRebuild: false
 electronLanguages: [en]
 mac:
   target: dir
+  icon: assets/icon.icns
   identity: null
   category: public.app-category.productivity
 fileAssociations:
@@ -26,4 +27,5 @@ fileAssociations:
     description: JSON Canvas board
     role: Editor
     rank: Default
+    icon: assets/icon.icns
     mimeType: application/json

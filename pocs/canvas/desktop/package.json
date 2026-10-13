@@ -1,7 +1,7 @@
 {
   "name": "canvas-desktop",
   "private": true,
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Collie Canvas desktop (Electron): the app's back end is the canvas bridge",
   "main": "build/main.cjs",
   "scripts": {
