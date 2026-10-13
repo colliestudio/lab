@@ -101,9 +101,18 @@ export function mountRoomStatus(app: App, room: Room, bar: HTMLElement, onLeave:
     everConnected ||= sig;
     const connecting = !sig && !everConnected && Date.now() - started < 8000;
     const n = room.connectedPeers();
+    const isBridge = room.kind === 'bridge';
+    const b = room.bridge?.() ?? 'none';
     state.dataset.ok = String(sig || connecting);
-    state.textContent = `${room.label ?? `room ${room.id}`} · ${n} peer${n === 1 ? '' : 's'} · ${sig ? 'online' : connecting ? 'connecting…' : 'signaling offline'}`;
-    state.title = sig ? 'Connected to the signaling server' : 'Can’t reach the signaling server: changes stay local and sync when it’s back';
+    const offline = isBridge ? (everConnected ? 'bridge offline, retrying' : 'can’t reach the bridge') : 'signaling offline';
+    state.textContent = `${room.label ?? `room ${room.id}`} · ${isBridge ? `${room.presence.peers().length + 1} here` : `${n} peer${n === 1 ? '' : 's'}`} · ${sig ? 'online' : connecting ? 'connecting…' : offline}${b === 'none' ? '' : b === 'online' ? ' · bridge' : ' · bridge…'}`;
+    state.title = isBridge
+      ? sig
+        ? 'Connected to the bridge'
+        : 'Can’t reach the bridge: check the address and token (Bridge…). Changes made here stay local until it is back'
+      : sig
+        ? b === 'online' ? 'Connected to the signaling server, and to the bridge in this room' : 'Connected to the signaling server'
+        : 'Can’t reach the signaling server: changes stay local and sync when it’s back';
   };
   room.presence.onChange(draw);
   setInterval(draw, 1000);
