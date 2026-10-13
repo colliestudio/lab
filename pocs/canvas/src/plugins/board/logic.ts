@@ -94,6 +94,8 @@ export interface AddArgs {
   near?: string;
   /** Put it at the bottom of this column (group id). */
   column?: string;
+  /** Link only: show the page live inside the node (`x-embed`). */
+  embed?: boolean;
 }
 
 const num = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
@@ -110,6 +112,7 @@ const add: Command<AddArgs> = (doc, a, ctx) => {
   const node: CanvasNode = { id, type, x: Math.round(spot.x), y: Math.round(spot.y), width, height };
   if (type === 'text') node.text = a.text ?? '';
   if (type === 'link') node.url = a.url ?? '';
+  if (type === 'link' && a.embed) node['x-embed'] = true;
   if (type === 'group') node.label = a.label ?? a.text ?? 'Column';
   if (a.color) node.color = a.color;
   // columns go under everything (notes ride on them), the rest on top

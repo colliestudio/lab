@@ -1,0 +1,20 @@
+{
+  "name": "canvas-desktop",
+  "private": true,
+  "version": "0.0.1",
+  "description": "Collie Canvas desktop (Electron): the app's back end is the canvas bridge",
+  "main": "build/main.cjs",
+  "scripts": {
+    "build": "node build.mjs",
+    "start": "node build.mjs && electron .",
+    "dev": "node scripts/dev.mjs",
+    "package": "node build.mjs && electron-builder --dir --mac --arm64",
+    "publish-app": "node scripts/publish.mjs",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "devDependencies": {
+    "electron": "44.7.0",
+    "electron-builder": "26.15.3",
+    "esbuild": "0.28.2"
+  }
+}

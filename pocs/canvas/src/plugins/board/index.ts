@@ -26,6 +26,20 @@ export function noteHtml(text: string): string {
     .join('');
 }
 
+/** A live page in a link node (`x-embed`): sandboxed iframe, view only (pointer events go to the canvas). */
+function renderEmbed(n: CanvasNode, el: HTMLElement, c: string | undefined) {
+  const url = n.url!;
+  let frame = el.querySelector('iframe');
+  if (!frame || frame.getAttribute('src') !== url) {
+    el.innerHTML = `<div class="bd-note bd-embed"><div class="bd-title">🔗 ${esc(url)}</div><iframe sandbox="allow-scripts allow-same-origin allow-forms" referrerpolicy="no-referrer" loading="eager"></iframe></div>`;
+    frame = el.querySelector('iframe')!;
+    frame.src = url;
+  }
+  const box = el.firstChild as HTMLElement;
+  if (c) box.style.setProperty('--bd-color', c);
+  else box.style.removeProperty('--bd-color');
+}
+
 function edit(app: App, n: CanvasNode) {
   if (isColumn(n)) {
     const v = prompt('Column name', n.label ?? '');
@@ -45,6 +59,12 @@ export const boardPlugin: Plugin = {
   id: 'board',
   setup(app) {
     registerBoardLogic(app.store);
+    app.registerType({
+      id: 'board.embed',
+      match: (n) => n.type === 'link' && n['x-embed'] === true && /^https?:\/\//.test(n.url ?? ''),
+      render: (n, el) => renderEmbed(n, el, colorOf(n.color)),
+      onDoubleClick: (n, a) => edit(a, n),
+    });
     app.registerType({
       id: 'board.note',
       match: isNote,

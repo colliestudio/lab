@@ -14,6 +14,8 @@ import { mountHelp, removeHelpNote } from './help';
 import { attachFollow, createFramesPlugin, portalsEnabled, enterUrl, mountBreadcrumb, trailFromUrl } from './plugins/frames';
 
 const BRIDGE = new URLSearchParams(location.search).get('bridge');
+/** Desktop app: a hidden window an agent sees the board through (?agentView=<actor id>): no chrome, no presence of its own, sees what that seat may see. */
+const AGENT_VIEW = BRIDGE ? new URLSearchParams(location.search).get('agentView') : null;
 const ROOM = BRIDGE ? null : roomFromUrl();
 const DB_NAME = ROOM ? roomDbName(ROOM) : 'canvas-poc';
 // per room: a room entered through a portal must not open at the camera of the table you came from
@@ -246,6 +248,13 @@ function startBridge(url: string) {
   const stored = loadPlayer();
   const room = joinBridge(app, url, { id: stored.id, name: stored.name, color: stored.color });
   (window as any).room = room;
+  if (AGENT_VIEW) {
+    app.viewer = AGENT_VIEW;
+    room.presence.awareness.setLocalState(null);
+    document.body.classList.add('agent-view');
+    (window as any).canvasSynced = room.synced;
+    return;
+  }
   mountRoomStatus(
     app,
     room,
