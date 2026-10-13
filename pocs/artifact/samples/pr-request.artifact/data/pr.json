@@ -1,0 +1,77 @@
+{
+ "repo": "example/recap-lab",
+ "n": 16,
+ "title": "Feedback drawer: list scrolls, comments and decision notes editable",
+ "author": "builder",
+ "viewer": "builder",
+ "viewerIsAuthor": true,
+ "state": "open",
+ "base": "main",
+ "head": "task-5-artifact-kit",
+ "href": "https://github.com/example/recap-lab/pull/16",
+ "body": "The drawer's list could not scroll in the bare shell and its comments could not be changed. Make the drawer a fixed-height flex column with one scrolling body, and let readers edit or delete a comment and edit a decision's note or answer.\n\n- `artifact/host/host.css`: the drawer is a flex column; `.h-panel-body` scrolls\n- `artifact/host/comments.tsx`: Edit and Delete on comments, \"Change answer\" on decisions\n- new `test/feedback-drawer.test.ts`\n\nFixes #12. Follows up on example/recap-lab#9.",
+ "additions": 266,
+ "deletions": 20,
+ "files": [
+  {
+   "path": "artifact/host/Host.tsx",
+   "additions": 1,
+   "deletions": 1
+  },
+  {
+   "path": "artifact/host/comments.tsx",
+   "additions": 91,
+   "deletions": 20
+  },
+  {
+   "path": "artifact/host/host.css",
+   "additions": 17,
+   "deletions": 4
+  },
+  {
+   "path": "artifact/kit/feedback.ts",
+   "additions": 2,
+   "deletions": 0
+  },
+  {
+   "path": "test/feedback-drawer.test.ts",
+   "additions": 174,
+   "deletions": 0
+  }
+ ],
+ "commits": [
+  {
+   "sha": "cdfb529",
+   "oid": "cdfb5290f2495132bfacc5b7560e5bb73aa0a53d",
+   "subject": "feedback drawer: list scrolls, comments and decision notes editable (#16)"
+  }
+ ],
+ "comments": [
+  {
+   "id": "ex-1",
+   "author": "alex",
+   "path": "test/feedback-drawer.test.ts",
+   "line": 61,
+   "body": "These fixed waits will flake when the machine is busy.",
+   "at": "2026-10-13T20:10:00Z",
+   "url": "https://github.com/example/recap-lab/pull/16#discussion_r9001"
+  }
+ ],
+ "reviews": [],
+ "url": "https://github.com/example/recap-lab/pull/16",
+ "draft": false,
+ "headSha": "cdfb5290f2495132bfacc5b7560e5bb73aa0a53d",
+ "baseSha": "560e13512ed167fa99c8e2775e25a935b5246f30",
+ "changedFiles": 5,
+ "commitCount": 1,
+ "checks": {
+  "state": "fail",
+  "passed": 2,
+  "failed": 1,
+  "pending": 0,
+  "total": 3,
+  "failing": [
+   "test (node 22)"
+  ]
+ }
+}

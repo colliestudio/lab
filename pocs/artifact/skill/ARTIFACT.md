@@ -114,7 +114,7 @@ Doc shell: outline (toggle for full width). Every shell: theme, **Present** (`p`
 
 ## Guided PR review
 
-`/guided-review <owner/repo#n> [reviewer|requester]` (skill `guided-review`, `skill/guided-review/SKILL.md`): `artifact gather gh-pr <dir> --pr owner/repo#n`, then Verdict, Layers, a code walk, `<ReviewDiff>` and `<ReviewComments>` + `<CopyReview>` (COMPONENTS.md). Sample: `samples/pr-review.artifact`.
+`/guided-review <owner/repo#n> [reviewer|requester]` (skill `guided-review`, `skill/guided-review/SKILL.md`): `artifact gather gh-pr <dir> --pr owner/repo#n`, then `<PrHeader>`, why, context, an optional shape-of-the-change, a code walk, tests, risks, `<Verdict>`, `<ReviewComments>` + `<CopyReview>`, and `<ReviewDiff>` on its own page (COMPONENTS.md); every reference linked via `ghUrl`. Samples: `samples/pr-review.artifact`, `samples/pr-request.artifact`.
 
 ## Limits
 

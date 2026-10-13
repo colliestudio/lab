@@ -1,0 +1,12 @@
+{
+  "title": "Review request: editable comments and answers in the feedback drawer",
+  "kind": "pr-request",
+  "audience": "the reviewer",
+  "summary": "Where to start, what to scrutinize and what was not checked, for a PR that makes the feedback drawer scroll and its comments editable.",
+  "created": "2026-10-14",
+  "sources": [
+    "data/pr.json",
+    "evidence/pr.patch"
+  ],
+  "shell": "page"
+}

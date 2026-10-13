@@ -1,8 +1,8 @@
 {
   "matters": [
-    "The scroll bug is fixed at its root: align-self: start made the fixed drawer as tall as its content (host.css:57).",
-    "A custom store without update() silently reorders comments when one is edited (comments.tsx:149): decide if that is acceptable.",
-    "The new test relies on fixed 250 ms waits, the one thing likely to flake (feedback-drawer.test.ts:61)."
+    "The scroll bug is fixed at its root: align-self: start made the fixed drawer as tall as its content (`artifact/host/host.css:57`).",
+    "A custom store without update() silently reorders comments when one is edited (`artifact/host/comments.tsx:149`): decide if that is acceptable.",
+    "The new test relies on fixed 250 ms waits, the one thing likely to flake (`test/feedback-drawer.test.ts:61`)."
   ],
   "comments": [
     {"id": "c1", "file": "artifact/host/comments.tsx", "line": 149, "severity": "question",

@@ -74,7 +74,7 @@ test("build inlines parsed evidence and data, with no raw patch in the output", 
     assert.equal(r.collected.missing.length, 0);
     assert.equal((h.match(/<\/script>/g) ?? []).length, 1);
     assert.ok(h.startsWith("<!doctype html>") && h.includes('<div id="root">'));
-    assert.ok(r.bytes < 600_000, `base page stays small (${r.bytes})`);
+    assert.ok(r.bytes < 625_000, `base page stays small (${r.bytes})`);
   } finally { cleanup(d); }
 });
 

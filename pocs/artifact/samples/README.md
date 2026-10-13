@@ -9,7 +9,7 @@ Experiences (artifact kit, `artifact build samples/<n>.artifact -o x.html`; the 
 
 - `release-zoom.artifact/`: zoom map, 29 routes from one `pages/[id].tsx`. `release-story.artifact/`: scroll story with a sticky stage and a deep-dive page. `release-launch.artifact/`: bento of cards that open full-screen sheets (`?sheet=`). `release-deck.artifact/`: keynote-style deck with its own present mode, light table and notes. `bare.artifact/`: the minimal bare shell with a few pages.
 
-Guided PR review: `pr-review.artifact/` (reviewer mode; recap-lab commit `cdfb529` as if it were a PR; Verdict, Layers, code walk, full diff page with margin comments, Keep/Edit/Drop and Copy review; see skill/guided-review).
+Guided PR review: `pr-review.artifact/` (reviewer mode; recap-lab commit `cdfb529` as if it were a PR; PR header, why, context, Layers, code walk, verdict, full diff page with margin comments, Keep/Edit/Drop and Copy review, links to GitHub throughout; see skill/guided-review). `pr-request.artifact/`: the same PR in requester mode (file table instead of Layers, before/after, author notes). Links point at an invented `example/recap-lab`.
 
 Other samples:
 
