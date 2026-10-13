@@ -52,3 +52,31 @@ export function relay<C>(conns: Iterable<C>, topicsOf: (c: C) => readonly string
   for (const c of receivers) send(c, out);
   return receivers.length;
 }
+
+// ---- relay: a WebSocket path for peers that cannot do WebRTC (a Node bridge)
+//
+// `/r/<room>?relay=bridge|peer` opens a binary pipe next to the signaling sockets. The Durable Object
+// holds no document: it forwards y-websocket frames (sync, awareness) between a room's bridges and
+// the browsers that chose to reach them. Browsers keep syncing with each other over WebRTC, so a
+// browser's frames go to bridges only, while a bridge's frames go to everyone.
+
+export type RelayRole = 'bridge' | 'peer';
+
+export function relayRole(url: URL): RelayRole | null {
+  const r = url.searchParams.get('relay');
+  return r === 'bridge' || r === 'peer' ? r : null;
+}
+
+/** Who receives a relay frame from `from` (never the sender itself). */
+export function relayRecipients<C>(from: { conn: C; role: RelayRole }, all: Iterable<{ conn: C; role: RelayRole }>): C[] {
+  const out: C[] = [];
+  for (const o of all) {
+    if (o.conn === from.conn) continue;
+    if (from.role === 'peer' && o.role !== 'bridge') continue;
+    out.push(o.conn);
+  }
+  return out;
+}
+
+/** y-websocket "query awareness" frame (message type 3): the receiver answers with its presence. */
+export const QUERY_AWARENESS = new Uint8Array([3]);
