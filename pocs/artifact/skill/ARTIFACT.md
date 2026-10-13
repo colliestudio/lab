@@ -112,6 +112,10 @@ For a batch of decisions when the reader is away from chat: prepare the tree (ea
 
 Doc shell: outline (toggle for full width). Every shell: theme, **Present** (`p`: title slide, then → / ← through Sections and `<Step>`s, ↑/↓ scroll, `#links` jump between slides, a Summary slide when there are decisions), **Feedback** drawer (`c`, also first in the corner menu: click anything or select text; decisions tab; copy as Markdown with element ids), **Download** (the same single HTML file), `?` for shortcuts and fold all.
 
+## Guided PR review
+
+`/guided-review <owner/repo#n> [reviewer|requester]` (skill `guided-review`, `skill/guided-review/SKILL.md`): `artifact gather gh-pr <dir> --pr owner/repo#n`, then Verdict, Layers, a code walk, `<ReviewDiff>` and `<ReviewComments>` + `<CopyReview>` (COMPONENTS.md). Sample: `samples/pr-review.artifact`.
+
 ## Limits
 
 The built file runs your code: fine to open, don't host it for others yet. Output over 5 MB warns, over 25 MB refuses. `check` can't catch errors that occur only in effects: look at `shot` once.

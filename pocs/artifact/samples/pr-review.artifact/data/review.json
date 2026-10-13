@@ -1,0 +1,34 @@
+{
+  "matters": [
+    "The scroll bug is fixed at its root: align-self: start made the fixed drawer as tall as its content (host.css:57).",
+    "A custom store without update() silently reorders comments when one is edited (comments.tsx:149): decide if that is acceptable.",
+    "The new test relies on fixed 250 ms waits, the one thing likely to flake (feedback-drawer.test.ts:61)."
+  ],
+  "comments": [
+    {"id": "c1", "file": "artifact/host/comments.tsx", "line": 149, "severity": "question",
+     "body": "For a custom store without update(), editing is remove + add, so the edited comment jumps to the end of the list while the reader is looking at it. Is that acceptable for old backends, or should makeStore keep the position (insert at the old index)?",
+     "evidence": "Fallback in makeStore; the code comment above it already says the comment moves to the end."},
+    {"id": "c2", "file": "artifact/host/comments.tsx", "line": 163, "severity": "nit",
+     "body": "edit() stamps `edited` even if the text did not change; the guard lives in the one caller (FeedbackPanel). Moving it into edit() keeps future callers safe.",
+     "suggestion": "edit: (id: string, body: string) => { const c = store.list().find((x) => x.id === id); if (!c || c.body.trim() === body.trim()) return; store.update(id, { body, edited: new Date().toISOString() }); setList(store.list()); },"},
+    {"id": "c3", "file": "test/feedback-drawer.test.ts", "line": 61, "severity": "should-fix", "dupOf": "ex-1",
+     "body": "After each wheel and key press the test waits a fixed 250 ms and then reads scrollTop. Under load the scroll has not happened yet and the test fails (it is already the suite's known flaky one). Wait for the condition instead (waitForFunction on scrollTop changing).",
+     "evidence": "Lines 60-73 use the same pattern four times."},
+    {"id": "c4", "file": "artifact/host/host.css", "line": 57, "severity": "praise",
+     "body": "Good find and a good comment: naming align-self: start as the cause (Chrome applies it to absolutely positioned boxes) means nobody puts it back."},
+    {"id": "c5", "file": "artifact/host/comments.tsx", "range": [176, 180], "severity": "question",
+     "body": "answer() marks an answer `edited` when the choice, label, custom text or note differs. Decision.save passes the old note along, so a plain re-pick of the same option is not an edit, correct? A test for that case (same choice twice) would pin it down."}
+  ],
+  "layers": [
+    {"id": "drawer", "title": "Drawer UI", "role": "what the reader clicks", "changed": true, "what": "Edit and Delete on comments; Add note and Change answer on decisions; an inline editor with Save (cmd+enter) and Cancel (Esc); one scrolling list body under a fixed header.", "files": ["host/comments.tsx"], "anchor": "walk-drawer"},
+    {"id": "wiring", "title": "Host wiring", "role": "connects the drawer to state", "changed": true, "what": "One prop: onEditNote.", "files": ["host/Host.tsx"]},
+    {"id": "state", "title": "Hooks", "role": "React state over the stores", "changed": true, "what": "useComments.edit; useAnswerState stamps `edited` when an answer really changed and adds editNote.", "files": ["host/comments.tsx"], "anchor": "walk-state"},
+    {"id": "store", "title": "Store interface", "role": "where feedback lives", "changed": true, "what": "CommentStore.update and AnswerStore.updateAnswer; a custom backend without them falls back to remove + add.", "files": ["host/comments.tsx"], "anchor": "walk-store"},
+    {"id": "types", "title": "Types", "role": "the shared shapes", "changed": true, "what": "Comment.edited, Answer.edited.", "files": ["kit/feedback.ts"]},
+    {"id": "decision", "title": "Decision component", "role": "renders and records an answer", "changed": false, "affected": "it still answers through ctx.answer, so re-picking an option goes through the new `edited` stamping.", "files": ["kit/decision.tsx"]}
+  ],
+  "flows": [
+    {"from": "drawer", "to": "state", "label": "edit(id, text) / editNote(id, note)", "before": "delete and re-add by hand", "after": "edit in place"},
+    {"from": "state", "to": "store", "label": "update(id, patch) / updateAnswer(id, patch)", "before": "add, remove, setAnswer only", "after": "partial updates; fallback for old backends"}
+  ]
+}

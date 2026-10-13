@@ -3,6 +3,7 @@ import { highlightLines } from "./highlight.ts";
 import { getEvidence, type PatchFile } from "./registry.ts";
 import { cx, parseNums } from "./util.ts";
 import { Heavy } from "./layout.tsx";
+import { ReviewDiff, type ReviewComment, type AuthorNote } from "./review.tsx";
 
 const LANG: Record<string, string> = {
   go: "go", ts: "typescript", tsx: "typescript", js: "javascript", jsx: "javascript", mjs: "javascript", json: "json",
@@ -145,9 +146,12 @@ function DRow({ r, notes }: { r: { t: string; old?: number; nw?: number; html: s
  * A diff from evidence: `patch="evidence/x.patch"`; `file` (path or suffix, or an array) picks files, `hunks="1,3"` picks hunks
  * (1-based), `notes={{12: "why"}}` annotates new-side lines. Parsed at build time; the raw patch is not in the output.
  */
-export function Diff({ patch, file, hunks, notes, wrap = true, collapsed }: {
+export function Diff({ patch, file, hunks, notes, wrap = true, collapsed, comments, authorNotes }: {
   patch: string | PatchFile[]; file?: string | string[]; hunks?: string | number[]; notes?: Record<number | string, ReactNode>; wrap?: boolean; collapsed?: boolean;
+  /** margin mode: ReviewComments (and `authorNotes`) shown in a right-hand margin next to their lines, as in `<ReviewDiff>` */
+  comments?: ReviewComment[]; authorNotes?: AuthorNote[];
 }) {
+  if (comments || authorNotes) return <ReviewDiff patch={patch} file={file} comments={comments} notes={authorNotes} />;
   const all = typeof patch === "string" ? getEvidence(patch, "patch").files : patch;
   const want = file == null ? null : Array.isArray(file) ? file : [file];
   const files = want ? all.filter((f) => want.some((w) => f.path === w || f.path.endsWith("/" + w))) : all;

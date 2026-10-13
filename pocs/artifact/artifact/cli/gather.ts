@@ -90,6 +90,39 @@ export function gitBranches(repo: string, glob: string, base: string, exec: Run 
   return { repo, base, branches: branches.sort((a, b) => b.at.localeCompare(a.at)) };
 }
 
+export interface PrData {
+  repo: string; n: number; title: string; body: string; author?: string; viewer?: string; viewerIsAuthor: boolean; state: string; base: string; head: string; href: string;
+  additions: number; deletions: number; files: { path: string; additions: number; deletions: number }[]; commits: { sha: string; subject: string }[];
+  /** inline review comments already on the PR (so a review can mark repeats) */
+  comments: { id: string; author?: string; path: string; line?: number; body: string; at?: string; replyTo?: string }[];
+  reviews: { author?: string; state: string; body: string }[]; gatheredAt: string;
+}
+/** `owner/repo#12` or a PR URL. */
+export function parsePrRef(ref: string): { repo: string; n: number } {
+  const m = ref.match(/^([\w.-]+\/[\w.-]+)#(\d+)$/) ?? ref.match(/github\.com\/([\w.-]+\/[\w.-]+)\/pull\/(\d+)/);
+  if (!m) throw new Error(`not a PR reference: ${ref} (use owner/repo#12 or the PR URL)`);
+  return { repo: m[1], n: Number(m[2]) };
+}
+/** A PR in one step (read-only gh calls): metadata, files, commits, existing review comments, and the unified patch. */
+export function ghPr(ref: string, exec: Run = run): { data: PrData; patch: string } {
+  const { repo, n } = parsePrRef(ref);
+  const v = JSON.parse(exec("gh", ["pr", "view", String(n), "-R", repo, "--json", "title,body,author,state,baseRefName,headRefName,url,additions,deletions,files,commits,reviews"]));
+  const raw = JSON.parse(exec("gh", ["api", `repos/${repo}/pulls/${n}/comments`, "--paginate"]) || "[]") as { id: number; user?: { login: string }; path: string; line?: number; original_line?: number; body: string; created_at?: string; in_reply_to_id?: number }[];
+  let viewer: string | undefined;
+  try { viewer = exec("gh", ["api", "user", "--jq", ".login"]).trim() || undefined; } catch { /* not logged in as a user */ }
+  const patch = exec("gh", ["pr", "diff", String(n), "-R", repo]);
+  const data: PrData = {
+    repo, n, title: v.title, body: v.body ?? "", author: v.author?.login, viewer, viewerIsAuthor: !!viewer && viewer === v.author?.login, state: String(v.state).toLowerCase(),
+    base: v.baseRefName, head: v.headRefName, href: v.url, additions: v.additions, deletions: v.deletions,
+    files: (v.files ?? []).map((f: { path: string; additions: number; deletions: number }) => ({ path: f.path, additions: f.additions, deletions: f.deletions })),
+    commits: (v.commits ?? []).map((c: { oid: string; messageHeadline: string }) => ({ sha: c.oid.slice(0, 7), subject: c.messageHeadline })),
+    comments: raw.map((c) => ({ id: String(c.id), author: c.user?.login, path: c.path, line: c.line ?? c.original_line, body: c.body, at: c.created_at, ...(c.in_reply_to_id ? { replyTo: String(c.in_reply_to_id) } : {}) })),
+    reviews: (v.reviews ?? []).map((r: { author?: { login: string }; state: string; body: string }) => ({ author: r.author?.login, state: r.state.toLowerCase(), body: r.body })),
+    gatheredAt: new Date().toISOString(),
+  };
+  return { data, patch };
+}
+
 /** `--fields a,b` keeps only those keys of every object in a list; `--count` replaces every list of objects by its length. */
 export function trim(v: unknown, o: { fields?: string[]; count?: boolean }): unknown {
   if (Array.isArray(v)) {
@@ -105,7 +138,7 @@ export function trim(v: unknown, o: { fields?: string[]; count?: boolean }): unk
 
 const list = (v?: string) => (v ?? "").split(",").map((x) => x.trim()).filter(Boolean);
 
-/** `artifact gather <kind> <artifact-dir> [--branches 'idea/*' --base main] [--repos a/b,c/d] [--since ISO|"24 hours ago"] [--workspaces dir,dir] [--repo path] [--ref r] [--name file]` */
+/** `artifact gather <kind> <artifact-dir> [--pr owner/repo#12] [--branches 'idea/*' --base main] [--repos a/b,c/d] [--since ISO|"24 hours ago"] [--workspaces dir,dir] [--repo path] [--ref r] [--name file]` */
 export function gatherCmd(kind: string, dir: string, v: Record<string, string | boolean | undefined>): number {
   const s = (k: string) => (typeof v[k] === "string" ? (v[k] as string) : undefined);
   let data: unknown;
@@ -130,7 +163,17 @@ export function gatherCmd(kind: string, dir: string, v: Record<string, string | 
       } else data = gitLog(s("repo")!, { since: s("since"), ref: s("ref"), limit: s("limit") ? Number(s("limit")) : undefined });
       break;
     }
-    default: console.error(`unknown collector ${kind} (gh-prs, board, git-log)`); return 2;
+    case "gh-pr": {
+      if (!s("pr")) { console.error("gh-pr needs --pr owner/repo#12 (or the PR URL)"); return 2; }
+      const { data: pr, patch } = ghPr(s("pr")!);
+      const root = resolve(dir);
+      mkdirSync(join(root, "data"), { recursive: true }); mkdirSync(join(root, "evidence"), { recursive: true });
+      writeFileSync(join(root, "data", "pr.json"), JSON.stringify(pr, null, 1) + "\n");
+      writeFileSync(join(root, "evidence", "pr.patch"), patch);
+      console.log(`${join(root, "data/pr.json")}\n${join(root, "evidence/pr.patch")}  (${pr.files.length} files, ${pr.comments.length} existing comments, author ${pr.author}${pr.viewerIsAuthor ? " = you: requester mode" : ""})`);
+      return 0;
+    }
+    default: console.error(`unknown collector ${kind} (gh-prs, gh-pr, board, git-log)`); return 2;
   }
   if (s("fields") || v.count) data = trim(data, { fields: list(s("fields")), count: !!v.count });
   const out = join(resolve(dir), "data", `${s("name") ?? kind}.json`);

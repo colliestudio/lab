@@ -1,0 +1,18 @@
+{
+  "repo": "recap-lab", "n": 16, "title": "Feedback drawer: list scrolls, comments and decision notes editable", "author": "builder", "viewer": "reviewer", "viewerIsAuthor": false,
+  "state": "open", "base": "main", "head": "task-5-artifact-kit", "href": "local commit cdfb529",
+  "body": "The drawer's list could not scroll in the bare shell and its comments could not be changed. Make the drawer a fixed-height flex column with one scrolling body, and let readers edit or delete a comment and edit a decision's note or answer.",
+  "additions": 266, "deletions": 20,
+  "files": [
+    {"path": "artifact/host/Host.tsx", "additions": 1, "deletions": 1},
+    {"path": "artifact/host/comments.tsx", "additions": 91, "deletions": 20},
+    {"path": "artifact/host/host.css", "additions": 17, "deletions": 4},
+    {"path": "artifact/kit/feedback.ts", "additions": 2, "deletions": 0},
+    {"path": "test/feedback-drawer.test.ts", "additions": 174, "deletions": 0}
+  ],
+  "commits": [{"sha": "cdfb529", "subject": "task-5: feedback drawer: list scrolls, comments and decision notes editable"}],
+  "comments": [
+    {"id": "ex-1", "author": "alex", "path": "test/feedback-drawer.test.ts", "line": 61, "body": "These fixed waits will flake when the machine is busy.", "at": "2026-10-13T20:10:00Z"}
+  ],
+  "reviews": []
+}

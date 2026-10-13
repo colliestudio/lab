@@ -1,0 +1,9 @@
+{
+  "title": "Review: editable comments and answers in the feedback drawer",
+  "kind": "pr-review",
+  "audience": "the author, and you as reviewer",
+  "summary": "Approve with comments: edit and delete work end to end and the scroll bug has a real root-cause fix; two questions and one flaky-test risk to settle first.",
+  "created": "2026-10-14",
+  "sources": ["data/pr.json", "evidence/pr.patch"],
+  "shell": "page"
+}

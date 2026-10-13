@@ -19,3 +19,4 @@ export { openFeedback, download, startPresent, toggleTheme, usePresentControl } 
 export { Replay } from "./replay.tsx";
 export { useData, meta, imageSrc } from "./registry.ts";
 export { useTheme } from "./theme.ts";
+export { ReviewDiff, ReviewComments, CommentCard, CopyReview, Layers, LayerTag, Verdict, reviewMarkdown, commentMarkdown, countBySeverity, useShowComments, type ReviewComment, type AuthorNote, type Layer, type LayerFlow, type Severity } from "./review.tsx";
