@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { handle, relay } from './hub';
+import { handle, relay, relayRecipients, relayRole } from './hub';
 
 describe('signaling hub', () => {
   it('subscribe/unsubscribe update the topic list, deduped, bad topics dropped', () => {
@@ -39,5 +39,24 @@ describe('sandbox host routing (Worker)', async () => {
     expect(await r.text()).toContain("navigation.addEventListener('navigate'");
     expect(sandboxResponse(new URL('https://a.b.canvas-frames.example/page'), env)!.status).toBe(400);
     expect(sandboxResponse(new URL('https://x.canvas-frames.example/page'), { SANDBOX_HOST: env.SANDBOX_HOST })!.status).toBe(500);
+  });
+});
+
+describe('relay', () => {
+  it('reads the role from ?relay=', () => {
+    expect(relayRole(new URL('https://x/r/a?relay=bridge'))).toBe('bridge');
+    expect(relayRole(new URL('https://x/r/a?relay=peer'))).toBe('peer');
+    expect(relayRole(new URL('https://x/r/a?relay=other'))).toBeNull();
+    expect(relayRole(new URL('https://x/r/a'))).toBeNull();
+  });
+  it('a bridge reaches everyone else; a browser only the bridges (browsers sync over WebRTC)', () => {
+    const all = [
+      { conn: 'b1', role: 'bridge' as const },
+      { conn: 'p1', role: 'peer' as const },
+      { conn: 'p2', role: 'peer' as const },
+      { conn: 'b2', role: 'bridge' as const },
+    ];
+    expect(relayRecipients(all[0], all)).toEqual(['p1', 'p2', 'b2']);
+    expect(relayRecipients(all[1], all)).toEqual(['b1', 'b2']);
   });
 });

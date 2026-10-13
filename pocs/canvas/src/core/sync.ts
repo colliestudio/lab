@@ -2,6 +2,7 @@ import { WebrtcProvider } from 'y-webrtc';
 import { WebsocketProvider } from 'y-websocket';
 import type { App } from './app';
 import { mountPresenceView, Presence, type PlayerInfo } from './presence';
+import { openRelay, type RelayConnection } from './relay';
 
 // Multiplayer transport. Today: y-webrtc (peer-to-peer, the Y.Doc syncs over WebRTC data channels)
 // with our own signaling server (Cloudflare Worker + Durable Object, see /signaling).
@@ -19,6 +20,10 @@ export interface Room {
   signalingConnected(): boolean;
   /** Peers with an open WebRTC (or same-browser BroadcastChannel) connection. */
   connectedPeers(): number;
+  /** 'room': a table shared through the signaling server; 'bridge': a bridge process hosts it. */
+  kind?: 'room' | 'bridge';
+  /** In a room: is a bridge (agents, a .canvas file) in it, and is the path to it open? */
+  bridge?(): 'none' | 'connecting' | 'online';
   leave(): void;
 }
 
@@ -54,14 +59,37 @@ export function joinRoom(app: App, id: string, me: PlayerInfo, signal = signalin
   provider.on('peers', (e: { webrtcPeers: string[]; bcPeers: string[] }) => {
     peers = e.webrtcPeers.length + e.bcPeers.length;
   });
-  window.addEventListener('beforeunload', () => provider.destroy());
+  // The signaling server says when a bridge is in the room. Browsers cannot reach a Node process over
+  // WebRTC, so while one is there we also open the relay to it (see core/relay.ts). Without a bridge
+  // nothing extra is open.
+  let bridgeIn = false;
+  let relay: RelayConnection | undefined;
+  const onSignal = (m: { type?: string; online?: boolean }) => {
+    if (m?.type !== 'bridge') return;
+    bridgeIn = !!m.online;
+    if (bridgeIn && !relay) relay = openRelay({ url: `${base}/r/${encodeURIComponent(id)}?relay=peer`, doc: app.store.ydoc, awareness: provider.awareness });
+    else if (!bridgeIn && relay) {
+      relay.destroy();
+      relay = undefined;
+    }
+  };
+  for (const c of provider.signalingConns) c.on('message', onSignal);
+  const destroy = () => {
+    for (const c of provider.signalingConns) c.off('message', onSignal);
+    relay?.destroy();
+    relay = undefined;
+    provider.destroy();
+  };
+  window.addEventListener('beforeunload', destroy);
   return {
     id,
     provider,
+    kind: 'room',
+    bridge: () => (!bridgeIn ? 'none' : relay?.connected() ? 'online' : 'connecting'),
     presence,
     signalingConnected: () => provider.signalingConns.some((c: { connected: boolean }) => c.connected),
     connectedPeers: () => peers,
-    leave: () => provider.destroy(),
+    leave: destroy,
   };
 }
 
@@ -70,8 +98,8 @@ export function joinRoom(app: App, id: string, me: PlayerInfo, signal = signalin
  * disk, over WebSocket (y-websocket protocol). Agents and tools edit through it; they show up here
  * as players. The bridge is the host and the persistence (the file), so nothing is stored locally.
  */
-export function joinBridge(app: App, url: string, me: PlayerInfo): Room & { synced: Promise<void> } {
-  const provider = new WebsocketProvider(url.replace(/\/+$/, ''), 'canvas', app.store.ydoc);
+export function joinBridge(app: App, url: string, me: PlayerInfo, token?: string): Room & { synced: Promise<void> } {
+  const provider = new WebsocketProvider(url.replace(/\/+$/, ''), 'canvas', app.store.ydoc, { params: token ? { token } : {} });
   const presence = new Presence(provider.awareness, me);
   app.presence = presence;
   app.viewer = me.id;
@@ -81,6 +109,7 @@ export function joinBridge(app: App, url: string, me: PlayerInfo): Room & { sync
   return {
     id: url,
     label: `bridge ${new URL(url).host}`,
+    kind: 'bridge',
     provider,
     presence,
     synced,

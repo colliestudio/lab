@@ -1,6 +1,8 @@
 import './style.css';
-import { App, joinBridge, joinRoom, loadPlayer, mountChat, mountLog, mountZoomControl, savePlayer, openFile, parse, persistLocally, persistViewport, resetFileHandle, roomDbName, saveFile, type CanvasDoc } from './core';
+import { App, type Room, joinBridge, joinRoom, loadPlayer, mountChat, mountLog, mountZoomControl, savePlayer, openFile, parse, persistLocally, persistViewport, resetFileHandle, roomDbName, saveFile, type CanvasDoc } from './core';
 import { copyText, createRoomFrom, mountRoomStatus, roomFromUrl, roomLink } from './share';
+import { openBridgeDialog } from './bridgeDialog';
+import { bridgeFromLocation, bridgeHref, rememberBridge } from './bridges';
 import { askName } from './nameDialog';
 import { cardsPlugin, handLabelOf, newHandEntries, newHandFor } from './plugins/cards';
 import { chessPlugin } from './plugins/chess';
@@ -13,7 +15,8 @@ import { prototypePlugin } from './plugins/prototype';
 import { mountHelp, removeHelpNote } from './help';
 import { attachFollow, createFramesPlugin, portalsEnabled, enterUrl, mountBreadcrumb, trailFromUrl } from './plugins/frames';
 
-const BRIDGE = new URLSearchParams(location.search).get('bridge');
+const BRIDGE_ADDR = bridgeFromLocation(location);
+const BRIDGE = BRIDGE_ADDR?.url ?? null;
 const ROOM = BRIDGE ? null : roomFromUrl();
 const DB_NAME = ROOM ? roomDbName(ROOM) : 'canvas-poc';
 // per room: a room entered through a portal must not open at the camera of the table you came from
@@ -161,6 +164,8 @@ handBtn.addEventListener('click', () => {
   if (!app.presence) return newHandFor(app, { ...loadPlayer() });
   app.view.openMenu(newHandEntries(app), handBtn, 'New hand for');
 });
+// Bridge…: connect to a bridge, see the one this tab is on, bring agents into a room (bridgeDialog.ts)
+button('Bridge…', 'Connect to a bridge, or bring agents into this room', () => openBridge());
 bar.append(handBtn, helpBtn, status);
 mountBreadcrumb(bar, ROOM, TRAIL);
 app.onNotify(flash);
@@ -187,6 +192,20 @@ window.addEventListener('drop', async (e) => {
   }
 });
 
+let bridgeRoom: Room | undefined;
+function openBridge() {
+  const room = bridgeRoom;
+  openBridgeDialog({
+    notify: flash,
+    connect: (addr) => (location.href = bridgeHref(addr)),
+    active: BRIDGE && room ? { url: BRIDGE, online: () => room.signalingConnected(), players: () => room.presence.peers().length, disconnect: () => (room.leave(), (location.href = location.pathname)) } : undefined,
+    room:
+      ROOM && room
+        ? { id: ROOM, link: roomLink(ROOM), bridge: () => room.bridge?.() ?? 'none', agents: () => room.presence.peers().filter((p) => /^(agent|tool):/.test(p.id)).map((p) => p.name) }
+        : undefined,
+  });
+}
+
 const view = persistViewport(app, VIEW_KEY);
 if (BRIDGE) startBridge(BRIDGE);
 else persistLocally(app, DB_NAME).then(({ empty }) => {
@@ -202,6 +221,7 @@ else persistLocally(app, DB_NAME).then(({ empty }) => {
   const info = ({ id, name, color }: { id: string; name: string; color: string }) => ({ id, name, color });
   const room = joinRoom(app, ROOM, info(stored));
   (window as any).room = room;
+  bridgeRoom = room;
   attachFollow(app, room.presence, frames.presenter!);
   const rename = async (first = false) => {
     const choice = await askName(room.presence.me, first ? { title: 'Join the table', action: 'Join' } : { title: 'Your name and color', action: 'Save' });
@@ -244,8 +264,13 @@ else persistLocally(app, DB_NAME).then(({ empty }) => {
 /** Bridge mode (?bridge=ws://host:5222): the table is a .canvas file a bridge process hosts; agents join it. */
 function startBridge(url: string) {
   const stored = loadPlayer();
-  const room = joinBridge(app, url, { id: stored.id, name: stored.name, color: stored.color });
+  const room = joinBridge(app, url, { id: stored.id, name: stored.name, color: stored.color }, BRIDGE_ADDR?.token);
   (window as any).room = room;
+  bridgeRoom = room;
+  // the token came in the link's fragment: keep it with the address (for next time) and take it out of the URL
+  if (location.hash) history.replaceState(null, '', location.pathname + location.search);
+  // pasting a link with a token into a tab already on this bridge only changes the #fragment: connect again with it
+  window.addEventListener('hashchange', () => /token=/.test(location.hash) && location.reload());
   mountRoomStatus(
     app,
     room,
@@ -262,6 +287,7 @@ function startBridge(url: string) {
   mountChat(app, bar, url);
   flash(`Connecting to the bridge at ${url}…`);
   room.synced.then(() => {
+    rememberBridge({ url, token: BRIDGE_ADDR?.token });
     app.store.undoManager.clear();
     app.view.fit();
     flash('Connected: this table is the bridge’s .canvas file');

@@ -257,3 +257,95 @@ body {
   background: #f5a623;
   color: #231;
 }
+.bridge-dialog {
+  width: min(460px, 92vw);
+  max-height: 88vh;
+  overflow: auto;
+}
+.bridge-section {
+  margin: 0 0 14px;
+}
+.bridge-section h3 {
+  margin: 0 0 4px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #666;
+}
+.bridge-hint {
+  margin: 0 0 8px;
+  font-size: 12.5px;
+  color: #555;
+}
+.bridge-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+}
+.bridge-row code,
+.bridge-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 12.5px ui-monospace, monospace;
+}
+.bridge-state {
+  margin: 4px 0;
+  font-size: 13px;
+  color: #2f7d55;
+}
+.bridge-state[data-ok='false'] {
+  color: #b04632;
+}
+.bridge-cmd {
+  display: block;
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #efece3;
+  font: 12px ui-monospace, monospace;
+  word-break: break-all;
+  user-select: all;
+}
+.bridge-btn {
+  padding: 5px 12px;
+  border: 1px solid #ccc;
+  border-radius: 7px;
+  background: #fff;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.bridge-btn.quiet {
+  border-color: transparent;
+  color: #777;
+}
+.bridge-form {
+  display: flex;
+  gap: 8px;
+}
+.bridge-form input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  font: 14px ui-monospace, monospace;
+}
+.bridge-error {
+  min-height: 0;
+  margin: 4px 0 0;
+  color: #b04632;
+  font-size: 12.5px;
+}
+.bridge-list {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.bridge-list[hidden] {
+  display: none;
+}
