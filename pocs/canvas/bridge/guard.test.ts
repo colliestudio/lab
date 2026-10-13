@@ -86,6 +86,8 @@ describe('parseBridgeArgs', () => {
     expect(() => parseBridgeArgs(['join'])).toThrow(/room/);
     expect(() => parseBridgeArgs(['--no-tunnel'])).toThrow(/share/);
     expect(() => parseBridgeArgs(['--share=1'])).toThrow(/no value/);
+    expect(parseBridgeArgs(['join', 'k3m', 'r.canvas', '--merge'])).toMatchObject({ join: 'k3m', merge: true });
+    expect(() => parseBridgeArgs(['r.canvas', '--merge'])).toThrow(/join/);
   });
   it('defaults, and clear errors', () => {
     expect(parseBridgeArgs([]).file).toBe('board.canvas');

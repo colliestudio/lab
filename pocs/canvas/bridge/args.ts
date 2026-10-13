@@ -1,5 +1,5 @@
 // Arguments of `bridge/server.ts`:
-//   [file] [--port N] [--host H] [--allow-origin URL]… [--join ROOM] [--signal URL] [--share] [--no-tunnel] [--app URL] [--token T]
+//   [file] [--port N] [--host H] [--allow-origin URL]… [--join ROOM] [--signal URL] [--merge] [--share] [--no-tunnel] [--app URL] [--token T]
 //   share [file]       = --share (tunnel, pairing token, the link to send)
 //   join ROOM [file]   = --join ROOM (the bridge enters an existing room)
 // Also --flag=value. A flag's value is never taken for the file, whatever the order.
@@ -15,6 +15,8 @@ export interface BridgeArgs {
   join?: string;
   /** Signaling server for --join when the room is given as a bare id. */
   signal?: string;
+  /** --join with a file that already holds another board: merge the two anyway. */
+  merge?: true;
   /** Print links for a remote browser: quick tunnel + pairing token. */
   share?: true;
   noTunnel?: true;
@@ -24,8 +26,8 @@ export interface BridgeArgs {
 }
 
 const VALUE_FLAGS = new Set(['port', 'host', 'allow-origin', 'join', 'signal', 'app', 'token']);
-const BOOL_FLAGS = new Set(['share', 'no-tunnel']);
-const OPTIONS = '--port, --host, --allow-origin, --join, --signal, --share, --no-tunnel, --app, --token';
+const BOOL_FLAGS = new Set(['share', 'no-tunnel', 'merge']);
+const OPTIONS = '--port, --host, --allow-origin, --join, --signal, --merge, --share, --no-tunnel, --app, --token';
 
 export function parseBridgeArgs(argv: string[]): BridgeArgs {
   const out: BridgeArgs = { file: 'board.canvas', fileGiven: false, allowOrigins: [] };
@@ -52,6 +54,7 @@ export function parseBridgeArgs(argv: string[]): BridgeArgs {
     if (BOOL_FLAGS.has(name)) {
       if (eq >= 0) throw new Error(`--${name} takes no value`);
       if (name === 'share') out.share = true;
+      else if (name === 'merge') out.merge = true;
       else out.noTunnel = true;
       continue;
     }
@@ -77,5 +80,6 @@ export function parseBridgeArgs(argv: string[]): BridgeArgs {
     out.fileGiven = true;
   }
   if (out.noTunnel && !out.share) throw new Error('--no-tunnel only makes sense with share');
+  if (out.merge && !out.join) throw new Error('--merge only makes sense with join');
   return out;
 }

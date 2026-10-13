@@ -32,13 +32,15 @@ import { bridgeLink, DEFAULT_APP, DEPLOYED_ORIGINS, DEV_ORIGINS, parseRoomRef } 
 //                     it, allow the deployed app, and print the link to send (--no-tunnel: local link only)
 //  join <room> [file] enter an existing room as one more peer (the room's link or id): the bridge connects
 //                     out through the signaling Worker's relay, so no port or tunnel is needed. The room
-//                     is saved to the file while the bridge is there. See ideas/bridge-ux.md.
+//                     is saved to the file while the bridge is there. A file that already holds another
+//                     board is refused (joining would merge it into the room); --merge does it anyway.
+//                     See ideas/bridge-ux.md.
 
 let opts: ReturnType<typeof parseBridgeArgs>;
 try {
   opts = parseBridgeArgs(process.argv.slice(2));
 } catch (e) {
-  console.error(`canvas bridge: ${(e as Error).message}\nusage: tsx bridge/server.ts [share|join ROOM] <file.canvas> [--port N] [--host H] [--allow-origin URL]… [--share --no-tunnel --app URL --token T --join ROOM --signal URL]`);
+  console.error(`canvas bridge: ${(e as Error).message}\nusage: tsx bridge/server.ts [share|join ROOM] <file.canvas> [--port N] [--host H] [--allow-origin URL]… [--share --no-tunnel --app URL --token T --join ROOM --signal URL --merge]`);
   process.exit(2);
 }
 let joinRef: ReturnType<typeof parseRoomRef> | undefined;
@@ -84,6 +86,24 @@ if (existsSync(file)) {
   writeOut();
 }
 host.store.undoManager.clear();
+
+// join: the file and the room merge both ways, so a file that holds some other board (an agent pointed
+// at a real board by mistake) would be pushed into the room and the room into it. Only a new or empty
+// file, or one this room was saved to before, joins without --merge.
+const roomMark = join(stateDir, `${basename(file)}.room`);
+if (joinRef) {
+  const before = existsSync(roomMark) ? readFileSync(roomMark, 'utf8').trim() : undefined;
+  const items = host.store.nodes.size + host.store.edges.size;
+  if (items && before !== joinRef.room && !opts.merge) {
+    console.error(
+      `canvas bridge: ${file} already holds a board (${items} item${items === 1 ? '' : 's'})${before ? ` saved from room ${before}` : ''}; joining room ${joinRef.room} would merge it into the room and the room into it.\n` +
+        'Leave the file out (the bridge then uses a new one), give a new file, or add --merge to do it anyway.',
+    );
+    process.exit(2);
+  }
+  mkdirSync(stateDir, { recursive: true });
+  writeFileSync(roomMark, joinRef.room + '\n');
+}
 
 function writeOut() {
   // The file changed on disk since we last wrote or read it (an edit the watcher hasn't applied
@@ -230,20 +250,25 @@ function attach(ws: WebSocket, relay = false) {
   ws.binaryType = 'arraybuffer';
   ws.on('message', (data: ArrayBuffer, isBinary: boolean) => {
     if (!isBinary) return; // the relay's pong
-    const dec = decoding.createDecoder(new Uint8Array(data));
-    const enc = encoding.createEncoder();
-    const type = decoding.readVarUint(dec);
-    if (type === MSG_SYNC) {
-      encoding.writeVarUint(enc, MSG_SYNC);
-      syncProtocol.readSyncMessage(dec, enc, host.ydoc, ws);
-      if (encoding.length(enc) > 1) send(ws, encoding.toUint8Array(enc));
-    } else if (type === MSG_AWARENESS) {
-      awarenessProtocol.applyAwarenessUpdate(awareness, decoding.readVarUint8Array(dec), ws);
-    } else if (type === MSG_QUERY_AWARENESS) {
-      // the relay sends this when a browser connects to it: introduce ourselves (our state vector makes
-      // it send everything we lack) and our presence
-      sendStep1(ws);
-      sendPresence(ws);
+    // A joined room's peers reach this through the relay: a malformed frame must not take the bridge down.
+    try {
+      const dec = decoding.createDecoder(new Uint8Array(data));
+      const enc = encoding.createEncoder();
+      const type = decoding.readVarUint(dec);
+      if (type === MSG_SYNC) {
+        encoding.writeVarUint(enc, MSG_SYNC);
+        syncProtocol.readSyncMessage(dec, enc, host.ydoc, ws);
+        if (encoding.length(enc) > 1) send(ws, encoding.toUint8Array(enc));
+      } else if (type === MSG_AWARENESS) {
+        awarenessProtocol.applyAwarenessUpdate(awareness, decoding.readVarUint8Array(dec), ws);
+      } else if (type === MSG_QUERY_AWARENESS) {
+        // the relay sends this when a browser connects to it: introduce ourselves (our state vector makes
+        // it send everything we lack) and our presence
+        sendStep1(ws);
+        sendPresence(ws);
+      }
+    } catch (e) {
+      log(`dropped a malformed frame${relay ? ' from the room' : ''}: ${(e as Error).message}`);
     }
   });
   ws.on('close', () => {

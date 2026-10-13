@@ -68,6 +68,7 @@ pnpm bridge join 'https://canvas.lab.collie.studio/?room=abc123' /tmp/canvas-dem
 
 - It prints `Joined room abc123` and the file path; the toolbar of everyone in the room shows `· bridge`, and the Bridge… dialog lists the agents.
 - Add `--port N` if 5222 is taken. A bare room id works with `--signal wss://canvas.lab.collie.studio`.
+- The room and the file merge both ways, so give a new file (or none: `room-<id>.canvas` in the current directory). A file that already holds another board is refused; `--merge` overrides that, only when asked to bring that board into the room.
 - Act through the CLI (the `--as` name is yours on the board; one name per agent):
   ```
   export CANVAS_BRIDGE=http://localhost:5222
@@ -102,8 +103,8 @@ Troubleshooting: the bridge log shows `refused …` with the reason (an origin t
 
 - No health beyond "socket up": the app cannot call the bridge's HTTP `/status` (no CORS), so it shows connection state, who is here and the agents it sees.
 - One bridge per room is the tested case. Two would both save the room to their own files and both answer; it works (a CRDT) but nobody has looked at it.
-- Joining with a file that already holds a different board merges it into the room. A `--fresh` that refuses a non-empty file may be worth it.
-- Relay frames are not size-limited by us (Cloudflare caps a message at 32 MiB); a peer can send junk. Rate limits belong with the "DO holds the doc" step.
+- Joining with a file that already holds a different board is refused unless `--merge` (the bridge remembers which room a file was saved from in `.canvas-bridge/<name>.room`).
+- Relay frames are not size-limited by us (Cloudflare caps a message at 32 MiB); a room accepts at most 4 bridge and 64 browser relay sockets. A malformed frame is dropped (and logged) by the bridge. Rate limits belong with the "DO holds the doc" step.
 - The pairing token is per bridge run, not per person or revocable apart from restarting. Per-agent tokens (`--as`) are still the later step in agent-bridge.md.
 - Quick tunnels are a Cloudflare convenience with no SLA; a named tunnel would give a stable address.
 - The room link is the credential for the relay too; a room password (needs `crypto.subtle`, so https) is not built.

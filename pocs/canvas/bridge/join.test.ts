@@ -92,8 +92,28 @@ describe('bridge join', () => {
     await until(() => readFileSync(file, 'utf8').includes('rm -rf'));
     expect(JSON.parse(readFileSync(file, 'utf8')).nodes.length).toBe(3);
 
+    // a malformed frame from the room is dropped, the bridge stays up
+    const junk = new NodeWebSocket(`ws://127.0.0.1:${relay.port}/r/abc123?relay=peer`);
+    cleanup.push(() => junk.close());
+    await new Promise((r) => junk.once('open', r));
+    junk.send(Uint8Array.of(0, 0xff), { binary: true });
+    await until(() => /dropped a malformed frame/.test(out));
+    expect((await fetch(`http://127.0.0.1:${port}/status`)).status).toBe(200);
+    junk.close();
+
     proc.kill('SIGINT');
     expect(await exited).toBe(0);
     await until(() => relay.roles.size === 1, 3000).catch(() => { throw new Error(`roles: ${[...relay.roles.values()]} paths ${relay.paths}`); }); // only the browser is left
+
+    // the file now holds room abc123: another room is refused, nothing is touched
+    const saved = readFileSync(file, 'utf8');
+    const other = spawn('node_modules/.bin/tsx', ['bridge/server.ts', 'join', `http://127.0.0.1:${relay.port}/?room=other1`, file, '--port', String(port)], { stdio: ['ignore', 'pipe', 'pipe'] });
+    let err = '';
+    other.stderr!.on('data', (d) => (err += d));
+    cleanup.push(() => other.kill('SIGKILL'));
+    expect(await new Promise((r) => other.on('exit', r))).toBe(2);
+    expect(err).toMatch(/already holds a board .* saved from room abc123; joining room other1/);
+    expect(relay.paths.filter((p) => p.includes('other1'))).toEqual([]);
+    expect(readFileSync(file, 'utf8')).toBe(saved);
   }, 30000);
 });
