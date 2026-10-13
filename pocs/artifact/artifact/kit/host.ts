@@ -1,7 +1,7 @@
 // What an artifact can ask of the host (feedback drawer, present mode, download, theme), and how it takes present mode over.
 import { useEffect, useRef, useSyncExternalStore } from "react";
 
-interface Api { openFeedback?: () => void; download?: () => Promise<void>; startPresent?: () => void; toggleTheme?: () => void }
+interface Api { setAnswer?: (id: string, value: import("./feedback.ts").AnswerInput | null) => void; openFeedback?: () => void; download?: () => Promise<void>; startPresent?: () => void; toggleTheme?: () => void }
 export const hostApi: Api = {};
 let control: { start: () => void } | undefined;
 const subs = new Set<() => void>();

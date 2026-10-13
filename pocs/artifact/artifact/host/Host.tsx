@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { meta, decisions as registryDecisions, type Source as Src } from "../kit/registry.ts";
+import { meta, artifactId, decisions as registryDecisions, type Source as Src } from "../kit/registry.ts";
 import { Badge, Source } from "../kit/layout.tsx";
 import { fmtAsOf, fmtDate, plural, slug } from "../kit/util.ts";
 import { shell } from "../kit/shell.ts";
 import { useComments, useAnswerState, makeStore, Composer, FeedbackPanel, DecisionList, feedbackMarkdown, anchorFor, quoteAnchor, locate, type Anchor, type Comment, type StoredAnchor } from "./comments.tsx";
 import { setHighlight } from "./anchor.ts";
-import { FeedbackCtx, decisionsMarkdown, reachable, type DecisionRow } from "../kit/feedback.ts";
+import { FeedbackCtx, toAnswer, decisionsMarkdown, reachable, type DecisionRow, type AnswerInput } from "../kit/feedback.ts";
 import { usePresent } from "./present.ts";
 import { Boundary } from "./Boundary.tsx";
 import { allPages, groups, home, isMulti, layout, pageById } from "../kit/pages.ts";
@@ -14,6 +14,7 @@ import { holdScroll, savedScroll, useRoute } from "../kit/router.tsx";
 import { hostApi, useHostPresentControl } from "../kit/host.ts";
 import { Status } from "../kit/layout.tsx";
 import { PresentCtx } from "../kit/present.ts";
+import { copyText } from "../kit/copy.ts";
 
 interface OutlineItem { id: string; title: string; level: number }
 
@@ -59,7 +60,7 @@ async function pageSource(): Promise<string> {
   return shell(meta.title, document.getElementById("a-css")?.textContent ?? "", document.getElementById("a-js")?.textContent ?? "");
 }
 const canDownload = meta.host?.download ?? meta.download ?? true;
-const SHORTCUTS: [string, string][] = [["p", "Present: ← → or space step, ↑ ↓ scroll, Esc leaves"], ["c", "Add a comment: opens the drawer, then click any element"], ["?", "This list"], ["Esc", "Close dialogs, leave comment mode"]];
+const SHORTCUTS: [string, string][] = [["p", "Present: ← → or space step, ↑ ↓ scroll, Esc leaves"], ["c", "Add a comment: click anything, or select text"], ["f", "Feedback drawer"], ["d", "Download the page"], ["t", "Light / dark theme"], ["?", "This list"], ["Esc", "Close dialogs, leave comment mode"]];
 const cx = (...a: (string | false | undefined)[]) => a.filter(Boolean).join(" ");
 
 function Sub({ items, active, page }: { items: OutlineItem[]; active: string; page: string }) {
@@ -133,7 +134,7 @@ export function Host() {
   const [open, setOpen] = useState<Anchor | null>(null);
   const [panel, setPanel] = useState(false);
   const [help, setHelp] = useState(false);
-  const [outlineOff, setOutlineOff] = useState(localStorage.getItem("artifact-outline") === "off");
+  const [outlineOff, setOutlineOff] = useState(localStorage.getItem("artifact-outline:" + artifactId) === "off");
   const [allSources, setAllSources] = useState(false);
   useEffect(() => {
     if (!allSources) return;
@@ -143,7 +144,7 @@ export function Host() {
   }, [allSources]);
   const [copied, setCopied] = useState("");
   const [more, setMore] = useState(false);
-  const store = useMemo(() => makeStore(`${meta.title}|${meta.created ?? ""}`), []);
+  const store = useMemo(() => makeStore(artifactId), []);
   const cm = useComments(store);
   const am = useAnswerState(store);
   const [rawRows, setRawRows] = useState<Omit<DecisionRow, "answer">[]>([]);
@@ -153,6 +154,8 @@ export function Host() {
     const order = allPages().map((p) => p.id);
     for (const d of registryDecisions) if (reachable(d, am.answers)) out.set(d.id, { id: d.id, question: d.question, recommended: d.recommended, recommendedKey: d.recommendedKey, owner: d.owner, page: d.page, pageTitle: pageById(d.page)?.title });
     for (const r of rawRows) if (!out.has(r.id)) out.set(r.id, { ...r, page: isMulti() ? page.id : undefined, pageTitle: isMulti() ? page.title : undefined });
+    // answers a custom control stored through useAnswer/setAnswer have no <Decision>: list them too
+    for (const [id, a] of Object.entries(am.answers)) if (!out.has(id) && !registryDecisions.some((d) => d.id === id)) out.set(id, { id, question: a.question ?? id });
     const list = [...out.values()];
     if (isMulti()) list.sort((a, b) => order.indexOf(a.page ?? HOME) - order.indexOf(b.page ?? HOME));
     return list.map((r) => ({ ...r, answer: am.answers[r.id] }));
@@ -219,7 +222,7 @@ export function Host() {
     return () => mo.disconnect();
   }, [page.id]);
   const setTheme = (d: boolean) => {
-    setDark(d); localStorage.setItem("artifact-theme", d ? "dark" : "light");
+    setDark(d); localStorage.setItem("artifact-theme:" + artifactId, d ? "dark" : "light");
     if (d) document.documentElement.dataset.theme = "midnight"; else delete document.documentElement.dataset.theme;
   };
 
@@ -232,12 +235,17 @@ export function Host() {
     return () => { clearInterval(t); removeEventListener("scroll", f); removeEventListener("resize", f); };
   }, [present.active]);
 
-  // keys: c comment mode, p present, ? shortcuts
+  // keys: c comment mode, f feedback, d download, t theme, p present, ? shortcuts
+  const toggleComment = () => setMode((m) => { if (!m) { setPanel(true); setTab("comments"); } return !m; });
+  const toggleThemeRef = useRef(() => {}); toggleThemeRef.current = () => setTheme(!dark);
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
       if (typing(e) || e.metaKey || e.ctrlKey || e.altKey) return;
       if (present.active) return;
-      if (e.key === "c") setMode((m) => { if (!m) { setPanel(true); setTab("comments"); } return !m; });
+      if (e.key === "c") toggleComment();
+      else if (e.key === "f") { setPanel((o) => !o); setMenu(false); }
+      else if (e.key === "d" && canDownload) download();
+      else if (e.key === "t") toggleThemeRef.current();
       else if (e.key === "p") startPresent();
       else if (e.key === "?") setHelp((h) => !h);
       else if (e.key === "Escape") { setMode(false); setOpen(null); setHelp(false); setMenu(false); setSel(null); }
@@ -332,11 +340,11 @@ export function Host() {
   // first-run hint, once
   const [hint, setHint] = useState(false);
   useEffect(() => {
-    if (localStorage.getItem("artifact-hint")) return;
+    if (localStorage.getItem("artifact-hint:" + artifactId)) return;
     const t = setTimeout(() => setHint(true), 2500), t2 = setTimeout(() => dismissHint(), 20000);
     return () => { clearTimeout(t); clearTimeout(t2); };
   }, []);
-  const dismissHint = () => { setHint(false); localStorage.setItem("artifact-hint", "1"); };
+  const dismissHint = () => { setHint(false); localStorage.setItem("artifact-hint:" + artifactId, "1"); };
 
   useEffect(() => {
     // a link to something collapsed opens it (and what contains it)
@@ -364,12 +372,10 @@ export function Host() {
   }, []);
 
   // what artifact code reaches through openFeedback(), download(), startPresent(), toggleTheme()
-  useEffect(() => { Object.assign(hostApi, { openFeedback: () => { setPanel(true); setMenu(false); }, download, startPresent, toggleTheme: () => setTheme(!dark) }); });
+  useEffect(() => { Object.assign(hostApi, { setAnswer: (id: string, v: AnswerInput | null) => am.answer(id, v == null ? null : toAnswer(v)), openFeedback: () => { setPanel(true); setMenu(false); }, download, startPresent, toggleTheme: () => setTheme(!dark) }); });
 
-  const copyText = useCallback(async (md: string, flag: string) => {
-    try { await navigator.clipboard.writeText(md); } catch {
-      const ta = document.createElement("textarea"); ta.value = md; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove();
-    }
+  const copyFlag = useCallback(async (md: string, flag: string) => {
+    if (!(await copyText(md))) return;
     setCopied(flag); setTimeout(() => setCopied(""), 1600);
   }, []);
   const decisionsMd = () => decisionsMarkdown(meta.title, rows);
@@ -411,7 +417,7 @@ export function Host() {
         <button className="h-btn" onClick={() => setPanel(!panel)} aria-pressed={panel} title="Feedback: answer the decisions and leave comments, then copy it all back to the author">{feedbackLabel}</button>
         <button className="h-btn" onClick={startPresent} title="Present (p): walk through this page full screen">Present</button>
         {hasTour && <button className="h-btn" onClick={() => { tourRef.current.on = true; if (page.id === tourIds[0]) present.start(); else { tourRef.current.pending = "first"; location.hash = hrefFor(tourIds[0]); } }} title="Tour: present the pages in the author's order">Tour</button>}
-        <button className="h-btn" aria-pressed={!outlineOff} onClick={() => { setOutlineOff(!outlineOff); localStorage.setItem("artifact-outline", outlineOff ? "on" : "off"); }} title="Show or hide the outline on the left">Outline</button>
+        <button className="h-btn" aria-pressed={!outlineOff} onClick={() => { setOutlineOff(!outlineOff); localStorage.setItem("artifact-outline:" + artifactId, outlineOff ? "on" : "off"); }} title="Show or hide the outline on the left">Outline</button>
         <button className="h-btn" onClick={() => setTheme(!dark)} title="Switch between the light and dark theme">{dark ? "Light" : "Dark"}</button>
         {canDownload && <button className="h-btn" onClick={download} title="Save this page as one self-contained HTML file">Download</button>}
         <button className="h-btn h-help" aria-pressed={help} onClick={() => setHelp(!help)} title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">?</button>
@@ -503,8 +509,8 @@ export function Host() {
               <h2 className="a-h">Summary: {decided}/{rows.length} decided</h2>
               <DecisionList rows={rows} onJump={jumpDecision} />
               <div className="h-panel-actions">
-                <button className="h-btn" disabled={!decided} onClick={() => copyText(decisionsMd(), "decisions")}>{copied === "decisions" ? "Copied" : "Copy decisions"}</button>
-                <button className="h-btn" disabled={!decided && !cm.list.length} onClick={() => copyText(allMd(), "all")}>{copied === "all" ? "Copied" : "Copy all feedback"}</button>
+                <button className="h-btn" disabled={!decided} onClick={() => copyFlag(decisionsMd(), "decisions")}>{copied === "decisions" ? "Copied" : "Copy decisions"}</button>
+                <button className="h-btn" disabled={!decided && !cm.list.length} onClick={() => copyFlag(allMd(), "all")}>{copied === "all" ? "Copied" : "Copy all feedback"}</button>
               </div>
             </section>
           )}
@@ -515,7 +521,7 @@ export function Host() {
           </nav>
         )}
         {panel && <FeedbackPanel cm={cm} rows={rows} tab={rows.length ? tab : "comments"} setTab={setTab} mode={mode} onMode={() => setMode(!mode)} copied={copied}
-          onCopyComments={() => copyText(commentsMd(), "comments")} onCopyDecisions={() => copyText(decisionsMd(), "decisions")} onCopyAll={() => copyText(allMd(), "all")}
+          onCopyComments={() => copyFlag(commentsMd(), "comments")} onCopyDecisions={() => copyFlag(decisionsMd(), "decisions")} onCopyAll={() => copyFlag(allMd(), "all")}
           onClearAnswers={am.clear} onAcceptAll={() => am.acceptAll(rows)} onEditNote={(r, n) => am.editNote(r.id, n)} onJumpDecision={jumpDecision} onJumpComment={jumpComment} onHover={setHoverC} pageTitle={(id) => (id ? pageById(id)?.title : undefined)} onClose={() => { setPanel(false); setMode(false); }} />}
       </div>
       {lean && !present.active && (
@@ -523,11 +529,13 @@ export function Host() {
           <div className="h-corner" data-open={menu ? "" : undefined}>
             {menu && (
               <div className="h-corner-menu" role="menu" aria-label="Page menu">
-                <button role="menuitem" onClick={() => { setPanel(!panel); setMenu(false); }}>{feedbackLabel}</button>
+                <button role="menuitem" onClick={() => { setMenu(false); toggleComment(); }} title="Click anything, or select text">Comment <kbd>c</kbd></button>
+                <div className="h-corner-hint">Click anything, or select text</div>
+                <button role="menuitem" onClick={() => { setPanel(!panel); setMenu(false); }}>{feedbackLabel} <kbd>f</kbd></button>
                 {hasPresent && <button role="menuitem" onClick={() => { setMenu(false); startPresent(); }}>Present <kbd>p</kbd></button>}
                 {hasTour && !ownPresent && <button role="menuitem" onClick={() => { setMenu(false); tourRef.current.on = true; if (page.id === tourIds[0]) present.start(); else { tourRef.current.pending = "first"; location.hash = hrefFor(tourIds[0]); } }}>Tour</button>}
-                {canDownload && <button role="menuitem" onClick={() => { setMenu(false); download(); }}>Download</button>}
-                <button role="menuitem" onClick={() => { setMenu(false); setTheme(!dark); }}>{dark ? "Light theme" : "Dark theme"}</button>
+                {canDownload && <button role="menuitem" onClick={() => { setMenu(false); download(); }}>Download <kbd>d</kbd></button>}
+                <button role="menuitem" onClick={() => { setMenu(false); setTheme(!dark); }}>{dark ? "Light theme" : "Dark theme"} <kbd>t</kbd></button>
                 <button role="menuitem" onClick={() => { setMenu(false); setHelp(true); }}>Shortcuts <kbd>?</kbd></button>
               </div>
             )}

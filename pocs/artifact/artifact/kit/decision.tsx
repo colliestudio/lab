@@ -1,6 +1,6 @@
 import { isValidElement, useState, type ReactNode } from "react";
 import { Badge } from "./layout.tsx";
-import { FeedbackCtx, WhenCtx, condHolds, keyOfIndex, nodeText, useAnswer, type Cond, type Want } from "./feedback.ts";
+import { FeedbackCtx, WhenCtx, condHolds, keyOfIndex, nodeText, type Cond, type Want } from "./feedback.ts";
 import { cx, slug } from "./util.ts";
 import { useContext } from "react";
 
@@ -21,7 +21,7 @@ export function Decision({ question, options, recommend, owner = "needs a decisi
   const conds = useContext(WhenCtx);
   const qText = nodeText(question);
   const did = id ?? (slug(qText).slice(0, 48) || "decision");
-  const ans = useAnswer(did);
+  const ans = ctx.answers[did];
   const opts = (options ?? []).map((o, i) => { const x = asOpt(o); return { ...x, key: x.key ?? keyOfIndex(i), text: nodeText(x.label) }; });
   const isRec = (i: number) => recommend === i || (typeof recommend === "string" && (recommend === opts[i].text || recommend === opts[i].key));
   const recIdx = opts.findIndex((_, i) => isRec(i));

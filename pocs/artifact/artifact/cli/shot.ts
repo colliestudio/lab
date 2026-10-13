@@ -32,7 +32,7 @@ export async function findChrome(): Promise<string> {
 
 export interface ShotOpts { out?: string; themes?: ("light" | "dark")[]; present?: string; width?: number; height?: number; chrome?: boolean; split?: boolean; page?: string; /** keep animations and view transitions (shots default to prefers-reduced-motion: reduce so count-ups and transitions are settled) */ motion?: boolean }
 
-/** Writes `<name>-<theme>.png` (full page) and, with `present`, `<name>-<theme>-present-<n>.png` (viewport). Returns the paths. */
+/** Writes `<name>[-w<width>]-<theme>.png` (full page) and, with `present`, `<name>-<theme>-present-<n>.png` (viewport). Returns the paths. */
 export async function shot(dir: string, o: ShotOpts = {}): Promise<string[]> {
   const abs = resolve(dir);
   const r = await buildArtifact(abs);
@@ -58,7 +58,7 @@ export async function shot(dir: string, o: ShotOpts = {}): Promise<string[]> {
       await c0.close();
     }
     for (const theme of o.themes ?? ["light"]) for (const pid of pageIds) {
-      const base = pid ? `${name}-${pid}` : name;
+      const base = (pid ? `${name}-${pid}` : name) + (o.width ? `-w${o.width}` : "");
       const ctx = await browser.newContext({ viewport: { width: o.width ?? 1280, height: o.height ?? 800 }, colorScheme: theme, reducedMotion: o.motion ? "no-preference" : "reduce" });
       const page = await ctx.newPage();
       const errs: string[] = [];

@@ -30,6 +30,8 @@ export interface Registry { meta: Meta; data: Record<string, unknown>; evidence:
 const reg = registry as Registry;
 export const meta = reg.meta;
 export const decisions = reg.decisions ?? [];
+/** Identifies this artifact on a host that serves several (same origin = same localStorage): namespaces everything the kit stores. */
+export const artifactId = `${meta.title}|${meta.created ?? ""}`;
 
 const norm = (p: string) => p.replace(/^\.?\//, "");
 

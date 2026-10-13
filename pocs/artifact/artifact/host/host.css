@@ -30,14 +30,16 @@ a { color: var(--collie-color-fg-accent); }
 /* prose inside the artifact */
 .a-content { max-width: 100%; }
 .a-content > :first-child { margin-top: 1.5rem; }
-.a-content > p, .a-content > ul > li, .a-content > ol > li, .a-section-body > p, .a-section-body > ul > li, .a-section-body > ol > li, .a-lead, .a-content > blockquote { max-width: 46rem; }
+.a-content > p, .a-content > ul > li, .a-content > ol > li, .a-section-body > p, .a-section-body > ul > li, .a-section-body > ol > li, .a-lead { max-width: 46rem; }
+:where(.h-root:not([data-shell="bare"])) .a-content > blockquote { max-width: 46rem; }
 .a-content h1, .a-content h2, .a-content h3, .a-content h4 { line-height: 1.25; }
 .a-content pre, .a-content code { font-family: var(--a-mono); }
-.a-content :not(pre) > code { font-size: 0.88em; background: var(--collie-color-neutral-subtle); border: 1px solid var(--collie-color-border-subtle); border-radius: 4px; padding: 0.08em 0.35em; }
-.a-content pre:not(.a-code pre) { background: var(--collie-color-surface); border: 1px solid var(--collie-color-border-subtle); border-radius: var(--collie-radius-md); padding: 0.8rem 1rem; overflow-x: auto; font-size: 12.5px; }
-.a-content blockquote { margin: 1rem 0; padding: 0.1rem 1rem; border-left: 3px solid var(--collie-color-border); color: var(--collie-color-fg-muted); }
-.a-content table:not(.a-table):not(.a-diff) { border-collapse: collapse; margin: 1rem 0; font-size: var(--collie-text-sm); }
-.a-content table:not(.a-table):not(.a-diff) :is(th, td) { border: 1px solid var(--collie-color-border-subtle); padding: 0.4em 0.8em; }
+/* raw table/pre/code/blockquote get the reader styles below, except in bare shells (the artifact owns the look) */
+:where(.h-root:not([data-shell="bare"])) .a-content :not(pre) > code { font-size: 0.88em; background: var(--collie-color-neutral-subtle); border: 1px solid var(--collie-color-border-subtle); border-radius: 4px; padding: 0.08em 0.35em; }
+:where(.h-root:not([data-shell="bare"])) .a-content pre:not(.a-code pre) { background: var(--collie-color-surface); border: 1px solid var(--collie-color-border-subtle); border-radius: var(--collie-radius-md); padding: 0.8rem 1rem; overflow-x: auto; font-size: 12.5px; }
+:where(.h-root:not([data-shell="bare"])) .a-content blockquote { margin: 1rem 0; padding: 0.1rem 1rem; border-left: 3px solid var(--collie-color-border); color: var(--collie-color-fg-muted); }
+:where(.h-root:not([data-shell="bare"])) .a-content table:not(.a-table):not(.a-diff) { border-collapse: collapse; margin: 1rem 0; font-size: var(--collie-text-sm); }
+:where(.h-root:not([data-shell="bare"])) .a-content table:not(.a-table):not(.a-diff) :is(th, td) { border: 1px solid var(--collie-color-border-subtle); padding: 0.4em 0.8em; }
 .a-content hr { border: 0; border-top: 1px solid var(--collie-color-border-subtle); margin: 2rem 0; }
 .a-content img { max-width: 100%; }
 
@@ -157,6 +159,7 @@ html[data-present] .h-pagenav { display: none; }
 .h-corner-menu button { font: inherit; text-align: left; display: flex; justify-content: space-between; gap: 1rem; padding: 0.35rem 0.6rem; border: 0; border-radius: 6px; background: none; color: var(--collie-color-fg); cursor: pointer; }
 .h-corner-menu button:hover { background: var(--collie-color-accent-subtle); }
 .h-corner-menu kbd { font-family: var(--a-mono); font-size: 11px; color: var(--collie-color-fg-muted); }
+.h-corner-hint { padding: 0 0.6rem 0.25rem; margin-top: -0.2rem; font-size: 11px; color: var(--collie-color-fg-muted); }
 .h-pop-corner { position: static; margin: 0; width: 22rem; }
 .h-dot { position: fixed; z-index: 34; width: 9px; height: 9px; padding: 0; border-radius: 50%; border: 1.5px solid var(--collie-color-canvas); background: var(--collie-color-warning-solid); opacity: 0.75; cursor: pointer; }
 .h-dot:hover { opacity: 1; }

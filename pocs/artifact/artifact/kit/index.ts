@@ -2,7 +2,9 @@
 export * from "./layout.tsx";
 export * from "./decide.tsx";
 export { Decision, When } from "./decision.tsx";
-export { useAnswer, useAnswers, type Answer } from "./feedback.ts";
+export { useAnswer, useAnswers, setAnswer, type Answer, type AnswerInput } from "./feedback.ts";
+export { copyText } from "./copy.ts";
+export { highlight, highlightLines } from "./highlight.ts";
 export { TimeAxis, type TimeEvent, type TimeBand } from "./timeaxis.tsx";
 export { Link, PageCards } from "./pagenav.tsx";
 export { usePages, useRoute, navigate, withTransition, duplicateTransitionNames, Morph, type PageEntry, type RouteState, type NavOpts, type TransitionOpts } from "./router.tsx";

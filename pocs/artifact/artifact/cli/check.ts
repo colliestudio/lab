@@ -51,7 +51,8 @@ export async function check(dir: string, opts: { types?: boolean } = {}): Promis
     const src = sourceText(dir);
     if (!/useData\(\s*[^"'`\s)]/.test(src)) for (const key of Object.keys(r.collected.registry.data)) {
       const k = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      if (!new RegExp(`["'\`](data/)?${k}(\\.json)?["'\`]`).test(src)) rep.warnings.push(`unused data: data/${key}.json (no useData("${key}") in the source)`);
+      // useData("x"), "data/x.json", or an import such as "./data/x.json" / "../data/x.json" from any folder
+      if (!new RegExp(`["'\`](data/)?${k}(\\.json)?["'\`]|["'\`](\\.{1,2}/)+([^"'\`\\n]*/)?data/${k}\\.json["'\`]`).test(src)) rep.warnings.push(`unused data: data/${key}.json (no useData("${key}") in the source)`);
     }
   }
   for (const u of r.collected.unsafe) rep.errors.push(`evidence path leaves evidence/: ${u} (paths must stay inside evidence/, no .. or symlinks elsewhere)`);

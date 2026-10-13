@@ -24,7 +24,7 @@ x.artifact/
 
 ## Commands
 
-Run `artifact <cmd>` (on your PATH after `bin/recap-sync`), else `node <recap-lab>/bin/artifact.js <cmd>`.
+Run `artifact <cmd>` (on your PATH after `bin/artifact-sync`), else `node <recap-lab>/bin/artifact.js <cmd>`.
 
 ```sh
 artifact new notes/status-1012 --kind status        # scaffold a calm page; fill summary/audience/sources (check errors on the template text)
@@ -37,7 +37,7 @@ artifact record http://127.0.0.1:5211 -o <dir>/evidence/flow.replay --steps 'say
 artifact gather gh-prs <dir> --repos owner/a,owner/b --since ISO   # → data/gh-prs.json; also board --workspaces a,b; git-log --repo p --ref origin/main [--branches 'idea/*' --base main]; trim with --fields / --count
 ```
 
-Loop: write, `check` until ok, `shot` and look at the PNGs (both themes; `--page id|all`; `--present 2,3|all` 1-based, every step; `--split --height 800` cuts a tall page; `--no-chrome` hides host UI; reduced motion unless `--motion`), fix, build.
+Loop: write, `check` until ok, `shot` and look at the PNGs (both themes; `--page id|all`; `--present 2,3|all` 1-based, every step; `--split --height 800` cuts a tall page; `--width N` (in the file name); `--no-chrome` hides host UI; reduced motion unless `--motion`; `artifact chrome-path` prints the Chromium used), fix, build.
 
 ## Taste (guidance, not rules)
 
@@ -57,13 +57,11 @@ Every shell has the feedback layer: comments, decisions and answers, the Feedbac
 
 - **page**: title, `summary` as the headline, a quiet meta line (kind, as-of or date, "N sources" popover) and one centred reading column (~740 px); Sections get rhythm and a light rule between them. You write only Sections. `<Wide>` around a Grid, Table, Img, Compare or Diff lets it use more width (`width: "wide"` widens the whole column). Pages over 5 Sections get a faint on-this-page list in the right margin on very wide screens. Multi-page: a small page list sits above the title.
 - **bare**: a blank full-viewport page, no header, outline or width limit. For experiences (story, sheets, deck, a board) where the layout is the point.
-- **doc** (also the default when `shell` is absent): header, outline, grouped page nav, prev/next, page select. Kept for older artifacts.
+- **doc** (also the default when `shell` is absent): header, outline, grouped page nav, prev/next, page select.
 
-
-
-- Comments work on anything, in every shell: select text and press the Comment button that appears by the selection, or alt-click an element (or `c`, then click). Readers see where a comment is ("Page › Section", then the quoted words or a label like `table cell "3"`, `image: alt`, `Decision: question`); a saved quote is highlighted on its exact words (re-found by quote and context after a reload), hovering a comment in the drawer shows its target, clicking it jumps there, and copied feedback reads `- [Page › Section] on "quoted text": comment`. Give key elements an `id` or `data-aid` so comments survive edits.
+- Comments work on anything, in every shell: select text and press the Comment button that appears by the selection, or alt-click an element (or `c`, then click). Comments show "Page › Section" plus the quoted words or a label (`table cell "3"`, `Decision: question`); quotes are re-found after a reload, drawer hover/click shows/jumps to the target, copied feedback reads `- [Page › Section] on "quoted text": comment`. Give key elements an `id` or `data-aid` so comments survive edits.
 - Navigation: `usePages()`, `useRoute()`, `navigate(id, {anchor, params, morph, direction, transition, restore})`, `<Link>`, `<Morph>`, `withTransition(fn, opts)` (COMPONENTS.md). Page changes use a view transition unless reduced motion; name exactly one element pair with `morph`, tell CSS the motion with `direction` / `html[data-nav-type]`.
-- Present mode and `<Step>` / `usePresentSteps` still work; Sections and `<Slide>`s (or loose elements) are the slides. To own present mode (a deck, a stage) call `usePresentControl(start)`; `openFeedback()`, `download()`, `startPresent()`, `toggleTheme()` are exported for your own buttons.
+- Present mode and `<Step>` / `usePresentSteps` still work; Sections and `<Slide>`s (or loose elements) are the slides. To own present mode (a deck, a stage) call `usePresentControl(start)`; `openFeedback()`, `download()`, `startPresent()`, `toggleTheme()` and `copyText(s)` (works over plain http) are exported for your own buttons. Custom controls store answers with `useAnswer(id)` (COMPONENTS.md).
 
 ## Pages (multi-page artifacts)
 
@@ -93,7 +91,7 @@ Write components inline or next to `index.tsx`; `import "./mine.css"` bundles a 
 
 ## Experiences (when the content earns one)
 
-Use `"shell": "bare"`. The four release samples are patterns that mix (a story can open sheets, a map can become a deck): read the sample, copy what you need.
+Use `"shell": "bare"`. The four release samples mix freely: read one, copy what you need.
 
 - **Zoom map** (`samples/release-zoom.artifact`): many peers to explore. `pages/[id].tsx` from data, tiles are `<Morph when={false}>`, `navigate(id, {morph, transition: "zoom-in"})` and back with `direction: "back"`, `useRoute().previous` lights the tile you came from.
 - **Story** (`samples/release-story.artifact`): a narrative with demos. One scrolling page, `<Slide>` per chapter, `usePresentSteps` for beats, `navigate(..., {restore: true})` back from a deep-dive page.
@@ -112,7 +110,7 @@ For a batch of decisions when the reader is away from chat: prepare the tree (ea
 
 ## What the reader has
 
-Doc shell: outline (toggle for full width). Every shell: theme, **Present** (`p`: title slide, then → / ← through Sections and `<Step>`s, ↑/↓ scroll, `#links` jump between slides, a Summary slide when there are decisions), **Feedback** drawer (`c` adds a comment on any element; decisions tab; copy as Markdown with element ids), **Download** (the same single HTML file), `?` for shortcuts and fold all.
+Doc shell: outline (toggle for full width). Every shell: theme, **Present** (`p`: title slide, then → / ← through Sections and `<Step>`s, ↑/↓ scroll, `#links` jump between slides, a Summary slide when there are decisions), **Feedback** drawer (`c`, also first in the corner menu: click anything or select text; decisions tab; copy as Markdown with element ids), **Download** (the same single HTML file), `?` for shortcuts and fold all.
 
 ## Limits
 

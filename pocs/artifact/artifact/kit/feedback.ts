@@ -1,6 +1,7 @@
 // Reader answers to <Decision>s (the async "grill me"): the types, the context the host provides, and the pure helpers.
 import { createContext, isValidElement, useContext, type ReactNode } from "react";
 import type { DecisionMeta } from "./registry.ts";
+import { hostApi } from "./host.ts";
 
 export interface Answer {
   /** the option key ("a", "b"…), or "other" (own answer in `custom`), or "unsure" (not sure / discuss) */
@@ -14,6 +15,15 @@ export interface Answer {
   at: string;
   /** when the reader changed an earlier answer (set by the host) */
   edited?: string;
+  /** what was asked, for answers a custom control stores (a <Decision> already has its question); shown in the drawer */
+  question?: string;
+}
+/** What a custom control passes to `setAnswer`: a plain value (it becomes the choice and its label), or a partial Answer. */
+export type AnswerInput = string | number | boolean | (Partial<Answer> & { question?: string });
+export function toAnswer(v: AnswerInput): Answer {
+  const at = new Date().toISOString();
+  if (typeof v === "object") { const label = v.label ?? v.choice ?? ""; return { ...v, choice: v.choice ?? label, label, at: v.at ?? at }; }
+  return { choice: String(v), label: String(v), at };
 }
 export interface FeedbackCtxValue {
   /** true when a host collects answers; without one (static render) decisions show as plain lists */
@@ -22,7 +32,16 @@ export interface FeedbackCtxValue {
   answer(id: string, a: Answer | null): void;
 }
 export const FeedbackCtx = createContext<FeedbackCtxValue>({ interactive: false, answers: {}, answer: () => {} });
-export const useAnswer = (id: string): Answer | undefined => useContext(FeedbackCtx).answers[id];
+/**
+ * A custom control's answer in the kit's store: `const [a, setA] = useAnswer("keep-3")`, `setA("drop")` or `setA(null)` to clear.
+ * It shows in the drawer, is copied with the other answers and is saved per artifact.
+ */
+export function useAnswer(id: string): readonly [Answer | undefined, (value: AnswerInput | null) => void] {
+  const ctx = useContext(FeedbackCtx);
+  return [ctx.answers[id], (v) => ctx.answer(id, v == null ? null : toAnswer(v))] as const;
+}
+/** Set (or with null clear) the stored answer `id` from anywhere, e.g. an event handler outside React. No-op without a host. */
+export const setAnswer = (id: string, value: AnswerInput | null): void => hostApi.setAnswer?.(id, value);
 /** All answers so far, by decision id: `const answers = useAnswers(); answers.d1?.choice` */
 export const useAnswers = () => useContext(FeedbackCtx).answers;
 

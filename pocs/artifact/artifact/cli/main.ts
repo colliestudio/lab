@@ -16,6 +16,7 @@ const USAGE = `artifact: agent-written pages (React + a component kit), one self
                                          [--width N] [--height N] [--theme dark] [--max seconds, 90] [--no-network] [--no-console] [--inline-images] [--fast]
                                          a seekable DOM recording for <Replay>; each say:"…" is a chapter. Not redacted (passwords are masked): check before sharing
   artifact gather gh-prs|board|git-log <dir> [options]   (--fields a,b / --count trim output; git-log --branches 'idea/*' --base main = unique commits per branch)   write <dir>/data/<kind>.json (see ARTIFACT.md)
+  artifact chrome-path                   print the Chromium that shot/capture/record would use (exit 1 when none)
   artifact dev <dir> [--port N]          live-reload server on 127.0.0.1 (default 4177)
   artifact check <dir>                   bundle + types + render + evidence + size; exit 1 on errors
   artifact build <dir> -o out.html       one HTML file, everything inlined; reports sizes
@@ -32,6 +33,10 @@ export async function main(argv: string[]): Promise<number> {
     options: { kind: { type: "string" }, port: { type: "string" }, host: { type: "string" }, o: { type: "string", short: "o" }, theme: { type: "string" }, present: { type: "string" }, width: { type: "string" }, "no-chrome": { type: "boolean" }, motion: { type: "boolean" }, "no-types": { type: "boolean" }, help: { type: "boolean", short: "h" }, split: { type: "boolean" }, page: { type: "string" }, selector: { type: "string" }, wait: { type: "string" }, height: { type: "string" }, full: { type: "boolean" }, steps: { type: "string" }, repos: { type: "string" }, workspaces: { type: "string" }, repo: { type: "string" }, branches: { type: "string" }, fields: { type: "string" }, count: { type: "boolean" }, base: { type: "string" }, since: { type: "string" }, name: { type: "string" }, limit: { type: "string" }, force: { type: "boolean" }, script: { type: "string" }, max: { type: "string" }, "no-network": { type: "boolean" }, "no-console": { type: "boolean" }, "inline-images": { type: "boolean" }, fast: { type: "boolean" }, "body-limit": { type: "string" } },
   });
   const dir = positionals[0];
+  if (cmd === "chrome-path") {
+    const { findChrome } = await import("./shot.ts");
+    try { console.log(await findChrome()); return 0; } catch (e) { console.error((e as Error).message); return 1; }
+  }
   if (values.help) { console.log(USAGE); return 0; }
   if (cmd === "gather" && positionals.length >= 2) return gatherCmd(positionals[0], positionals[1], values as Record<string, string | boolean | undefined>);
   if (!cmd || cmd === "help" || cmd === "--help" || !dir) { console.log(USAGE); return cmd && cmd !== "help" && cmd !== "--help" ? 2 : 0; }

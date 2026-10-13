@@ -1227,7 +1227,7 @@ test("shell bare: no host chrome, full viewport, corner menu, hooks in order, na
       assert.deepEqual(await p.locator(".b-nav a").allInnerTexts(), ["Overview", "Alpha demo", "Beta demo"]);
       // corner menu
       await p.locator(".h-corner-btn").click();
-      assert.deepEqual(await p.locator(".h-corner-menu button").allInnerTexts().then((a) => a.map((x) => x.split("\n")[0].trim())), ["Feedback", "Present", "Download", "Dark theme", "Shortcuts"]);
+      assert.deepEqual(await p.locator(".h-corner-menu button").allInnerTexts().then((a) => a.map((x) => x.split("\n")[0].trim())), ["Comment", "Feedback", "Present", "Download", "Dark theme", "Shortcuts"]);
       await p.keyboard.press("Escape"); await p.mouse.click(600, 700);
       // navigate: a card click changes hash and page; back returns
       await p.locator(".b-card", { hasText: "Alpha" }).click();
