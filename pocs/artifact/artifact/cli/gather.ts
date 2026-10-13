@@ -91,11 +91,27 @@ export function gitBranches(repo: string, glob: string, base: string, exec: Run 
 }
 
 export interface PrData {
-  repo: string; n: number; title: string; body: string; author?: string; viewer?: string; viewerIsAuthor: boolean; state: string; base: string; head: string; href: string;
-  additions: number; deletions: number; files: { path: string; additions: number; deletions: number }[]; commits: { sha: string; subject: string }[];
+  repo: string; n: number; title: string; body: string; author?: string; viewer?: string; viewerIsAuthor: boolean; state: string; draft: boolean; base: string; head: string; href: string; url: string;
+  /** commit SHAs the links point at: the PR head and the base it was compared with */
+  headSha?: string; baseSha?: string; changedFiles: number; commitCount: number; checks?: ChecksSummary;
+  additions: number; deletions: number; files: { path: string; additions: number; deletions: number }[]; commits: { sha: string; oid: string; subject: string }[];
   /** inline review comments already on the PR (so a review can mark repeats) */
-  comments: { id: string; author?: string; path: string; line?: number; body: string; at?: string; replyTo?: string }[];
+  comments: { id: string; author?: string; path: string; line?: number; body: string; at?: string; replyTo?: string; url?: string }[];
   reviews: { author?: string; state: string; body: string }[]; gatheredAt: string;
+}
+export interface ChecksSummary { state: "pass" | "fail" | "pending" | "none"; passed: number; failed: number; pending: number; total: number; failing: string[] }
+/** Fold gh's statusCheckRollup (check runs and commit statuses) into one state and counts. */
+export function summarizeChecks(rollup: { name?: string; context?: string; status?: string; conclusion?: string; state?: string }[] | undefined): ChecksSummary {
+  const out: ChecksSummary = { state: "none", passed: 0, failed: 0, pending: 0, total: 0, failing: [] };
+  for (const c of rollup ?? []) {
+    const v = String(c.conclusion || c.state || c.status || "").toUpperCase();
+    out.total++;
+    if (["SUCCESS", "NEUTRAL", "SKIPPED"].includes(v)) out.passed++;
+    else if (["FAILURE", "ERROR", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "STARTUP_FAILURE"].includes(v)) { out.failed++; out.failing.push(c.name ?? c.context ?? "check"); }
+    else out.pending++;
+  }
+  out.state = !out.total ? "none" : out.failed ? "fail" : out.pending ? "pending" : "pass";
+  return out;
 }
 /** `owner/repo#12` or a PR URL. */
 export function parsePrRef(ref: string): { repo: string; n: number } {
@@ -106,17 +122,18 @@ export function parsePrRef(ref: string): { repo: string; n: number } {
 /** A PR in one step (read-only gh calls): metadata, files, commits, existing review comments, and the unified patch. */
 export function ghPr(ref: string, exec: Run = run): { data: PrData; patch: string } {
   const { repo, n } = parsePrRef(ref);
-  const v = JSON.parse(exec("gh", ["pr", "view", String(n), "-R", repo, "--json", "title,body,author,state,baseRefName,headRefName,url,additions,deletions,files,commits,reviews"]));
-  const raw = JSON.parse(exec("gh", ["api", `repos/${repo}/pulls/${n}/comments`, "--paginate"]) || "[]") as { id: number; user?: { login: string }; path: string; line?: number; original_line?: number; body: string; created_at?: string; in_reply_to_id?: number }[];
+  const v = JSON.parse(exec("gh", ["pr", "view", String(n), "-R", repo, "--json", "title,body,author,state,baseRefName,headRefName,url,isDraft,headRefOid,baseRefOid,changedFiles,statusCheckRollup,additions,deletions,files,commits,reviews"]));
+  const raw = JSON.parse(exec("gh", ["api", `repos/${repo}/pulls/${n}/comments`, "--paginate"]) || "[]") as { id: number; user?: { login: string }; path: string; line?: number; original_line?: number; body: string; created_at?: string; in_reply_to_id?: number; html_url?: string }[];
   let viewer: string | undefined;
   try { viewer = exec("gh", ["api", "user", "--jq", ".login"]).trim() || undefined; } catch { /* not logged in as a user */ }
   const patch = exec("gh", ["pr", "diff", String(n), "-R", repo]);
   const data: PrData = {
-    repo, n, title: v.title, body: v.body ?? "", author: v.author?.login, viewer, viewerIsAuthor: !!viewer && viewer === v.author?.login, state: String(v.state).toLowerCase(),
-    base: v.baseRefName, head: v.headRefName, href: v.url, additions: v.additions, deletions: v.deletions,
+    repo, n, title: v.title, body: v.body ?? "", author: v.author?.login, viewer, viewerIsAuthor: !!viewer && viewer === v.author?.login, state: String(v.state).toLowerCase(), draft: !!v.isDraft,
+    base: v.baseRefName, head: v.headRefName, href: v.url, url: v.url, headSha: v.headRefOid, baseSha: v.baseRefOid, changedFiles: v.changedFiles ?? (v.files ?? []).length, commitCount: (v.commits ?? []).length,
+    checks: summarizeChecks(v.statusCheckRollup), additions: v.additions, deletions: v.deletions,
     files: (v.files ?? []).map((f: { path: string; additions: number; deletions: number }) => ({ path: f.path, additions: f.additions, deletions: f.deletions })),
-    commits: (v.commits ?? []).map((c: { oid: string; messageHeadline: string }) => ({ sha: c.oid.slice(0, 7), subject: c.messageHeadline })),
-    comments: raw.map((c) => ({ id: String(c.id), author: c.user?.login, path: c.path, line: c.line ?? c.original_line, body: c.body, at: c.created_at, ...(c.in_reply_to_id ? { replyTo: String(c.in_reply_to_id) } : {}) })),
+    commits: (v.commits ?? []).map((c: { oid: string; messageHeadline: string }) => ({ sha: c.oid.slice(0, 7), oid: c.oid, subject: c.messageHeadline })),
+    comments: raw.map((c) => ({ id: String(c.id), author: c.user?.login, path: c.path, line: c.line ?? c.original_line, body: c.body, at: c.created_at, ...(c.html_url ? { url: c.html_url } : {}), ...(c.in_reply_to_id ? { replyTo: String(c.in_reply_to_id) } : {}) })),
     reviews: (v.reviews ?? []).map((r: { author?: { login: string }; state: string; body: string }) => ({ author: r.author?.login, state: r.state.toLowerCase(), body: r.body })),
     gatheredAt: new Date().toISOString(),
   };

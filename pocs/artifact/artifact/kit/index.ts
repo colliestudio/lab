@@ -20,3 +20,4 @@ export { Replay } from "./replay.tsx";
 export { useData, meta, imageSrc } from "./registry.ts";
 export { useTheme } from "./theme.ts";
 export { ReviewDiff, ReviewComments, CommentCard, CopyReview, Layers, LayerTag, Verdict, reviewMarkdown, commentMarkdown, countBySeverity, useShowComments, type ReviewComment, type AuthorNote, type Layer, type LayerFlow, type Severity } from "./review.tsx";
+export { PrHeader, PrCommits, ExistingComments, Linked, Md, Ext, ghUrl, makeGhUrl, linkify, currentPr, type PrData, type GhUrls } from "./pr.tsx";

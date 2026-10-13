@@ -9,14 +9,37 @@ import { Decision } from "./decision.tsx";
 import { useAnswer, useAnswers, setAnswer, type Answer } from "./feedback.ts";
 import { copyText } from "./copy.ts";
 import { cx } from "./util.ts";
+import { usePages, useRoute, navigate } from "./router.tsx";
+import { currentPr, Ext, Linked } from "./pr.tsx";
+import { makeGhUrl, type GhUrls } from "./gh.ts";
 import { SEVERITIES, span, where, key, statusOf, countBySeverity, reviewMarkdown, commentMarkdown, type Severity, type ReviewComment, type AuthorNote } from "./review-model.ts";
 export { SEVERITIES, statusOf, countBySeverity, reviewMarkdown, commentMarkdown, type Severity, type ReviewComment, type AuthorNote, type CommentStatus } from "./review-model.ts";
 
 const TONE: Record<Severity, Tone> = { blocking: "critical", "should-fix": "warn", question: "info", nit: "neutral", praise: "success" };
 
+const useGh = (): GhUrls | undefined => { const p = currentPr(); return p ? makeGhUrl(p) : undefined; };
+const sleep = () => new Promise<void>((r) => requestAnimationFrame(() => r()));
+/** Go to `page` (if not there) and scroll to the first visible element among `ids`, with a short flash. */
+async function jumpTo(page: string, here: string, ids: string[]) {
+  if (page !== here) await navigate(page, { transition: false });
+  for (let i = 0; i < 30; i++) {
+    const el = ids.map((id) => document.getElementById(id)).find((e) => e && e.getClientRects().length);
+    if (el) {
+      const d = el.closest("details"); if (d) d.open = true;
+      el.scrollIntoView({ block: "center", behavior: "smooth" });
+      el.classList.add("rv-flash"); setTimeout(() => el.classList.remove("rv-flash"), 1600);
+      return;
+    }
+    await sleep();
+  }
+}
+
 // ---- comment card -------------------------------------------------------------------------------------------------
 
-export function CommentCard({ c, actions = true }: { c: ReviewComment; actions?: boolean }) {
+export function CommentCard({ c, actions = true, ctx = "list", diffPage = "diff", listPage = "home" }: { c: ReviewComment; actions?: boolean; ctx?: "list" | "diff" | "inline"; diffPage?: string; listPage?: string }) {
+  const gh = useGh(), here = useRoute().page, pages = usePages();
+  const [a0] = span(c);
+  const ex = currentPr()?.comments?.find((x) => x.id === c.dupOf);
   const [a, set] = useAnswer(key(c.id));
   const { status, body } = statusOf(c, a ? { [key(c.id)]: a } : {});
   const [editing, setEditing] = useState(false);
@@ -25,11 +48,15 @@ export function CommentCard({ c, actions = true }: { c: ReviewComment; actions?:
   const q = `${where(c)} (${c.severity})`;
   const choose = (choice: "keep" | "drop") => set({ choice, label: choice === "keep" ? "Keep" : "Drop", question: q, custom: a?.custom });
   return (
-    <div className={cx("rv-card", `sev-${c.severity}`, status === "drop" && "dropped")} data-c="review-comment" data-status={status}>
+    <div id={ctx === "list" ? `rc-${c.id}` : ctx === "diff" ? `rd-${c.id}` : `rdi-${c.id}`} className={cx("rv-card", `sev-${c.severity}`, status === "drop" && "dropped")} data-c="review-comment" data-status={status}>
       <div className="rv-card-head">
         <Badge tone={TONE[c.severity]}>{c.severity}</Badge>
-        {c.dupOf && <Badge tone="neutral" title="Another reviewer already said this">repeat of {c.dupOf}</Badge>}
-        <span className="rv-where">{where(c)}</span>
+        {c.dupOf && (ex
+          ? <Ext href={ex.url ?? gh?.comment(ex.id) ?? ""} title="Another reviewer already said this"><Badge tone="neutral">repeat of {ex.author ? `@${ex.author}'s comment` : c.dupOf}</Badge></Ext>
+          : <Badge tone="neutral" title="Another reviewer already said this">repeat of {c.dupOf}</Badge>)}
+        <span className="rv-where">{gh ? <Ext href={gh.file(c.file, a0 ? c.range ?? a0 : undefined)} title="Open the file at this line on GitHub">{where(c)}</Ext> : where(c)}</span>
+        {ctx === "list" && pages.some((p) => p.id === diffPage) && <button className="rv-link rv-jump" onClick={() => jumpTo(diffPage, here, [`rd-${c.id}`, `rdi-${c.id}`])}>in the diff</button>}
+        {ctx !== "list" && pages.some((p) => p.id === listPage) && <button className="rv-link rv-jump" onClick={() => jumpTo(listPage, here, [`rc-${c.id}`])}>decide</button>}
         {status === "edit" && <span className="a-muted">edited</span>}
       </div>
       {editing ? (
@@ -40,7 +67,7 @@ export function CommentCard({ c, actions = true }: { c: ReviewComment; actions?:
             <button onClick={() => setEditing(false)}>Cancel</button>
           </div>
         </div>
-      ) : <div className="rv-body">{body}</div>}
+      ) : <div className="rv-body"><Linked>{body}</Linked></div>}
       {c.suggestion != null && <pre className="rv-suggest"><code>{c.suggestion}</code></pre>}
       {c.evidence && <div className="rv-evidence a-muted">{c.evidence}</div>}
       {actions && !editing && (
@@ -110,14 +137,17 @@ export const useShowComments = (): [boolean, (v: boolean) => void] => [
 type Item = { kind: "comment"; c: ReviewComment } | { kind: "note"; n: AuthorNote };
 const fileMatch = (path: string, f: string) => path === f || path.endsWith("/" + f);
 
-function Items({ items }: { items: Item[] }) {
+function Items({ items, ctx }: { items: Item[]; ctx: "diff" | "inline" }) {
   return <>{items.map((it, i) => it.kind === "comment"
-    ? <CommentCard key={it.c.id} c={it.c} />
-    : <div key={"n" + i} className="rv-card rv-note"><div className="rv-card-head"><Badge tone="accent">author note</Badge></div><div className="rv-body">{it.n.body}</div></div>)}</>;
+    ? <CommentCard key={it.c.id} c={it.c} ctx={ctx} />
+    : <div key={"n" + i} className="rv-card rv-note"><div className="rv-card-head"><Badge tone="accent">author note</Badge></div><div className="rv-body"><Linked>{it.n.body}</Linked></div></div>)}</>;
 }
 
 function FileView({ f, index, items, on }: { f: PatchFile; index: number; items: Item[]; on: boolean }) {
   const lang = langOf(f.path);
+  const gh = useGh();
+  const oldPath = f.oldPath ?? f.path;
+  const num = (n: number | undefined, side: "base" | "head") => n == null ? "" : !gh ? n : <a className="rv-ln" href={gh.file(side === "base" ? oldPath : f.path, n, { side })} target="_blank" rel="noreferrer" title="This line on GitHub">{n}</a>;
   const rows: { t: string; old?: number; nw?: number; html: string; hunk: number }[] = [];
   const lastOfHunk: number[] = [];
   f.hunks.forEach((h, hi) => {
@@ -158,12 +188,12 @@ function FileView({ f, index, items, on }: { f: PatchFile; index: number; items:
       out.push(
         <tr key={`r${i}`} className={cx(r.t === "+" ? "add" : r.t === "-" ? "del" : "ctx", tint.has(i) && "rv-tint")} data-line={r.nw}>
           <td className="g">{its && <span className={cx("rv-dot", `sev-${its[0].kind === "comment" ? its[0].c.severity : "note"}`)} title={`${its.length} comment${its.length > 1 ? "s" : ""}`} />}</td>
-          <td className="n">{r.old ?? ""}</td><td className="n">{r.nw ?? ""}</td>
+          <td className="n">{num(r.old, "base")}</td><td className="n">{num(r.nw, "head")}</td>
           <td className="c"><span className="m">{r.t === " " ? "" : r.t}</span><span dangerouslySetInnerHTML={{ __html: r.html || " " }} /></td>
-          {segStart.has(i) && <td className="rv-margin" rowSpan={len}>{its && <Items items={its} />}</td>}
+          {segStart.has(i) && <td className="rv-margin" rowSpan={len}>{its && <Items items={its} ctx="diff" />}</td>}
         </tr>,
       );
-      if (its) out.push(<tr key={`i${i}`} className="rv-inline"><td colSpan={5}><Items items={its} /></td></tr>);
+      if (its) out.push(<tr key={`i${i}`} className="rv-inline"><td colSpan={5}><Items items={its} ctx="inline" /></td></tr>);
     }
     prevNew = h.newStart + h.lines.filter((l) => l.t !== "-").length - 1;
   });
@@ -174,10 +204,11 @@ function FileView({ f, index, items, on }: { f: PatchFile; index: number; items:
         {f.change !== "changed" && <span className="a-diff-tag">{f.change}</span>}
         <span className="add">+{f.additions}</span> <span className="del">−{f.deletions}</span>
         {items.length > 0 && on && <span className="rv-n">{items.length} comment{items.length > 1 ? "s" : ""}</span>}
+        {gh && <Ext className="rv-gh" href={f.change === "removed" ? gh.file(oldPath, undefined, { side: "base" }) : gh.file(f.path)} title="Open the file at the PR head on GitHub">GitHub ↗</Ext>}
       </summary>
       {f.binary && <div className="a-muted a-pad">binary file</div>}
       <table className="a-diff rv-diff"><colgroup><col className="cg" /><col className="cn" /><col className="cn" /><col /><col className="cm" /></colgroup><tbody>{out}</tbody></table>
-      {loose.length > 0 && on && <div className="rv-loose"><div className="a-muted">On lines outside the shown hunks</div><Items items={loose} /></div>}
+      {loose.length > 0 && on && <div className="rv-loose"><div className="a-muted">On lines outside the shown hunks</div><Items items={loose} ctx="diff" /></div>}
     </details>
   );
 }
@@ -292,7 +323,7 @@ export function Verdict({ recommend, matters, readTime, comments = [], id = "ver
   return (
     <div className="rv-verdict" data-c="verdict">
       <div className="rv-bar">{readTime && <span className="a-muted">Read time {readTime}</span>}{comments.length > 0 && <Counts counts={countBySeverity(comments)} />}</div>
-      {matters && matters.length > 0 && <ol className="rv-matters">{matters.map((m, i) => <li key={i}>{m}</li>)}</ol>}
+      {matters && matters.length > 0 && <ol className="rv-matters">{matters.map((m, i) => <li key={i}>{typeof m === "string" ? <Linked>{m}</Linked> : m}</li>)}</ol>}
       {children}
       <Decision id={id} question={question} options={[...VERDICTS]} recommend={rec} owner="reviewer" />
     </div>
