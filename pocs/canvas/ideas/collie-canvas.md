@@ -1,6 +1,6 @@
 # Collie Canvas (desktop app)
 
-The Electron shell from the desktop spike, on current `poc`, named **Collie Canvas** (`Collie Canvas.app`, bundle id `studio.collie.canvas`). Double-click a `.canvas`, it opens in its own window; the app's back end is the bridge (in-process), so agents join through one MCP endpoint. Scorecard and design of the spike: branch `idea/desktop-electron`, `ideas/desktop-electron.md` there.
+The Electron shell from the desktop spike, on current `poc`, named **Collie Canvas** (`Collie Canvas.app`, bundle id `studio.collie.canvas`). Double-click a `.canvas`, it opens in its own window; the app's back end is the bridge (in-process), so agents join through one MCP endpoint. Scorecard and design of the spike: branch `idea/desktop-electron`, `ideas/desktop-electron.md` (kept here too).
 
 ## Install and update (MacBook)
 
