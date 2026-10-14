@@ -1,0 +1,633 @@
+.cv-root {
+  position: relative;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  outline: none;
+  cursor: default;
+  /* felt with a faint grid that follows the viewport */
+  background-color: #1f5f3f;
+  background-image:
+    radial-gradient(circle, rgba(255, 255, 255, 0.07) 1.2px, transparent 1.6px),
+    radial-gradient(ellipse at center, rgba(255, 255, 255, 0.06), rgba(0, 0, 0, 0.35));
+}
+.cv-root.cv-space,
+.cv-root.cv-space *,
+.cv-root.cv-hand,
+.cv-root.cv-hand * {
+  cursor: grab !important;
+}
+.cv-root.cv-panning,
+.cv-root.cv-panning * {
+  cursor: grabbing !important;
+}
+.cv-world {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  width: 0;
+  height: 0;
+}
+.cv-node {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 50% 100%; /* layouts rotate around the bottom middle (fanned hands) */
+  cursor: pointer;
+}
+.cv-node.cv-moving {
+  will-change: transform;
+}
+.cv-node.cv-dragging {
+  cursor: grabbing;
+  filter: drop-shadow(0 14px 14px rgba(0, 0, 0, 0.35));
+}
+.cv-node.cv-selected {
+  outline: 3px solid #ffd54a;
+  outline-offset: 3px;
+  border-radius: 8px;
+}
+.cv-text {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #222;
+  font: 14px/1.45 system-ui, sans-serif;
+  white-space: pre-wrap;
+  overflow: hidden;
+}
+.cv-marquee {
+  display: none;
+  position: absolute;
+  border: 1px solid #ffd54a;
+  background: rgba(255, 213, 74, 0.12);
+  pointer-events: none;
+  z-index: 1000000;
+}
+.cv-menu {
+  position: absolute;
+  z-index: 1000001;
+  min-width: 200px;
+  max-width: 320px;
+  padding: 4px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+  font: 14px system-ui, sans-serif;
+  color: #222;
+}
+.cv-menu-title {
+  padding: 5px 10px 4px 32px;
+  color: #777;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border-bottom: 1px solid #eee;
+  margin-bottom: 3px;
+}
+.cv-menu-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: #e5e5e5;
+}
+.cv-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 10px 6px 4px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  outline: none;
+}
+.cv-menu-check {
+  flex: 0 0 18px;
+  text-align: center;
+  color: #3b5bdb;
+}
+.cv-menu-label {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.cv-menu-why {
+  color: #999;
+  font-size: 11px;
+  line-height: 1.3;
+}
+.cv-menu-item kbd {
+  color: #888;
+  font: 12px ui-monospace, monospace;
+}
+.cv-menu-arrow {
+  color: #888;
+  margin-left: -2px;
+}
+.cv-menu-item.cv-active,
+.cv-menu-item.cv-open {
+  background: #eef2ff;
+}
+.cv-menu-item.cv-disabled {
+  color: #aaa;
+  cursor: default;
+}
+.cv-menu-item.cv-disabled.cv-active {
+  background: #f5f5f5;
+}
+.cv-menu-number {
+  cursor: default;
+}
+.cv-menu-number input {
+  width: 52px;
+  padding: 2px 4px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font: inherit;
+}
+.cv-menu-go {
+  padding: 2px 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #f7f7f7;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.cv-node.cv-drop-target {
+  outline: 3px dashed #7fe3ff;
+  outline-offset: 6px;
+  border-radius: 8px;
+  filter: brightness(1.08);
+}
+.cv-zoom {
+  position: fixed;
+  z-index: 10;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 6px;
+  border-radius: 10px;
+  background: rgba(15, 25, 20, 0.75);
+  backdrop-filter: blur(6px);
+  color: #e8efe9;
+  font: 13px system-ui, sans-serif;
+  user-select: none;
+}
+.cv-zoom button {
+  min-width: 30px;
+  border: 0;
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.12);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.cv-zoom button:hover {
+  background: rgba(255, 255, 255, 0.24);
+}
+.cv-zoom .cv-zoom-pct {
+  min-width: 52px;
+  background: none;
+  font-variant-numeric: tabular-nums;
+}
+.cv-node.cv-remote-sel {
+  box-shadow: 0 0 0 3px var(--cv-remote);
+  border-radius: 8px;
+}
+.cv-cursors {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 999999;
+  overflow: hidden;
+}
+.cv-cursor {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transition: transform 60ms linear;
+}
+.cv-cursor svg {
+  display: block;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
+}
+.cv-cursor span {
+  position: absolute;
+  left: 14px;
+  top: 16px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  color: #fff;
+  font: 600 11px/16px system-ui, sans-serif;
+  white-space: nowrap;
+}
+.cv-node.cv-drop-target[data-drop-label]::after {
+  content: attr(data-drop-label);
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  padding: 3px 10px;
+  border-radius: 10px;
+  background: #7fe3ff;
+  color: #06303d;
+  font: 700 13px/18px system-ui, sans-serif;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 2;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+.cv-menu-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 6px;
+  border-radius: 50%;
+  vertical-align: 0;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.2);
+}
+.cv-menu-item.cv-muted .cv-menu-label {
+  opacity: 0.55;
+}
+
+/* ---- event cues: a label bubble near the object in the actor's color, a short animation on it */
+.cv-cues {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 999998;
+  overflow: hidden;
+}
+.cv-bubble {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+.cv-bubble-text {
+  position: absolute;
+  bottom: 30px; /* clear of a deck's or hand's tab */
+  left: 0;
+  transform: translateX(-50%);
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 2px solid var(--cv-actor, #888);
+  background: rgba(20, 22, 28, 0.88);
+  color: #fff;
+  font: 600 12px/1.3 system-ui, sans-serif;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  animation: cv-bubble-in 180ms ease-out;
+  transition: opacity 0.4s;
+}
+.cv-bubble-out .cv-bubble-text {
+  opacity: 0;
+}
+@keyframes cv-bubble-in {
+  from {
+    opacity: 0;
+    translate: 0 6px;
+  }
+}
+/* the animations use the individual translate/rotate/scale properties: a box's position is its transform */
+@keyframes cv-cue-shuffle {
+  0%,
+  100% {
+    rotate: 0deg;
+    translate: 0 0;
+  }
+  15% {
+    rotate: -6deg;
+    translate: -8px 0;
+  }
+  35% {
+    rotate: 5deg;
+    translate: 8px -2px;
+  }
+  55% {
+    rotate: -4deg;
+    translate: -6px 0;
+  }
+  75% {
+    rotate: 3deg;
+    translate: 4px 0;
+  }
+}
+.cv-node.cv-cue-shuffle {
+  animation: cv-cue-shuffle 600ms ease-in-out;
+}
+@keyframes cv-cue-deal {
+  0%,
+  100% {
+    scale: 1;
+  }
+  30% {
+    scale: 1.08;
+  }
+  60% {
+    scale: 0.97;
+  }
+}
+.cv-node.cv-cue-deal {
+  animation: cv-cue-deal 500ms ease-out;
+}
+@keyframes cv-cue-pulse {
+  from {
+    outline-color: var(--cv-cue, #7fe3ff);
+  }
+  to {
+    outline-color: transparent;
+  }
+}
+.cv-node.cv-cue-pulse {
+  outline: 3px solid transparent;
+  outline-offset: 3px;
+  border-radius: 8px;
+  animation: cv-cue-pulse 700ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cv-node.cv-cue-shuffle,
+  .cv-node.cv-cue-deal {
+    animation: cv-cue-pulse 700ms ease-out;
+    outline: 3px solid transparent;
+    outline-offset: 3px;
+    border-radius: 8px;
+  }
+  .cv-bubble-text {
+    animation: none;
+  }
+}
+
+/* ---- event log panel (bottom left) */
+.cv-log {
+  position: fixed;
+  z-index: 10;
+  left: 12px;
+  bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  max-width: min(360px, calc(100vw - 24px));
+  font: 13px/1.35 system-ui, sans-serif;
+  color: #e8efe9;
+}
+.cv-log-head {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  border: 0;
+  border-radius: 10px;
+  padding: 7px 12px;
+  background: rgba(15, 25, 20, 0.75);
+  backdrop-filter: blur(6px);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.cv-log-head:hover {
+  background: rgba(15, 25, 20, 0.9);
+}
+.cv-log-badge {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #e6194b;
+  color: #fff;
+  font: 700 11px/18px system-ui, sans-serif;
+  text-align: center;
+}
+.cv-log-badge[hidden] {
+  display: none;
+}
+.cv-log-list {
+  display: none;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  width: 340px;
+  max-width: 100%;
+  max-height: 40vh;
+  overflow-y: auto;
+  border-radius: 10px;
+  background: rgba(15, 25, 20, 0.85);
+  backdrop-filter: blur(6px);
+}
+.cv-log-open .cv-log-list {
+  display: block;
+}
+.cv-log-entry,
+.cv-log-empty {
+  padding: 3px 6px;
+  border-radius: 6px;
+}
+.cv-log-empty {
+  opacity: 0.7;
+}
+.cv-log-go {
+  cursor: pointer;
+}
+.cv-log-go:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+.cv-log-who {
+  font-weight: 700;
+  color: var(--cv-actor);
+  filter: brightness(1.5) saturate(0.9);
+}
+.cv-log-time {
+  float: right;
+  margin-left: 8px;
+  opacity: 0.6;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* JSON Canvas edges (under every node) */
+.cv-edges {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 0;
+}
+.cv-edges line {
+  stroke: rgba(255, 255, 255, 0.75);
+  stroke-width: 2.5;
+}
+.cv-edges marker path {
+  fill: rgba(255, 255, 255, 0.85);
+}
+.cv-edges text {
+  fill: #fff;
+  font: 13px system-ui, sans-serif;
+  text-anchor: middle;
+  paint-order: stroke;
+  stroke: rgba(0, 0, 0, 0.5);
+  stroke-width: 3px;
+}
+
+/* ---- chat panel (right, above the zoom control) */
+.cv-chat {
+  position: fixed;
+  z-index: 11;
+  right: 12px;
+  bottom: 64px;
+  display: flex;
+  flex-direction: column;
+  width: 320px;
+  max-width: calc(100vw - 24px);
+  max-height: min(60vh, 520px);
+  border-radius: 10px;
+  background: rgba(15, 25, 20, 0.88);
+  backdrop-filter: blur(6px);
+  color: #e8efe9;
+  font: 13px/1.35 system-ui, sans-serif;
+}
+.cv-chat[hidden] {
+  display: none;
+}
+.cv-chat-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px 4px 12px;
+  font-weight: 700;
+}
+.cv-chat button {
+  border: 0;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.12);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.cv-chat button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.24);
+}
+.cv-chat-close {
+  padding: 0 8px;
+  font-size: 16px;
+}
+.cv-chat-list {
+  margin: 0;
+  padding: 4px 6px;
+  list-style: none;
+  overflow-y: auto;
+  min-height: 60px;
+  flex: 1;
+}
+.cv-chat-msg {
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+.cv-chat-mentioned {
+  background: rgba(255, 214, 90, 0.16);
+}
+.cv-chat-who {
+  padding: 0 !important;
+  background: none !important;
+  font-weight: 700;
+  color: var(--cv-actor);
+  filter: brightness(1.5) saturate(0.9);
+}
+.cv-chat-mine .cv-chat-who {
+  cursor: default;
+}
+.cv-chat-meta {
+  float: right;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 11px;
+  opacity: 0.65;
+}
+.cv-chat-kind {
+  padding: 0 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+}
+.cv-chat-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.cv-chat-at {
+  color: #ffd65a;
+  font-weight: 600;
+}
+.cv-chat-ref {
+  margin-top: 2px;
+  padding: 1px 7px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.cv-chat-ref:disabled {
+  opacity: 0.5;
+  cursor: default !important;
+}
+.cv-chat-empty {
+  padding: 8px 6px;
+  opacity: 0.7;
+}
+.cv-chat-form {
+  padding: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+.cv-chat-attach {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  margin-bottom: 4px;
+  padding: 1px 4px 1px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  font-size: 12px;
+}
+.cv-chat-attach[hidden] {
+  display: none;
+}
+.cv-chat-attach button {
+  padding: 0 6px;
+}
+.cv-chat-row {
+  display: flex;
+  gap: 4px;
+  align-items: flex-end;
+}
+.cv-chat-input {
+  flex: 1;
+  min-width: 0;
+  resize: none;
+  padding: 6px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.3);
+  color: inherit;
+  font: inherit;
+}
+.cv-chat-pin,
+.cv-chat-send {
+  padding: 6px 8px;
+}

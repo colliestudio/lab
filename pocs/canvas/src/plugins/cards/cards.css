@@ -1,0 +1,411 @@
+.pc-card,
+.pc-stack {
+  position: absolute;
+  inset: 0;
+  border-radius: 7px;
+  box-sizing: border-box;
+}
+.pc-card {
+  container-type: size;
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 3px 8px rgba(0, 0, 0, 0.2);
+  font-family: Georgia, 'Times New Roman', serif;
+}
+.pc-stack .pc-card {
+  box-shadow: var(--pc-stack-shadow);
+}
+
+/* face */
+.pc-face {
+  background: linear-gradient(160deg, #fffefb, #f6f1e6);
+  border: 1px solid #d8d1c2;
+}
+.pc-red {
+  color: #c8102e;
+}
+.pc-black {
+  color: #16161d;
+}
+.pc-corner {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 0.95;
+  width: 16cqw;
+}
+.pc-corner b {
+  font-size: 15cqw;
+  font-weight: 700;
+  letter-spacing: -0.06em;
+}
+.pc-corner i {
+  font-style: normal;
+  font-size: 13cqw;
+}
+.pc-corner.tl {
+  left: 3cqw;
+  top: 3cqw;
+}
+.pc-corner.br {
+  right: 3cqw;
+  bottom: 3cqw;
+  transform: rotate(180deg);
+}
+.pc-pips span {
+  position: absolute;
+  font-size: 19cqw;
+  line-height: 1;
+  transform: translate(-50%, -50%);
+}
+.pc-pips span.pc-down {
+  transform: translate(-50%, -50%) rotate(180deg);
+}
+.pc-ace {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 46cqw;
+}
+.pc-ace-spades {
+  font-size: 66cqw;
+  text-shadow: 0 0 0.04em #fff, 0 0.02em 0 #888;
+}
+.pc-court {
+  position: absolute;
+  inset: 17cqw 19cqw;
+  border: 1.5cqw solid currentColor;
+  border-radius: 3cqw;
+  background:
+    repeating-linear-gradient(45deg, transparent 0 4cqw, rgba(212, 175, 55, 0.18) 4cqw 5cqw),
+    linear-gradient(180deg, #fbf3dc, #f1e2b8);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+.pc-court-glyph {
+  font-size: 52cqw;
+  line-height: 1;
+  font-family: 'Segoe UI Symbol', 'Apple Symbols', 'DejaVu Sans', serif;
+  text-shadow: 0 0.03em 0 rgba(0, 0, 0, 0.2);
+}
+.pc-court-letter {
+  position: absolute;
+  bottom: 3cqw;
+  font-size: 11cqw;
+  font-weight: 700;
+  opacity: 0.55;
+}
+.pc-court-suit {
+  position: absolute;
+  font-size: 12cqw;
+  line-height: 1;
+}
+.pc-court-suit.tl {
+  left: 3cqw;
+  top: 3cqw;
+}
+.pc-court-suit.br {
+  right: 3cqw;
+  bottom: 3cqw;
+  transform: rotate(180deg);
+}
+
+/* back */
+.pc-back {
+  background: #fff;
+  border: 1px solid #cfcfcf;
+  padding: 6%; /* % not cqw: cqw on the container itself would resolve against the viewport */
+}
+.pc-back-inner {
+  width: 100%;
+  height: 100%;
+  border-radius: 4cqw;
+  background-color: #8e1b2b;
+  background-image:
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.16) 0 2cqw, transparent 2cqw 7cqw),
+    repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.16) 0 2cqw, transparent 2cqw 7cqw),
+    radial-gradient(circle at center, #b0263a, #6d1020 75%);
+  box-shadow: inset 0 0 0 1.2cqw #8e1b2b, inset 0 0 0 2cqw rgba(255, 255, 255, 0.55);
+}
+
+/* stack */
+.pc-grip {
+  position: absolute;
+  left: 50%;
+  top: -24px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 10px 0 7px;
+  box-sizing: border-box;
+  border-radius: 8px 8px 0 0;
+  background: #222;
+  color: #fff;
+  font: 600 12px/24px system-ui, sans-serif;
+  white-space: nowrap;
+  box-shadow: 0 -1px 4px rgba(0, 0, 0, 0.35);
+  cursor: move;
+  z-index: 1;
+}
+.pc-grip:hover {
+  background: #3a3a3a;
+}
+.pc-grip-dots {
+  font-size: 14px;
+  opacity: 0.7;
+}
+.pc-empty {
+  border: 2px dashed rgba(255, 255, 255, 0.4);
+  box-shadow: none;
+}
+.pc-grip.pc-home {
+  background: #233257;
+}
+.pc-grip.pc-home:hover {
+  background: #2e4170;
+}
+.pc-group {
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  border: 2px dashed color-mix(in srgb, var(--pc-group) 70%, white);
+  background: color-mix(in srgb, var(--pc-group) 16%, transparent);
+  box-sizing: border-box;
+}
+.pc-group.pc-hand {
+  border-style: solid;
+  background: color-mix(in srgb, var(--pc-group) 26%, rgba(0, 0, 0, 0.15));
+}
+.pc-group-tab {
+  left: 14px;
+  transform: none;
+  max-width: calc(100% - 28px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* a table spot (a game's slot area: formation, discard): quiet frame, outlined slot */
+.pc-group.pc-spot {
+  --pc-group: #ffffff;
+  border: 1.5px solid color-mix(in srgb, var(--pc-group) 22%, transparent);
+  background: color-mix(in srgb, var(--pc-group) 5%, transparent);
+}
+.pc-slot {
+  position: absolute;
+  width: 120px;
+  height: 168px;
+  box-sizing: border-box;
+  border: 1.5px dashed rgba(255, 255, 255, 0.28);
+  border-radius: 7px;
+  margin: -1.5px 0 0 -1.5px;
+}
+.pc-slot-faint {
+  border-style: dotted;
+  border-color: rgba(255, 255, 255, 0.14);
+}
+.pc-spot .pc-group-tab {
+  height: 18px;
+  top: -18px;
+  padding: 0 7px 0 5px;
+  font: 600 10.5px/18px system-ui, sans-serif;
+  background: rgba(0, 0, 0, 0.32);
+  color: rgba(255, 255, 255, 0.75);
+  box-shadow: none;
+}
+.pc-spot .pc-group-tab:hover {
+  background: rgba(0, 0, 0, 0.55);
+}
+/* hands: a card shown to the table sits in the strip, glowing in the owner's color */
+.pc-card.pc-raised {
+  box-shadow:
+    0 0 0 2px var(--pc-owner),
+    0 0 14px 2px color-mix(in srgb, var(--pc-owner) 55%, transparent),
+    0 6px 14px rgba(0, 0, 0, 0.3);
+}
+/* my own hand: the card under the pointer lifts a little (which one a press would take) */
+.cv-node[data-mine]:hover > .pc-card {
+  transform: translateY(-10px);
+}
+/* where a drop into a hand, row or fan would go */
+.pc-insert {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 4px;
+  margin-left: -2px;
+  border-radius: 2px;
+  background: #ffd54a;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35), 0 0 10px rgba(255, 213, 74, 0.8);
+  z-index: 1000001;
+  pointer-events: none;
+}
+/* a selected card in a hand: lifted, with a strong outline on the card itself */
+.cv-node[data-inhand].cv-selected {
+  outline: none;
+}
+.cv-node[data-inhand].cv-selected > .pc-card {
+  transform: translateY(-14px);
+  box-shadow:
+    0 0 0 3px #ffd54a,
+    0 0 0 5px rgba(0, 0, 0, 0.35),
+    0 12px 20px rgba(0, 0, 0, 0.4);
+}
+.cv-node[data-inhand] > .pc-card {
+  transition: transform 90ms ease-out;
+}
+.pc-lane {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  top: 8px;
+  box-sizing: border-box;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  pointer-events: none;
+  transition: background 120ms;
+}
+.pc-lane span {
+  position: absolute;
+  right: 8px;
+  top: 6px;
+  font: 600 11px/1 system-ui, sans-serif;
+  color: rgba(255, 255, 255, 0.45);
+}
+.pc-threshold {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  height: 0;
+  border-top: 2px dashed #ffd54a;
+  pointer-events: none;
+  display: none;
+}
+.pc-threshold span {
+  position: absolute;
+  right: 6px;
+  top: -16px;
+  font: 600 10px/1 system-ui, sans-serif;
+  color: #ffd54a;
+}
+/* dragging one of this hand's cards: the strip is a visible drop zone, the threshold line shows */
+.cv-node.pc-drag-home .pc-lane {
+  background: color-mix(in srgb, var(--pc-group) 30%, rgba(255, 255, 255, 0.12));
+  outline: 2px dashed rgba(255, 255, 255, 0.45);
+}
+.cv-node.pc-drag-home .pc-threshold {
+  display: block;
+}
+.pc-resize {
+  position: absolute;
+  right: -5px;
+  top: 20%;
+  bottom: 20%;
+  width: 10px;
+  border-radius: 5px;
+  cursor: ew-resize;
+  background: rgba(255, 255, 255, 0.18);
+  opacity: 0;
+  transition: opacity 120ms;
+}
+.cv-node:hover > .pc-hand .pc-resize,
+.pc-resize:hover {
+  opacity: 1;
+}
+/* others, when the count is hidden: one generic pile, whatever is in the hand */
+.pc-pile {
+  position: absolute;
+  left: 50%;
+  width: 120px;
+  height: 168px;
+  margin-left: -60px;
+  pointer-events: none;
+}
+.pc-pile i {
+  position: absolute;
+  inset: 0;
+  border-radius: 7px;
+  border: 1px solid #cfcfcf;
+  background:
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.16) 0 3px, transparent 3px 9px),
+    radial-gradient(circle at center, #b0263a, #6d1020 75%);
+  box-shadow: inset 0 0 0 6px #fff, 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+.pc-pile i:nth-child(1) {
+  transform: translate(-16px, 4px) rotate(-5deg);
+}
+.pc-pile i:nth-child(3) {
+  transform: translate(16px, 4px) rotate(5deg);
+}
+.pc-blind {
+  opacity: 0.8;
+  margin-left: 2px;
+}
+/* a card just shown: one short glow */
+@keyframes pc-glow {
+  from {
+    filter: drop-shadow(0 0 10px var(--pc-owner, #ffd54a));
+  }
+  to {
+    filter: none;
+  }
+}
+.cv-node.pc-glow {
+  animation: pc-glow 280ms ease-out;
+}
+/* a card that just landed on the table near a hand: a brief outline */
+@keyframes pc-landed {
+  from {
+    outline-color: #7fe3ff;
+  }
+  to {
+    outline-color: transparent;
+  }
+}
+.cv-node.pc-landed {
+  outline: 3px solid transparent;
+  outline-offset: 3px;
+  border-radius: 8px;
+  animation: pc-landed 1.2s ease-out;
+}
+.pc-viewas {
+  position: absolute;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: #f5c542;
+  color: #222;
+  font: 700 13px/1.2 system-ui, sans-serif;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+}
+.pc-viewas[hidden] {
+  display: none;
+}
+/* a selected card in a hand comes to the front on your screen, so you see all of it */
+.cv-node[data-inhand].cv-selected {
+  z-index: 900000 !important;
+}
+/* a hand whose owner left: greyed */
+.pc-hand.pc-away {
+  filter: grayscale(0.85);
+  opacity: 0.75;
+}
+
+/* a pile in a fixed area (a mat's zone): the area's frame, the pile in its middle */
+.pc-area-pile {
+  position: absolute;
+  width: 120px;
+  height: 168px;
+}
+/* a spot holding more than it may now (Battle Line: 4 cards after the Mud left) */
+.pc-group.pc-spot.pc-over {
+  border: 2px dashed #ff8a65;
+  background: rgba(255, 138, 101, 0.12);
+}

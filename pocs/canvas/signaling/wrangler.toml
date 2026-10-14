@@ -1,0 +1,16 @@
+# y-webrtc signaling on Cloudflare Workers + Durable Objects.
+# Local: `pnpm dev:signal` (wrangler dev on port 5192). Not deployed; no account needed for local dev.
+name = "canvas-signal"
+main = "src/index.ts"
+compatibility_date = "2025-09-01"
+
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "SignalRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["SignalRoom"]
+
+[dev]
+port = 5192

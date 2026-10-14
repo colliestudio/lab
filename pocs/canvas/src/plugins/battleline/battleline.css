@@ -1,0 +1,267 @@
+/* Battle Line troop cards: the color is the face, the value large */
+.bl-troop {
+  background:
+    radial-gradient(circle at 50% 42%, color-mix(in srgb, var(--bl) 70%, white) 0, var(--bl) 55%, color-mix(in srgb, var(--bl) 75%, black) 100%);
+  border: 1px solid color-mix(in srgb, var(--bl) 60%, black);
+  color: #fff;
+  font-family: Georgia, 'Times New Roman', serif;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+}
+.bl-troop::before {
+  content: '';
+  position: absolute;
+  inset: 4cqw;
+  border: 1cqw solid rgba(255, 255, 255, 0.55);
+  border-radius: 4cqw;
+}
+.bl-troop[data-color='y'] {
+  color: #3d2c00;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+.bl-troop[data-color='y']::before {
+  border-color: rgba(80, 55, 0, 0.35);
+}
+.bl-corner {
+  position: absolute;
+  width: 24cqw;
+  text-align: center;
+  font-size: 19cqw;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.06em;
+}
+.bl-corner.tl {
+  left: 7cqw;
+  top: 8cqw;
+}
+.bl-corner.br {
+  right: 7cqw;
+  bottom: 8cqw;
+  transform: rotate(180deg);
+}
+.bl-big {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 62cqw;
+  font-weight: 700;
+  letter-spacing: -0.06em;
+  padding-bottom: 8cqw;
+}
+.bl-unit {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 30cqw;
+  text-align: center;
+  font: 600 8.5cqw/1 system-ui, sans-serif;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+
+/* tactics: parchment with a dark head, a short rule */
+.bl-tactic {
+  background: linear-gradient(170deg, #fbf3df, #ecdcb4);
+  border: 1px solid #a8925c;
+  color: #2b2210;
+  font-family: Georgia, 'Times New Roman', serif;
+  --bl-k: #6b3d12;
+}
+.bl-k-leader {
+  --bl-k: #7a1f2b;
+}
+.bl-k-morale {
+  --bl-k: #1f4f7a;
+}
+.bl-k-environment {
+  --bl-k: #2f6a3a;
+}
+.bl-t-head,
+.bl-t-foot {
+  position: absolute;
+  left: 4cqw;
+  right: 4cqw;
+  height: 24cqw;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2cqw;
+  background: var(--bl-k);
+  color: #f8ecc9;
+  font-size: 10.5cqw;
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+  border-radius: 3cqw;
+}
+.bl-t-head {
+  top: 4cqw;
+}
+.bl-t-head span {
+  color: #e5c463;
+}
+.bl-t-foot {
+  bottom: 4cqw;
+  height: 17cqw;
+  font-size: 9cqw;
+  transform: rotate(180deg);
+  opacity: 0.9;
+}
+.bl-t-kind {
+  position: absolute;
+  top: 31cqw;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font: 700 7.5cqw/1 system-ui, sans-serif;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--bl-k);
+}
+.bl-t-text {
+  position: absolute;
+  top: 42cqw;
+  left: 8cqw;
+  right: 8cqw;
+  bottom: 24cqw;
+  display: flex;
+  align-items: center;
+  text-align: center;
+  font-size: 9.6cqw;
+  line-height: 1.22;
+}
+
+/* backs */
+.bl-back {
+  background: #2a1d10;
+  border: 1px solid #1a1108;
+}
+.bl-back-inner {
+  position: absolute;
+  inset: 4cqw;
+  border-radius: 4cqw;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4cqw;
+  font-family: Georgia, 'Times New Roman', serif;
+  box-sizing: border-box;
+}
+.bl-back-inner b {
+  font-size: 34cqw;
+  line-height: 1;
+}
+.bl-back-inner span {
+  font-size: 11cqw;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: center;
+}
+.bl-back-troops .bl-back-inner {
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.05) 0 3cqw, transparent 3cqw 9cqw),
+    radial-gradient(circle at center, #b5762e, #6e3f12 80%);
+  color: #f6dfa6;
+  border: 1.4cqw solid #d9b064;
+}
+.bl-back-tactics {
+  background: #0f1d36;
+}
+.bl-back-tactics .bl-back-inner {
+  background:
+    repeating-linear-gradient(45deg, rgba(229, 196, 99, 0.12) 0 2cqw, transparent 2cqw 8cqw),
+    radial-gradient(circle at center, #2c4a86, #13254a 80%);
+  color: #e5c463;
+  border: 1.4cqw solid #e5c463;
+}
+
+/* flags */
+.bl-flag {
+  position: absolute;
+  inset: 0;
+  cursor: grab;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.35));
+}
+.bl-flag svg {
+  display: block;
+}
+.bl-flag-claim {
+  position: absolute;
+  left: 30px;
+  top: 50px;
+  max-width: 84px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  color: #fff;
+  font: 700 10px/14px system-ui, sans-serif;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bl-troop u {
+  text-decoration-thickness: 0.07em;
+  text-underline-offset: 0.08em;
+}
+
+/* a flag's environment spot (only drawn while Fog / Mud lies there) */
+.bl-env {
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  outline: 1px dashed rgba(255, 255, 255, 0.25);
+}
+.bl-env-badge {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  top: -20px;
+  padding: 1px 7px;
+  border-radius: 6px;
+  font: 700 10.5px/16px system-ui, sans-serif;
+  white-space: nowrap;
+  color: #fff;
+  pointer-events: none;
+}
+.bl-env-badge.bl-fog {
+  background: #6f7f8f;
+}
+.bl-env-badge.bl-mud {
+  background: #7a5a35;
+  top: -38px;
+}
+/* the tactics tally */
+.bl-tally {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.35);
+  color: #f3efe2;
+  font: 600 13px system-ui, sans-serif;
+}
+.bl-tally-title {
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+.bl-tally-side {
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+.bl-tally-side.bl-blocked {
+  background: #c8402e;
+  color: #fff;
+}
+.bl-tally i {
+  opacity: 0.5;
+  font-style: normal;
+}
