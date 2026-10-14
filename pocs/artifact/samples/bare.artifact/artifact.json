@@ -1,0 +1,1 @@
+{ "title": "Bare shell sample", "kind": "sample", "audience": "artifact authors", "summary": "A blank page with its own navigation built from usePages, and a card that morphs into the next page's hero.", "shell": "bare", "created": "2026-10-13" }

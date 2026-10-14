@@ -1,0 +1,5 @@
+[
+  { "n": 41, "title": "Resolve tsx from the repo", "state": "merged", "checks": "pass", "owner": "dev-1", "stack": [1, 3], "href": "https://example.com/pr/41" },
+  { "n": 42, "title": "Number zoom levels 1-4", "state": "open", "checks": "pending", "owner": "dev-2", "stack": [2, 3], "href": "https://example.com/pr/42" },
+  { "n": 43, "title": "Single-file share", "state": "draft", "checks": "fail", "owner": "dev-2", "stack": [3, 3], "href": "https://example.com/pr/43" }
+]

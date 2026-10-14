@@ -1,0 +1,11 @@
+{
+  "title": "artifact kit v0.1",
+  "kind": "release notes",
+  "audience": "Alex, and anyone picking the kit up",
+  "summary": "Agents write the page, the kit gives them the parts, and the reader gets one HTML file to read, present and answer.",
+  "shell": "bare",
+  "tour": ["home", "rounds"],
+  "timeZone": "Asia/Ho_Chi_Minh",
+  "created": "2026-10-13",
+  "sources": ["cs-vault/work/task-5", "wt/recap-lab/task-5 git log", "notes/recap § Decisions"]
+}

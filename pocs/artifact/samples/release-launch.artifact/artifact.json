@@ -1,0 +1,13 @@
+{
+  "title": "artifact kit 0.1",
+  "kind": "release-notes",
+  "audience": "Alex, and anyone who will write or read artifacts",
+  "summary": "Agents write the page, the kit gives them the parts, and the reader gets one HTML file to read, present and answer.",
+  "shell": "bare",
+  "created": "2026-10-13",
+  "timeZone": "Asia/Ho_Chi_Minh",
+  "sources": [
+    { "label": "release.json (task-5 rounds 1–13)", "kind": "file" },
+    { "label": "recap-lab git log, task-5 branch", "kind": "commit" }
+  ]
+}

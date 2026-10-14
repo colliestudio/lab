@@ -1,0 +1,9 @@
+.b-root { min-height: 100vh; display: grid; grid-template-rows: auto 1fr; background: var(--collie-color-canvas); color: var(--collie-color-fg); font-family: var(--collie-font-sans); }
+.b-nav { display: flex; gap: 1.5rem; padding: 1.2rem 2rem; align-items: baseline; }
+.b-nav a { color: var(--collie-color-fg-muted); text-decoration: none; padding-bottom: 2px; border-bottom: 2px solid transparent; }
+.b-nav [aria-current] { color: var(--collie-color-fg); border-color: var(--collie-color-accent-solid); }
+.b-stage { padding: 2rem; display: grid; align-content: center; gap: 1.5rem; }
+.b-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 1.2rem; }
+.b-card { display: block; text-decoration: none; color: inherit; border: 1px solid var(--collie-color-border-subtle); border-radius: 14px; padding: 1.2rem; background: var(--collie-color-surface); }
+.b-swatch { height: 7rem; border-radius: 10px; background: linear-gradient(135deg, var(--collie-color-accent-solid), var(--collie-color-success-solid)); }
+.b-hero { height: 40vh; border-radius: 18px; background: linear-gradient(135deg, var(--collie-color-accent-solid), var(--collie-color-success-solid)); }

@@ -1,0 +1,137 @@
+[
+ {
+  "h": "4d22d0a",
+  "at": "2026-10-12T20:01:23+07:00",
+  "s": "artifact kit: esbuild dep, tokens"
+ },
+ {
+  "h": "4d1a97e",
+  "at": "2026-10-12T20:07:25+07:00",
+  "s": "artifact kit, host chrome, CLI (new/dev/check/build)"
+ },
+ {
+  "h": "3ba8d81",
+  "at": "2026-10-12T20:09:30+07:00",
+  "s": "hello sample, mermaid lite, lazy elk"
+ },
+ {
+  "h": "62504e0",
+  "at": "2026-10-12T20:11:33+07:00",
+  "s": "artifact tests, present mode slides for loose content"
+ },
+ {
+  "h": "91c4cb0",
+  "at": "2026-10-12T20:12:45+07:00",
+  "s": "artifact guide, mdx, readme"
+ },
+ {
+  "h": "17b9a82",
+  "at": "2026-10-12T20:19:41+07:00",
+  "s": "artifact review fixes: evidence containment, code-only reference scan, check render filter"
+ },
+ {
+  "h": "6b08448",
+  "at": "2026-10-12T20:26:28+07:00",
+  "s": "check skips evidence/ types; Code: per-line notes, path/href title, highlighter safety net"
+ },
+ {
+  "h": "a26e5b9",
+  "at": "2026-10-12T20:28:41+07:00",
+  "s": "Map fits its column (fit/zoom/pan, section links); present mode: title slide, step scroll,"
+ },
+ {
+  "h": "bf881b4",
+  "at": "2026-10-12T20:31:57+07:00",
+  "s": "Scorecard, Actions, Facts, RiskMatrix, Gallery, DecisionIndex, Ago; Decision id anchors, n"
+ },
+ {
+  "h": "2850034",
+  "at": "2026-10-12T20:35:54+07:00",
+  "s": "tile Gallery with drill-down, Stats, Img fit/thumb/lightbox, imageSrc export"
+ },
+ {
+  "h": "d747fbd",
+  "at": "2026-10-12T20:37:34+07:00",
+  "s": "compact header by default, artifact.json depth, swimlane Timeline, Decision source, Diff w"
+ },
+ {
+  "h": "d178788",
+  "at": "2026-10-12T20:38:59+07:00",
+  "s": "artifact capture, artifact gather (gh-prs, board, git-log), png size warning, guide"
+ },
+ {
+  "h": "d002e67",
+  "at": "2026-10-12T20:46:52+07:00",
+  "s": "shot loads lazy content, Map fit respects viewport height, check advice, header as-of and "
+ },
+ {
+  "h": "4b13fa7",
+  "at": "2026-10-12T20:53:18+07:00",
+  "s": "fix JSX highlighting in built pages (script escaping broke u-flag regexes)"
+ },
+ {
+  "h": "78fff6a",
+  "at": "2026-10-12T20:55:29+07:00",
+  "s": "scorecard header wrap, wide pages and outline toggle, code wrap toggle, shot every present"
+ },
+ {
+  "h": "7cd80b6",
+  "at": "2026-10-12T20:59:13+07:00",
+  "s": "present mode on wide pages, evidence template-literal globs, Timeline bucket/group/compact"
+ },
+ {
+  "h": "48bf7b0",
+  "at": "2026-10-12T21:46:48+07:00",
+  "s": "TimeAxis (segments, bands, lanes), usePresentSteps, shot --split/--help/1-based --present,"
+ },
+ {
+  "h": "07f2012",
+  "at": "2026-10-12T22:23:39+07:00",
+  "s": "host bar: Download, labelled Detail control with toast and stubs, shortcuts help; TimeAxis"
+ },
+ {
+  "h": "7a14ad0",
+  "at": "2026-10-12T22:25:58+07:00",
+  "s": "one comments drawer behind a store interface, Stages, guide: one claim per picture"
+ },
+ {
+  "h": "c724063",
+  "at": "2026-10-12T22:33:10+07:00",
+  "s": "answerable Decisions with When branching, Feedback drawer (decisions + comments), progress"
+ },
+ {
+  "h": "f0092dd",
+  "at": "2026-10-12T22:42:52+07:00",
+  "s": "Detail 1-4 zooms the outline automatically (sections collapse, heavy blocks stub, per-item"
+ },
+ {
+  "h": "7b958f3",
+  "at": "2026-10-12T23:39:20+07:00",
+  "s": "remove Detail 1-4; sections fold on heading click, More replaces Depth (alias kept), colla"
+ },
+ {
+  "h": "e38f8fe",
+  "at": "2026-10-12T23:44:12+07:00",
+  "s": "Walkthrough, usePresentSteps setStep/active, present Space/Enter only skip consuming contr"
+ },
+ {
+  "h": "85df6ca",
+  "at": "2026-10-12T23:44:46+07:00",
+  "s": "guide points at COMPONENTS.md next to it"
+ },
+ {
+  "h": "2c2256f",
+  "at": "2026-10-13T01:20:18+07:00",
+  "s": "multi-page artifacts: pages/*.tsx as hash routes, grouped nav with section sub-list, prev/"
+ },
+ {
+  "h": "ec214e5",
+  "at": "2026-10-13T01:21:28+07:00",
+  "s": "tour across pages (artifact.json tour), present the current page by default"
+ },
+ {
+  "h": "083b5e0",
+  "at": "2026-10-13T01:24:40+07:00",
+  "s": "multi-page feedback (decisions and comments across pages), shot --page, per-page build siz"
+ }
+]

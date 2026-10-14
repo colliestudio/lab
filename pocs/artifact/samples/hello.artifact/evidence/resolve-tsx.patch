@@ -1,0 +1,69 @@
+diff --git a/bin/recap.js b/bin/recap.js
+index 864ff31..214e001 100755
+--- a/bin/recap.js
++++ b/bin/recap.js
+@@ -4,5 +4,5 @@ import { spawnSync } from "node:child_process";
+ import { fileURLToPath } from "node:url";
+ import { dirname, join } from "node:path";
+ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+-const r = spawnSync(process.execPath, ["--import", "tsx", join(root, "src/cli.ts"), ...process.argv.slice(2)], { stdio: "inherit", cwd: process.cwd() });
++const r = spawnSync(process.execPath, ["--import", import.meta.resolve("tsx"), join(root, "src/cli.ts"), ...process.argv.slice(2)], { stdio: "inherit", cwd: process.cwd() });
+ process.exit(r.status ?? 1);
+diff --git a/viewer/src/components/SectionView.tsx b/viewer/src/components/SectionView.tsx
+index 140d5c0..0738427 100644
+--- a/viewer/src/components/SectionView.tsx
++++ b/viewer/src/components/SectionView.tsx
+@@ -28,7 +28,7 @@ export function SectionView({ section, level, focused }: { section: Section; lev
+   const [open, setOpen] = useState(!section.mechanical || !!focused);
+   const blocks = section.blocks.filter((b) => b.level <= level);
+   const hidden = section.blocks.length - blocks.length;
+-  const extra = useMemo(() => (level >= 3 ? autoFiles(doc, section.id) : []), [doc, section.id, level]);
++  const extra = useMemo(() => (level >= 4 ? autoFiles(doc, section.id) : []), [doc, section.id, level]);
+   const sectionFiles = useMemo(() => {
+     const fs = fileSections(doc);
+     return doc.files.filter((f) => fs.get(f.path) === section.id);
+@@ -73,19 +73,19 @@ export function SectionView({ section, level, focused }: { section: Section; lev
+         <div className="sec-body">
+           {blocks.map((b) => (
+             <Commentable key={b.id} anchor={{ section: section.id, block: b.id }}
+-              className={cx("blk", `blk-${b.type}`, b.level >= 3 && "l3")}>
++              className={cx("blk", `blk-${b.type}`, b.level >= 4 && "l4")}>
+               <BlockView block={b} />
+             </Commentable>
+           ))}
+           {extra.length > 0 && (
+-            <div className="blk l3 auto-files">
++            <div className="blk l4 auto-files">
+               <div className="blk-label">Files in this area</div>
+               <FileTree entries={extra.map((f) => ({ path: f.path, file: f }))} />
+               {extra.map((f) => <FileDiff key={f.path} file={f} defaultOpen={!f.mechanical && extra.length <= 4} />)}
+             </div>
+           )}
+-          {hidden > 0 && level < 3 && (
+-            <button className="sec-more" onClick={() => setLevel(3)}>
++          {hidden > 0 && level < 4 && (
++            <button className="sec-more" onClick={() => setLevel(4)}>
+               <Icon name="plus" size={12} /> {plural(hidden, "code block")} · zoom to Code <span className="kbd">4</span>
+             </button>
+           )}
+diff --git a/viewer/src/util.ts b/viewer/src/util.ts
+index d60bc18..59609ba 100644
+--- a/viewer/src/util.ts
++++ b/viewer/src/util.ts
+@@ -6,11 +6,12 @@ export { globToRe, matchAny } from "../../src/glob.ts";
+ import { matchAny } from "../../src/glob.ts";
+ 
+ export const LEVELS = [
+-  { n: 0, name: "Headline" },
+-  { n: 1, name: "Map" },
+-  { n: 2, name: "Areas" },
+-  { n: 3, name: "Code" },
++  { n: 1, name: "Headline" },
++  { n: 2, name: "Map" },
++  { n: 3, name: "Areas" },
++  { n: 4, name: "Code" },
+ ] as const;
++export const levelName = (n: number) => LEVELS.find((l) => l.n === n)?.name ?? "";
+ 
+ export const CHANGE_LABEL: Record<Change, string> = {
+   added: "added", changed: "changed", removed: "removed", unchanged: "context", planned: "planned", deferred: "deferred",

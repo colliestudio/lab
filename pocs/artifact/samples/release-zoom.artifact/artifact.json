@@ -1,0 +1,26 @@
+{
+ "title": "Artifact kit v0.1: the map",
+ "kind": "release notes",
+ "audience": "Alex",
+ "summary": "Agents write the page, the kit gives them the parts, and the reader gets one HTML file to read, present and answer.",
+ "shell": "bare",
+ "created": "2026-10-13",
+ "sources": [
+  "cs-vault/work/task-5",
+  "wt/recap-lab/task-5 git log",
+  "notes/recap § Decisions"
+ ],
+ "tour": [
+  "home",
+  "artifact-dir",
+  "present-mode",
+  "decision-walk",
+  "scorecard",
+  "map-fit",
+  "walkthrough",
+  "shot",
+  "pages",
+  "removed",
+  "next"
+ ]
+}
