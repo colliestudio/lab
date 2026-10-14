@@ -7,6 +7,7 @@ import type { CanvasDoc, CanvasNode, Change } from '../src/core/doc';
 import type { LogActor } from '../src/core/log';
 import { registerBoardLogic } from '../src/plugins/board/logic';
 import { registerChessLogic } from '../src/plugins/chess/logic';
+import { registerStormLogic } from '../src/plugins/eventstorm/logic';
 import { after, chatArray, chatMessages, sendChat, type ChatMessage } from '../src/core/chat';
 import { views, type View } from './views';
 import { describeDiff, diffFile, stableSerialize } from './canonical';
@@ -61,6 +62,7 @@ export class Host {
     registerCoreCommands(s);
     registerBoardLogic(s);
     registerChessLogic(s);
+    registerStormLogic(s);
     return s;
   }
 
