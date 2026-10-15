@@ -67,7 +67,7 @@ export function mountOutline(app: App, hooks: OutlineHooks) {
     if (key === listKey) return;
     listKey = key;
     if (!entries.length) {
-      list.innerHTML = `<div class="fr-ol-empty">No frames yet. Select some objects and press ⇧F, or + ›�� Frame.</div>`;
+      list.innerHTML = `<div class="fr-ol-empty">No frames yet. Select some objects and press ⇧F, or + › Frame.</div>`;
       return;
     }
     const frames = entries.filter((e) => e.kind === 'frame');

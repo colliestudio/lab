@@ -849,7 +849,7 @@ export const cardsPlugin: Plugin = {
     const playMenu = (a: App, faceDown: boolean): MenuEntry => ({
       label: faceDown ? 'Play face down to' : 'Play to',
       hint: faceDown ? 'â‡§P' : 'P',
-      disabled: spots(a).length ? false : 'No zone or spot on the table (+ â€º€º Mat)',
+      disabled: spots(a).length ? false : 'No zone or spot on the table (+ â€º Mat)',
       items: () => spots(a).map((t) => ({ label: `${kindName(t)}${t.id === lastPlayed ? ' (last)' : ''}`, run: () => playTo(a, t, playable(a), !faceDown) })),
     });
 

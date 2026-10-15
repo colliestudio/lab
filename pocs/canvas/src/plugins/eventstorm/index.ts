@@ -116,7 +116,7 @@ export const stormPlugin: Plugin = {
     /** Make a sticky of `kind` where it makes sense, then type into it. */
     const create = (kind: StickyKind, opts: { after?: string; at?: { x: number; y: number } } = {}) => {
       const b = targetBoard();
-      if (!b) return app.notify(app.doc.nodes.some(isBoard) ? 'Point at a board first' : 'No board yet: + ›�� Event storm board');
+      if (!b) return app.notify(app.doc.nodes.some(isBoard) ? 'Point at a board first' : 'No board yet: + › Event storm board');
       if (!offered(phaseOf(b)).includes(kind)) {
         const need = PHASES.find((p) => offered(p).includes(kind))!;
         return app.notify(`${KINDS[kind].name}s come in phase “${PHASE_INFO[need].name}” (switch phase on the board)`);

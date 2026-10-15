@@ -283,7 +283,7 @@ export const matsPlugin: Plugin = {
       run: (a) => {
         const m = targetMat(a);
         if (m) toggleEditing(m);
-        else a.notify(a.doc.nodes.some(isMat) ? 'Point at a mat, then Z' : 'No mat on the table (+ â€º€º Mat)');
+        else a.notify(a.doc.nodes.some(isMat) ? 'Point at a mat, then Z' : 'No mat on the table (+ â€º Mat)');
       },
     });
     app.registerMenu((_a, sel) => {
