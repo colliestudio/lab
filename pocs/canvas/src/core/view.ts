@@ -1,7 +1,7 @@
 import type { App } from './app';
 import { raise } from './commands';
 import type { CanvasNode, DocView } from './doc';
-import { EdgeLayer, clipToBox, type Box } from './edges';
+import { EdgeLayer, type Box } from './edges';
 import { inlineEdit, TEXT_INPUT } from './inlineEdit';
 import { Menu } from './menu';
 import type { MenuEntry, ObjectType, RenderCtx, Tool } from './plugin';
@@ -898,8 +898,6 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string) {
   e.className = cls;
   return e;
 }
-
-export { clipToBox };
 
 function renderFallback(n: CanvasNode, box: HTMLElement) {
   const d = el('div', 'cv-text');

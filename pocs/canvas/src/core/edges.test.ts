@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Store } from './store';
-import { clipToBox } from './view';
+import { clipToBox } from './edges';
 
 const node = (id: string, x = 0) => ({ id, type: 'text', x, y: 0, width: 100, height: 50 });
 
