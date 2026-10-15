@@ -57,8 +57,3 @@ export function textBox(text: string, size: number): { w: number; h: number } {
   const longest = Math.max(...lines.map((l) => l.length), 2);
   return { w: Math.max(MIN_SIZE, Math.ceil(longest * size * 0.58 + 12)), h: Math.max(MIN_SIZE, Math.ceil(lines.length * size * 1.3 + 8)) };
 }
-
-export const nameOf = (n: CanvasNode | undefined) => {
-  const s = (n?.text ?? '').split('\n')[0].trim();
-  return s ? `“${s.length > 30 ? s.slice(0, 29) + '…' : s}”` : 'a shape';
-};
