@@ -75,7 +75,7 @@ export function mountPalette(app: App) {
     }
     const root = app.view.root;
     const under = document.elementFromPoint(e.clientX, e.clientY);
-    if (!under || !root.contains(under) || under.closest('.cv-menu')) return; // dropped on the toolbar, the panel…
+    if (!under || !root.contains(under) || under.closest('.cv-menu')) return; // dropped on the dock, the panel…
     const r = root.getBoundingClientRect();
     const [x, y] = app.viewport.toWorld(e.clientX - r.left, e.clientY - r.top);
     app.dispatch('chess.spawn', { piece, color, x, y });

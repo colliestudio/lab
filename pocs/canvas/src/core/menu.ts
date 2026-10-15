@@ -13,6 +13,7 @@ const HOVER_MS = 140;
 export class Menu {
   private levels: Level[] = [];
   private timer = 0;
+  private anchorEl?: Element;
 
   constructor(private root: HTMLElement) {
     window.addEventListener('keydown', (e) => this.onKey(e), { capture: true });
@@ -22,17 +23,24 @@ export class Menu {
     return this.levels.length > 0;
   }
 
-  /** Open at a root point, or below an element (e.g. an object's tab). */
-  open(entries: MenuEntry[], at: Pt | Element, title?: string) {
+  /** The element the open menu hangs from (a button), if any: lets that button toggle it. */
+  get anchor() {
+    return this.isOpen ? this.anchorEl : undefined;
+  }
+
+  /** Open at a root point, or below an element (e.g. an object's tab); `above` puts it over the element instead. */
+  open(entries: MenuEntry[], at: Pt | Element, title?: string, opts: { above?: boolean } = {}) {
     this.close();
+    this.anchorEl = undefined;
     if (!entries.length) return;
+    const lv = this.build(entries, title);
     let p: Pt;
     if (at instanceof Element) {
+      this.anchorEl = at;
       const r = at.getBoundingClientRect();
       const root = this.root.getBoundingClientRect();
-      p = { x: r.left - root.left, y: r.bottom - root.top + 4 };
+      p = { x: r.left - root.left, y: opts.above ? r.top - root.top - lv.el.offsetHeight - 4 : r.bottom - root.top + 4 };
     } else p = at;
-    const lv = this.build(entries, title);
     this.place(lv.el, p.x, p.y);
   }
 

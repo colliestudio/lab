@@ -5,7 +5,7 @@ import { PAD } from '../cards/layout';
 import { zoneNode, type ZoneSpec } from './commands';
 import { MAT_COLORS, freeZoneNode, isZone, matNode } from './model';
 
-// Ready-made mats (Add… menu). Each is one command: one undo step, synced like any change.
+// Ready-made mats (+ menu). Each is one command: one undo step, synced like any change.
 
 export interface Seat {
   id: string;

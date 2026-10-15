@@ -1,10 +1,10 @@
 import './style.css';
-import { App, type Room, joinBridge, joinRoom, loadPlayer, mountChat, mountLog, mountZoomControl, savePlayer, openFile, parse, persistLocally, persistViewport, resetFileHandle, roomDbName, saveFile, type CanvasDoc } from './core';
+import { App, type Room, chromeButton, joinBridge, joinRoom, loadPlayer, mountChat, mountChrome, mountLog, mountZoomControl, savePlayer, openFile, parse, persistLocally, persistViewport, resetFileHandle, roomDbName, saveFile, type CanvasDoc } from './core';
 import { copyText, createRoomFrom, mountRoomStatus, roomFromUrl, roomLink } from './share';
 import { openBridgeDialog } from './bridgeDialog';
 import { bridgeFromLocation, bridgeHref, rememberBridge } from './bridges';
 import { askName } from './nameDialog';
-import { cardsPlugin, handLabelOf, newHandEntries, newHandFor } from './plugins/cards';
+import { cardsPlugin } from './plugins/cards';
 import { chessPlugin } from './plugins/chess';
 import { clockPlugin } from './plugins/clock';
 import { battleLinePlugin } from './plugins/battleline';
@@ -29,6 +29,8 @@ const app = new App(document.getElementById('table')!);
   app.viewer = p.id;
   app.player = { id: p.id, name: p.name, color: p.color };
 }
+const chrome = mountChrome(app);
+const flash = chrome.toast;
 app.use(cardsPlugin);
 app.use(chessPlugin);
 app.use(clockPlugin);
@@ -47,8 +49,7 @@ app.store.migrations.push(removeHelpNote);
 function newTable() {
   resetFileHandle();
   app.store.load({ nodes: [], edges: [] });
-  // the starter table: a shuffled deck, a wave of spades and three cards to flip (setup lays out about 940 x 400)
-  app.dispatch('cards.setup', { x: -470, y: -120 });
+  app.startTable();
   app.store.undoManager.clear();
   app.store.select([]);
   app.view.fit();
@@ -58,28 +59,6 @@ function openDoc(doc: CanvasDoc & { skipped?: string[] }, name: string) {
   app.store.load(doc);
   app.view.fit();
   flash(doc.skipped?.length ? `Opened ${name} (skipped ${doc.skipped.length} bad entries)` : `Opened ${name}`);
-}
-
-// toolbar
-const bar = document.getElementById('toolbar')!;
-const status = document.createElement('span');
-status.className = 'status';
-const flash = (msg: string) => {
-  status.textContent = msg;
-  clearTimeout((flash as any).t);
-  (flash as any).t = setTimeout(() => (status.textContent = ''), 2500);
-};
-const button = (label: string, title: string, run: () => void) => {
-  const b = document.createElement('button');
-  b.textContent = label;
-  b.title = title;
-  b.addEventListener('click', run);
-  bar.append(b);
-  return b;
-};
-
-function playPrototype() {
-  app.keys.get('shift+enter')?.run(app);
 }
 
 async function doSave(saveAs = false) {
@@ -100,51 +79,41 @@ async function doOpen() {
   }
 }
 
-button('New table', ROOM ? 'Clear the table and deal a fresh deck (for everyone in the room)' : 'Clear the table and deal a fresh deck', () => {
-  if (confirm(ROOM ? 'Start a new table for everyone in this room?' : 'Start a new table? Unsaved changes are lost.')) newTable();
+// the main menu: File / Edit / Room / Add / plugin groups / Bridge… / Help (core and plugins add their own rows)
+app.registerMainMenuItem({
+  id: 'file.new',
+  group: 'File',
+  order: 0,
+  entry: () => ({
+    label: 'New table',
+    run: () => {
+      if (confirm(ROOM ? 'Start a new table for everyone in this room?' : 'Start a new table? Unsaved changes are lost.')) newTable();
+    },
+  }),
 });
-button('Reset', 'Put everything back to its starting state (keeps what is on the table)', () => {
-  if (confirm(ROOM ? 'Reset the table for everyone in this room? (Undo brings it back)' : 'Reset the table to its starting state? (Undo brings it back)'))
-    app.dispatch('core.reset', {});
+app.registerMainMenuItem({ id: 'file.open', group: 'File', order: 1, entry: () => ({ label: 'Open…', hint: '⌘O', run: doOpen }) });
+app.registerMainMenuItem({ id: 'file.save', group: 'File', order: 2, entry: () => ({ label: 'Save', hint: '⌘S', run: () => doSave() }) });
+app.registerMainMenuItem({ id: 'file.saveAs', group: 'File', order: 3, entry: () => ({ label: 'Save as…', hint: '⇧⌘S', run: () => doSave(true) }) });
+app.registerMainMenuItem({
+  id: 'edit.reset',
+  group: 'Edit',
+  order: 10,
+  entry: () => ({
+    label: 'Reset table…',
+    run: () => {
+      if (confirm(ROOM ? 'Reset the table for everyone in this room? (Undo brings it back)' : 'Reset the table to its starting state? (Undo brings it back)')) app.dispatch('core.reset', {});
+    },
+  }),
 });
-const addBtn = button('Add…', 'Put something on the table: a deck of cards, a chess set, a game clock…', () =>
-  app.view.openMenu(
-    app.kits.map((k) => ({ label: k.label, run: () => k.create(app, app.viewCenter()) })),
-    addBtn,
-    'Add to the table',
-  ),
-);
-button('▶ Play', 'Play the prototype pages full screen, like a clickable prototype (⇧↵)', () => playPrototype());
-button('Open…', 'Open a .canvas file (⌘O)', doOpen);
-button('Save', 'Save as .canvas (⌘S)', () => doSave());
-button('Undo', 'Undo (⌘Z)', () => app.store.undo());
-button('Redo', 'Redo (⇧⌘Z)', () => app.store.redo());
-// tools: select (V) / hand (H)
-const tools = document.createElement('span');
-tools.className = 'tools';
-const toolBtn = (tool: 'select' | 'hand', label: string, title: string) => {
-  const b = document.createElement('button');
-  b.textContent = label;
-  b.title = title;
-  b.dataset.tool = tool;
-  b.addEventListener('click', () => app.view.setTool(tool));
-  tools.append(b);
-  return b;
-};
-const toolBtns = [toolBtn('select', '↖', 'Select (V)'), toolBtn('hand', '✋\uFE0E', 'Hand: drag to pan (H, or hold Space)')];
-const syncTools = () => toolBtns.forEach((b) => b.classList.toggle('active', b.dataset.tool === app.view.tool));
-app.view.onToolChange(syncTools);
-syncTools();
-bar.prepend(tools);
+// Bridge…: connect to a bridge, see the one this tab is on, bring agents into a room (bridgeDialog.ts)
+app.registerMainMenuItem({ id: 'app.bridge', order: 0, entry: () => ({ label: 'Bridge…', run: () => openBridge() }) });
+app.registerMainMenuItem({ id: 'app.help', order: 1, entry: () => ({ label: 'Help and shortcuts', hint: '?', run: () => helpBtn.click() }) });
 
-const helpBtn = document.createElement('button');
-helpBtn.textContent = '?';
-helpBtn.title = 'Controls (?)';
-helpBtn.className = 'help-btn';
 if (!ROOM && !BRIDGE) {
   const share = document.createElement('button');
+  share.type = 'button';
   share.textContent = 'Share';
-  share.title = 'Play together: copy this table into a new room and copy its link';
+  share.dataset.tip = 'Play together: copy this table into a new room and its link';
   share.className = 'share-btn';
   share.addEventListener('click', async () => {
     const id = await createRoomFrom(app);
@@ -153,24 +122,14 @@ if (!ROOM && !BRIDGE) {
     sessionStorage.setItem('canvas-poc:shared', copied ? 'copied' : 'show');
     location.href = link;
   });
-  bar.append(share);
+  chrome.topRight.append(share);
 }
-// Hand: a new private group (others see backs), in free space near the bottom of the view. In a room:
-// New hand ▸ players (me first); solo: mine right away.
-const handBtn = document.createElement('button');
-handBtn.textContent = 'New hand';
-handBtn.title = 'New hand: a private group for cards someone holds (others see them face down)';
-handBtn.addEventListener('click', () => {
-  if (!app.presence) return newHandFor(app, { ...loadPlayer() });
-  app.view.openMenu(newHandEntries(app), handBtn, 'New hand for');
-});
-// Bridge…: connect to a bridge, see the one this tab is on, bring agents into a room (bridgeDialog.ts)
-button('Bridge…', 'Connect to a bridge, or bring agents into this room', () => openBridge());
-bar.append(handBtn, helpBtn, status);
-mountBreadcrumb(bar, ROOM, TRAIL);
-app.onNotify(flash);
+const helpBtn = chromeButton('circle-help', 'Help', '?');
+helpBtn.classList.add('help-btn');
+mountBreadcrumb(chrome.topLeft, ROOM, TRAIL);
+mountZoomControl(app, chrome.bottomRight);
+chrome.bottomRight.append(helpBtn);
 mountHelp(app, helpBtn);
-mountZoomControl(app);
 mountLog(app);
 
 app.registerKey({ key: 'mod+s', run: () => doSave() });
@@ -228,19 +187,19 @@ else persistLocally(app, DB_NAME).then(({ empty }) => {
     if (!choice) return;
     const me = info(savePlayer(choice));
     room.presence.setMe(me);
-    app.dispatch('cards.handLabel', { owner: me.id, label: handLabelOf(me.name), color: me.color });
+    app.playerRenamed(me);
   };
   mountRoomStatus(
     app,
     room,
-    bar,
+    chrome.topRight,
     () => {
       room.leave();
       location.href = location.pathname;
     },
     () => void rename(),
   );
-  mountChat(app, bar, ROOM);
+  mountChat(app, chrome.topRight, ROOM);
   if (!stored.named) void rename(true);
   const shared = sessionStorage.getItem('canvas-poc:shared');
   sessionStorage.removeItem('canvas-poc:shared');
@@ -274,17 +233,20 @@ function startBridge(url: string) {
   mountRoomStatus(
     app,
     room,
-    bar,
+    chrome.topRight,
     () => {
       room.leave();
       location.href = location.pathname;
     },
     async () => {
       const choice = await askName(room.presence.me, { title: 'Your name and color', action: 'Save' });
-      if (choice) room.presence.setMe(savePlayer(choice));
+      if (!choice) return;
+      const me = savePlayer(choice);
+      room.presence.setMe(me);
+      app.playerRenamed({ id: me.id, name: me.name, color: me.color });
     },
   );
-  mountChat(app, bar, url);
+  mountChat(app, chrome.topRight, url);
   flash(`Connecting to the bridge at ${url}…`);
   room.synced.then(() => {
     rememberBridge({ url, token: BRIDGE_ADDR?.token });

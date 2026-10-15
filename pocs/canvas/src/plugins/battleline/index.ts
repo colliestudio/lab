@@ -135,7 +135,7 @@ function sideInfo(doc: DocView, side: Side) {
 
 const dealEntry = (app: App): MenuEntry => ({
   label: 'Deal Battle Line (new game: 7 troops each)',
-  disabled: troopsDeck(app.doc) ? false : 'No Battle Line on the table (Addâ€¦ â€º Battle Line)',
+  disabled: troopsDeck(app.doc) ? false : 'No Battle Line on the table (+ â€º€º Battle Line)',
   run: () => app.dispatch('battleline.deal', { players: seats(app) }),
 });
 

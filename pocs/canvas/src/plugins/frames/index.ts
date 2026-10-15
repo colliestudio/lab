@@ -302,7 +302,7 @@ export function createFramesPlugin(opts: FramesOptions): Plugin & { portals?: Po
 
       if (portalsOn && typeof document !== 'undefined') {
         const flag = Object.assign(document.createElement('span'), { className: 'fr-flag', textContent: 'portals on', title: 'Experimental: portals are on for this session (?portals=1)' });
-        document.getElementById('toolbar')?.append(flag);
+        document.querySelector('.cv-top-left')?.append(flag);
       }
       if (typeof document !== 'undefined') mountOutline(app, { portals: portalsOn, go, present: (id) => presenter.start(id), enter: opts.enter, rename, currentRoom: opts.room });
       // for agents and the console: what an outline reader sees

@@ -1,7 +1,9 @@
 import './core.css';
 import { registerCoreCommands } from './commands';
 import type { CanvasNode, CarrierOf, DuplicateRule, LayoutRule, ParentOf } from './doc';
-import type { KeyBinding, Kit, MenuItem, MenuProvider, ObjectType, Plugin } from './plugin';
+import type { DockItem, KeyBinding, Kit, MainMenuItem, MenuItem, MenuProvider, ObjectType, Plugin } from './plugin';
+import { Registry } from './registry';
+import { registerCoreChrome } from './chromeView';
 import { Store, type Command, type DispatchResult, type DocFilter } from './store';
 import { View } from './view';
 import { Viewport } from './viewport';
@@ -23,6 +25,13 @@ export class App {
   readonly menuProviders: MenuProvider[] = [];
   /** Kits for the Add menu, in registration order. */
   readonly kits: Kit[] = [];
+  /** Buttons of the bottom dock, and rows of the main menu (top-left). */
+  readonly dock = new Registry<DockItem>();
+  readonly mainMenu = new Registry<MainMenuItem>();
+  /** What "New table" puts on the empty table (see `registerStarter`). */
+  readonly starters: ((app: App) => void)[] = [];
+  /** Run when the local player changes name or color (see `registerRenameHook`). */
+  readonly renameHooks: ((app: App, me: PlayerInfo) => void)[] = [];
   readonly view: View;
   viewer = LOCAL_PLAYER;
   /** Set when the table is shared (multiplayer); null when playing solo. */
@@ -50,6 +59,7 @@ export class App {
     this.registerKey({ key: 'shift+1', label: 'Zoom to fit', run: () => this.view.fit() });
     this.registerKey({ key: 'mod+d', label: 'Duplicate', run: () => this.dispatch('core.duplicate', { ids: [...this.store.selection] }) });
     this.registerKey({ key: 'shift+2', label: 'Zoom to selection', run: () => this.view.zoomToSelection() });
+    registerCoreChrome(this);
   }
 
   use(plugin: Plugin) {
@@ -68,12 +78,39 @@ export class App {
   registerKey(k: KeyBinding) {
     this.keys.set(k.key.toLowerCase(), k);
   }
+  /** A plain right-click row (context action). Returns a disposer. */
   registerMenuItem(item: MenuItem) {
     this.menu.push(item);
+    return () => void remove(this.menu, item);
   }
-  /** Right-click menu built per selection (submenus, checkmarks, disabled reasons). */
+  /** Context actions: the right-click menu built per selection (submenus, checkmarks, disabled reasons). Returns a disposer. */
   registerMenu(provider: MenuProvider) {
     this.menuProviders.push(provider);
+    return () => void remove(this.menuProviders, provider);
+  }
+  /** A button in the bottom dock. Returns a disposer. */
+  registerDockItem(item: DockItem) {
+    return this.dock.add(item);
+  }
+  /** A row in the main menu (top-left); see `MainMenuItem` for where it lands. Returns a disposer. */
+  registerMainMenuItem(item: MainMenuItem) {
+    return this.mainMenu.add(item);
+  }
+  /** What New table puts on the empty table (cards: the starter deck). */
+  registerStarter(fn: (app: App) => void) {
+    this.starters.push(fn);
+  }
+  /** Called after the local player renamed or recolored (cards relabel their hand). */
+  registerRenameHook(fn: (app: App, me: PlayerInfo) => void) {
+    this.renameHooks.push(fn);
+  }
+  /** Put the starter content on an empty table. */
+  startTable() {
+    for (const fn of this.starters) fn(this);
+  }
+  /** The shell calls this after saving a new name or color. */
+  playerRenamed(me: PlayerInfo) {
+    for (const fn of this.renameHooks) fn(this, me);
   }
   /** Containment: contained nodes aren't rendered or selectable and are deleted with their parent. */
   registerParentRule(rule: ParentOf) {
@@ -114,7 +151,7 @@ export class App {
     this.store.appendLog(events);
   }
 
-  /** Show a short message to the local user (toolbar status). */
+  /** Show a short message to the local user (shown above the dock). */
   notify(msg: string) {
     for (const fn of this.notifiers) fn(msg);
   }
@@ -188,4 +225,9 @@ export class App {
     const [x, y] = this.viewport.toWorld(r.clientWidth / 2, r.clientHeight / 2);
     return { x: Math.round(x), y: Math.round(y) };
   }
+}
+
+function remove<T>(list: T[], item: T) {
+  const i = list.indexOf(item);
+  if (i >= 0) list.splice(i, 1);
 }

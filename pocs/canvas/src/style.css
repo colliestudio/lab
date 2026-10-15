@@ -11,43 +11,6 @@ body {
   position: fixed;
   inset: 0;
 }
-#toolbar {
-  position: fixed;
-  z-index: 10;
-  left: 12px;
-  top: 12px;
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  padding: 6px;
-  border-radius: 10px;
-  background: rgba(15, 25, 20, 0.75);
-  backdrop-filter: blur(6px);
-  color: #e8efe9;
-  font-size: 13px;
-}
-#toolbar button {
-  border: 0;
-  border-radius: 6px;
-  padding: 6px 10px;
-  background: rgba(255, 255, 255, 0.12);
-  color: inherit;
-  font: inherit;
-  white-space: nowrap;
-  cursor: pointer;
-}
-#toolbar button:hover {
-  background: rgba(255, 255, 255, 0.24);
-}
-#toolbar .status {
-  padding: 0 6px;
-  opacity: 0.75;
-  white-space: nowrap;
-}
-#toolbar .help-btn {
-  font-weight: 700;
-  min-width: 30px;
-}
 .help-overlay {
   position: fixed;
   inset: 0;
@@ -101,58 +64,6 @@ body {
 .help-panel dd {
   margin: 0;
   color: #444;
-}
-#toolbar .tools {
-  display: flex;
-  gap: 2px;
-  padding-right: 6px;
-  margin-right: 2px;
-  border-right: 1px solid rgba(255, 255, 255, 0.15);
-}
-#toolbar .tools button {
-  min-width: 32px;
-  background: none;
-}
-#toolbar .tools button.active {
-  background: rgba(255, 255, 255, 0.28);
-}
-#toolbar .room {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding-left: 8px;
-  margin-left: 2px;
-  border-left: 1px solid rgba(255, 255, 255, 0.15);
-}
-#toolbar .players {
-  display: flex;
-  gap: 6px;
-}
-#toolbar .player {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  white-space: nowrap;
-}
-#toolbar .player i {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.6);
-}
-#toolbar .room-state {
-  opacity: 0.75;
-  white-space: nowrap;
-}
-#toolbar .room-state[data-ok='false'] {
-  color: #ffb3a7;
-  opacity: 1;
-}
-#toolbar .share-btn {
-  background: #2f7d55;
-}
-#toolbar .share-btn:hover {
-  background: #3a9668;
 }
 .name-overlay {
   position: fixed;
@@ -219,43 +130,6 @@ body {
   color: #fff;
   font: 600 14px system-ui, sans-serif;
   cursor: pointer;
-}
-#toolbar .player.me {
-  cursor: pointer;
-  border: 0;
-  border-radius: 6px;
-  padding: 2px 6px;
-  background: rgba(255, 255, 255, 0.12);
-  color: inherit;
-  font: inherit;
-}
-#toolbar .player.me:hover {
-  background: rgba(255, 255, 255, 0.24);
-}
-#toolbar .chat-btn {
-  position: relative;
-}
-#toolbar .chat-btn.active {
-  background: rgba(255, 255, 255, 0.28);
-}
-#toolbar .chat-badge {
-  position: absolute;
-  top: -6px;
-  right: -6px;
-  min-width: 18px;
-  padding: 0 5px;
-  border-radius: 999px;
-  background: #e6194b;
-  color: #fff;
-  font: 700 11px/18px system-ui, sans-serif;
-  text-align: center;
-}
-#toolbar .chat-badge[hidden] {
-  display: none;
-}
-#toolbar .chat-badge-mention {
-  background: #f5a623;
-  color: #231;
 }
 .bridge-dialog {
   width: min(460px, 92vw);
