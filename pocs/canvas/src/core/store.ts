@@ -125,6 +125,7 @@ export class Store {
   onUndoRefused?: (reason: string) => void;
   /** Commands that upgrade older docs in place; run (not undoable) after every load. Must be idempotent. */
   readonly migrations: Command[] = [];
+  /** Selected node ids, and edge ids (an edge can be picked; commands that take node ids ignore it). */
   selection: ReadonlySet<string> = new Set();
   private commands = new Map<string, Command>();
   private listeners = new Set<() => void>();
@@ -527,14 +528,14 @@ export class Store {
 
   select(ids: Iterable<string>) {
     const v = this.doc;
-    this.selection = new Set([...ids].filter((id) => v.isVisible(id)));
+    this.selection = new Set([...ids].filter((id) => v.isVisible(id) || !!v.edge(id)));
     this.emit();
   }
 
   private pruneSelection() {
     if (!this.selection.size) return;
     const v = this.doc;
-    const next = [...this.selection].filter((id) => v.isVisible(id));
+    const next = [...this.selection].filter((id) => v.isVisible(id) || !!v.edge(id));
     if (next.length !== this.selection.size) this.selection = new Set(next);
   }
 

@@ -1,7 +1,7 @@
 import './core.css';
 import { registerCoreCommands } from './commands';
-import type { CanvasNode, CarrierOf, DuplicateRule, LayoutRule, ParentOf } from './doc';
-import type { KeyBinding, Kit, MenuItem, MenuProvider, ObjectType, Plugin } from './plugin';
+import type { CanvasEdge, CanvasNode, CarrierOf, DuplicateRule, LayoutRule, ParentOf } from './doc';
+import type { KeyBinding, Kit, MenuItem, MenuProvider, ObjectType, Plugin, Tool } from './plugin';
 import { Store, type Command, type DispatchResult, type DocFilter } from './store';
 import { View } from './view';
 import { Viewport } from './viewport';
@@ -21,6 +21,12 @@ export class App {
   readonly keys = new Map<string, KeyBinding>();
   readonly menu: MenuItem[] = [];
   readonly menuProviders: MenuProvider[] = [];
+  /** Creation tools (toolbar buttons), in registration order. */
+  readonly tools: Tool[] = [];
+  /** A double-click on the empty table (`at` = world point). First handler that returns true wins. */
+  readonly emptyDoubleClicks: ((at: { x: number; y: number }, app: App) => boolean | void)[] = [];
+  /** ⌘C: plain copies of the selected nodes and the arrows between them, for ⌘V. */
+  clipboard: { nodes: CanvasNode[]; edges: CanvasEdge[]; pastes: number } | null = null;
   /** Kits for the Add menu, in registration order. */
   readonly kits: Kit[] = [];
   readonly view: View;
@@ -50,6 +56,34 @@ export class App {
     this.registerKey({ key: 'shift+1', label: 'Zoom to fit', run: () => this.view.fit() });
     this.registerKey({ key: 'mod+d', label: 'Duplicate', run: () => this.dispatch('core.duplicate', { ids: [...this.store.selection] }) });
     this.registerKey({ key: 'shift+2', label: 'Zoom to selection', run: () => this.view.zoomToSelection() });
+    this.registerKey({ key: 'mod+c', label: 'Copy', run: () => this.copy() });
+    this.registerKey({ key: 'mod+v', label: 'Paste', run: () => this.paste() });
+  }
+
+  /** Remember the selected nodes (as ⌘D would copy them) and the arrows between them. */
+  copy(): boolean {
+    const doc = this.store.doc;
+    const nodes: CanvasNode[] = [];
+    for (const n of this.selected()) {
+      if (doc.parentOf(n.id)) continue;
+      let copy: CanvasNode | null | undefined;
+      for (const rule of this.store.duplicateRules) if ((copy = rule(n, doc, () => undefined)) !== undefined) break;
+      if (copy !== null) nodes.push(structuredClone(copy ?? n));
+    }
+    if (!nodes.length) return false;
+    const ids = new Set(nodes.map((n) => n.id));
+    const edges = doc.edges.filter((e) => ids.has(e.fromNode) && ids.has(e.toNode)).map((e) => structuredClone(e));
+    this.clipboard = { nodes, edges, pastes: 0 };
+    this.notify(nodes.length === 1 ? 'Copied' : `Copied ${nodes.length} objects`);
+    return true;
+  }
+
+  /** Put the copied objects on the table, a little further down-right each time. */
+  paste() {
+    const c = this.clipboard;
+    if (!c) return;
+    const k = ++c.pastes;
+    this.dispatch('core.paste', { nodes: c.nodes, edges: c.edges, dx: 24 * k, dy: 24 * k });
   }
 
   use(plugin: Plugin) {
@@ -90,6 +124,14 @@ export class App {
   /** A command that puts this plugin's objects back in their starting state (Reset table). */
   registerReset(cmd: Command) {
     this.store.resets.push(cmd);
+  }
+  /** A creation tool: toolbar button and key; the next press-drag on the table calls `create`. */
+  registerTool(tool: Tool) {
+    this.tools.push(tool);
+  }
+  /** React to a double-click on the empty table. */
+  registerEmptyDoubleClick(fn: (at: { x: number; y: number }, app: App) => boolean | void) {
+    this.emptyDoubleClicks.push(fn);
   }
   registerKit(kit: Kit) {
     this.kits.push(kit);

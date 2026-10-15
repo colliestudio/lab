@@ -1,4 +1,5 @@
-import { set, type CanvasNode, type Change, type DocView } from './doc';
+import { set, type CanvasEdge, type CanvasNode, type Change, type DocView } from './doc';
+import { isSide, type EdgeStyle } from './edges';
 import type { Store } from './store';
 
 // Generic commands every object gets. Args are validated; bad args are a no-op.
@@ -75,7 +76,9 @@ export function registerCoreCommands(store: Store) {
       for (const r of doc.riders(id)) walk(r.id);
     };
     for (const n of pick(doc, a?.ids)) walk(n.id);
-    return [...out].map((id): Change => ({ op: 'del', id }));
+    // edge ids (a picked arrow) go too
+    const edges = isIds(a?.ids) ? a.ids.filter((id) => doc.edge(id)) : [];
+    return [...[...out].map((id): Change => ({ op: 'del', id })), ...edges.map((id): Change => ({ op: 'unedge', id }))];
   });
   /** Copy nodes offset by (dx, dy) (default 24, 24) on top; plugins shape or refuse copies. Selects the copies. */
   store.register('core.duplicate', (doc, a: { ids: string[]; dx?: number; dy?: number }, ctx) => {
@@ -87,6 +90,7 @@ export function registerCoreCommands(store: Store) {
     const nodes = pick(doc, a?.ids).filter((n) => !doc.parentOf(n.id));
     const copying = new Set(nodes.map((n) => n.id));
     const copyIds = new Map<string, string>();
+    const made = new Map<string, string>(); // original → copy, for the nodes actually copied
     const copyOf = (id: string) => {
       if (!copying.has(id)) return undefined;
       let c = copyIds.get(id);
@@ -99,7 +103,14 @@ export function registerCoreCommands(store: Store) {
       if (copy === null) continue;
       const id = copyOf(n.id)!;
       ids.push(id);
+      made.set(n.id, id);
       changes.push({ op: 'add', node: { ...structuredClone(copy ?? n), id, x: Math.round(n.x + dx), y: Math.round(n.y + dy), z: ++z } });
+    }
+    // arrows between copied nodes are copied too
+    for (const e of doc.edges) {
+      const f = made.get(e.fromNode);
+      const t = made.get(e.toNode);
+      if (f && t) changes.push({ op: 'edge', edge: { ...structuredClone(e), id: ctx.newId(), fromNode: f, toNode: t } });
     }
     return { changes, select: ids.length ? ids : undefined };
   });
@@ -117,10 +128,89 @@ export function registerCoreCommands(store: Store) {
     }
     return { changes, untracked, events: changes.length || untracked.length ? [{ type: 'core.reset', text: 'reset the table' }] : [] };
   });
+  /** Put copies of `nodes` (and the arrows between them) on the table, offset by (dx, dy), on top. Ids are made new. */
+  store.register('core.paste', (doc, a: { nodes: CanvasNode[]; edges?: CanvasEdge[]; dx?: number; dy?: number }, ctx) => {
+    if (!Array.isArray(a?.nodes)) return [];
+    const dx = isNum(a.dx) ? a.dx : 24;
+    const dy = isNum(a.dy) ? a.dy : 24;
+    const ids = new Map<string, string>();
+    const changes: Change[] = [];
+    let z = doc.topZ;
+    for (const n of a.nodes) {
+      if (!n || typeof n.id !== 'string' || typeof n.type !== 'string' || ![n.x, n.y, n.width, n.height].every(isNum)) continue;
+      const id = ctx.newId();
+      ids.set(n.id, id);
+      changes.push({ op: 'add', node: { ...structuredClone(n), id, x: Math.round(n.x + dx), y: Math.round(n.y + dy), z: ++z } });
+    }
+    for (const e of Array.isArray(a.edges) ? a.edges : []) {
+      const f = ids.get(e?.fromNode);
+      const t = ids.get(e?.toNode);
+      if (f && t) changes.push({ op: 'edge', edge: { ...structuredClone(e), id: ctx.newId(), fromNode: f, toNode: t } });
+    }
+    return { changes, select: [...ids.values()] };
+  });
+  /** An arrow between two nodes. `x-edge` marks it as a styled arrow (see edges.ts). */
+  store.register('core.connect', (doc, a: ConnectArgs, ctx) => {
+    if (!a || typeof a.from !== 'string' || typeof a.to !== 'string' || a.from === a.to) return [];
+    if (!doc.isVisible(a.from) || !doc.isVisible(a.to)) return [];
+    const id = typeof a.id === 'string' && a.id ? a.id : ctx.newId();
+    if (doc.edge(id)) return [];
+    const edge = applyEdgeArgs({ id, fromNode: a.from, toNode: a.to }, a);
+    if (!edge) return [];
+    return { changes: [{ op: 'edge', edge }], select: [id] };
+  });
+  /** Restyle, relabel or re-aim an arrow. `null` or "" clears a field. */
+  store.register('core.edge', (doc, a: EdgeArgs) => {
+    const e = typeof a?.id === 'string' ? doc.edge(a.id) : undefined;
+    if (!e) return [];
+    const edge = applyEdgeArgs(structuredClone(e), a);
+    return edge ? [{ op: 'edge', edge } as Change] : [];
+  });
   store.register('core.add', (doc, a: { nodes: CanvasNode[] }) => {
     if (!Array.isArray(a?.nodes)) return [];
     return a.nodes
       .filter((n) => n && typeof n.id === 'string' && [n.x, n.y, n.width, n.height].every(isNum))
       .map((n, i): Change => ({ op: 'add', node: { ...n, z: n.z ?? doc.topZ + 1 + i } }));
   });
+}
+
+export interface EdgeArgs extends EdgeStyle {
+  id?: string;
+  label?: string | null;
+  color?: string | null;
+  fromEnd?: 'none' | 'arrow' | null;
+  toEnd?: 'none' | 'arrow' | null;
+  fromSide?: string | null;
+  toSide?: string | null;
+}
+export interface ConnectArgs extends EdgeArgs {
+  from: string;
+  to: string;
+}
+
+/** Fold the fields of `a` into `edge`; undefined = leave, null = clear. Undefined result: a bad value. */
+function applyEdgeArgs(edge: CanvasEdge, a: EdgeArgs): CanvasEdge | undefined {
+  const put = (key: keyof CanvasEdge & string, v: unknown, ok: (v: unknown) => boolean = () => true) => {
+    if (v === undefined) return true;
+    if (v === null || v === '') delete edge[key];
+    else if (ok(v)) (edge as unknown as Record<string, unknown>)[key] = v;
+    else return false;
+    return true;
+  };
+  const end = (v: unknown) => v === 'none' || v === 'arrow';
+  const str = (v: unknown) => typeof v === 'string';
+  if (
+    !put('label', a.label, str) ||
+    !put('color', a.color, str) ||
+    !put('fromEnd', a.fromEnd, end) ||
+    !put('toEnd', a.toEnd, end) ||
+    !put('fromSide', a.fromSide, isSide) ||
+    !put('toSide', a.toSide, isSide)
+  )
+    return undefined;
+  const style: EdgeStyle = { ...(edge['x-edge'] as EdgeStyle | undefined) };
+  if (a.dashed !== undefined) a.dashed ? (style.dashed = true) : delete style.dashed;
+  if (a.curve !== undefined) a.curve ? (style.curve = true) : delete style.curve;
+  edge['x-edge'] = style;
+  return edge;
 }
