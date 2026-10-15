@@ -1,4 +1,6 @@
-import { isIds, isNum, pick, set, toFront, type CanvasNode, type Change, type Command, type CommandResult, type DocView, type Events } from '../../core';
+import { isIds, isNum, pick, toFront } from '../../core/commands';
+import { set } from '../../core/doc';
+import type { CanvasNode, Change, Command, CommandResult, DocView, Events } from '../../core';
 import { dealEvent, dealHandsEvent, drawEvent, facingEvents, giveEvent, moveEvents, putOnTableEvent, recallEvent, showEvents, showdownEvent, shuffleEvents } from './events';
 import { PACK, CARD_H, CARD_W, FIELD, RANKS, areaOf, enterOf, pileAt, allowsShowing, card, hidesCount, isBlind, shownIn, cardNode, cardsHomedAt, cardsIn, deckNode, groupNode, isCard, isCardish, isDeck, isHand, isHomeDeck, isSpreadOut, isStacked, isSpot, layoutOf, packOf, parseFace, roomIn, standardDeck, type DeckField, type Layout } from './deck';
 import { HAND_MAX_W, HAND_MIN_W, PAD, RAISE, emptyHandSize, handSizeFor, handSlotIndex, laneOf, slotIndex, slots } from './layout';

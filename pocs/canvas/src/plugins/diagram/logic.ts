@@ -2,6 +2,7 @@
 import type { CanvasNode, Change, DocView } from '../../core/doc';
 import { anchor, isSide, NORMAL, sideToward, type Side } from '../../core/edges';
 import type { Command, Store } from '../../core/store';
+import type { PluginLogic } from '../logic';
 import { DEFAULT_SIZE, DEFAULT_TEXT_SIZE, MIN_SIZE, isKind, isShape, shapeOf, textBox, type ShapeKind, type ShapeStyle } from './model';
 
 // Diagram commands. No DOM: the browser plugin and the Node bridge both register them, so an
@@ -179,3 +180,5 @@ export function registerDiagramLogic(store: Store) {
   store.register('diagram.resize', resize);
   store.register('diagram.addConnected', addConnected);
 }
+
+export const logic: PluginLogic = { id: 'diagram', register: registerDiagramLogic };

@@ -1,4 +1,6 @@
-import { isIds, isNum, pick, set, type CanvasNode, type Change, type Command, type DocView } from '../../core';
+import { isIds, isNum, pick } from '../../core/commands';
+import { set } from '../../core/doc';
+import type { CanvasNode, Change, Command, DocView } from '../../core';
 import { FRAME, PORTAL, TITLE_H, frameField, isFrame, isPortal, isRoomId, orderedFrames, portalRoom } from './model';
 
 // Commands: plain data in, Changes out (agents can call them the same way the UI does).

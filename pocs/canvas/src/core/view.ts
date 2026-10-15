@@ -668,7 +668,10 @@ export class View {
     }
     // a creation tool's key, where its plugin says it applies (before the plugins' own keys)
     if (!mod && !e.altKey && !e.shiftKey && !store.selection.size) {
-      const tool = this.app.tools.find((x) => x.key === e.key.toLowerCase() && x.when?.(this.app) !== false);
+      const k = e.key.toLowerCase();
+      // a plugin's own key that applies right now (shuffle, draw, outline) beats a tool on the same letter
+      const taken = this.app.keys.get(k)?.when?.(this.app);
+      const tool = taken ? undefined : this.app.tools.find((x) => x.key === k && x.when?.(this.app) !== false);
       if (tool) {
         e.preventDefault();
         this.setTool(this.tool === tool.id ? 'select' : tool.id);
@@ -894,9 +897,14 @@ export class View {
     this.openMenu(entries, this.local(e), title);
   }
 
-  /** Show a menu at a table point, or anchored below an element (e.g. an object's tab). */
-  openMenu(entries: MenuEntry[], at: { x: number; y: number } | Element, title?: string) {
-    this.menu.open(entries, at, title);
+  /** Show a menu at a table point, or anchored below (`above`: over) an element (e.g. an object's tab, a dock button). */
+  openMenu(entries: MenuEntry[], at: { x: number; y: number } | Element, title?: string, opts?: { above?: boolean }) {
+    this.menu.open(entries, at, title, opts);
+  }
+
+  /** The element the open menu hangs from (so its button can toggle it). */
+  get menuAnchor() {
+    return this.menu.anchor;
   }
 
   closeMenu() {

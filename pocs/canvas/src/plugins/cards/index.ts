@@ -1,11 +1,12 @@
 import './cards.css';
-import './standard';
-import { loadPlayer, type App, type CanvasNode, type Command, type DocView, type MenuEntry, type Plugin, type Store } from '../../core';
-import { DROP_ADD, PUT_DOWN_STEP, SORT_MODES, commands, dropMode, incomingCount, kindOf, outCount, sortPrefOf, type DealSeat, type DropMode, type Kind, type SortMode } from './commands';
-import { CARD_H, CARD_W, FIELD, PACK, allowsShowing, areaOf, capacityOf, card, enterOf, pileAt, hasFixedFrame, cardsIn, concealedFrom, deckFacing, deckIdOf, handOf, hiddenFrom, hidesCount, homeFor, isBlind, isCard, isCardish, isDeck, isHand, isHomeDeck, isShown, isSpot, isSpreadOut, isStacked, layoutOf, packOf, roomIn, shownIn, type Layout } from './deck';
+import { loadPlayer, type App, type CanvasNode, type DocView, type MenuEntry, type Plugin } from '../../core';
+import { useLogic } from '../logic';
+import { logic } from './logic';
+export { registerCardsLogic } from './logic';
+import { DROP_ADD, PUT_DOWN_STEP, SORT_MODES, dropMode, incomingCount, kindOf, outCount, sortPrefOf, type DealSeat, type DropMode, type Kind, type SortMode } from './commands';
+import { CARD_H, CARD_W, FIELD, PACK, allowsShowing, areaOf, capacityOf, card, enterOf, pileAt, hasFixedFrame, cardsIn, concealedFrom, deckFacing, handOf, hiddenFrom, hidesCount, homeFor, isBlind, isCard, isCardish, isDeck, isHand, isHomeDeck, isShown, isSpot, isSpreadOut, isStacked, layoutOf, packOf, roomIn, shownIn, type Layout } from './deck';
 import { mountHandUx, VIEW_AS_KEY, type HandUx } from './handUx';
-import { repairImport, shapeExport } from './io';
-import { cardLayouts, handSlotIndex, laneOf, liftedDrop, rowTop, slotIndex, slots, thresholdY } from './layout';
+import { handSlotIndex, laneOf, liftedDrop, rowTop, slotIndex, slots, thresholdY } from './layout';
 import { getPack } from './packs';
 import { cardHtml, deckHtml, groupHtml, handHtml } from './render';
 
@@ -24,20 +25,6 @@ const targetDeck = (app: App) => {
   const h = app.view.hovered && app.node(app.view.hovered);
   return h && isStacked(h) ? h : lastDeck(app);
 };
-
-/** The data side of the plugin (commands, containment, import/export). No DOM; used by tests too. */
-export function registerCardsLogic(store: Store) {
-  for (const [name, cmd] of Object.entries(commands)) store.register(`cards.${name}`, cmd as Command);
-  store.addParentRule(deckIdOf);
-  store.addLayout(cardLayouts);
-  store.importFilters.push(repairImport);
-  store.exportFilters.push(shapeExport);
-  store.migrations.push(commands.migrateHands as Command);
-  store.migrations.push(commands.repairHomes as Command);
-  store.resets.push(commands.resetAll as Command);
-  // a copied card would be a 53rd card of the pack: cards opt out of Duplicate
-  store.duplicateRules.push((n) => (isCardish(n) ? null : undefined));
-}
 
 /** The local player (in a room: presence; solo: this browser's stored player). */
 const me = (app: App) => app.presence?.me ?? loadPlayer();
@@ -422,9 +409,19 @@ export function containerMenu(app: App, box: CanvasNode, ux: HandUx): MenuEntry[
 export const cardsPlugin: Plugin = {
   id: 'cards',
   setup(app) {
-    registerCardsLogic(app.store);
+    useLogic(app.store, logic);
     const ux = mountHandUx(app);
     // a whole pack, face up in pack order, laid out as a grid (the grid is the home deck)
+    // New table deals the starter table: a shuffled deck, a wave of spades and three cards to flip (about 940 x 400)
+    app.registerStarter((a) => void a.dispatch('cards.setup', { x: -470, y: -120 }));
+    app.registerRenameHook((a, me) => void a.dispatch('cards.handLabel', { owner: me.id, label: handLabelOf(me.name), color: me.color }));
+    // New hand: a private group (others see backs). Solo: mine right away; in a room: a choice of players.
+    app.registerMainMenuItem({
+      id: 'cards.newHand',
+      group: 'Game',
+      order: 0,
+      entry: (a) => (a.presence ? { label: 'New hand for', items: () => newHandEntries(a) } : { label: 'New hand', run: () => newHandFor(a, a.me()) }),
+    });
     app.registerKit({ id: 'cards.deck', label: 'Deck of cards', create: (a, at) => a.dispatch('cards.addPack', { pack: PACK, ...at }) });
 
     // drop classification, shown on the target while hovering: Stack / Fan / Add to …
@@ -769,8 +766,8 @@ export const cardsPlugin: Plugin = {
     };
 
     app.registerKey({ key: 'f', label: 'Flip', run: flipSel });
-    app.registerKey({ key: 's', label: 'Shuffle', run: shuffleSel });
-    app.registerKey({ key: 'd', label: 'Draw', run: drawSel() });
+    app.registerKey({ key: 's', label: 'Shuffle', when: (a) => selectedCards(a).some(isStacked), run: shuffleSel });
+    app.registerKey({ key: 'd', label: 'Draw', when: (a) => !!targetDeck(a), run: drawSel() });
     app.registerKey({ key: 'shift+d', label: 'Draw flipped', run: drawSel(true) });
     app.registerKey({ key: 'g', label: 'Group the selection', run: gatherSel() });
     app.registerKey({ key: 'shift+g', label: 'Gather all cards back to their deck', run: recallHome });
@@ -839,7 +836,7 @@ export const cardsPlugin: Plugin = {
     const playMenu = (a: App, faceDown: boolean): MenuEntry => ({
       label: faceDown ? 'Play face down to' : 'Play to',
       hint: faceDown ? '⇧P' : 'P',
-      disabled: spots(a).length ? false : 'No zone or spot on the table (Add… › Mat)',
+      disabled: spots(a).length ? false : 'No zone or spot on the table (+ › Mat)',
       items: () => spots(a).map((t) => ({ label: `${kindName(t)}${t.id === lastPlayed ? ' (last)' : ''}`, run: () => playTo(a, t, playable(a), !faceDown) })),
     });
 

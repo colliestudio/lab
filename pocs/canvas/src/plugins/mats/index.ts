@@ -3,7 +3,8 @@ import type { App, CanvasNode, MenuEntry, ObjectType, Plugin } from '../../core'
 import { canGive, handLabelOf, seats } from '../cards';
 import { cardsIn, isHand, isStacked, layoutOf, type Layout } from '../cards/deck';
 import { zonesOf } from './commands';
-import { registerMatsLogic } from './logic';
+import { logic } from './logic';
+import { useLogic } from '../logic';
 import { MAT_COLORS, ZONE_KINDS, ZONE_KIND_NAMES, deckField, isFreeZone, isMat, isZone, mat, zone, zoneName } from './model';
 import { PRESETS, presetOf, type PresetId } from './presets';
 import { areaHtml, matHtml, zoneEditHtml } from './render';
@@ -22,7 +23,7 @@ const players = (app: App) =>
 export const matsPlugin: Plugin = {
   id: 'mats',
   setup(app) {
-    registerMatsLogic(app.store);
+    useLogic(app.store, logic);
 
     // ---------------------------------------------------------------- edit mode (local to this screen)
     const editing = new Set<string>();
@@ -283,7 +284,7 @@ export const matsPlugin: Plugin = {
       run: (a) => {
         const m = targetMat(a);
         if (m) toggleEditing(m);
-        else a.notify(a.doc.nodes.some(isMat) ? 'Point at a mat, then Z' : 'No mat on the table (Add… › Mat)');
+        else a.notify(a.doc.nodes.some(isMat) ? 'Point at a mat, then Z' : 'No mat on the table (+ › Mat)');
       },
     });
     app.registerMenu((_a, sel) => {

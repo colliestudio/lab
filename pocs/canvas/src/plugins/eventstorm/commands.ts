@@ -1,4 +1,6 @@
-import { isIds, isNum, pick, set, type CanvasNode, type Change, type Command, type CommandResult, type DocView, type EventSpec } from '../../core';
+import { isIds, isNum, pick } from '../../core/commands';
+import { set } from '../../core/doc';
+import type { CanvasNode, Change, Command, CommandResult, DocView, EventSpec } from '../../core';
 import {
   COL,
   FIELD,

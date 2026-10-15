@@ -54,7 +54,11 @@ export async function createRoomFrom(app: App): Promise<string> {
   return id;
 }
 
-/** Toolbar: players (color dot + name) and status (room, peers, signaling). */
+/**
+ * Top-right: players (color dot + name) and status (room, peers, signaling), plus a Share pill that
+ * copies the invite link (not on a bridge). The room's actions (rename, copy link, leave) go in the
+ * main menu's Room submenu.
+ */
 export function mountRoomStatus(app: App, room: Room, bar: HTMLElement, onLeave: () => void, onRename: () => void) {
   const box = document.createElement('span');
   box.className = 'room';
@@ -62,19 +66,36 @@ export function mountRoomStatus(app: App, room: Room, bar: HTMLElement, onLeave:
   players.className = 'players';
   const state = document.createElement('span');
   state.className = 'room-state';
-  const copy = document.createElement('button');
-  copy.textContent = 'Copy link';
-  copy.title = 'Copy the invite link to this table';
-  copy.addEventListener('click', async () => {
+  const stateDot = document.createElement('i');
+  stateDot.className = 'room-dot';
+  const stateText = document.createElement('span');
+  stateText.className = 'room-text';
+  state.append(stateDot, stateText);
+  box.append(players, state);
+  bar.append(box);
+
+  const isBridge = room.kind === 'bridge';
+  const copyLink = async () => {
     const link = roomLink(room.id);
     app.notify((await copyText(link)) ? 'Link copied' : `Share this link: ${link}`);
+  };
+  if (!isBridge) {
+    const share = document.createElement('button');
+    share.type = 'button';
+    share.textContent = 'Share';
+    share.className = 'share-btn';
+    share.dataset.tip = 'Copy the invite link';
+    share.addEventListener('click', copyLink);
+    bar.append(share);
+  }
+  app.registerMainMenuItem({ id: 'room.rename', group: 'Room', order: 0, entry: () => ({ label: 'Your name and color…', run: onRename }) });
+  if (!isBridge) app.registerMainMenuItem({ id: 'room.copyLink', group: 'Room', order: 1, entry: () => ({ label: 'Copy invite link', run: copyLink }) });
+  app.registerMainMenuItem({
+    id: 'room.leave',
+    group: 'Room',
+    order: 2,
+    entry: () => ({ label: isBridge ? 'Leave bridge' : 'Leave room', run: onLeave }),
   });
-  const leave = document.createElement('button');
-  leave.textContent = 'Leave';
-  leave.title = 'Back to your own table (this room stays on this device)';
-  leave.addEventListener('click', onLeave);
-  box.append(players, state, copy, leave);
-  bar.append(box);
 
   const dot = (color: string, name: string, you = false) => {
     const s = document.createElement(you ? 'button' : 'span');
@@ -101,11 +122,10 @@ export function mountRoomStatus(app: App, room: Room, bar: HTMLElement, onLeave:
     everConnected ||= sig;
     const connecting = !sig && !everConnected && Date.now() - started < 8000;
     const n = room.connectedPeers();
-    const isBridge = room.kind === 'bridge';
     const b = room.bridge?.() ?? 'none';
     state.dataset.ok = String(sig || connecting);
     const offline = isBridge ? (everConnected ? 'bridge offline, retrying' : 'can’t reach the bridge') : 'signaling offline';
-    state.textContent = `${room.label ?? `room ${room.id}`} · ${isBridge ? `${room.presence.peers().length + 1} here` : `${n} peer${n === 1 ? '' : 's'}`} · ${sig ? 'online' : connecting ? 'connecting…' : offline}${b === 'none' ? '' : b === 'online' ? ' · bridge' : ' · bridge…'}`;
+    stateText.textContent = `${room.label ?? `room ${room.id}`} · ${isBridge ? `${room.presence.peers().length + 1} here` : `${n} peer${n === 1 ? '' : 's'}`} · ${sig ? 'online' : connecting ? 'connecting…' : offline}${b === 'none' ? '' : b === 'online' ? ' · bridge' : ' · bridge…'}`;
     state.title = isBridge
       ? sig
         ? 'Connected to the bridge'

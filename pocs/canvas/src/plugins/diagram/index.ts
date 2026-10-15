@@ -1,7 +1,8 @@
 import './diagram.css';
 import { inlineEdit, type App, type CanvasNode, type InlineEdit, type Plugin } from '../../core';
 import { mountHandles } from './handles';
-import { registerDiagramLogic } from './logic';
+import { useLogic } from '../logic';
+import { logic } from './logic';
 import { DEFAULT_TEXT_SIZE, isShape, shapeOf, textBox, type ShapeKind } from './model';
 import { mountPanel } from './panel';
 import { renderShape, styleKey } from './render';
@@ -13,13 +14,13 @@ export * from './model';
 // thinking things through. Shapes are JSON Canvas text nodes with an `x-shape` look; arrows are plain
 // core edges. Everything goes through commands (logic.ts), so an agent can do what a person can.
 
-/** Tools: key (when nothing is selected), toolbar glyph. */
-export const SHAPE_TOOLS: { kind: ShapeKind; key: string; glyph: string; label: string }[] = [
-  { kind: 'rect', key: 'r', glyph: '▭', label: 'Rectangle' },
-  { kind: 'ellipse', key: 'o', glyph: '◯', label: 'Ellipse' },
-  { kind: 'diamond', key: 'd', glyph: '◇', label: 'Diamond' },
-  { kind: 'text', key: 't', glyph: 'T', label: 'Text' },
-  { kind: 'sticky', key: 's', glyph: '◧', label: 'Sticky note' },
+/** Tools: key (when nothing is selected), dock icon (a name in core ICONS). */
+export const SHAPE_TOOLS: { kind: ShapeKind; key: string; icon: string; label: string }[] = [
+  { kind: 'rect', key: 'r', icon: 'square', label: 'Rectangle' },
+  { kind: 'ellipse', key: 'o', icon: 'circle', label: 'Ellipse' },
+  { kind: 'diamond', key: 'd', icon: 'diamond', label: 'Diamond' },
+  { kind: 'text', key: 't', icon: 'type', label: 'Text' },
+  { kind: 'sticky', key: 's', icon: 'sticky-note', label: 'Sticky note' },
 ];
 
 /** Set once a diagram has been started in this tab: the table turns to paper even while it is empty. */
@@ -29,17 +30,21 @@ export const isPaper = (app: App) => paperOn || hasShapes(app);
 export function enterPaper(app: App) {
   paperOn = true;
   app.view.root.classList.add('cv-paper');
+  app.dock.touch();
 }
 /** Another kind of table replaced the diagram: paper (and the shape tool keys) only if it holds shapes. */
 export function leavePaper(app: App) {
   paperOn = false;
   app.view.root.classList.toggle('cv-paper', hasShapes(app));
+  app.dock.touch();
 }
 
 export const diagramPlugin: Plugin = {
   id: 'diagram',
   setup(app) {
-    registerDiagramLogic(app.store);
+    useLogic(app.store, logic);
+    app.onTableReplaced((a) => leavePaper(a));
+    app.registerNewKind({ id: 'diagram', label: 'diagram', param: 'diagram', start: (a) => enterPaper(a) });
 
     const root = app.view.root;
     const syncPaper = () => root.classList.toggle('cv-paper', isPaper(app));
@@ -107,13 +112,24 @@ export const diagramPlugin: Plugin = {
       if (id && opensEditor(kind)) startEdit(id, { fresh: true });
     };
     for (const t of SHAPE_TOOLS) {
+      const id = `diagram.${t.kind}`;
       app.registerTool({
-        id: `diagram.${t.kind}`,
-        label: t.glyph,
+        id,
+        label: t.label,
         title: `${t.label} (${t.key.toUpperCase()}): click or drag on the table`,
         key: t.key,
         when: isPaper,
         create: (_a, box) => create(t.kind, box),
+      });
+      app.registerDockItem({
+        id,
+        label: t.label,
+        icon: t.icon,
+        shortcut: t.key.toUpperCase(),
+        section: 'create',
+        when: isPaper,
+        active: (a) => a.view.tool === id,
+        run: (a) => a.view.setTool(a.view.tool === id ? 'select' : id),
       });
     }
     // double-click on empty paper: a line of text right there

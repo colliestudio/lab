@@ -8,7 +8,7 @@ const NONE: Insets = { top: 0, right: 0, bottom: 0, left: 0 };
 
 /**
  * Viewport that fits `r` into a `vw` x `vh` screen with `pad` px around it (zoom clamped), inside
- * `insets` (screen edges covered by panels: toolbar, outline).
+ * `insets` (screen edges covered by panels: top bars, dock, outline).
  */
 export function cameraFor(r: Rect, vw: number, vh: number, pad = 40, maxZoom = Viewport.MAX, insets: Insets = NONE): Cam {
   const w = Math.max(1, vw - insets.left - insets.right - 2 * pad);

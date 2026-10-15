@@ -2,6 +2,7 @@ import type { Command, Store } from '../../core';
 import { commands, duplicateRule } from './commands';
 import { repairImport } from './io';
 import { isNote, note } from './model';
+import type { PluginLogic } from '../logic';
 
 /** The data side of the plugin (no DOM): commands, riders, import repair. Used by tests too. */
 export function registerPrototypeLogic(store: Store) {
@@ -11,3 +12,5 @@ export function registerPrototypeLogic(store: Store) {
   store.importFilters.push(repairImport);
   store.duplicateRules.push((n) => duplicateRule(n));
 }
+
+export const logic: PluginLogic = { id: 'prototype', register: registerPrototypeLogic };

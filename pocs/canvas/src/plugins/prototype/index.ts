@@ -5,7 +5,8 @@ import { NOTE_H, autoLinkChanges } from './commands';
 import { mountEdges, type EdgeLayer } from './edges';
 import { editNote, editPage } from './editor';
 import { History } from './history';
-import { registerPrototypeLogic } from './logic';
+import { logic } from './logic';
+import { useLogic } from '../logic';
 import { DEVICES, HEADER, docHeight, isNote, isPage, note, outgoing, page, pages, resolveLink, startPage, titleOf } from './model';
 import { Player, mountFollowBanner } from './play';
 import { askText } from '../mats/textDialog';
@@ -22,7 +23,7 @@ const esc = (s: string) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 export const prototypePlugin: Plugin = {
   id: 'prototype',
   setup(app) {
-    registerPrototypeLogic(app.store);
+    useLogic(app.store, logic);
     const player = new Player(app);
     let edges: EdgeLayer | undefined;
     queueMicrotask(() => (edges = mountEdges(app)));
@@ -114,7 +115,7 @@ export const prototypePlugin: Plugin = {
 
     const play = (id?: string) => {
       const start = id ?? startPage(app.doc, [...app.store.selection]);
-      if (!start) return app.notify('No pages to play: Add… › Prototype: example flow');
+      if (!start) return app.notify('No pages to play: + › Prototype: example flow');
       player.start(start);
     };
 
@@ -167,6 +168,11 @@ export const prototypePlugin: Plugin = {
     const selPage = () => app.selected().find(isPage);
     app.registerKey({ key: 'i', label: 'Interact with the page', when: () => !!selPage(), run: () => setLive(selPage()!.id, !live.has(selPage()!.id)) });
     app.registerKey({ key: 'shift+enter', label: 'Play the prototype', run: () => play() });
+    app.registerMainMenuItem({
+      id: 'prototype.play',
+      group: 'Game',
+      entry: (a) => ({ label: 'Play prototype', hint: '⇧↵', disabled: !pages(a.doc).length && 'No pages yet', run: () => play() }),
+    });
     // Enter is shared (event storm edits a sticky with it): keep the binding registered before this one
     const prevEnter = app.keys.get('enter');
     app.registerKey({

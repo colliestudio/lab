@@ -1,4 +1,6 @@
-import { isNum, pick, set, type CanvasEdge, type CanvasNode, type Change, type Command, type CommandResult, type DocView } from '../../core';
+import { isNum, pick } from '../../core/commands';
+import { set } from '../../core/doc';
+import type { CanvasEdge, CanvasNode, Change, Command, CommandResult, DocView } from '../../core';
 import { BLANK_HTML, SEED_PAGES } from './seed';
 import { DEVICES, FIELD, HEADER, flowOrder, isNote, isPage, linksIn, note, outgoing, page, pageSize, pages, resolveLink, standIn, titleOf, type NoteField, type PageField } from './model';
 
