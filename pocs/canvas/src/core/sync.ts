@@ -13,7 +13,7 @@ import { openRelay, type RelayConnection } from './relay';
 export interface Room {
   id: string;
   provider: { destroy(): void };
-  /** How the toolbar names this connection (default: "room <id>"). */
+  /** How the status pill names this connection (default: "room <id>"). */
   label?: string;
   presence: Presence;
   /** Is the signaling WebSocket up? */

@@ -32,6 +32,11 @@ export class Registry<T extends { id: string; section?: string; order?: number }
       .map((x) => x.item);
   }
 
+  /** Tell listeners something outside the registry changed (a `when` they check). */
+  touch() {
+    this.emit();
+  }
+
   onChange(fn: () => void): () => void {
     this.listeners.add(fn);
     return () => void this.listeners.delete(fn);

@@ -42,7 +42,10 @@ export function registerCoreChrome(app: App) {
     icon: 'plus',
     section: 'add',
     when: (a) => a.kits.length > 0,
-    run: (a, button) => a.view.openMenu(kitEntries(a), button, 'Add to the table', { above: true }),
+    run: (a, button) => {
+      if (a.view.menuAnchor === button) a.view.closeMenu();
+      else a.view.openMenu(kitEntries(a), button, 'Add to the table', { above: true });
+    },
   });
   app.registerMainMenuItem({ id: 'core.undo', group: 'Edit', order: 0, entry: (a) => ({ label: 'Undo', hint: '⌘Z', run: () => a.store.undo() }) });
   app.registerMainMenuItem({ id: 'core.redo', group: 'Edit', order: 1, entry: (a) => ({ label: 'Redo', hint: '⇧⌘Z', run: () => a.store.redo() }) });

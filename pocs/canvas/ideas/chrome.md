@@ -35,10 +35,17 @@ app.registerMainMenuItem({
 app.registerMenu((a, selected) => ({ entries: [{ label: 'Play prototype', run: play }] }));
 ```
 
-Each returns a disposer. Registering an id again replaces the earlier item in place. `when(app)` hides an item (the dock re-checks it when the tool, the table or the registry changes; the menu is built on open). `shortcut` is display only: bind the key with `registerKey`. Two small hooks keep the shell game-free: `registerStarter` (what New table puts on the empty table) and `registerRenameHook` (cards relabel your hand when you rename).
+Each returns a disposer. Registering an id again replaces the earlier item in place. `when(app)` hides an item (the dock re-checks it when the tool, the table or the registry changes; the menu is built on open). `shortcut` is display only: bind the key with `registerKey`. `registerKit` refreshes the dock (the + shows once a kit exists). Small hooks keep the shell game-free: `registerStarter` (what New table puts on the empty table), `registerRenameHook` (cards relabel your hand when you rename), `onTableReplaced(fn)` (run after New / Open / dropping a file replaced the table: drop per-table state) and `registerNewKind({ id, label, start, param? })` (adds File ▸ New <label>, confirmed by the shell, `start(app)` fills the cleared table; `?<param>` starts an empty browser on it).
 
-Icons: `icon` takes a name from `ICONS` (`src/core/icons.ts`, Lucide paths, ISC license, notice in the file) or inline SVG markup. Add a name with `ICONS.name = '<path …/>'`.
+Icons: `icon` takes a name from `ICONS` (`src/core/icons.ts`, Lucide paths; license text in `LICENSES/lucide.txt`) or inline SVG markup. An unknown name logs a warning and shows a square. Add a name with `ICONS.name = '<path …/>'`.
 
 ## Adding drawing tools later
 
-A tool registry (TASK-3.17 style `registerTool`) only needs to also call `registerDockItem` with `section: 'create'` and `active: (a) => a.view.tool === tool.id`; no toolbar code in `main.ts`.
+A tool registry (`registerTool`) only needs to also call `registerDockItem` with `section: 'create'` and `active: (a) => a.view.tool === tool.id`; no toolbar code in `main.ts`. Icons available for shapes: `square`, `circle`, `diamond`, `type`, `sticky-note`, `arrow-up-right`.
+
+A plugin with its own mode (a diagram's paper) needs no `main.ts` code either:
+
+```ts
+app.onTableReplaced((a) => leavePaper(a));                       // New table / Open
+app.registerNewKind({ id: 'diagram', label: 'diagram', param: 'diagram', start: (a) => enterPaper(a) });
+```

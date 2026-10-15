@@ -31,7 +31,6 @@ describe('dock', () => {
     const { app, chrome } = setup();
     expect(dockIds(chrome)).toEqual(['core.select', 'core.hand']);
     app.registerKit(kit('a'));
-    app.dock.add({ ...app.dock.list().find((i) => i.id === 'core.add')! }); // registry change = a re-render, as a real plugin does
     expect(dockIds(chrome)).toEqual(['core.select', 'core.hand', 'core.add']);
   });
   it('buttons are icons with an accessible name and a tooltip naming the shortcut', () => {
@@ -60,7 +59,6 @@ describe('dock', () => {
     const b = kit('b');
     app.registerKit(a);
     app.registerKit(b);
-    app.dock.add({ ...app.dock.list().find((i) => i.id === 'core.add')! });
     chrome.dock.querySelector<HTMLElement>('[data-dock-id="core.add"]')!.click();
     const rows = [...root.querySelectorAll<HTMLElement>('.cv-menu .cv-menu-item')];
     expect(rows.map((r) => r.querySelector('.cv-menu-label')!.textContent)).toEqual(['Kit a', 'Kit b']);
@@ -202,5 +200,34 @@ describe('context actions', () => {
     off();
     off2();
     expect([app.menuProviders.length, app.menu.length]).toEqual([0, 0]);
+  });
+});
+
+describe('icons and hooks', () => {
+  it('an unknown icon name warns and shows the default glyph', async () => {
+    const { icon, ICONS } = await import('./icons');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const svg = icon('no-such-icon');
+    expect(warn).toHaveBeenCalledOnce();
+    expect(svg.innerHTML).toContain(ICONS.square.slice(0, 20));
+    warn.mockRestore();
+  });
+  it('the + button toggles its kit menu', () => {
+    const { app, chrome } = setup();
+    app.registerKit(kit('a'));
+    const plus = chrome.dock.querySelector<HTMLButtonElement>('[data-dock-id="core.add"]')!;
+    plus.click();
+    expect(app.view.menuAnchor).toBe(plus);
+    plus.click();
+    expect(app.view.menuAnchor).toBeUndefined();
+  });
+  it('onTableReplaced hooks run, and new kinds are listed for the shell', () => {
+    const { app } = setup();
+    const seen = vi.fn();
+    app.onTableReplaced(seen);
+    app.tableReplaced();
+    expect(seen).toHaveBeenCalledWith(app);
+    app.registerNewKind({ id: 'd', label: 'diagram', param: 'diagram', start: vi.fn() });
+    expect(app.newKinds.map((k) => k.label)).toEqual(['diagram']);
   });
 });

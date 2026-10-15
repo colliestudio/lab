@@ -46,7 +46,10 @@ export class Menu {
 
   close() {
     clearTimeout(this.timer);
+    // a row that had keyboard focus is about to be removed: give focus back to the button the menu hung from
+    const hadFocus = this.levels.some((l) => l.el.contains(document.activeElement));
     this.closeFrom(0);
+    if (hadFocus && this.anchorEl instanceof HTMLElement && this.anchorEl.isConnected) this.anchorEl.focus({ preventScroll: true });
   }
 
   /** Root-relative boxes of the open menus (tests and debugging). */

@@ -9,6 +9,12 @@ export const ICONS: Record<string, string> = {
   minus: '<path d="M5 12h14"/>',
   scan: '<path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/>',
   'circle-help': '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>',
+  square: '<rect width="18" height="18" x="3" y="3" rx="2"/>',
+  circle: '<circle cx="12" cy="12" r="10"/>',
+  diamond: '<path d="M2.7 10.3a2.41 2.41 0 0 0 0 3.41l7.59 7.59a2.41 2.41 0 0 0 3.41 0l7.59-7.59a2.41 2.41 0 0 0 0-3.41l-7.59-7.59a2.41 2.41 0 0 0-3.41 0Z"/>',
+  type: '<path d="M12 4v16"/><path d="M4 7V5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2"/><path d="M9 20h6"/>',
+  'sticky-note': '<path d="M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8Z"/><path d="M15 3v4a2 2 0 0 0 2 2h4"/>',
+  'arrow-up-right': '<path d="M7 7h10v10"/><path d="M7 17 17 7"/>',
   'message-circle': '<path d="M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719"/>',
 };
 
@@ -26,7 +32,14 @@ export function icon(nameOrSvg: string): SVGSVGElement {
   svg.setAttribute('stroke-linecap', 'round');
   svg.setAttribute('stroke-linejoin', 'round');
   svg.setAttribute('aria-hidden', 'true');
-  const raw = ICONS[nameOrSvg] ?? nameOrSvg;
+  let raw = ICONS[nameOrSvg];
+  if (raw === undefined) {
+    if (nameOrSvg.trimStart().startsWith('<')) raw = nameOrSvg;
+    else {
+      console.warn(`icon: unknown name "${nameOrSvg}"`);
+      raw = ICONS.square;
+    }
+  }
   svg.innerHTML = raw.replace(/^<svg[^>]*>|<\/svg>$/g, '');
   return svg;
 }

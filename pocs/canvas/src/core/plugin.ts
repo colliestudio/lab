@@ -135,6 +135,17 @@ export interface MenuItem {
 }
 
 /** Something a player can put on the table from the Add menu (a deck of cards, a chess set). */
+/** Another kind of new table (File ▸ New <label>); see `App.registerNewKind`. */
+export interface NewKind {
+  id: string;
+  /** "diagram" gives "New diagram". */
+  label: string;
+  /** Puts the starting content on the cleared table (a diagram: switch to its paper). */
+  start(app: App): void;
+  /** `?<param>` on the URL starts an empty browser on this kind. */
+  param?: string;
+}
+
 export interface Kit {
   id: string;
   label: string;
