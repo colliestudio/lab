@@ -42,7 +42,7 @@ const json = (v: unknown) => JSON.stringify(v).replace(/</g, '\\u003c');
 /**
  * Runs inside the page, first in the document: clicks on `[data-goto]` / `[data-back]`, `data-store`
  * fields, `data-show`, `window.canvas`, Escape and the load handshake. Every message carries the
- * per-frame `key`, which lives only in this closure: the page can't read this script (it removes its
+ * per-frame key (field `auth`; `key` is taken by `set`), which lives only in this closure: the page can't read this script (it removes its
  * own element), can't patch what it uses (the globals are captured first, messages are object
  * literals) and can't forge a trusted key event.
  */
@@ -51,12 +51,12 @@ export function pageRuntime(key: string, state: Record<string, string>): string 
   const TAG = ${json(TAG)}, KEY = ${json(key)};
   const apply = Reflect.apply, keyOf = Object.getOwnPropertyDescriptor(KeyboardEvent.prototype, 'key').get, up = parent;
   const state = ${json(state)};
-  const goto = (target) => up.postMessage({ tag: TAG, key: KEY, kind: 'goto', target: String(target || '') }, '*');
-  const back = () => up.postMessage({ tag: TAG, key: KEY, kind: 'back' }, '*');
-  const set = (k, v) => { state[k] = String(v); up.postMessage({ tag: TAG, key: KEY, kind: 'set', key: String(k), value: String(v) }, '*'); };
+  const goto = (target) => up.postMessage({ tag: TAG, auth: KEY, kind: 'goto', target: String(target || '') }, '*');
+  const back = () => up.postMessage({ tag: TAG, auth: KEY, kind: 'back' }, '*');
+  const set = (k, v) => { state[k] = String(v); up.postMessage({ tag: TAG, auth: KEY, kind: 'set', key: String(k), value: String(v) }, '*'); };
   window.canvas = { state, goto, back, set };
-  addEventListener('load', () => up.postMessage({ tag: TAG, key: KEY, kind: 'loaded' }, '*'));
-  addEventListener('keydown', (ev) => { if (ev.isTrusted && apply(keyOf, ev, []) === 'Escape') up.postMessage({ tag: TAG, key: KEY, kind: 'escape' }, '*'); }, true);
+  addEventListener('load', () => up.postMessage({ tag: TAG, auth: KEY, kind: 'loaded' }, '*'));
+  addEventListener('keydown', (ev) => { if (ev.isTrusted && apply(keyOf, ev, []) === 'Escape') up.postMessage({ tag: TAG, auth: KEY, kind: 'escape' }, '*'); }, true);
   document.addEventListener('click', (e) => {
     const el = e.target.closest && e.target.closest('[data-goto], [data-back]');
     if (!el) return;
@@ -104,12 +104,12 @@ export const frameKey = () => Array.from(crypto.getRandomValues(new Uint8Array(1
 export function runtimeMessage(data: unknown, key: string): 'loaded' | 'escape' | undefined {
   if (!data || typeof data !== 'object') return;
   const d = data as Record<string, unknown>;
-  if (d.tag !== TAG || d.key !== key) return;
+  if (d.tag !== TAG || d.auth !== key) return;
   return d.kind === 'loaded' || d.kind === 'escape' ? d.kind : undefined;
 }
 
 /** Does this message carry the frame's key? (the key makes a navigated-away document in the same window untrusted) */
-export const hasKey = (data: unknown, key: string) => !!data && typeof data === 'object' && (data as Record<string, unknown>).key === key;
+export const hasKey = (data: unknown, key: string) => !!data && typeof data === 'object' && (data as Record<string, unknown>).auth === key;
 
 /**
  * Second-load detection. The frame's first document loads once, and (with scripts) its runtime says so.

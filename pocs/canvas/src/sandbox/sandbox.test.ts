@@ -3,6 +3,7 @@ import { sha256Base64, sha256Hex } from './sha256.js';
 import { DEV_APP_ORIGINS, frameHost, originRegex, parseConnect } from './framehost.js';
 import { frameOrigin, pageMode, sandboxTemplate } from './client';
 import { IDLE_THUMBNAIL_SCRIPTS, PAGE_CSP, TAG, frameAttrs, loadWatch, pageRuntime, runtimeMessage, srcdocDocument } from './srcdoc';
+import { readMessage } from '../plugins/prototype/bridge';
 import { PAGE_ESCAPE, PAGE_GONE, fromFrame, pageFrame } from './page';
 
 const subtle = globalThis.crypto.subtle;
@@ -158,14 +159,17 @@ describe('srcdoc page frames', () => {
     expect(rt).not.toContain('Object.assign');
     expect(rt.indexOf('Reflect.apply')).toBeLessThan(rt.indexOf('window.canvas'));
     // every message to the parent has the key
-    for (const m of rt.match(/postMessage\(\{[^}]*\}/g)!) expect(m).toContain('key: KEY');
+    // the state key is a different field from the frame key (a clash once dropped every `set`)
+    expect(rt).toContain("kind: 'set', key: String(k), value: String(v)");
+    expect(readMessage({ tag: TAG, auth: 'a'.repeat(32), kind: 'set', key: 'name', value: 'Ada' })).toEqual({ kind: 'set', key: 'name', value: 'Ada' });
+    for (const m of rt.match(/postMessage\(\{[^}]*\}/g)!) expect(m).toContain('auth: KEY');
   });
   it('runtime messages need the frame key', () => {
-    expect(runtimeMessage({ tag: TAG, key, kind: 'loaded' }, key)).toBe('loaded');
-    expect(runtimeMessage({ tag: TAG, key, kind: 'escape' }, key)).toBe('escape');
+    expect(runtimeMessage({ tag: TAG, auth: key, kind: 'loaded' }, key)).toBe('loaded');
+    expect(runtimeMessage({ tag: TAG, auth: key, kind: 'escape' }, key)).toBe('escape');
     expect(runtimeMessage({ tag: TAG, kind: 'escape' }, key)).toBeUndefined();
-    expect(runtimeMessage({ tag: TAG, key: 'guess', kind: 'escape' }, key)).toBeUndefined();
-    expect(runtimeMessage({ tag: TAG, key, kind: 'goto' }, key)).toBeUndefined();
+    expect(runtimeMessage({ tag: TAG, auth: 'guess', kind: 'escape' }, key)).toBeUndefined();
+    expect(runtimeMessage({ tag: TAG, auth: key, kind: 'goto' }, key)).toBeUndefined();
     expect(runtimeMessage('escape', key)).toBeUndefined();
   });
 });
@@ -260,11 +264,11 @@ describe('srcdoc frame in the page', () => {
     const f = make({ live: true });
     const k = keyOf(f);
     const frame = f as unknown as HTMLIFrameElement;
-    expect(fromFrame(frame, msg(f.contentWindow, 'null', { tag: TAG, key: k, kind: 'goto' }))).toBe(true);
+    expect(fromFrame(frame, msg(f.contentWindow, 'null', { tag: TAG, auth: k, kind: 'goto' }))).toBe(true);
     expect(fromFrame(frame, msg(f.contentWindow, 'null', { tag: TAG, kind: 'goto' }))).toBe(false); // no key: a navigated-to document
-    expect(fromFrame(frame, msg(f.contentWindow, 'null', { tag: TAG, key: 'guess', kind: 'goto' }))).toBe(false);
-    expect(fromFrame(frame, msg({}, 'null', { tag: TAG, key: k }))).toBe(false);
-    expect(fromFrame(frame, msg(f.contentWindow, 'https://evil.example', { tag: TAG, key: k }))).toBe(false);
+    expect(fromFrame(frame, msg(f.contentWindow, 'null', { tag: TAG, auth: 'guess', kind: 'goto' }))).toBe(false);
+    expect(fromFrame(frame, msg({}, 'null', { tag: TAG, auth: k }))).toBe(false);
+    expect(fromFrame(frame, msg(f.contentWindow, 'https://evil.example', { tag: TAG, auth: k }))).toBe(false);
   });
   it('Escape reaches the plugin only with the key', () => {
     const f = make({ live: true });
@@ -273,16 +277,16 @@ describe('srcdoc frame in the page', () => {
     f.addEventListener(PAGE_ESCAPE, heard);
     const send = (data: unknown) => listeners.forEach((l) => l(msg(f.contentWindow, 'null', data)));
     send({ tag: TAG, kind: 'escape' });
-    send({ tag: TAG, key: 'guess', kind: 'escape' });
+    send({ tag: TAG, auth: 'guess', kind: 'escape' });
     expect(heard).not.toHaveBeenCalled();
-    send({ tag: TAG, key: k, kind: 'escape' });
+    send({ tag: TAG, auth: k, kind: 'escape' });
     expect(heard).toHaveBeenCalledTimes(1);
   });
   it('a frame that loads a second document is replaced by a placeholder', () => {
     const f = make({ live: true });
     const gone = vi.fn();
     f.addEventListener(PAGE_GONE, gone);
-    listeners.forEach((l) => l(msg(f.contentWindow, 'null', { tag: TAG, key: keyOf(f), kind: 'loaded' })));
+    listeners.forEach((l) => l(msg(f.contentWindow, 'null', { tag: TAG, auth: keyOf(f), kind: 'loaded' })));
     f.dispatchEvent(new Event('load'));
     expect(f.replacedBy).toBeNull();
     f.dispatchEvent(new Event('load'));
