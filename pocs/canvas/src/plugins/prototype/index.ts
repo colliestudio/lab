@@ -35,16 +35,19 @@ export const prototypePlugin: Plugin = {
     const state: Record<string, string> = {};
     const trail = new History('');
     const setLive = (id: string, on: boolean) => {
+      const changed = live.has(id) !== on;
       if (on) live.add(id);
       else live.delete(id);
       const box = app.view.boxOf(id);
       box?.classList.toggle('pg-live', on);
       const b = box?.querySelector<HTMLElement>('[data-action="live"]');
       if (b) b.title = on ? 'Interacting: clicks go to the page (I to stop)' : 'Interact with the page (I)';
+      // the state goes only to a page being interacted with: entering or leaving builds a fresh frame
+      if (changed) reload(id);
     };
     const frameOf = (n: CanvasNode) => {
       const f = page(n);
-      const frame = pageFrame(f.html, f.vw, docHeight(n), n.width / f.vw, state);
+      const frame = pageFrame(f.html, f.vw, docHeight(n), n.width / f.vw, live.has(n.id) ? { live: true, state } : {});
       // Escape typed inside an interactive page stops interacting (keys in a frame never reach the canvas)
       frame.addEventListener(PAGE_ESCAPE, () => {
         if (!live.has(n.id)) return;
@@ -90,8 +93,8 @@ export const prototypePlugin: Plugin = {
       if (r.edge) edges?.flash(r.edge.id);
       if (trail.current !== from) trail.path = [from];
       trail.go(r.to);
-      setLive(r.to, true);
-      reload(r.to);
+      if (live.has(r.to)) reload(r.to);
+      else setLive(r.to, true);
       app.store.select([r.to]);
       glideTo(r.to);
     };

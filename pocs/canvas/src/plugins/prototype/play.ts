@@ -167,7 +167,7 @@ export class Player {
     if (!isPage(n)) return;
     if (reload || !this.frame) {
       const f = page(n);
-      this.frame = pageFrame(f.html, f.vw, docHeight(n), 1, this.state);
+      this.frame = pageFrame(f.html, f.vw, docHeight(n), 1, { state: this.state });
       this.frame.style.pointerEvents = 'auto';
       this.frame.addEventListener(PAGE_ESCAPE, () => this.close());
       r.querySelector('.pg-device')!.replaceChildren(this.frame);

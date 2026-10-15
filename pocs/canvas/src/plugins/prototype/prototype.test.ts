@@ -156,7 +156,7 @@ describe('prototype pages', () => {
 });
 
 describe('sandbox bridge', () => {
-  it('the page document is the bridge, then the page (no CSP meta: the frame host sends the header)', () => {
+  it('the origin-mode page document is the bridge, then the page (no CSP meta: the frame host sends the header)', () => {
     const d = pageDocument('<h1>Hi</h1>', { name: '</script><script>alert(1)</script>' });
     expect(d).not.toContain('Content-Security-Policy');
     expect(d.indexOf('<script>')).toBeLessThan(d.indexOf('<h1>Hi</h1>'));

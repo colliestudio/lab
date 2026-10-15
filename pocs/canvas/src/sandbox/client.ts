@@ -1,4 +1,6 @@
 // App side of the sandbox origin: where frames load from and a validated message channel to one.
+// Page frames use it only in strict mode (`pageMode() === 'origin'`); otherwise pages are srcdoc
+// frames (srcdoc.ts). Worker frames always need it.
 //
 // Every frame gets its own origin: `<label>.<sandbox host>`. In dev the sandbox host is the page's
 // own host name on port 5227 (`x.localhost:5227`, `x.mini.internal:5227`); in production set
@@ -9,6 +11,24 @@ export type FrameKind = 'worker' | 'page';
 
 /** Dev port of `pnpm dev:sandbox`; `VITE_SANDBOX_PORT` moves it (a second dev server on another port). */
 export const DEV_SANDBOX_PORT = Number(import.meta.env?.VITE_SANDBOX_PORT) || 5227;
+
+/**
+ * How page frames are made: `origin` when a sandbox host is configured (`VITE_SANDBOX_URL` with a
+ * `{label}` placeholder, or `VITE_SANDBOX_PORT` for a dev sandbox server), else `srcdoc`.
+ */
+export function pageMode(env: { VITE_SANDBOX_URL?: string; VITE_SANDBOX_PORT?: string } = (import.meta.env ?? {}) as Record<string, string>): 'srcdoc' | 'origin' {
+  const url = env.VITE_SANDBOX_URL?.trim();
+  if (url) {
+    try {
+      if (url.includes('{label}')) {
+        new URL(url.replace('{label}', 'x'));
+        return 'origin';
+      }
+    } catch {}
+    console.warn(`VITE_SANDBOX_URL "${url}" is not a URL template with {label}: pages use srcdoc frames`);
+  } else if (env.VITE_SANDBOX_PORT?.trim()) return 'origin';
+  return 'srcdoc';
+}
 
 /** `{label}` template for frame URLs (no path). */
 export function sandboxTemplate(loc: { protocol: string; hostname: string } = location, env: string | undefined = import.meta.env?.VITE_SANDBOX_URL): string {
