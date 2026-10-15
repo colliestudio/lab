@@ -14,6 +14,8 @@ export { TAG };
 export const PAGE_ESCAPE = 'page-escape';
 /** Fired on a srcdoc frame element after it was removed for loading a second document (a placeholder took its place). */
 export const PAGE_GONE = 'page-gone';
+/** Placeholders of removed srcdoc frames, by the frame they replaced (Play rescales them). */
+export const placeholders = new WeakMap<HTMLIFrameElement, HTMLElement>();
 
 const BRIDGE = (tag: string, state: Record<string, string>) => `
 (() => {
@@ -111,6 +113,11 @@ export interface PageFrameOpts {
 }
 
 const keys = new WeakMap<HTMLIFrameElement, string>();
+/** Message listeners of srcdoc frames still around; frames replaced before their first message are swept when the next frame is made. */
+const listeners = new Set<{ frame: HTMLIFrameElement; born: number; off: () => void }>();
+function sweep() {
+  for (const l of listeners) if (!l.frame.isConnected && Date.now() - l.born > 10_000) l.off();
+}
 
 /** A frame for a page laid out at `vw` x `vh` and scaled by `scale`, with the prototype's frame styling. */
 export function pageFrame(html: string, vw: number, vh: number, scale: number, opts: PageFrameOpts = {}): HTMLIFrameElement {
@@ -136,8 +143,9 @@ function srcdocFrame(html: string, scripts: boolean, state: Record<string, strin
     const gone = document.createElement('div');
     gone.className = 'pg-gone';
     gone.style.cssText = frame.style.cssText;
-    gone.textContent = 'This page tried to leave the canvas and was stopped. Edit or re-open it to show it again.';
+    gone.textContent = 'This page tried to leave the canvas and was stopped. Interact with it, play it or edit it to show it again.';
     frame.replaceWith(gone);
+    placeholders.set(frame, gone);
     frame.dispatchEvent(new Event(PAGE_GONE));
   });
   frame.addEventListener('load', () => {
@@ -147,8 +155,7 @@ function srcdocFrame(html: string, scripts: boolean, state: Record<string, strin
   const onMsg = (e: MessageEvent) => {
     // the frame was removed (a re-render replaced it): stop listening
     if (attached && !frame.isConnected) {
-      window.removeEventListener('message', onMsg);
-      return watch.dispose();
+      return entry.off();
     }
     if (e.source !== frame.contentWindow || e.origin !== 'null') return;
     const m = runtimeMessage(e.data, key);
@@ -156,6 +163,9 @@ function srcdocFrame(html: string, scripts: boolean, state: Record<string, strin
     else if (m === 'escape') frame.dispatchEvent(new Event(PAGE_ESCAPE));
   };
   window.addEventListener('message', onMsg);
+  sweep();
+  const entry = { frame, born: Date.now(), off: () => (window.removeEventListener('message', onMsg), watch.dispose(), listeners.delete(entry)) };
+  listeners.add(entry);
   return frame;
 }
 

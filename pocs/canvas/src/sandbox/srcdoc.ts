@@ -55,7 +55,7 @@ export function pageRuntime(key: string, state: Record<string, string>): string 
   const back = () => up.postMessage({ tag: TAG, auth: KEY, kind: 'back' }, '*');
   const set = (k, v) => { state[k] = String(v); up.postMessage({ tag: TAG, auth: KEY, kind: 'set', key: String(k), value: String(v) }, '*'); };
   window.canvas = { state, goto, back, set };
-  addEventListener('load', () => up.postMessage({ tag: TAG, auth: KEY, kind: 'loaded' }, '*'));
+  addEventListener('load', (ev) => { if (ev.isTrusted) up.postMessage({ tag: TAG, auth: KEY, kind: 'loaded' }, '*'); });
   addEventListener('keydown', (ev) => { if (ev.isTrusted && apply(keyOf, ev, []) === 'Escape') up.postMessage({ tag: TAG, auth: KEY, kind: 'escape' }, '*'); }, true);
   document.addEventListener('click', (e) => {
     const el = e.target.closest && e.target.closest('[data-goto], [data-back]');

@@ -8,6 +8,7 @@ import { History } from './history';
 import { logic } from './logic';
 import { useLogic } from '../logic';
 import { DEVICES, HEADER, docHeight, isNote, isPage, note, outgoing, page, pages, resolveLink, startPage, titleOf } from './model';
+import { Interact, frameProps } from './interact';
 import { Player, mountFollowBanner } from './play';
 import { askText } from '../mats/textDialog';
 
@@ -30,24 +31,21 @@ export const prototypePlugin: Plugin = {
     (app as any).prototype = { player }; // console / agents
 
     // ------------------------------------------------------------ interact mode (local to this screen)
-    const live = new Set<string>();
     /** Form state of pages clicked through on the canvas (Play keeps its own). */
     const state: Record<string, string> = {};
     const trail = new History('');
-    const setLive = (id: string, on: boolean) => {
-      const changed = live.has(id) !== on;
-      if (on) live.add(id);
-      else live.delete(id);
-      const box = app.view.boxOf(id);
-      box?.classList.toggle('pg-live', on);
-      const b = box?.querySelector<HTMLElement>('[data-action="live"]');
-      if (b) b.title = on ? 'Interacting: clicks go to the page (I to stop)' : 'Interact with the page (I)';
-      // the state goes only to a page being interacted with: entering or leaving builds a fresh frame
-      if (changed) reload(id);
-    };
+    const interact = new Interact<HTMLElement>(
+      (id) => app.view.boxOf(id),
+      (id) => {
+        const n = app.node(id);
+        return isPage(n) ? frameOf(n) : undefined;
+      },
+    );
+    const live = interact.live;
+    const setLive = (id: string, on: boolean) => interact.set(id, on);
     const frameOf = (n: CanvasNode) => {
       const f = page(n);
-      const frame = pageFrame(f.html, f.vw, docHeight(n), n.width / f.vw, live.has(n.id) ? { live: true, state } : {});
+      const frame = pageFrame(f.html, f.vw, docHeight(n), n.width / f.vw, frameProps(live.has(n.id), state));
       // Escape typed inside an interactive page stops interacting (keys in a frame never reach the canvas)
       frame.addEventListener(PAGE_ESCAPE, () => {
         if (!live.has(n.id)) return;
@@ -57,11 +55,7 @@ export const prototypePlugin: Plugin = {
       return frame;
     };
     /** Show the page from its start again (with the current session state): a fresh frame, never a navigation of the old one. */
-    const reload = (id: string) => {
-      const n = app.node(id);
-      const old = app.view.boxOf(id)?.querySelector<HTMLIFrameElement>('iframe');
-      if (old && isPage(n)) old.replaceWith(frameOf(n));
-    };
+    const reload = (id: string) => interact.reload(id);
 
     /** Glide the view so page `id` is in the middle (zoom kept unless it doesn't fit). */
     const glideTo = (id: string) => {
@@ -106,7 +100,7 @@ export const prototypePlugin: Plugin = {
       const frame = [...app.view.world.querySelectorAll<HTMLIFrameElement>('iframe.pg-frame')].find((f) => fromFrame(f, e));
       const id = frame?.closest<HTMLElement>('[data-node-id]')?.dataset.nodeId;
       // only a page you're interacting with may act: an idle thumbnail's script can't move your view
-      if (!id || !live.has(id)) return;
+      if (!id || !interact.accepts(id)) return;
       if (m.kind === 'set') state[m.key] = m.value;
       else if (m.kind === 'goto') goFrom(id, m.target);
       else if (trail.current === id && trail.back()) {

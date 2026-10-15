@@ -156,6 +156,8 @@ describe('srcdoc page frames', () => {
     expect(rt).toContain("apply(keyOf, ev, []) === 'Escape'");
     expect(rt).toContain('Reflect.apply');
     expect(rt).toContain('document.currentScript.remove()');
+    // a page can dispatch a fake `load` to look vouched for: only a real one counts
+    expect(rt).toMatch(/addEventListener\('load', \(ev\) => \{ if \(ev\.isTrusted\)/);
     expect(rt).not.toContain('Object.assign');
     expect(rt.indexOf('Reflect.apply')).toBeLessThan(rt.indexOf('window.canvas'));
     // every message to the parent has the key
