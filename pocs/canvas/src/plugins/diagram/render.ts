@@ -1,4 +1,4 @@
-import type { CanvasNode } from '../../core';
+import { canvasColor, type CanvasNode } from '../../core';
 import { fillOf, shapeOf, sizeOf, strokeOf, type ShapeKind } from './model';
 
 const SVG = 'http://www.w3.org/2000/svg';
@@ -13,8 +13,8 @@ export function renderShape(n: CanvasNode, el: HTMLElement) {
   const wrap = document.createElement('div');
   wrap.className = `dg-shape dg-k-${kind}${s.dashed ? ' dg-dashed' : ''}`;
   const fill = fillOf(s);
-  wrap.style.setProperty('--dg-stroke', strokeOf(s));
-  wrap.style.setProperty('--dg-fill', fill === 'none' ? 'transparent' : fill);
+  wrap.style.setProperty('--dg-stroke', canvasColor(strokeOf(s))!);
+  wrap.style.setProperty('--dg-fill', fill === 'none' ? 'transparent' : canvasColor(fill)!);
   wrap.style.setProperty('--dg-size', `${sizeOf(s)}px`);
   if (kind === 'diamond') {
     const svg = document.createElementNS(SVG, 'svg');

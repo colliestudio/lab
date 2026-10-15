@@ -12,7 +12,7 @@ import { matsPlugin } from './plugins/mats';
 import { boardPlugin } from './plugins/board';
 import { stormPlugin } from './plugins/eventstorm';
 import { prototypePlugin } from './plugins/prototype';
-import { diagramPlugin, enterPaper } from './plugins/diagram';
+import { diagramPlugin, enterPaper, leavePaper } from './plugins/diagram';
 import { mountHelp, removeHelpNote } from './help';
 import { attachFollow, createFramesPlugin, portalsEnabled, enterUrl, mountBreadcrumb, trailFromUrl } from './plugins/frames';
 
@@ -51,6 +51,7 @@ function newTable() {
   app.store.load({ nodes: [], edges: [] });
   // the starter table: a shuffled deck, a wave of spades and three cards to flip (setup lays out about 940 x 400)
   app.dispatch('cards.setup', { x: -470, y: -120 });
+  leavePaper(app);
   app.store.undoManager.clear();
   app.store.select([]);
   app.view.fit();
@@ -67,6 +68,7 @@ function newDiagram() {
 
 function openDoc(doc: CanvasDoc & { skipped?: string[] }, name: string) {
   app.store.load(doc);
+  leavePaper(app);
   app.view.fit();
   flash(doc.skipped?.length ? `Opened ${name} (skipped ${doc.skipped.length} bad entries)` : `Opened ${name}`);
 }

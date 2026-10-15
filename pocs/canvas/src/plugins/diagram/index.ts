@@ -30,6 +30,11 @@ export function enterPaper(app: App) {
   paperOn = true;
   app.view.root.classList.add('cv-paper');
 }
+/** Another kind of table replaced the diagram: paper (and the shape tool keys) only if it holds shapes. */
+export function leavePaper(app: App) {
+  paperOn = false;
+  app.view.root.classList.toggle('cv-paper', hasShapes(app));
+}
 
 export const diagramPlugin: Plugin = {
   id: 'diagram',
@@ -76,7 +81,7 @@ export const diagramPlugin: Plugin = {
       id: 'diagram.shape',
       match: isShape,
       // while its words are typed, a redraw (someone else's change) must not replace the editor
-      renderKey: (n) => (editing?.id === n.id ? `editing:${styleKey(n)}` : `${styleKey(n)}\n${n.text ?? ''}`),
+      renderKey: (n) => (editing?.id === n.id ? 'editing' : `${styleKey(n)}\n${n.text ?? ''}`),
       render: (n, el) => renderShape(n, el),
       onDoubleClick: (n) => {
         app.store.newUndoStep();
@@ -133,7 +138,6 @@ export const diagramPlugin: Plugin = {
         id: `diagram.${t.kind}`,
         label: t.label,
         create: (a, at) => {
-          enterPaper(a);
           const id = a.dispatch('diagram.add', { kind: t.kind, cx: at.x, cy: at.y }).select?.[0];
           if (id) startEdit(id, { fresh: true });
         },
