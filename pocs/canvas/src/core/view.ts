@@ -21,6 +21,8 @@ type Gesture =
       start: Pt;
       applied: Pt;
       moved: boolean;
+      /** Pressed inside a text editor (see onPointerDown). */
+      inEditor?: boolean;
       target?: string;
       mode?: string;
       /** A local drag (see ObjectType.dragsLocally): moves on this screen only until the drop. */
@@ -267,10 +269,13 @@ export class View {
   private onPointerDown(e: PointerEvent) {
     if (e.button === 2) return;
     this.closeMenu();
-    this.root.focus({ preventScroll: true });
+    // a press inside a text editor keeps the caret: focus stays, and the press only becomes a drag
+    // (committing the text first) once it moves
+    const inEditor = !!(e.target as Element).closest?.('.cv-editing');
+    if (!inEditor) this.root.focus({ preventScroll: true });
     const p = this.local(e);
     this.pointers.set(e.pointerId, p);
-    this.root.setPointerCapture(e.pointerId);
+    if (!inEditor) this.root.setPointerCapture(e.pointerId);
 
     if (this.pointers.size === 2) {
       // second finger: switch to pinch, abandon whatever the first finger started
@@ -357,7 +362,7 @@ export class View {
     const ids = this.app.selected().map((n) => n.id);
     raise(this.app.store, ids.filter((x) => this.app.canMove(x)));
     const w = this.world_(p);
-    this.gesture = { kind: 'drag', ids, clickId: id, shift: e.shiftKey || e.metaKey, down: e, start: w, applied: { x: 0, y: 0 }, moved: false };
+    this.gesture = { kind: 'drag', ids, clickId: id, shift: e.shiftKey || e.metaKey, down: e, start: w, applied: { x: 0, y: 0 }, moved: false, inEditor };
     this.app.presence?.setHeld(this.app.publicIds(ids));
   }
 
@@ -394,6 +399,12 @@ export class View {
         if (!g.moved && Math.hypot(tx, ty) * this.app.viewport.zoom < DRAG_THRESHOLD) return;
         if (!g.moved) {
           g.moved = true;
+          if (g.inEditor) {
+            // the press became a drag: keep the typed text, then move the shape
+            (document.activeElement as HTMLElement | null)?.blur();
+            getSelection()?.removeAllRanges();
+            this.root.setPointerCapture(e.pointerId);
+          }
           const clicked = this.app.node(g.clickId);
           const ct = clicked && this.app.typeOf(clicked);
           if (clicked && !g.shift && ct?.dragsLocally?.(clicked, this.app)) {
@@ -523,6 +534,7 @@ export class View {
       this.endDrag(g.ids, target ? target.id : undefined);
       return;
     }
+    if (g.inEditor) return; // a click in the editor only moves the caret
     // plain click
     if (!g.shift && this.app.store.selection.size > 1) this.app.store.select([g.clickId]);
     const clicked = this.app.node(g.clickId);

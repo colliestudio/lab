@@ -7,6 +7,8 @@ export interface InlineEditOpts {
   seed?: string;
   /** Enter commits (Shift+Enter = new line). Default: Enter = new line, ⌘/Ctrl+Enter commits. */
   enterCommits?: boolean;
+  /** Let a press inside the editor reach the table (the table decides: caret, or a drag of the object). */
+  dragThrough?: boolean;
   /** Escape cancels instead of committing. Default: commits (a click elsewhere commits too). */
   escapeCancels?: boolean;
   /** Called once with the text when the edit ends (not when it was cancelled). */
@@ -74,7 +76,7 @@ export function inlineEdit(el: HTMLElement, opts: InlineEditOpts): InlineEdit {
   };
   el.addEventListener('keydown', onKey);
   el.addEventListener('blur', onBlur);
-  el.addEventListener('pointerdown', stop);
+  if (!opts.dragThrough) el.addEventListener('pointerdown', stop);
   el.addEventListener('paste', onPaste);
   return { close: (commit = true) => finish(commit) };
 }

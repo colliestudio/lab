@@ -75,7 +75,7 @@ export const diagramPlugin: Plugin = {
         editing = null;
         return;
       }
-      session = inlineEdit(el, { seed: opts.seed, onCommit: finish });
+      session = inlineEdit(el, { seed: opts.seed, dragThrough: true, onCommit: finish });
     };
 
     app.registerType({
@@ -93,6 +93,9 @@ export const diagramPlugin: Plugin = {
     });
 
     // ------------------------------------------------------------ making shapes
+    /** Text and sticky notes open the editor on creation; boxes just get selected (type, Enter or double-click to edit), so they can be moved right away. */
+    const opensEditor = (kind: ShapeKind) => kind === 'text' || kind === 'sticky';
+
     /** Put a shape where the tool was used (a click = default size around the point; a drag = that box), then type into it. */
     const create = (kind: ShapeKind, box: { x: number; y: number; width: number; height: number }) => {
       const dragged = box.width >= 12 && box.height >= 12;
@@ -101,7 +104,7 @@ export const diagramPlugin: Plugin = {
       else if (kind === 'text') Object.assign(args, { x: box.x, y: Math.round(box.y - textBox('', DEFAULT_TEXT_SIZE).h / 2) });
       else Object.assign(args, { cx: box.x, cy: box.y });
       const id = app.dispatch('diagram.add', args).select?.[0];
-      if (id) startEdit(id, { fresh: true });
+      if (id && opensEditor(kind)) startEdit(id, { fresh: true });
     };
     for (const t of SHAPE_TOOLS) {
       app.registerTool({
@@ -128,7 +131,8 @@ export const diagramPlugin: Plugin = {
           return;
         }
         const id = app.dispatch('diagram.addConnected', { from, side, at: drop.at }).select?.[0];
-        if (id) startEdit(id, { fresh: true });
+        const kind = id ? shapeOf(app.node(id))?.kind : undefined;
+        if (id && kind && opensEditor(kind)) startEdit(id, { fresh: true });
       },
     });
     mountPanel(app, () => isPaper(app));
@@ -140,7 +144,7 @@ export const diagramPlugin: Plugin = {
         label: t.label,
         create: (a, at) => {
           const id = a.dispatch('diagram.add', { kind: t.kind, cx: at.x, cy: at.y }).select?.[0];
-          if (id) startEdit(id, { fresh: true });
+          if (id && opensEditor(t.kind)) startEdit(id, { fresh: true });
         },
       });
     }

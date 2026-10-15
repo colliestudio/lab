@@ -90,12 +90,21 @@ export function mountHandles(app: App, hooks: HandleHooks) {
   app.viewport.onChange(refresh);
   refresh();
 
-  // hover: the shape under the pointer (or its handles) shows its dots
+  // hover: the shape under the pointer shows its dots; it stays while the pointer is within reach of
+  // them (the dots sit just outside the shape)
+  const REACH = 34; // screen px
   view.root.addEventListener('pointermove', (e) => {
     if (e.buttons || busy) return;
     const t = (e.target as Element).closest<HTMLElement>('[data-node-id], .dg-box');
     const id = t?.dataset.nodeId ?? t?.dataset.for;
-    const next = shapeById(id) ? id : undefined;
+    let next = shapeById(id) ? id : undefined;
+    const cur = hover && shapeById(hover);
+    if (!next && cur) {
+      const r = view.root.getBoundingClientRect();
+      const [wx, wy] = app.viewport.toWorld(e.clientX - r.left, e.clientY - r.top);
+      const m = REACH / app.viewport.zoom;
+      if (wx >= cur.x - m && wx <= cur.x + cur.width + m && wy >= cur.y - m && wy <= cur.y + cur.height + m && !t) next = hover;
+    }
     if (next !== hover) {
       hover = next;
       refresh();

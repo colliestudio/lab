@@ -125,13 +125,15 @@
 }
 .dg-conn {
   position: absolute;
-  pointer-events: auto;
+  /* only the dot takes presses; the rest of the strip falls through to the table */
+  pointer-events: none;
   cursor: crosshair;
   width: calc(44px * var(--inv));
   height: calc(26px * var(--inv));
 }
 .dg-conn::after {
   content: '';
+  pointer-events: auto;
   position: absolute;
   width: calc(11px * var(--inv));
   height: calc(11px * var(--inv));
