@@ -49,11 +49,11 @@ app.use(frames);
 app.store.migrations.push(removeHelpNote);
 
 
-function newTable(start: (a: typeof app) => void = (a) => a.startTable()) {
+/** An empty board: nothing is put on it (everything is in the Add menu). */
+function newBoard() {
   resetFileHandle();
   app.store.load({ nodes: [], edges: [] });
   app.tableReplaced();
-  start(app);
   app.store.undoManager.clear();
   app.store.select([]);
   app.view.fit();
@@ -90,24 +90,11 @@ app.registerMainMenuItem({
   group: 'File',
   order: 0,
   entry: () => ({
-    label: 'New table',
+    label: 'New board',
     run: () => {
-      if (confirm(ROOM ? 'Start a new table for everyone in this room?' : 'Start a new table? Unsaved changes are lost.')) newTable();
+      if (confirm(ROOM ? 'Start a new board for everyone in this room?' : 'Start a new board? Unsaved changes are lost.')) newBoard();
     },
   }),
-});
-// File ▸ New <kind> rows of the plugins that registered one (registerNewKind)
-app.registerMainMenuItem({
-  id: 'file.newKinds',
-  group: 'File',
-  order: 0.5,
-  entry: (a) =>
-    a.newKinds.map((k) => ({
-      label: `New ${k.label}`,
-      run: () => {
-        if (confirm(ROOM ? `Start a new ${k.label} for everyone in this room?` : `Start a new ${k.label}? Unsaved changes are lost.`)) newTable(k.start);
-      },
-    })),
 });
 app.registerMainMenuItem({ id: 'file.open', group: 'File', order: 1, entry: () => ({ label: 'Open…', hint: '⌘O', run: doOpen }) });
 app.registerMainMenuItem({ id: 'file.save', group: 'File', order: 2, entry: () => ({ label: 'Save', hint: '⌘S', run: () => doSave() }) });
@@ -187,11 +174,7 @@ const view = persistViewport(app, VIEW_KEY);
 if (BRIDGE) startBridge(BRIDGE);
 else persistLocally(app, DB_NAME).then(({ empty }) => {
   if (!ROOM) {
-    if (empty) {
-      const q = new URLSearchParams(location.search);
-      const kind = app.newKinds.find((k) => k.param && q.has(k.param));
-      newTable(kind?.start);
-    }
+    if (empty) newBoard();
     else if (view) app.viewport.set(view.x, view.y, view.zoom);
     else app.view.fit();
     return;

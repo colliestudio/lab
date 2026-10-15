@@ -33,11 +33,6 @@ describe('cards in the chrome', () => {
     expect(sub[0].label).toContain('Me');
     expect(sub.map((e) => e.label).join()).toContain('Sam');
   });
-  it('startTable deals the starter deck', () => {
-    const app = setup();
-    app.startTable();
-    expect(app.doc.nodes.length).toBeGreaterThan(20);
-  });
   it('playerRenamed relabels my hand', () => {
     const app = setup();
     items(app).find((e) => e.label === 'New hand')!.run!();
