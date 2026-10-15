@@ -20,8 +20,17 @@ const HELP = `canvas: read and edit a live canvas through the bridge
   add-column LABEL [--x X --y Y]
   update N [--text T] [--label L] [--color C|none]
   move N (--x X --y Y | --dx DX --dy DY | --column C)
-  connect FROM TO [--label L]
+  connect FROM TO [--label L]            plain link (board)
   disconnect FROM TO
+  shape KIND [TEXT] [--x X --y Y | --near N --side top|right|bottom|left] [--from N]
+        [--width W --height H] [--stroke C] [--fill C|none] [--dashed] [--size PX]
+                                          diagram shape: rect|ellipse|diamond|text|sticky; --from N = new shape with an arrow from N
+  style N [--text T] [--kind K] [--stroke C|none] [--fill C|none] [--dashed true|false] [--size PX]
+        [--x X --y Y | --dx DX --dy DY] [--width W --height H]
+  arrow FROM TO [--label L] [--from-side S] [--to-side S] [--start arrow|none] [--end arrow|none]
+        [--dashed] [--curve] [--color 1-6|#hex]   diagram arrow; prints its id
+  arrow-edit ID [--label L|none] [--from-side S] [--to-side S] [--start E] [--end E] [--dashed true|false] [--curve true|false] [--color C|none]
+  arrow-rm ID [ID…]
   rm N [N…]
   undo | redo                             your own last step (per --as)
   log [-n 20]
@@ -80,6 +89,40 @@ async function run(name: string, args: unknown) {
   return r;
 }
 
+const bool = (k: string) => (flags[k] !== undefined ? flags[k] !== 'false' : undefined);
+const clear = (v: string | undefined) => (v === 'none' ? null : v);
+/** The arrow options shared by `arrow` and `arrow-edit` (core.connect / core.edge arguments). */
+function arrowFlags() {
+  return {
+    label: flags.label === 'none' ? null : flags.label,
+    fromSide: flags['from-side'],
+    toSide: flags['to-side'],
+    fromEnd: flags.start,
+    toEnd: flags.end,
+    dashed: bool('dashed'),
+    curve: bool('curve'),
+    color: clear(flags.color),
+  };
+}
+
+/** A spot beside node `near` (default: below it). */
+async function nearSpot(near: string, side = 'bottom') {
+  const n = (await c.doc()).nodes.find((x) => x.id === near);
+  if (!n) throw new Error(`no node ${near}`);
+  const gap = 90;
+  const w = num('width') ?? 160;
+  const h = num('height') ?? 90;
+  const pos: Record<string, { x: number; y: number }> = {
+    bottom: { x: n.x + n.width / 2 - w / 2, y: n.y + n.height + gap },
+    top: { x: n.x + n.width / 2 - w / 2, y: n.y - gap - h },
+    right: { x: n.x + n.width + gap, y: n.y + n.height / 2 - h / 2 },
+    left: { x: n.x - gap - w, y: n.y + n.height / 2 - h / 2 },
+  };
+  const p = pos[side];
+  if (!p) throw new Error(`bad --side ${side}`);
+  return p;
+}
+
 async function main() {
   switch (command) {
     case undefined:
@@ -135,6 +178,49 @@ async function main() {
       await run('board.connect', { from, to, label: flags.label });
       return console.log(`${from} → ${to}`);
     }
+    case 'shape': {
+      const kind = params[0];
+      const text = params.slice(1).join(' ').replace(/\\n/g, '\n');
+      const style = { stroke: flags.stroke, fill: flags.fill, dashed: flags.dashed ? flags.dashed !== 'false' : undefined, size: num('size'), width: num('width'), height: num('height') };
+      if (flags.from) {
+        const from = await c.resolve(flags.from);
+        const r = await run('diagram.addConnected', { from, kind, text, side: flags.side, at: num('x') !== undefined && num('y') !== undefined ? { x: num('x'), y: num('y') } : undefined, label: flags.label, ...style });
+        return console.log(r.select?.[0] ?? '');
+      }
+      const near = flags.near ? await c.resolve(flags.near) : undefined;
+      const r = await run('diagram.add', { kind, text, x: num('x'), y: num('y'), ...(near ? await nearSpot(near, flags.side) : {}), ...style });
+      return console.log(r.select?.[0] ?? '');
+    }
+    case 'style': {
+      const id = await c.resolve(params[0]);
+      await run('diagram.update', {
+        id,
+        text: flags.text?.replace(/\\n/g, '\n'),
+        kind: flags.kind,
+        stroke: clear(flags.stroke),
+        fill: flags.fill,
+        dashed: flags.dashed ? flags.dashed !== 'false' : undefined,
+        size: num('size'),
+        x: num('x'),
+        y: num('y'),
+        dx: num('dx'),
+        dy: num('dy'),
+        width: num('width'),
+        height: num('height'),
+      });
+      return console.log(id);
+    }
+    case 'arrow': {
+      const [from, to] = await Promise.all([c.resolve(params[0]), c.resolve(params[1])]);
+      const r = await run('core.connect', { from, to, ...arrowFlags() });
+      return console.log(r.select?.[0] ?? '');
+    }
+    case 'arrow-edit': {
+      await run('core.edge', { id: params[0], ...arrowFlags() });
+      return console.log(params[0]);
+    }
+    case 'arrow-rm':
+      return void (await run('core.delete', { ids: params }));
     case 'disconnect': {
       const [from, to] = await Promise.all([c.resolve(params[0]), c.resolve(params[1])]);
       return void (await run('board.disconnect', { from, to }));

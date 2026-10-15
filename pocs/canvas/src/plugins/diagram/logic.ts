@@ -1,4 +1,7 @@
-import { anchor, sideToward, isSide, NORMAL, type CanvasNode, type Change, type Command, type DocView, type Side, type Store } from '../../core';
+// runtime imports come from the DOM-free core modules: the Node bridge loads this file too
+import type { CanvasNode, Change, DocView } from '../../core/doc';
+import { anchor, isSide, NORMAL, sideToward, type Side } from '../../core/edges';
+import type { Command, Store } from '../../core/store';
 import { DEFAULT_SIZE, DEFAULT_TEXT_SIZE, MIN_SIZE, isKind, isShape, shapeOf, textBox, type ShapeKind, type ShapeStyle } from './model';
 
 // Diagram commands. No DOM: the browser plugin and the Node bridge both register them, so an

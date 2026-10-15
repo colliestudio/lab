@@ -6,6 +6,7 @@ import { registerCoreCommands } from '../src/core/commands';
 import type { CanvasDoc, CanvasNode, Change } from '../src/core/doc';
 import type { LogActor } from '../src/core/log';
 import { registerBoardLogic } from '../src/plugins/board/logic';
+import { registerDiagramLogic } from '../src/plugins/diagram/logic';
 import { registerChessLogic } from '../src/plugins/chess/logic';
 import { after, chatArray, chatMessages, sendChat, type ChatMessage } from '../src/core/chat';
 import { views, type View } from './views';
@@ -60,6 +61,7 @@ export class Host {
     const s = new Store({ ydoc: this.ydoc });
     registerCoreCommands(s);
     registerBoardLogic(s);
+    registerDiagramLogic(s);
     registerChessLogic(s);
     return s;
   }
