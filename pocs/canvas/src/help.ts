@@ -31,6 +31,21 @@ export const GROUPS: [string, [string, string][]][] = [
     ],
   ],
   [
+    'Diagrams (shapes and arrows)',
+    [
+      ['R O D T S', 'Rectangle, ellipse, diamond, text, sticky note tool (also in the dock). Only with nothing selected (else typing edits the selected shape) and with the pointer not over another kind of object: over a deck S and D keep shuffle and draw, over a frame O is the outline. Click = default size, drag = that size. Esc leaves the tool'],
+      ['Double-click empty board', 'A line of text right there'],
+      ['↵, double-click, or just type', 'Edit the selected shape’s text in place. Esc or a click elsewhere keeps it (⌘↵ too); ⌫ inside edits text, not the shape'],
+      ['Hover a shape, drag a dot', 'Pull an arrow: let go on another shape to connect (near its edge picks the side), on empty board for a new connected shape of the same kind, or just click the dot for the next one'],
+      ['Click an arrow, ↵ or double-click', 'Select it (⌫ deletes); edit its label in place. The left panel sets color, dashed, curved and arrowheads'],
+      ['Left panel', 'Shape kind, stroke, fill, dashed, text size for the selected shapes'],
+      ['Drag a square on a selected shape', 'Resize (⇧ on a corner keeps the proportions)'],
+      ['⌥drag', 'Drag a copy'],
+      ['⌘C / ⌘V', 'Copy and paste shapes with the arrows between them (inside the app)'],
+      ['⌘D', 'Duplicate (arrows between the copies come along)'],
+    ],
+  ],
+  [
     'Prototype pages',
     [
       ['+ › Prototype: example signup flow', 'Five linked HTML pages (a signup/checkout flow) with sticky notes. + › blank page / sticky note for your own'],
@@ -58,7 +73,8 @@ export const GROUPS: [string, [string, string][]][] = [
       ['⌘A', 'Select everything on the table'],
       ['Esc', 'Clear selection'],
       ['Delete / Backspace, right-click › Delete', 'Delete selection (a board takes its pieces with it)'],
-      ['⌘D', 'Duplicate selection (not cards)'],
+      ['⌘D', 'Duplicate selection (not cards); arrows between the copied objects are copied too'],
+      ['⌘C / ⌘V', 'Copy / paste the selection (not cards)'],
       ['Arrows (⇧ arrows)', 'Nudge 1px (10px)'],
     ],
   ],

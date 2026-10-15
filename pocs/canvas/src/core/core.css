@@ -862,3 +862,72 @@
 .cv-chat-send {
   padding: 6px 8px;
 }
+
+/* ---- styled arrows (edges.ts) */
+.cv-edge-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 16px;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+.cv-edge-line {
+  fill: none;
+  stroke-width: 2.5px;
+  stroke-linecap: round;
+}
+.cv-edge-head {
+  stroke-width: 1.5px;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.cv-edge-sel .cv-edge-line {
+  filter: drop-shadow(0 0 3px #4c8dff);
+  stroke-width: 3.5px;
+}
+.cv-edge-labels {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  z-index: 0;
+}
+.cv-edge-label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  min-width: 16px;
+  min-height: 1.3em;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--cv-label-bg, #fafafa);
+  color: var(--cv-label-fg, #1e1e1e);
+  font: 14px/1.3 system-ui, sans-serif;
+  white-space: pre;
+  text-align: center;
+  cursor: pointer;
+}
+.cv-edge-label-sel {
+  outline: 2px solid #4c8dff;
+}
+.cv-edge-label.cv-editing {
+  cursor: text;
+  user-select: text;
+  -webkit-user-select: text;
+  outline: 2px solid #4c8dff;
+}
+.cv-editing {
+  outline: none;
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+}
+.cv-root.cv-drawing,
+.cv-root.cv-drawing * {
+  cursor: crosshair !important;
+}
+.cv-marquee.cv-ghost {
+  border: 2px solid #4c8dff;
+  background: rgba(76, 141, 255, 0.08);
+}

@@ -4,6 +4,7 @@ import { logic as board } from './board/logic';
 import { logic as cards } from './cards/logic';
 import { logic as chess } from './chess/logic';
 import { logic as clock } from './clock/logic';
+import { logic as diagram } from './diagram/logic';
 import { logic as eventstorm } from './eventstorm/logic';
 import { logic as frames } from './frames/logic';
 import { logic as mats } from './mats/logic';
@@ -23,7 +24,7 @@ export interface PluginLogic {
  * Every built-in plugin's logic, in registration order (rider rules run in this order: a piece rides
  * its board, the board its frame, so frames comes last). The browser and the bridge both use this.
  */
-export const PLUGIN_LOGIC: readonly PluginLogic[] = [cards, chess, clock, battleline, mats, board, eventstorm, prototype, frames];
+export const PLUGIN_LOGIC: readonly PluginLogic[] = [cards, chess, clock, battleline, mats, board, diagram, eventstorm, prototype, frames];
 
 export function registerPluginLogic(store: Store) {
   for (const entry of PLUGIN_LOGIC) useLogic(store, entry);

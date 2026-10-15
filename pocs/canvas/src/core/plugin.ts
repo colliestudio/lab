@@ -20,6 +20,13 @@ export interface ObjectType {
   renderKey?(node: CanvasNode, ctx: RenderCtx): string;
   onDoubleClick?(node: CanvasNode, app: App): void;
   /**
+   * Edit the object's text in place. Core calls it for Enter on a lone selected object, and for a
+   * printable key typed on it (`seed` = that character). Double-click is up to `onDoubleClick`.
+   */
+  edit?(node: CanvasNode, app: App, seed?: string): void;
+  /** Dragging with ⌥ held moves a copy and leaves the original (every dragged object must say yes). */
+  altDragDuplicates?: boolean;
+  /**
    * Does this press grab the object? Return false to let it fall through to the table (box select,
    * click-to-deselect), e.g. on a locked board's surface. Default: true.
    */
@@ -148,6 +155,25 @@ export interface Kit {
  * of object. Register with `app.registerMenu`.
  */
 export type MenuProvider = (app: App, selected: CanvasNode[]) => { title?: string; entries: MenuEntry[] } | undefined;
+
+/** A creation tool (toolbar button / key): the next press-drag on the table makes something there. */
+export interface Tool {
+  id: string;
+  label: string;
+  title?: string;
+  /** Single key that picks the tool (when nothing is selected). */
+  key?: string;
+  /** The key only works while this says so. Default: always. */
+  when?(app: App): boolean;
+  /**
+   * Is this node the tool's own kind of object? With the pointer over any other plugin's object the key
+   * is left to that plugin (S shuffles a deck, it does not pick the sticky tool). Without it, any node
+   * under the pointer takes the key from the tool.
+   */
+  owns?(node: CanvasNode): boolean;
+  /** Make the object. `box` = the dragged rectangle (world); width and height are 0 for a plain click. */
+  create(app: App, box: { x: number; y: number; width: number; height: number }): void;
+}
 
 /** A button in the bottom dock (`app.registerDockItem`). */
 export interface DockItem {

@@ -764,8 +764,8 @@ export const cardsPlugin: Plugin = {
     };
 
     app.registerKey({ key: 'f', label: 'Flip', run: flipSel });
-    app.registerKey({ key: 's', label: 'Shuffle', run: shuffleSel });
-    app.registerKey({ key: 'd', label: 'Draw', run: drawSel() });
+    app.registerKey({ key: 's', label: 'Shuffle', when: (a) => selectedCards(a).some(isStacked), run: shuffleSel });
+    app.registerKey({ key: 'd', label: 'Draw', when: (a) => !!targetDeck(a), run: drawSel() });
     app.registerKey({ key: 'shift+d', label: 'Draw flipped', run: drawSel(true) });
     app.registerKey({ key: 'g', label: 'Group the selection', run: gatherSel() });
     app.registerKey({ key: 'shift+g', label: 'Gather all cards back to their deck', run: recallHome });

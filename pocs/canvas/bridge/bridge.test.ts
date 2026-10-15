@@ -103,4 +103,27 @@ describe('Host', () => {
     h.sweep(0, Date.now() + 1);
     expect(h.seated()).toEqual([]);
   });
+
+  it('an agent draws a diagram: shapes, a labelled arrow, a restyle; the file keeps x-shape and x-edge', () => {
+    const h = new Host();
+    h.dispatch(claude, 'diagram.add', { id: 'a', kind: 'ellipse', text: 'Start', x: 0, y: 0 });
+    h.dispatch(claude, 'diagram.addConnected', { from: 'a', id: 'b', kind: 'rect', text: 'Work', side: 'bottom' });
+    const arrow = h.store.doc.edges[0].id;
+    h.dispatch(claude, 'core.edge', { id: arrow, label: 'then', dashed: true });
+    h.dispatch(claude, 'diagram.update', { id: 'b', fill: '#b2f2bb' });
+    const file = JSON.parse(h.fileText());
+    expect(file.nodes.map((x: { id: string; type: string; 'x-shape': { kind: string } }) => [x.id, x.type, x['x-shape'].kind])).toEqual([['a', 'text', 'ellipse'], ['b', 'text', 'rect']]);
+    expect(file.nodes[1]['x-shape'].fill).toBe('#b2f2bb');
+    expect(file.edges).toEqual([expect.objectContaining({ fromNode: 'a', toNode: 'b', fromSide: 'bottom', toSide: 'top', label: 'then', 'x-edge': { dashed: true } })]);
+    // the agent's own undo takes back the restyle, then the label
+    expect(h.undo(claude)).toBe(true);
+    expect(h.store.doc.get('b')!['x-shape']).toEqual({ kind: 'rect' });
+    expect(h.undo(claude)).toBe(true);
+    expect(h.store.doc.edge(arrow)!.label).toBeUndefined();
+    // file round trip
+    const text = h.fileText();
+    const h2 = new Host();
+    h2.applyFile(text);
+    expect(h2.fileText()).toBe(text);
+  });
 });

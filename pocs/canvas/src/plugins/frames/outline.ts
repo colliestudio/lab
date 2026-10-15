@@ -57,7 +57,7 @@ export function mountOutline(app: App, hooks: OutlineHooks) {
   };
   panel.querySelector('.fr-ol-fold')!.addEventListener('click', fold);
   panel.querySelector('.fr-ol-present')!.addEventListener('click', () => hooks.present());
-  app.registerKey({ key: 'o', label: 'Outline', run: fold });
+  app.registerKey({ key: 'o', label: 'Outline', when: () => !panel.classList.contains('fr-none'), run: fold });
 
   // ---------------------------------------------------------------- list
   let listKey = '';
