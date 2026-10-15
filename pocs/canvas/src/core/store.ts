@@ -244,6 +244,11 @@ export class Store {
     return this.commands.has(name);
   }
 
+  /** Every registered command name, sorted. */
+  commandNames(): string[] {
+    return [...this.commands.keys()].sort();
+  }
+
   /**
    * Run a command and apply its changes in one transaction (one undo step).
    * `merge: true` folds this into the previous undo step (e.g. the moves of one drag).

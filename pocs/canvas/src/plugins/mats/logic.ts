@@ -3,6 +3,7 @@ import * as cmds from './commands';
 import { repairImport } from './io';
 import { isMat, matCarrierOf } from './model';
 import { preset } from './presets';
+import type { PluginLogic } from '../logic';
 
 export const commands = {
   create: cmds.create,
@@ -27,3 +28,5 @@ export function registerMatsLogic(store: Store) {
   // a copied mat is a bare mat (its zones and cards stay with the original)
   store.duplicateRules.push((n) => (isMat(n) ? { ...n } : undefined));
 }
+
+export const logic: PluginLogic = { id: 'mats', register: registerMatsLogic };

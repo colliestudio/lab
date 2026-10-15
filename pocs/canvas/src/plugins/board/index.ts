@@ -1,6 +1,7 @@
 import './board.css';
 import type { App, CanvasNode, Plugin } from '../../core';
-import { COL_W, NOTE_W, isColumn, isNote, registerBoardLogic, syncOf } from './logic';
+import { COL_W, NOTE_W, isColumn, isNote, logic, syncOf } from './logic';
+import { useLogic } from '../logic';
 
 export { registerBoardLogic } from './logic';
 
@@ -44,7 +45,7 @@ function edit(app: App, n: CanvasNode) {
 export const boardPlugin: Plugin = {
   id: 'board',
   setup(app) {
-    registerBoardLogic(app.store);
+    useLogic(app.store, logic);
     app.registerType({
       id: 'board.note',
       match: isNote,

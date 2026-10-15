@@ -12,6 +12,7 @@ import { matsPlugin } from './plugins/mats';
 import { boardPlugin } from './plugins/board';
 import { stormPlugin } from './plugins/eventstorm';
 import { prototypePlugin } from './plugins/prototype';
+import { registerPluginLogic } from './plugins/logic';
 import { mountHelp, removeHelpNote } from './help';
 import { attachFollow, createFramesPlugin, portalsEnabled, enterUrl, mountBreadcrumb, trailFromUrl } from './plugins/frames';
 
@@ -29,6 +30,8 @@ const app = new App(document.getElementById('table')!);
   app.viewer = p.id;
   app.player = { id: p.id, name: p.name, color: p.color };
 }
+// every plugin's data side from the shared list (the bridge registers the same list); `use` below adds the DOM side
+registerPluginLogic(app.store);
 app.use(cardsPlugin);
 app.use(chessPlugin);
 app.use(clockPlugin);
@@ -37,7 +40,7 @@ app.use(matsPlugin);
 app.use(boardPlugin);
 app.use(stormPlugin);
 app.use(prototypePlugin);
-// last: its rider rule (frame membership) must come after the others (a piece rides its board, the board its frame)
+// frames' logic is last in PLUGIN_LOGIC (src/plugins/logic.ts): its rider rule must come after the others, so it is registered there
 const TRAIL = trailFromUrl();
 const frames = createFramesPlugin({ room: ROOM, portals: portalsEnabled(), enter: (room) => (location.href = enterUrl(room, ROOM, TRAIL)) });
 app.use(frames);
