@@ -412,6 +412,16 @@ export const cardsPlugin: Plugin = {
     useLogic(app.store, logic);
     const ux = mountHandUx(app);
     // a whole pack, face up in pack order, laid out as a grid (the grid is the home deck)
+    // New table deals the starter table: a shuffled deck, a wave of spades and three cards to flip (about 940 x 400)
+    app.registerStarter((a) => void a.dispatch('cards.setup', { x: -470, y: -120 }));
+    app.registerRenameHook((a, me) => void a.dispatch('cards.handLabel', { owner: me.id, label: handLabelOf(me.name), color: me.color }));
+    // New hand: a private group (others see backs). Solo: mine right away; in a room: a choice of players.
+    app.registerMainMenuItem({
+      id: 'cards.newHand',
+      group: 'Game',
+      order: 0,
+      entry: (a) => (a.presence ? { label: 'New hand for', items: () => newHandEntries(a) } : { label: 'New hand', run: () => newHandFor(a, a.me()) }),
+    });
     app.registerKit({ id: 'cards.deck', label: 'Deck of cards', create: (a, at) => a.dispatch('cards.addPack', { pack: PACK, ...at }) });
 
     // drop classification, shown on the target while hovering: Stack / Fan / Add to …
@@ -826,7 +836,7 @@ export const cardsPlugin: Plugin = {
     const playMenu = (a: App, faceDown: boolean): MenuEntry => ({
       label: faceDown ? 'Play face down to' : 'Play to',
       hint: faceDown ? '⇧P' : 'P',
-      disabled: spots(a).length ? false : 'No zone or spot on the table (Add… › Mat)',
+      disabled: spots(a).length ? false : 'No zone or spot on the table (+ › Mat)',
       items: () => spots(a).map((t) => ({ label: `${kindName(t)}${t.id === lastPlayed ? ' (last)' : ''}`, run: () => playTo(a, t, playable(a), !faceDown) })),
     });
 

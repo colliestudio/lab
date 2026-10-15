@@ -35,7 +35,7 @@ export function enterUrl(room: string, current: string | null, trail: string[], 
   return roomUrl(room, [...trail, here], loc);
 }
 
-/** Breadcrumb in the toolbar: the rooms the portals came through, each a link back. */
+/** Breadcrumb next to the main menu button: the rooms the portals came through, each a link back. */
 export function mountBreadcrumb(bar: HTMLElement, current: string | null, trail: string[]) {
   if (!trail.length) return;
   const nav = document.createElement('span');
@@ -51,5 +51,5 @@ export function mountBreadcrumb(bar: HTMLElement, current: string | null, trail:
   const here = document.createElement('b');
   here.textContent = name(current ?? SOLO);
   nav.append(here);
-  bar.prepend(nav);
+  bar.append(nav);
 }

@@ -10,7 +10,7 @@ Builds on [agent-bridge.md](agent-bridge.md) (the bridge) and [chat.md](chat.md)
 |---|---|---|
 | **Room first, agents later** | agent: `pnpm bridge join <room link> <file>` | nothing; the bridge appears in the room, agents show up as players |
 | **Bridge first** | agent: `pnpm bridge share <file>` (quick tunnel, token) | open the printed link |
-| **Connect from the app** | person: toolbar **Bridge…**, paste an address or link | the tab opens that bridge's board |
+| **Connect from the app** | person: Menu ▸ **Bridge…**, paste an address or link | the tab opens that bridge's board |
 
 `?bridge=` links keep working unchanged.
 
@@ -66,7 +66,7 @@ Run these on the machine where you work, in the canvas repo (`~/code/canvas`, or
 pnpm bridge join 'https://canvas.lab.collie.studio/?room=abc123' /tmp/canvas-demos/room-abc123.canvas
 ```
 
-- It prints `Joined room abc123` and the file path; the toolbar of everyone in the room shows `· bridge`, and the Bridge… dialog lists the agents.
+- It prints `Joined room abc123` and the file path; the top-right status of everyone in the room shows `· bridge`, and the Bridge… dialog lists the agents.
 - Add `--port N` if 5222 is taken. A bare room id works with `--signal wss://canvas.lab.collie.studio`.
 - The room and the file merge both ways, so give a new file (or none: `room-<id>.canvas` in the current directory). A file that already holds another board is refused; `--merge` overrides that, only when asked to bring that board into the room.
 - Act through the CLI (the `--as` name is yours on the board; one name per agent):

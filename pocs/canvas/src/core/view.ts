@@ -763,9 +763,14 @@ export class View {
     this.openMenu(entries, this.local(e), title);
   }
 
-  /** Show a menu at a table point, or anchored below an element (e.g. an object's tab). */
-  openMenu(entries: MenuEntry[], at: { x: number; y: number } | Element, title?: string) {
-    this.menu.open(entries, at, title);
+  /** Show a menu at a table point, or anchored below (`above`: over) an element (e.g. an object's tab, a dock button). */
+  openMenu(entries: MenuEntry[], at: { x: number; y: number } | Element, title?: string, opts?: { above?: boolean }) {
+    this.menu.open(entries, at, title, opts);
+  }
+
+  /** The element the open menu hangs from (so its button can toggle it). */
+  get menuAnchor() {
+    return this.menu.anchor;
   }
 
   closeMenu() {
