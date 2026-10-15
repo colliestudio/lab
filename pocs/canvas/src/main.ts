@@ -12,6 +12,7 @@ import { matsPlugin } from './plugins/mats';
 import { boardPlugin } from './plugins/board';
 import { stormPlugin } from './plugins/eventstorm';
 import { prototypePlugin } from './plugins/prototype';
+import { diagramPlugin, enterPaper } from './plugins/diagram';
 import { mountHelp, removeHelpNote } from './help';
 import { attachFollow, createFramesPlugin, portalsEnabled, enterUrl, mountBreadcrumb, trailFromUrl } from './plugins/frames';
 
@@ -37,6 +38,7 @@ app.use(matsPlugin);
 app.use(boardPlugin);
 app.use(stormPlugin);
 app.use(prototypePlugin);
+app.use(diagramPlugin);
 // last: its rider rule (frame membership) must come after the others (a piece rides its board, the board its frame)
 const TRAIL = trailFromUrl();
 const frames = createFramesPlugin({ room: ROOM, portals: portalsEnabled(), enter: (room) => (location.href = enterUrl(room, ROOM, TRAIL)) });
@@ -51,6 +53,15 @@ function newTable() {
   app.dispatch('cards.setup', { x: -470, y: -120 });
   app.store.undoManager.clear();
   app.store.select([]);
+  app.view.fit();
+}
+
+/** A blank diagram: light paper, nothing on it. */
+function newDiagram() {
+  resetFileHandle();
+  app.store.load({ nodes: [], edges: [] });
+  app.store.undoManager.clear();
+  enterPaper(app);
   app.view.fit();
 }
 
@@ -103,6 +114,9 @@ async function doOpen() {
 button('New table', ROOM ? 'Clear the table and deal a fresh deck (for everyone in the room)' : 'Clear the table and deal a fresh deck', () => {
   if (confirm(ROOM ? 'Start a new table for everyone in this room?' : 'Start a new table? Unsaved changes are lost.')) newTable();
 });
+button('New diagram', 'Clear the table and start a blank diagram (boxes, text, arrows)', () => {
+  if (confirm(ROOM ? 'Start a new diagram for everyone in this room?' : 'Start a new diagram? Unsaved changes are lost.')) newDiagram();
+});
 button('Reset', 'Put everything back to its starting state (keeps what is on the table)', () => {
   if (confirm(ROOM ? 'Reset the table for everyone in this room? (Undo brings it back)' : 'Reset the table to its starting state? (Undo brings it back)'))
     app.dispatch('core.reset', {});
@@ -122,7 +136,7 @@ button('Redo', 'Redo (⇧⌘Z)', () => app.store.redo());
 // tools: select (V) / hand (H)
 const tools = document.createElement('span');
 tools.className = 'tools';
-const toolBtn = (tool: 'select' | 'hand', label: string, title: string) => {
+const toolBtn = (tool: string, label: string, title: string) => {
   const b = document.createElement('button');
   b.textContent = label;
   b.title = title;
@@ -131,7 +145,11 @@ const toolBtn = (tool: 'select' | 'hand', label: string, title: string) => {
   tools.append(b);
   return b;
 };
-const toolBtns = [toolBtn('select', '↖', 'Select (V)'), toolBtn('hand', '✋\uFE0E', 'Hand: drag to pan (H, or hold Space)')];
+const toolBtns = [
+  toolBtn('select', '↖', 'Select (V)'),
+  toolBtn('hand', '✋\uFE0E', 'Hand: drag to pan (H, or hold Space)'),
+  ...app.tools.map((t) => toolBtn(t.id, t.label, t.title ?? t.label)),
+];
 const syncTools = () => toolBtns.forEach((b) => b.classList.toggle('active', b.dataset.tool === app.view.tool));
 app.view.onToolChange(syncTools);
 syncTools();
@@ -210,7 +228,7 @@ const view = persistViewport(app, VIEW_KEY);
 if (BRIDGE) startBridge(BRIDGE);
 else persistLocally(app, DB_NAME).then(({ empty }) => {
   if (!ROOM) {
-    if (empty) newTable();
+    if (empty) (new URLSearchParams(location.search).has('diagram') ? newDiagram : newTable)();
     else if (view) app.viewport.set(view.x, view.y, view.zoom);
     else app.view.fit();
     return;
