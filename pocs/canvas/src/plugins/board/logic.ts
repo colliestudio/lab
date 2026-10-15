@@ -1,4 +1,5 @@
 import type { CanvasEdge, CanvasNode, Change, Command, CommandResult, DocView, EventSpec, Store } from '../../core';
+import type { PluginLogic } from '../logic';
 
 // Board: plain JSON Canvas work objects (notes, columns, links, edges) and the commands agents and
 // tools use to edit them. No DOM: the browser plugin (index.ts) and the Node bridge (bridge/) both
@@ -340,3 +341,5 @@ export function registerBoardLogic(store: Store) {
   for (const [name, cmd] of Object.entries(commands)) store.register(`board.${name}`, cmd as Command);
   store.addRiderRule(columnOf);
 }
+
+export const logic: PluginLogic = { id: 'board', register: registerBoardLogic };

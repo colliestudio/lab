@@ -1,7 +1,8 @@
 import './storm.css';
 import type { App, CanvasNode, KeyBinding, MenuEntry, Plugin } from '../../core';
 import { boardOf, eventsOn, votesCast } from './commands';
-import { registerStormLogic } from './logic';
+import { logic } from './logic';
+import { useLogic } from '../logic';
 import { toMarkdown } from './markdown';
 import { KINDS, KIND_ORDER, PHASES, PHASE_INFO, board, isBoard, isEvent, isSticky, isStorm, kindOf, lanesOf, offered, phaseOf, sticky, timerLeft, votesOf, type StickyKind } from './model';
 import { fmt } from '../clock/model';
@@ -31,7 +32,7 @@ function chainKey(app: App, k: KeyBinding & { when(app: App): boolean }) {
 export const stormPlugin: Plugin = {
   id: 'eventstorm',
   setup(app) {
-    registerStormLogic(app.store);
+    useLogic(app.store, logic);
 
     // ------------------------------------------------------------ where the pointer is (new stickies go there)
     let pointer: { x: number; y: number } | undefined;

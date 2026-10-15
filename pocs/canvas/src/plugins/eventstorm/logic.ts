@@ -1,6 +1,7 @@
 import type { Command, Store } from '../../core';
 import { commands, repair, resetAll } from './commands';
 import { stormCarrierOf } from './model';
+import type { PluginLogic } from '../logic';
 
 /** The data side of the plugin (commands, rider rule, reset). No DOM; used by tests too. */
 export function registerStormLogic(store: Store) {
@@ -9,3 +10,5 @@ export function registerStormLogic(store: Store) {
   store.resets.push(resetAll);
   store.repairs.push(repair as Command);
 }
+
+export const logic: PluginLogic = { id: 'eventstorm', register: registerStormLogic };

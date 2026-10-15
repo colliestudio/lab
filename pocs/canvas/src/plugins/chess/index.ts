@@ -1,6 +1,7 @@
 import './chess.css';
 import type { App, CanvasNode, MenuEntry, Plugin } from '../../core';
-import { registerChessLogic } from './logic';
+import { logic, registerChessLogic } from './logic';
+import { useLogic } from '../logic';
 import { board, isBoard, isPiece, piece, pieceName } from './model';
 import { mountPalette, targetBoard } from './palette';
 import { boardHtml, gameHtml, pieceHtml } from './render';
@@ -54,7 +55,7 @@ function boardMenu(app: App, b: CanvasNode, pieces: () => void): MenuEntry[] {
 export const chessPlugin: Plugin = {
   id: 'chess',
   setup(app) {
-    registerChessLogic(app.store);
+    useLogic(app.store, logic);
     app.registerKit({ id: 'chess.set', label: 'Chess set', create: (a, at) => a.dispatch('chess.create', at) });
     // DOM only in the browser (tests use registerChessLogic)
     const palette = typeof document === 'undefined' ? null : mountPalette(app);

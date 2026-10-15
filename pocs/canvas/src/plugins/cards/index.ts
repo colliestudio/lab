@@ -1,11 +1,12 @@
 import './cards.css';
-import './standard';
-import { loadPlayer, type App, type CanvasNode, type Command, type DocView, type MenuEntry, type Plugin, type Store } from '../../core';
-import { DROP_ADD, PUT_DOWN_STEP, SORT_MODES, commands, dropMode, incomingCount, kindOf, outCount, sortPrefOf, type DealSeat, type DropMode, type Kind, type SortMode } from './commands';
-import { CARD_H, CARD_W, FIELD, PACK, allowsShowing, areaOf, capacityOf, card, enterOf, pileAt, hasFixedFrame, cardsIn, concealedFrom, deckFacing, deckIdOf, handOf, hiddenFrom, hidesCount, homeFor, isBlind, isCard, isCardish, isDeck, isHand, isHomeDeck, isShown, isSpot, isSpreadOut, isStacked, layoutOf, packOf, roomIn, shownIn, type Layout } from './deck';
+import { loadPlayer, type App, type CanvasNode, type DocView, type MenuEntry, type Plugin } from '../../core';
+import { useLogic } from '../logic';
+import { logic } from './logic';
+export { registerCardsLogic } from './logic';
+import { DROP_ADD, PUT_DOWN_STEP, SORT_MODES, dropMode, incomingCount, kindOf, outCount, sortPrefOf, type DealSeat, type DropMode, type Kind, type SortMode } from './commands';
+import { CARD_H, CARD_W, FIELD, PACK, allowsShowing, areaOf, capacityOf, card, enterOf, pileAt, hasFixedFrame, cardsIn, concealedFrom, deckFacing, handOf, hiddenFrom, hidesCount, homeFor, isBlind, isCard, isCardish, isDeck, isHand, isHomeDeck, isShown, isSpot, isSpreadOut, isStacked, layoutOf, packOf, roomIn, shownIn, type Layout } from './deck';
 import { mountHandUx, VIEW_AS_KEY, type HandUx } from './handUx';
-import { repairImport, shapeExport } from './io';
-import { cardLayouts, handSlotIndex, laneOf, liftedDrop, rowTop, slotIndex, slots, thresholdY } from './layout';
+import { handSlotIndex, laneOf, liftedDrop, rowTop, slotIndex, slots, thresholdY } from './layout';
 import { getPack } from './packs';
 import { cardHtml, deckHtml, groupHtml, handHtml } from './render';
 
@@ -24,20 +25,6 @@ const targetDeck = (app: App) => {
   const h = app.view.hovered && app.node(app.view.hovered);
   return h && isStacked(h) ? h : lastDeck(app);
 };
-
-/** The data side of the plugin (commands, containment, import/export). No DOM; used by tests too. */
-export function registerCardsLogic(store: Store) {
-  for (const [name, cmd] of Object.entries(commands)) store.register(`cards.${name}`, cmd as Command);
-  store.addParentRule(deckIdOf);
-  store.addLayout(cardLayouts);
-  store.importFilters.push(repairImport);
-  store.exportFilters.push(shapeExport);
-  store.migrations.push(commands.migrateHands as Command);
-  store.migrations.push(commands.repairHomes as Command);
-  store.resets.push(commands.resetAll as Command);
-  // a copied card would be a 53rd card of the pack: cards opt out of Duplicate
-  store.duplicateRules.push((n) => (isCardish(n) ? null : undefined));
-}
 
 /** The local player (in a room: presence; solo: this browser's stored player). */
 const me = (app: App) => app.presence?.me ?? loadPlayer();
@@ -422,7 +409,7 @@ export function containerMenu(app: App, box: CanvasNode, ux: HandUx): MenuEntry[
 export const cardsPlugin: Plugin = {
   id: 'cards',
   setup(app) {
-    registerCardsLogic(app.store);
+    useLogic(app.store, logic);
     const ux = mountHandUx(app);
     // a whole pack, face up in pack order, laid out as a grid (the grid is the home deck)
     app.registerKit({ id: 'cards.deck', label: 'Deck of cards', create: (a, at) => a.dispatch('cards.addPack', { pack: PACK, ...at }) });

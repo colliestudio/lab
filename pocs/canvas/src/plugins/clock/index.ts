@@ -1,7 +1,8 @@
 import './clock.css';
-import type { App, CanvasNode, Command, MenuEntry, Plugin, Store } from '../../core';
-import { commands } from './commands';
-import { repairImport, shapeExport } from './io';
+import type { App, CanvasNode, MenuEntry, Plugin } from '../../core';
+import { useLogic } from '../logic';
+import { logic } from './logic';
+export { registerClockLogic } from './logic';
 import { PRESETS, baseOf, clock, controlText, fmt, incOf, isClock, nameOf, remaining, ticking, type Side } from './model';
 import { clockHtml } from './render';
 
@@ -9,14 +10,6 @@ import { clockHtml } from './render';
 // countdown itself (a ticker below). Taps, pause, flag, reset and time controls aren't undoable.
 
 const NO_UNDO = { undoable: false } as const;
-
-/** The data side of the plugin. No DOM; used by tests too. */
-export function registerClockLogic(store: Store) {
-  for (const [name, cmd] of Object.entries(commands)) store.register(`clock.${name}`, cmd as Command);
-  store.importFilters.push(repairImport);
-  store.exportFilters.push(shapeExport);
-  store.resets.push(commands.resetAll as Command);
-}
 
 const tapSide = (app: App, n: CanvasNode, side: Side) => app.dispatch('clock.tap', { id: n.id, side, now: Date.now() }, NO_UNDO);
 
@@ -103,7 +96,7 @@ function targetClock(app: App) {
 export const clockPlugin: Plugin = {
   id: 'clock',
   setup(app) {
-    registerClockLogic(app.store);
+    useLogic(app.store, logic);
     app.registerKit({ id: 'clock.game', label: 'Game clock', create: (a, at) => a.dispatch('clock.create', at) });
 
     app.registerType({
