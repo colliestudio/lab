@@ -56,8 +56,9 @@ export class App {
     this.registerKey({ key: 'shift+1', label: 'Zoom to fit', run: () => this.view.fit() });
     this.registerKey({ key: 'mod+d', label: 'Duplicate', run: () => this.dispatch('core.duplicate', { ids: [...this.store.selection] }) });
     this.registerKey({ key: 'shift+2', label: 'Zoom to selection', run: () => this.view.zoomToSelection() });
-    this.registerKey({ key: 'mod+c', label: 'Copy', run: () => this.copy() });
-    this.registerKey({ key: 'mod+v', label: 'Paste', run: () => this.paste() });
+    // only with something to copy / paste: else the browser's own copy of selected page text runs
+    this.registerKey({ key: 'mod+c', label: 'Copy', when: () => this.selected().length > 0 && !getSelection()?.toString(), run: () => this.copy() });
+    this.registerKey({ key: 'mod+v', label: 'Paste', when: () => !!this.clipboard, run: () => this.paste() });
   }
 
   /** Remember the selected nodes (as ⌘D would copy them) and the arrows between them. */
