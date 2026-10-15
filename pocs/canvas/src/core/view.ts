@@ -664,6 +664,8 @@ export class View {
         return;
       }
     }
+    // typing on a lone object that edits its text types into it (before letter shortcuts such as H or a plugin's keys)
+    if (e.key.length === 1 && this.editByKey(e, mod)) return;
     if ((e.key === 'Delete' || e.key === 'Backspace') && store.selection.size) {
       e.preventDefault();
       this.app.dispatch('core.delete', { ids: [...store.selection] });
@@ -717,24 +719,25 @@ export class View {
   }
 
   /** Enter, or a typed character, on a lone selected object that can edit its text: edit it (an arrow: its label). */
-  private editByKey(e: KeyboardEvent, mod: boolean) {
+  private editByKey(e: KeyboardEvent, mod: boolean): boolean {
     const sel = this.app.store.selection;
-    if (sel.size !== 1 || mod || e.altKey) return;
+    if (sel.size !== 1 || mod || e.altKey) return false;
     const [id] = sel;
     const typed = e.key.length === 1;
-    if (e.key !== 'Enter' && !typed) return;
+    if (e.key !== 'Enter' && !typed) return false;
     if (this.app.store.doc.edge(id)) {
-      if (e.key !== 'Enter') return;
+      if (e.key !== 'Enter') return false;
       e.preventDefault();
       this.editEdgeLabel(id);
-      return;
+      return true;
     }
     const n = this.app.node(id);
     const type = n && this.app.typeOf(n);
-    if (!n || !type?.edit || !this.app.canMove(id)) return;
+    if (!n || !type?.edit || !this.app.canMove(id)) return false;
     e.preventDefault();
     this.app.store.newUndoStep();
     type.edit(n, this.app, typed ? e.key : undefined);
+    return true;
   }
 
   /** Tell each moved type its move ended (state after any drop): a drag, or a nudge with the arrow keys. */
