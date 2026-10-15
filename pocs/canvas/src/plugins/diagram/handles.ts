@@ -1,5 +1,5 @@
 import type { App, CanvasNode, Side } from '../../core';
-import { anchor, SIDES } from '../../core';
+import { anchor, sideToward, SIDES } from '../../core';
 import { MIN_SIZE, isShape } from './model';
 
 // Handles around a shape: dots on its four sides to pull an arrow out of, and (on the selected
@@ -12,7 +12,7 @@ type Dir = (typeof DIRS)[number];
 
 export interface HandleHooks {
   /** An arrow was pulled out of `from`'s `side` and let go: on a shape (`to`), on empty space (`at`) or not moved (neither). */
-  connect(from: string, side: Side, drop: { to?: string; at?: { x: number; y: number } }): void;
+  connect(from: string, side: Side, drop: { to?: string; toSide?: Side; at?: { x: number; y: number } }): void;
 }
 
 export function mountHandles(app: App, hooks: HandleHooks) {
@@ -121,6 +121,16 @@ export function mountHandles(app: App, hooks: HandleHooks) {
     return undefined;
   };
 
+  /** The side of shape `id` the pointer is close to (in its outer band), else none: let the arrow pick. */
+  const nearSide = (id: string, p: { x: number; y: number }): Side | undefined => {
+    const n = shapeById(id);
+    if (!n) return undefined;
+    const dx = (p.x - (n.x + n.width / 2)) / (n.width / 2);
+    const dy = (p.y - (n.y + n.height / 2)) / (n.height / 2);
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < 0.6) return undefined;
+    return sideToward({ x: n.x, y: n.y, w: n.width, h: n.height }, p);
+  };
+
   const startConnect = (e: PointerEvent, from: string, side: Side) => {
     if (e.button !== 0) return;
     e.stopPropagation();
@@ -163,7 +173,7 @@ export function mountHandles(app: App, hooks: HandleHooks) {
       hover = undefined;
       app.store.newUndoStep();
       if (!moved) hooks.connect(from, side, {});
-      else if (to) hooks.connect(from, side, { to });
+      else if (to) hooks.connect(from, side, { to, toSide: nearSide(to, world(ev)) });
       else if (ev.type === 'pointerup') hooks.connect(from, side, { at: world(ev) });
       refresh();
     };

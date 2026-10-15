@@ -64,7 +64,8 @@ export function mountEdges(app: App): EdgeLayer {
   const draw = () => {
     const doc = app.store.doc;
     const shown = (n: CanvasNode | undefined) => !!n && doc.isVisible(n.id) && !app.isConcealed(n);
-    const edges = doc.edges.filter((e) => shown(doc.get(e.fromNode)) && shown(doc.get(e.toNode)));
+    // arrows made with core.connect (`x-edge`) are drawn by core
+    const edges = doc.edges.filter((e) => !e['x-edge'] && shown(doc.get(e.fromNode)) && shown(doc.get(e.toNode)));
     const key = JSON.stringify(edges.map((e) => [e.id, e.label, e.color, box(doc.get(e.fromNode)!), box(doc.get(e.toNode)!), flashing.has(e.id)]));
     if (key === lastKey) return;
     lastKey = key;

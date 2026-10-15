@@ -2,10 +2,10 @@ import type { CanvasEdge } from './doc';
 import { canvasColor } from './colors';
 
 // Edges (JSON Canvas): geometry and the SVG layer that draws them under the nodes.
-// Two looks. A plain edge (no sides, no `x-edge`; what the board and prototype plugins make) is a
-// straight line between the two box centers, clipped to the borders, with an SVG marker. A styled
-// edge (any side or `x-edge`, i.e. made by the diagram tools) leaves from a side's midpoint, can be
-// dashed or curved, has an HTML label and can be picked and edited.
+// Two looks. A plain edge (no `x-edge`; what the board and prototype plugins make) is a straight
+// line between the two box centers, clipped to the borders, with an SVG marker. A styled edge
+// (`x-edge` present, i.e. made by `core.connect`) leaves from a side's midpoint, can be dashed or
+// curved, has an HTML label and can be picked and edited.
 
 const SVG = 'http://www.w3.org/2000/svg';
 
@@ -28,7 +28,7 @@ export interface EdgeStyle {
 export const edgeStyle = (e: CanvasEdge): EdgeStyle => (e['x-edge'] as EdgeStyle | undefined) ?? {};
 
 /** Styled edges are anchored to box sides; plain ones are center-to-center lines. */
-export const isStyled = (e: CanvasEdge) => !!(e.fromSide || e.toSide || e['x-edge']);
+export const isStyled = (e: CanvasEdge) => !!e['x-edge'];
 
 export const NORMAL: Record<Side, Pt> = { top: { x: 0, y: -1 }, right: { x: 1, y: 0 }, bottom: { x: 0, y: 1 }, left: { x: -1, y: 0 } };
 

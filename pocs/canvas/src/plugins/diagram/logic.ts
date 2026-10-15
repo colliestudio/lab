@@ -1,5 +1,5 @@
 import { anchor, sideToward, isSide, NORMAL, type CanvasNode, type Change, type Command, type DocView, type Side, type Store } from '../../core';
-import { DEFAULT_SIZE, DEFAULT_TEXT_SIZE, MIN_SIZE, isKind, isShape, nameOf, shapeOf, textBox, type ShapeKind, type ShapeStyle } from './model';
+import { DEFAULT_SIZE, DEFAULT_TEXT_SIZE, MIN_SIZE, isKind, isShape, shapeOf, textBox, type ShapeKind, type ShapeStyle } from './model';
 
 // Diagram commands. No DOM: the browser plugin and the Node bridge both register them, so an
 // agent's "add a box" is what a person's toolbar does. Arrows are core commands (core.connect,
@@ -51,7 +51,7 @@ const add: Command<AddArgs> = (doc, a, ctx) => {
   if (doc.get(id)) return [];
   const node = buildShape(doc, a ?? {}, id);
   if (!node) return [];
-  return { changes: [{ op: 'add', node }], select: [id], events: [{ type: 'diagram.add', text: `added ${node['x-shape'] && (node['x-shape'] as ShapeStyle).kind} ${nameOf(node)}`, targets: [id], cue: 'pulse' }] };
+  return { changes: [{ op: 'add', node }], select: [id] };
 };
 
 export interface UpdateArgs extends Partial<ShapeStyle> {
@@ -107,11 +107,7 @@ const update: Command<UpdateArgs> = (doc, a) => {
     for (const [key, v] of Object.entries(geo)) if (Math.round(v) !== n[key as 'x']) changes.push({ op: 'set', id, key, value: Math.round(v) });
     if (typeof a.text === 'string' && a.text !== n.text) changes.push({ op: 'set', id, key: 'text', value: a.text });
   }
-  const textChanged = typeof a?.text === 'string' && ids.length === 1 && doc.get(ids[0])?.text !== a.text;
-  return {
-    changes,
-    events: textChanged ? [{ type: 'diagram.text', text: `wrote ${nameOf({ ...doc.get(ids[0])!, text: a.text })}`, targets: ids, key: `diagram.text:${ids[0]}` }] : undefined,
-  };
+  return changes;
 };
 
 /** Place and size one shape (resize handles): position and size in one go. */
@@ -171,7 +167,6 @@ const addConnected: Command<AddConnectedArgs> = (doc, a, ctx) => {
       { op: 'edge', edge: { id: edgeId, fromNode: from.id, toNode: id, fromSide: side, toSide, ...(a.label ? { label: a.label } : {}), 'x-edge': {} } },
     ],
     select: [id],
-    events: [{ type: 'diagram.add', text: `added ${kind} ${nameOf(node)} after ${nameOf(from)}`, targets: [id] }],
   };
 };
 

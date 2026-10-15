@@ -118,7 +118,7 @@ export const diagramPlugin: Plugin = {
     mountHandles(app, {
       connect(from, side, drop) {
         if (drop.to) {
-          app.dispatch('core.connect', { from, to: drop.to, fromSide: side });
+          app.dispatch('core.connect', { from, to: drop.to, fromSide: side, toSide: drop.toSide });
           return;
         }
         const id = app.dispatch('diagram.addConnected', { from, side, at: drop.at }).select?.[0];

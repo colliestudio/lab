@@ -12,7 +12,7 @@ export { isIds, isNum, pick, raise, toFront, withRiders } from './commands';
 export type { ObjectType, KeyBinding, MenuItem, MenuEntry, MenuProvider, Kit, Plugin, RenderCtx, Tool } from './plugin';
 export { inlineEdit, TEXT_INPUT, type InlineEditOpts, type InlineEdit } from './inlineEdit';
 export { canvasColor, PRESET_COLORS } from './colors';
-export { edgeGeometry, edgeStyle, anchor, NORMAL, sideToward, edgeSides, isSide, SIDES, type Side, type Box, type EdgeStyle } from './edges';
+export { isStyled, edgeGeometry, edgeStyle, anchor, NORMAL, sideToward, edgeSides, isSide, SIDES, type Side, type Box, type EdgeStyle } from './edges';
 export type { ConnectArgs, EdgeArgs } from './commands';
 export { Viewport } from './viewport';
 export { mountZoomControl } from './zoomControl';
