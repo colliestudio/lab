@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import * as Y from 'yjs';
 import { registerCoreCommands } from '../../core/commands';
 import { parse, serialize } from '../../core/io';
 import { Store } from '../../core/store';
@@ -242,5 +243,58 @@ describe('duplicate and paste', () => {
     const s = store();
     expect(s.dispatch('core.paste', { nodes: [{ id: 1 }, null] }).changes).toEqual([]);
     expect(s.dispatch('core.paste', {}).changes).toEqual([]);
+  });
+});
+
+describe('arrow edits keep what they do not touch', () => {
+  const plain = () => {
+    const s = store();
+    s.dispatch('diagram.add', { id: 'a', x: 0, y: 0 });
+    s.dispatch('diagram.add', { id: 'b', x: 300, y: 0 });
+    // a board / prototype style edge: no x-edge
+    s.apply([{ op: 'edge', edge: { id: 'p', fromNode: 'a', toNode: 'b', fromSide: 'right', toSide: 'left', label: 'go' } }]);
+    return s;
+  };
+
+  it('relabelling or recoloring a plain edge does not make it a styled one', () => {
+    const s = plain();
+    s.dispatch('core.edge', { id: 'p', label: 'next', color: '4' });
+    expect(s.doc.edge('p')).toEqual({ id: 'p', fromNode: 'a', toNode: 'b', fromSide: 'right', toSide: 'left', label: 'next', color: '4' });
+    s.dispatch('core.edge', { id: 'p', dashed: true });
+    expect(s.doc.edge('p')!['x-edge']).toEqual({ dashed: true });
+  });
+
+  it('two players changing one arrow at once both keep their change', () => {
+    const s = store();
+    s.dispatch('diagram.add', { id: 'a', x: 0, y: 0 });
+    s.dispatch('diagram.add', { id: 'b', x: 300, y: 0 });
+    s.dispatch('core.connect', { id: 'e', from: 'a', to: 'b' });
+    const other = new Store({ ctx: { newId: () => 'x', random: () => 0.5 } });
+    registerCoreCommands(other);
+    registerDiagramLogic(other);
+    // sync the two docs, then edit offline on both sides and merge
+    Y.applyUpdate(other.ydoc, Y.encodeStateAsUpdate(s.ydoc));
+    s.dispatch('core.edge', { id: 'e', label: 'mine', dashed: true });
+    other.dispatch('core.edge', { id: 'e', color: '1', curve: true });
+    Y.applyUpdate(s.ydoc, Y.encodeStateAsUpdate(other.ydoc));
+    Y.applyUpdate(other.ydoc, Y.encodeStateAsUpdate(s.ydoc));
+    for (const st of [s, other]) expect(st.doc.edge('e')).toMatchObject({ label: 'mine', color: '1', 'x-edge': { dashed: true, curve: true } });
+  });
+
+  it('reads an edge stored as a plain object (older docs) and edits it per field', () => {
+    const s = store();
+    s.dispatch('diagram.add', { id: 'a', x: 0, y: 0 });
+    s.dispatch('diagram.add', { id: 'b', x: 300, y: 0 });
+    s.edges.set('old', { id: 'old', fromNode: 'a', toNode: 'b', label: 'x' });
+    expect(s.doc.edge('old')!.label).toBe('x');
+    s.dispatch('core.edge', { id: 'old', color: '2' });
+    expect(s.doc.edge('old')).toEqual({ id: 'old', fromNode: 'a', toNode: 'b', label: 'x', color: '2' });
+  });
+
+  it('connect refuses an id that is a node id', () => {
+    const s = store();
+    s.dispatch('diagram.add', { id: 'a', x: 0, y: 0 });
+    s.dispatch('diagram.add', { id: 'b', x: 300, y: 0 });
+    expect(s.dispatch('core.connect', { id: 'a', from: 'a', to: 'b' }).changes).toEqual([]);
   });
 });

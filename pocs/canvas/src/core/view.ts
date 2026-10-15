@@ -309,7 +309,6 @@ export class View {
     if (!nodeEl) {
       const edgeId = (e.target as Element).closest<HTMLElement>('[data-edge-id]')?.dataset.edgeId;
       if (edgeId && this.app.store.doc.edge(edgeId)) {
-        this.app.store.newUndoStep();
         const next = new Set(e.shiftKey ? this.app.store.selection : []);
         next.add(edgeId);
         this.app.store.select(next);

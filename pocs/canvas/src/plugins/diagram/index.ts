@@ -56,7 +56,8 @@ export const diagramPlugin: Plugin = {
       session = undefined;
       const n = e && app.node(e.id);
       if (e && n) {
-        if (e.fresh && shapeOf(n)?.kind === 'text' && !text.trim()) app.dispatch('core.delete', { ids: [e.id] }, { merge: true });
+        // an empty new text: take the creation back, leaving no step behind
+        if (e.fresh && shapeOf(n)?.kind === 'text' && !text.trim()) app.store.undo();
         else if (text !== (n.text ?? '')) app.dispatch('diagram.update', { id: e.id, text }, { merge: e.fresh });
       }
       app.view.render();

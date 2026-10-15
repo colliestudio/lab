@@ -79,6 +79,8 @@ export type Change =
   | { op: 'del'; id: string }
   /** Add or replace an edge (both ends must exist when applied, else it's skipped). */
   | { op: 'edge'; edge: CanvasEdge }
+  /** Set one field of an edge (`key` may be "x-edge.dashed"); `value: undefined` deletes it. Like `set` for nodes. */
+  | { op: 'edgeset'; id: string; key: string; value: unknown }
   | { op: 'unedge'; id: string };
 
 export const set = (id: string, key: string, value: unknown): Change => ({ op: 'set', id, key, value });

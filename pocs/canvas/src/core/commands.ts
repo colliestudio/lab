@@ -154,17 +154,24 @@ export function registerCoreCommands(store: Store) {
     if (!a || typeof a.from !== 'string' || typeof a.to !== 'string' || a.from === a.to) return [];
     if (!doc.isVisible(a.from) || !doc.isVisible(a.to)) return [];
     const id = typeof a.id === 'string' && a.id ? a.id : ctx.newId();
-    if (doc.edge(id)) return [];
-    const edge = applyEdgeArgs({ id, fromNode: a.from, toNode: a.to }, a);
-    if (!edge) return [];
-    return { changes: [{ op: 'edge', edge }], select: [id] };
+    if (doc.edge(id) || doc.get(id)) return [];
+    const fields = edgeFields(a);
+    if (!fields) return [];
+    const edge: Record<string, unknown> = { id, fromNode: a.from, toNode: a.to, 'x-edge': {} };
+    for (const [k, v] of fields) {
+      if (v === undefined) continue;
+      if (k.startsWith('x-edge.')) (edge['x-edge'] as Record<string, unknown>)[k.slice(7)] = v;
+      else edge[k] = v;
+    }
+    return { changes: [{ op: 'edge', edge: edge as unknown as CanvasEdge }], select: [id] };
   });
   /** Restyle, relabel or re-aim an arrow. `null` or "" clears a field. */
   store.register('core.edge', (doc, a: EdgeArgs) => {
     const e = typeof a?.id === 'string' ? doc.edge(a.id) : undefined;
     if (!e) return [];
-    const edge = applyEdgeArgs(structuredClone(e), a);
-    return edge ? [{ op: 'edge', edge } as Change] : [];
+    const fields = edgeFields(a);
+    // per field, so two people changing one arrow (label, color) both keep their change
+    return fields ? fields.map(([key, value]): Change => ({ op: 'edgeset', id: e.id, key, value })) : [];
   });
   store.register('core.add', (doc, a: { nodes: CanvasNode[] }) => {
     if (!Array.isArray(a?.nodes)) return [];
@@ -188,12 +195,17 @@ export interface ConnectArgs extends EdgeArgs {
   to: string;
 }
 
-/** Fold the fields of `a` into `edge`; undefined = leave, null = clear. Undefined result: a bad value. */
-function applyEdgeArgs(edge: CanvasEdge, a: EdgeArgs): CanvasEdge | undefined {
-  const put = (key: keyof CanvasEdge & string, v: unknown, ok: (v: unknown) => boolean = () => true) => {
+/**
+ * The field writes `a` asks for, as [key, value] (value undefined = clear; dotted keys reach into
+ * `x-edge`). Undefined result: a bad value. A style field is only written when asked, so editing a
+ * plain edge (board, prototype) never turns it into a styled one.
+ */
+function edgeFields(a: EdgeArgs): [string, unknown][] | undefined {
+  const out: [string, unknown][] = [];
+  const put = (key: string, v: unknown, ok: (v: unknown) => boolean) => {
     if (v === undefined) return true;
-    if (v === null || v === '') delete edge[key];
-    else if (ok(v)) (edge as unknown as Record<string, unknown>)[key] = v;
+    if (v === null || v === '') out.push([key, undefined]);
+    else if (ok(v)) out.push([key, v]);
     else return false;
     return true;
   };
@@ -201,18 +213,17 @@ function applyEdgeArgs(edge: CanvasEdge, a: EdgeArgs): CanvasEdge | undefined {
   const str = (v: unknown) => typeof v === 'string';
   // JSON Canvas colors: a preset "1".."6" or hex
   const color = (v: unknown) => typeof v === 'string' && /^([1-6]|#[0-9a-f]{3}|#[0-9a-f]{6})$/i.test(v);
+  const bool = (v: unknown) => typeof v === 'boolean';
   if (
     !put('label', a.label, str) ||
     !put('color', a.color, color) ||
     !put('fromEnd', a.fromEnd, end) ||
     !put('toEnd', a.toEnd, end) ||
     !put('fromSide', a.fromSide, isSide) ||
-    !put('toSide', a.toSide, isSide)
+    !put('toSide', a.toSide, isSide) ||
+    !put('x-edge.dashed', a.dashed === false ? null : a.dashed, bool) ||
+    !put('x-edge.curve', a.curve === false ? null : a.curve, bool)
   )
     return undefined;
-  const style: EdgeStyle = { ...(edge['x-edge'] as EdgeStyle | undefined) };
-  if (a.dashed !== undefined) a.dashed ? (style.dashed = true) : delete style.dashed;
-  if (a.curve !== undefined) a.curve ? (style.curve = true) : delete style.curve;
-  edge['x-edge'] = style;
-  return edge;
+  return out;
 }

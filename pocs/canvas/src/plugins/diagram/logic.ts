@@ -167,7 +167,7 @@ const addConnected: Command<AddConnectedArgs> = (doc, a, ctx) => {
   return {
     changes: [
       { op: 'add', node },
-      { op: 'edge', edge: { id: edgeId, fromNode: from.id, toNode: id, fromSide: side, toSide, ...(a.label ? { label: a.label } : {}), 'x-edge': {} } },
+      { op: 'edge', edge: { id: edgeId, fromNode: from.id, toNode: id, fromSide: side, toSide, ...(typeof a.label === 'string' && a.label ? { label: a.label } : {}), 'x-edge': {} } },
     ],
     select: [id],
   };

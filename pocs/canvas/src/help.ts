@@ -64,7 +64,7 @@ const GROUPS: [string, [string, string][]][] = [
       ['⌘A', 'Select everything on the table'],
       ['Esc', 'Clear selection'],
       ['Delete / Backspace, right-click › Delete', 'Delete selection (a board takes its pieces with it)'],
-      ['⌘D', 'Duplicate selection (not cards)'],
+      ['⌘D', 'Duplicate selection (not cards); arrows between the copied objects are copied too'],
       ['⌘C / ⌘V', 'Copy / paste the selection (not cards)'],
       ['Arrows (⇧ arrows)', 'Nudge 1px (10px)'],
     ],
