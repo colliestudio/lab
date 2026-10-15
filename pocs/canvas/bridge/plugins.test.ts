@@ -23,7 +23,7 @@ import { prototypePlugin } from '../src/plugins/prototype';
 
 const root = join(__dirname, '..');
 const bridgeCommands: string[] = JSON.parse(
-  execFileSync(join(root, 'node_modules/.bin/tsx'), ['-e', "import('./bridge/host.ts').then(m => console.log(JSON.stringify(new m.Host().store.commandNames())))"], { cwd: root, encoding: 'utf8' }).trim().split('\n').pop()!,
+  execFileSync(join(root, 'node_modules/.bin/tsx'), ['-e', "import('./bridge/host.ts').then(m => console.log(JSON.stringify(new m.Host().store.commandNames())))"], { cwd: root, encoding: 'utf8', timeout: 30000 }).trim().split('\n').pop()!,
 );
 
 // the browser's plugins in main.ts order

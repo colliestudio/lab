@@ -40,7 +40,7 @@ app.use(matsPlugin);
 app.use(boardPlugin);
 app.use(stormPlugin);
 app.use(prototypePlugin);
-// last: its rider rule (frame membership) must come after the others (a piece rides its board, the board its frame)
+// frames' logic is last in PLUGIN_LOGIC (src/plugins/logic.ts): its rider rule must come after the others, so it is registered there
 const TRAIL = trailFromUrl();
 const frames = createFramesPlugin({ room: ROOM, portals: portalsEnabled(), enter: (room) => (location.href = enterUrl(room, ROOM, TRAIL)) });
 app.use(frames);

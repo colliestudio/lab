@@ -20,7 +20,7 @@ export function thawMembership(): boolean {
   return was;
 }
 
-/** The data side (commands, rider rule). No DOM; used by tests and could run in a bridge/agent host. */
+/** The data side (commands, rider rule). No DOM; used by the browser, the bridge and tests. */
 export function registerFramesLogic(store: Store) {
   for (const [name, cmd] of Object.entries(commands)) store.register(`frames.${name}`, cmd as Command);
   // Registered after other plugins' rider rules (a piece rides its board, the board rides the frame).
