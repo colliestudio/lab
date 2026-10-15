@@ -73,7 +73,7 @@ export const GROUPS: [string, [string, string][]][] = [
   [
     'Decks, groups, hands',
     [
-      ['', 'Three kinds of card collection. Deck: stacked, top card shows (the home deck from New table is one). Group: spread out (fan, row or grid), everyone sees it. Hand: a group that’s yours: others see its private cards face down.'],
+      ['', 'Three kinds of card collection. Deck: stacked, top card shows (the home deck of a Deck of cards from Add is one). Group: spread out (fan, row or grid), everyone sees it. Hand: a group that’s yours: others see its private cards face down.'],
       ['Drop a card right on top of a card', 'Makes a deck (the target shows “Stack”)'],
       ['Drop it partly over a card', 'Makes a group (the target shows “Fan”)'],
       ['G', 'Group the selection (into a selected deck or group, if there is one)'],
@@ -217,7 +217,7 @@ export const GROUPS: [string, [string, string][]][] = [
     'Files',
     [
       ['⌘S / ⇧⌘S', 'Save / save as .canvas (JSON Canvas, opens in Obsidian)'],
-      ['⌘O, drop a file, Menu ▸ File', 'Open a .canvas file (File also has New table, Save, Save as)'],
+      ['⌘O, drop a file, Menu ▸ File', 'Open a .canvas file (File also has New board, Save, Save as)'],
       ['', 'The table also saves itself in this browser'],
     ],
   ],

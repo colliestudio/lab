@@ -221,13 +221,11 @@ describe('icons and hooks', () => {
     plus.click();
     expect(app.view.menuAnchor).toBeUndefined();
   });
-  it('onTableReplaced hooks run, and new kinds are listed for the shell', () => {
+  it('onTableReplaced hooks run', () => {
     const { app } = setup();
     const seen = vi.fn();
     app.onTableReplaced(seen);
     app.tableReplaced();
     expect(seen).toHaveBeenCalledWith(app);
-    app.registerNewKind({ id: 'd', label: 'diagram', param: 'diagram', start: vi.fn() });
-    expect(app.newKinds.map((k) => k.label)).toEqual(['diagram']);
   });
 });

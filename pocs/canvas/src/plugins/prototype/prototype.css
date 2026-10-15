@@ -22,8 +22,8 @@
 
 /* edges (under the nodes) */
 .pg-edges { position: absolute; left: 0; top: 0; width: 1px; height: 1px; overflow: visible; pointer-events: none; z-index: 0; }
-.pg-edge { fill: none; stroke: rgba(255, 255, 255, 0.55); stroke-width: 2.5; }
-.pg-edge.pg-head { fill: rgba(255, 255, 255, 0.75); stroke: none; }
+.pg-edge { fill: none; stroke: rgba(30, 34, 44, 0.55); stroke-width: 2.5; }
+.pg-edge.pg-head { fill: rgba(30, 34, 44, 0.75); stroke: none; }
 .pg-edge.pg-flash { stroke: #ffb020; stroke-width: 5; }
 .pg-edge.pg-head.pg-flash { fill: #ffb020; stroke: none; }
 .pg-edge-labels { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 0; }
