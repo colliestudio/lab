@@ -46,7 +46,7 @@ export const LAYOUTS: Layout[] = ['fan', 'row', 'grid', 'column', 'column-up', '
 /**
  * A container node's `x-cards` field; its cards are the card nodes pointing at it (`stack`), each
  * keeping its own facing. Kinds:
- * - home deck (`home: true`, one per pack, made by New table): a stack; stays as an empty slot;
+ * - home deck (`home: true`, one per pack, made by Add ▸ Deck of cards): a stack; stays as an empty slot;
  * - group (made by stacking/gathering): any layout; a public group dissolves when down to one card;
  * - a group with a node `owner` (player id) is private, a "hand": never a stack, persists even
  *   when empty, and other players see its cards face down (UI only for now; real secrecy is stage 3).

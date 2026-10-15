@@ -1,7 +1,7 @@
 import './core.css';
 import { registerCoreCommands } from './commands';
 import type { CanvasEdge, CanvasNode, CarrierOf, DuplicateRule, LayoutRule, ParentOf } from './doc';
-import type { DockItem, KeyBinding, Kit, MainMenuItem, MenuItem, NewKind, MenuProvider, ObjectType, Plugin, Tool } from './plugin';
+import type { DockItem, KeyBinding, Kit, MainMenuItem, MenuItem, MenuProvider, ObjectType, Plugin, Tool } from './plugin';
 import { Registry } from './registry';
 import { registerCoreChrome } from './chromeView';
 import { Store, type Command, type DispatchResult, type DocFilter } from './store';
@@ -34,12 +34,8 @@ export class App {
   /** Buttons of the bottom dock, and rows of the main menu (top-left). */
   readonly dock = new Registry<DockItem>();
   readonly mainMenu = new Registry<MainMenuItem>();
-  /** What "New table" puts on the empty table (see `registerStarter`). */
-  readonly starters: ((app: App) => void)[] = [];
-  /** Run when the whole table was replaced (New table, Open, drop a file). */
+  /** Run when the whole table was replaced (New board, Open, drop a file). */
   readonly tableReplacedHooks: ((app: App) => void)[] = [];
-  /** File ▸ New <label> entries plugins add (see `registerNewKind`). */
-  readonly newKinds: NewKind[] = [];
   /** Run when the local player changes name or color (see `registerRenameHook`). */
   readonly renameHooks: ((app: App, me: PlayerInfo) => void)[] = [];
   readonly view: View;
@@ -135,10 +131,6 @@ export class App {
   registerMainMenuItem(item: MainMenuItem) {
     return this.mainMenu.add(item);
   }
-  /** What New table puts on the empty table (cards: the starter deck). */
-  registerStarter(fn: (app: App) => void) {
-    this.starters.push(fn);
-  }
   /** Run after the shell replaced the table (New, Open): drop per-table state such as a plugin's mode. */
   onTableReplaced(fn: (app: App) => void) {
     this.tableReplacedHooks.push(fn);
@@ -146,20 +138,9 @@ export class App {
   tableReplaced() {
     for (const fn of this.tableReplacedHooks) fn(this);
   }
-  /**
-   * Another kind of new table: the shell adds File ▸ New <label> (confirming first) and runs `start` on
-   * the cleared table; `param` makes `?<param>` start an empty browser on it.
-   */
-  registerNewKind(kind: NewKind) {
-    this.newKinds.push(kind);
-  }
   /** Called after the local player renamed or recolored (cards relabel their hand). */
   registerRenameHook(fn: (app: App, me: PlayerInfo) => void) {
     this.renameHooks.push(fn);
-  }
-  /** Put the starter content on an empty table. */
-  startTable() {
-    for (const fn of this.starters) fn(this);
   }
   /** The shell calls this after saving a new name or color. */
   playerRenamed(me: PlayerInfo) {

@@ -1,5 +1,5 @@
 import './diagram.css';
-import { inlineEdit, type App, type CanvasNode, type InlineEdit, type Plugin } from '../../core';
+import { inlineEdit, type CanvasNode, type InlineEdit, type Plugin } from '../../core';
 import { mountHandles } from './handles';
 import { useLogic } from '../logic';
 import { logic } from './logic';
@@ -23,33 +23,11 @@ export const SHAPE_TOOLS: { kind: ShapeKind; key: string; icon: string; label: s
   { kind: 'sticky', key: 's', icon: 'sticky-note', label: 'Sticky note' },
 ];
 
-/** Set once a diagram has been started in this tab: the table turns to paper even while it is empty. */
-let paperOn = false;
-const hasShapes = (app: App) => app.doc.nodes.some(isShape);
-export const isPaper = (app: App) => paperOn || hasShapes(app);
-export function enterPaper(app: App) {
-  paperOn = true;
-  app.view.root.classList.add('cv-paper');
-  app.dock.touch();
-}
-/** Another kind of table replaced the diagram: paper (and the shape tool keys) only if it holds shapes. */
-export function leavePaper(app: App) {
-  paperOn = false;
-  app.view.root.classList.toggle('cv-paper', hasShapes(app));
-  app.dock.touch();
-}
-
 export const diagramPlugin: Plugin = {
   id: 'diagram',
   setup(app) {
     useLogic(app.store, logic);
-    app.onTableReplaced((a) => leavePaper(a));
-    app.registerNewKind({ id: 'diagram', label: 'diagram', param: 'diagram', start: (a) => enterPaper(a) });
-
     const root = app.view.root;
-    const syncPaper = () => root.classList.toggle('cv-paper', isPaper(app));
-    app.store.subscribe(syncPaper);
-    syncPaper();
 
     // ------------------------------------------------------------ editing a shape's words, where it sits
     let editing: { id: string; fresh: boolean } | null = null;
@@ -118,7 +96,7 @@ export const diagramPlugin: Plugin = {
         label: t.label,
         title: `${t.label} (${t.key.toUpperCase()}): click or drag on the table`,
         key: t.key,
-        when: isPaper,
+        owns: isShape,
         create: (_a, box) => create(t.kind, box),
       });
       app.registerDockItem({
@@ -127,14 +105,12 @@ export const diagramPlugin: Plugin = {
         icon: t.icon,
         shortcut: t.key.toUpperCase(),
         section: 'create',
-        when: isPaper,
         active: (a) => a.view.tool === id,
         run: (a) => a.view.setTool(a.view.tool === id ? 'select' : id),
       });
     }
-    // double-click on empty paper: a line of text right there
+    // double-click on empty board: a line of text right there
     app.registerEmptyDoubleClick((at) => {
-      if (!isPaper(app)) return false;
       create('text', { x: at.x, y: at.y, width: 0, height: 0 });
       return true;
     });
@@ -151,7 +127,7 @@ export const diagramPlugin: Plugin = {
         if (id && kind && opensEditor(kind)) startEdit(id, { fresh: true });
       },
     });
-    mountPanel(app, () => isPaper(app));
+    mountPanel(app);
 
     // new shapes land a little way from the middle when made from a menu: the Add menu
     for (const t of SHAPE_TOOLS) {

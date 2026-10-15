@@ -34,11 +34,11 @@
   height: 100%;
   box-sizing: border-box;
   border-radius: 12px;
-  border: 2px solid var(--bd-color, rgba(255, 255, 255, 0.35));
+  border: 2px solid var(--bd-color, rgba(0, 0, 0, 0.22));
   background: rgba(0, 0, 0, 0.18);
 }
 .bd-col-head {
   padding: 10px 14px;
-  color: #fff;
+  color: #2b2f36;
   font: 600 15px system-ui, sans-serif;
 }

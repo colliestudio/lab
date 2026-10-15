@@ -31,12 +31,12 @@ export const GROUPS: [string, [string, string][]][] = [
     ],
   ],
   [
-    'Diagrams (Menu ▸ File ▸ New diagram, or ?diagram in the URL)',
+    'Diagrams (shapes and arrows)',
     [
-      ['R O D T S', 'Rectangle, ellipse, diamond, text, sticky note tool (only with nothing selected, so typing can edit a selected shape); the dock buttons always work on paper. Click = default size, drag = that size. Esc leaves the tool. On a table with decks or frames, S and D (over a deck) and O (outline) keep their card and frame meaning'],
-      ['Double-click empty paper', 'A line of text right there'],
+      ['R O D T S', 'Rectangle, ellipse, diamond, text, sticky note tool (also in the dock). Only with nothing selected (else typing edits the selected shape) and with the pointer not over another kind of object: over a deck S and D keep shuffle and draw, over a frame O is the outline. Click = default size, drag = that size. Esc leaves the tool'],
+      ['Double-click empty board', 'A line of text right there'],
       ['↵, double-click, or just type', 'Edit the selected shape’s text in place. Esc or a click elsewhere keeps it (⌘↵ too); ⌫ inside edits text, not the shape'],
-      ['Hover a shape, drag a dot', 'Pull an arrow: let go on another shape to connect (near its edge picks the side), on empty paper for a new connected shape of the same kind, or just click the dot for the next one'],
+      ['Hover a shape, drag a dot', 'Pull an arrow: let go on another shape to connect (near its edge picks the side), on empty board for a new connected shape of the same kind, or just click the dot for the next one'],
       ['Click an arrow, ↵ or double-click', 'Select it (⌫ deletes); edit its label in place. The left panel sets color, dashed, curved and arrowheads'],
       ['Left panel', 'Shape kind, stroke, fill, dashed, text size for the selected shapes'],
       ['Drag a square on a selected shape', 'Resize (⇧ on a corner keeps the proportions)'],
@@ -89,7 +89,7 @@ export const GROUPS: [string, [string, string][]][] = [
   [
     'Decks, groups, hands',
     [
-      ['', 'Three kinds of card collection. Deck: stacked, top card shows (the home deck from New table is one). Group: spread out (fan, row or grid), everyone sees it. Hand: a group that’s yours: others see its private cards face down.'],
+      ['', 'Three kinds of card collection. Deck: stacked, top card shows (the home deck of a Deck of cards from Add is one). Group: spread out (fan, row or grid), everyone sees it. Hand: a group that’s yours: others see its private cards face down.'],
       ['Drop a card right on top of a card', 'Makes a deck (the target shows “Stack”)'],
       ['Drop it partly over a card', 'Makes a group (the target shows “Fan”)'],
       ['G', 'Group the selection (into a selected deck or group, if there is one)'],
@@ -233,7 +233,7 @@ export const GROUPS: [string, [string, string][]][] = [
     'Files',
     [
       ['⌘S / ⇧⌘S', 'Save / save as .canvas (JSON Canvas, opens in Obsidian)'],
-      ['⌘O, drop a file, Menu ▸ File', 'Open a .canvas file (File also has New table, Save, Save as)'],
+      ['⌘O, drop a file, Menu ▸ File', 'Open a .canvas file (File also has New board, Save, Save as)'],
       ['', 'The table also saves itself in this browser'],
     ],
   ],

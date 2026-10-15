@@ -8,7 +8,7 @@ The screen has four small regions and one toast. Core draws them (`src/core/chro
               [ ↖  ✋ | + ]  (dock)                       [− 100% + ⛶ ?]
 ```
 
-- **Main menu** (top-left, ☰): File ▸ (New table, Open…, Save, Save as…), Edit ▸ (Undo, Redo, Reset table…), Room ▸ (your name and color, copy invite link, leave; only in a room), Add ▸ (one row per kit), then submenus plugins name (Game ▸: New hand, Play prototype), then Bridge… and Help. The top level stays small: plugins always go in a named submenu.
+- **Main menu** (top-left, ☰): File ▸ (New board, Open…, Save, Save as…), Edit ▸ (Undo, Redo, Reset table…), Room ▸ (your name and color, copy invite link, leave; only in a room), Add ▸ (one row per kit), then submenus plugins name (Game ▸: New hand, Play prototype), then Bridge… and Help. The top level stays small: plugins always go in a named submenu.
 - **Dock** (bottom-center): icon buttons with tooltips (name and shortcut): Select (V), Hand (H, hold Space), + (opens the kit list above the button). No Undo/Redo buttons: the Edit menu and ⌘Z / ⇧⌘Z.
 - **Top-right**: players and connection status, Chat (⇧C, unread badge), Share (copies the table into a new room; in a room it copies the invite link).
 - **Bottom-right**: zoom out, percent (click = 100%), zoom in, fit, and ? (the controls sheet).

@@ -4,6 +4,7 @@ import type { CanvasNode, DocView } from './doc';
 import { EdgeLayer, type Box } from './edges';
 import { inlineEdit, TEXT_INPUT } from './inlineEdit';
 import { Menu } from './menu';
+import { toolForKey } from './toolKeys';
 import type { MenuEntry, ObjectType, RenderCtx, Tool } from './plugin';
 import { Viewport, wheelZoomFactor } from './viewport';
 
@@ -669,9 +670,9 @@ export class View {
     // a creation tool's key, where its plugin says it applies (before the plugins' own keys)
     if (!mod && !e.altKey && !e.shiftKey && !store.selection.size) {
       const k = e.key.toLowerCase();
-      // a plugin's own key that applies right now (shuffle, draw, outline) beats a tool on the same letter
-      const taken = this.app.keys.get(k)?.when?.(this.app);
-      const tool = taken ? undefined : this.app.tools.find((x) => x.key === k && x.when?.(this.app) !== false);
+      // context decides who gets a shared letter (see toolForKey)
+      const over = this.hovered ? this.app.node(this.hovered) : undefined;
+      const tool = toolForKey(this.app.tools, this.app.keys, k, over, this.app);
       if (tool) {
         e.preventDefault();
         this.setTool(this.tool === tool.id ? 'select' : tool.id);

@@ -142,17 +142,6 @@ export interface MenuItem {
 }
 
 /** Something a player can put on the table from the Add menu (a deck of cards, a chess set). */
-/** Another kind of new table (File ▸ New <label>); see `App.registerNewKind`. */
-export interface NewKind {
-  id: string;
-  /** "diagram" gives "New diagram". */
-  label: string;
-  /** Puts the starting content on the cleared table (a diagram: switch to its paper). */
-  start(app: App): void;
-  /** `?<param>` on the URL starts an empty browser on this kind. */
-  param?: string;
-}
-
 export interface Kit {
   id: string;
   label: string;
@@ -174,8 +163,14 @@ export interface Tool {
   title?: string;
   /** Single key that picks the tool (when nothing is selected). */
   key?: string;
-  /** The key only works while this says so (a plugin's tools are for its own tables). Default: always. */
+  /** The key only works while this says so. Default: always. */
   when?(app: App): boolean;
+  /**
+   * Is this node the tool's own kind of object? With the pointer over any other plugin's object the key
+   * is left to that plugin (S shuffles a deck, it does not pick the sticky tool). Without it, any node
+   * under the pointer takes the key from the tool.
+   */
+  owns?(node: CanvasNode): boolean;
   /** Make the object. `box` = the dragged rectangle (world); width and height are 0 for a plain click. */
   create(app: App, box: { x: number; y: number; width: number; height: number }): void;
 }

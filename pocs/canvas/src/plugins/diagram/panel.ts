@@ -20,7 +20,7 @@ const ENDS: { label: string; title: string; from: 'none' | 'arrow'; to: 'none' |
   { label: '↔', title: 'Arrows at both ends', from: 'arrow', to: 'arrow' },
 ];
 
-export function mountPanel(app: App, active: () => boolean) {
+export function mountPanel(app: App) {
   const panel = document.createElement('div');
   panel.className = 'dg-panel';
   panel.hidden = true;
@@ -108,7 +108,7 @@ export function mountPanel(app: App, active: () => boolean) {
   const update = () => {
     const shapes = shapesOf();
     const edges = edgesOf();
-    const show = active() && (shapes.length > 0 || edges.length > 0);
+    const show = shapes.length > 0 || edges.length > 0;
     const k = show ? JSON.stringify([shapes.map((n: CanvasNode) => [n.id, n['x-shape']]), edges]) : '';
     panel.hidden = !show;
     if (k === key) return;
