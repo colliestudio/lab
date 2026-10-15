@@ -3,6 +3,7 @@ import { commands, duplicatePiece } from './commands';
 import { gameCommands, resetGames } from './game';
 import { repairImport, shapeExport } from './io';
 import { board, boardIdOf, isBoard, isPiece, piece } from './model';
+import type { PluginLogic } from '../logic';
 
 /**
  * The data side of the plugin (commands, riders, import/export, rules mode). No DOM: the browser
@@ -23,3 +24,5 @@ export function registerChessLogic(store: Store) {
   store.importFilters.push(repairImport);
   store.exportFilters.push(shapeExport);
 }
+
+export const logic: PluginLogic = { id: 'chess', register: registerChessLogic };

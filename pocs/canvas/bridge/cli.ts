@@ -25,7 +25,7 @@ const HELP = `canvas: read and edit a live canvas through the bridge
   rm N [N…]
   undo | redo                             your own last step (per --as)
   log [-n 20]
-  cmd NAME [JSON]                         any registered command (board.*, core.*)
+  cmd NAME [JSON]                         any registered command (core.*, board.*, storm.*, page.*, cards.*, chess.*, …)
   sync-backlog [--dir PATH] [-- backlog filters…]   Backlog.md tasks → columns (re-runnable)
 
   chess state [--json]                    the game: board, turn, seats, legal moves, FEN

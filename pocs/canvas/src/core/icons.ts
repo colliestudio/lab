@@ -1,11 +1,4 @@
-// Icons from Lucide (https://lucide.dev), ISC License.
-// Copyright (c) for portions of Lucide are held by Cole Bemis 2013-2023 as part of Feather (MIT).
-// All other copyright (c) for Lucide are held by Lucide Contributors 2025.
-//
-// Permission to use, copy, modify, and/or distribute this software for any purpose with or without
-// fee is hereby granted, provided that the above copyright notice and this permission notice appear
-// in all copies. THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
-// REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.
+// Icons from Lucide (https://lucide.dev); license text (ISC, plus MIT for the Feather-derived parts) in LICENSES/lucide.txt.
 
 /** Inner markup of 24x24 stroke icons, by name. Plugins may add their own (`ICONS.myIcon = '<path …/>'`). */
 export const ICONS: Record<string, string> = {

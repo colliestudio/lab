@@ -5,7 +5,8 @@ import { NOTE_H, autoLinkChanges } from './commands';
 import { mountEdges, type EdgeLayer } from './edges';
 import { editNote, editPage } from './editor';
 import { History } from './history';
-import { registerPrototypeLogic } from './logic';
+import { logic } from './logic';
+import { useLogic } from '../logic';
 import { DEVICES, HEADER, docHeight, isNote, isPage, note, outgoing, page, pages, resolveLink, startPage, titleOf } from './model';
 import { Player, mountFollowBanner } from './play';
 import { askText } from '../mats/textDialog';
@@ -22,7 +23,7 @@ const esc = (s: string) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 export const prototypePlugin: Plugin = {
   id: 'prototype',
   setup(app) {
-    registerPrototypeLogic(app.store);
+    useLogic(app.store, logic);
     const player = new Player(app);
     let edges: EdgeLayer | undefined;
     queueMicrotask(() => (edges = mountEdges(app)));

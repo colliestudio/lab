@@ -1,44 +1,15 @@
 import './battleline.css';
-import './render';
-import { loadPlayer, type App, type CanvasNode, type Command, type DocView, type LayoutRule, type MenuEntry, type ObjectType, type Placement, type Plugin, type Store } from '../../core';
+import { loadPlayer, type App, type CanvasNode, type DocView, type MenuEntry, type ObjectType, type Plugin } from '../../core';
+import { useLogic } from '../logic';
+import { logic } from './logic';
+export { registerBattleLineLogic } from './logic';
 import { handLabelOf, registerDealOverride, registerDropRouter, routeFor, type DropRoute } from '../cards';
 import { incomingCount } from '../cards/commands';
-import { FIELD as CARDS, card, cardsIn, handOf as cardHand, registerCapacityRule, roomIn } from '../cards/deck';
+import { FIELD as CARDS, card, cardsIn, handOf as cardHand, roomIn } from '../cards/deck';
 import { isMat } from '../mats/model';
-import { commands, envOn, environment, flags, formation, formationCapacity, handOf, playedRow, tacticCounts, troopsDeck, type Seat } from './commands';
-import { repairImport, shapeExport } from './io';
-import { ENV_CARD, ENV_H, ENV_PAD, ENV_STEP, ENV_W, SIDES, SIDE_NAME, flag, isFlag, isPart, isTactic, kindOfCard, part, tactic, type Side } from './model';
+import { commands, envOn, environment, flags, formation, handOf, playedRow, tacticCounts, troopsDeck, type Seat } from './commands';
+import { SIDES, SIDE_NAME, flag, isFlag, isPart, isTactic, kindOfCard, part, tactic, type Side } from './model';
 import { flagHtml, tallyHtml } from './render';
-
-// a formation has 3 slots, 4 while Mud lies on its flag (global, like the packs)
-registerCapacityRule(formationCapacity);
-
-/** Cards on a flag's environment spot lie sideways, smaller, across the flag's pole. */
-export const envLayout: LayoutRule = (doc) => {
-  const out = new Map<string, Placement>();
-  for (const e of doc.nodes) {
-    if (!isPart(e, 'environment')) continue;
-    out.set(e.id, { width: ENV_W, height: ENV_H });
-    cardsIn(doc, e.id).forEach((c, k) => {
-      const cx = e.x + ENV_PAD + k * ENV_STEP.x + ENV_CARD.h / 2;
-      const cy = e.y + ENV_PAD + k * ENV_STEP.y + ENV_CARD.w / 2;
-      // boxes turn around their bottom middle (core.css): a quarter turn puts the box's center at
-      // (w/2 + h/2, h) from its top-left
-      out.set(c.id, { x: Math.round(cx - ENV_CARD.w / 2 - ENV_CARD.h / 2), y: Math.round(cy - ENV_CARD.h), width: ENV_CARD.w, height: ENV_CARD.h, angle: 90, z: (e.z ?? 0) + (k + 1) / 1000 });
-    });
-  }
-  return out;
-};
-
-/** The data side of the plugin (commands, reset, import/export). No DOM; used by tests too. */
-export function registerBattleLineLogic(store: Store) {
-  for (const [name, cmd] of Object.entries(commands)) store.register(`battleline.${name}`, cmd as Command);
-  store.resets.push(commands.resetAll as Command);
-  store.importFilters.push(repairImport);
-  store.exportFilters.push(shapeExport);
-  store.migrations.push(commands.migrate as Command);
-  store.addLayout(envLayout);
-}
 
 /** Where on the line a drop target is: a formation, a flag (its environment spot too), a played row. */
 function lineSpot(doc: DocView, target: CanvasNode): { flag?: number; side?: Side; role: string } | undefined {
@@ -154,7 +125,7 @@ function claimMenu(app: App, ids: () => string[], current?: Side): MenuEntry {
 export const battleLinePlugin: Plugin = {
   id: 'battleline',
   setup(app) {
-    registerBattleLineLogic(app.store);
+    useLogic(app.store, logic);
     app.registerKit({
       id: 'battleline',
       label: 'Battle Line',
