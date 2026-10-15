@@ -1,6 +1,6 @@
 import './core.css';
 import { registerCoreCommands } from './commands';
-import type { CanvasEdge, CanvasNode, CarrierOf, DuplicateRule, LayoutRule, ParentOf } from './doc';
+import type { CanvasEdge, CanvasNode, CarrierOf, DocView, DuplicateRule, LayoutRule, ParentOf } from './doc';
 import type { DockItem, KeyBinding, Kit, MainMenuItem, MenuItem, MenuProvider, ObjectType, Plugin, Tool } from './plugin';
 import { Registry } from './registry';
 import { registerCoreChrome } from './chromeView';
@@ -46,6 +46,7 @@ export class App {
   player: PlayerInfo = { id: LOCAL_PLAYER, name: 'Me', color: '#888888' };
   private notifiers = new Set<(msg: string) => void>();
   /** Privacy rules: is `node` hidden from `viewer` (its content must not leak via presence either)? */
+  readonly edgeOwners: ((e: CanvasEdge, doc: DocView) => boolean)[] = [];
   readonly hiders: ((node: CanvasNode, viewer: string) => boolean)[] = [];
   /** Where others see my pointer: a rule may park it (e.g. over my private cards → at my hand's tab). */
   readonly cursorRules: ((p: { x: number; y: number }, app: App) => { x: number; y: number } | undefined)[] = [];
@@ -206,6 +207,15 @@ export class App {
   /** A rule saying a node is hidden from a viewer: no presence outlines on it, never broadcast. */
   registerHider(fn: (node: CanvasNode, viewer: string) => boolean) {
     this.hiders.push(fn);
+  }
+  /** Claim edges a plugin draws itself; core's edge layer skips them, so every edge has one renderer. */
+  registerEdgeRenderer(owns: (e: CanvasEdge, doc: DocView) => boolean) {
+    this.edgeOwners.push(owns);
+  }
+  /** Is this edge drawn by a plugin rather than core? */
+  edgeOwned(e: CanvasEdge): boolean {
+    const doc = this.store.doc;
+    return this.edgeOwners.some((f) => f(e, doc));
   }
   registerCursorRule(fn: (p: { x: number; y: number }, app: App) => { x: number; y: number } | undefined) {
     this.cursorRules.push(fn);
