@@ -219,8 +219,13 @@ async function main() {
       await run('core.edge', { id: params[0], ...arrowFlags() });
       return console.log(params[0]);
     }
-    case 'arrow-rm':
+    case 'arrow-rm': {
+      // core.delete takes node ids too: only arrows go through here
+      const edges = new Set((await c.doc()).edges.map((e) => e.id));
+      const bad = params.filter((id) => !edges.has(id));
+      if (bad.length) throw new Error(`no arrow ${bad.join(', ')}`);
       return void (await run('core.delete', { ids: params }));
+    }
     case 'disconnect': {
       const [from, to] = await Promise.all([c.resolve(params[0]), c.resolve(params[1])]);
       return void (await run('board.disconnect', { from, to }));

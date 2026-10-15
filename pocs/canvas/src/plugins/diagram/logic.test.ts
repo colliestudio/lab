@@ -130,6 +130,9 @@ describe('arrows', () => {
     expect(s.dispatch('core.connect', { from: 'a', to: 'a' }).changes).toEqual([]);
     expect(s.dispatch('core.connect', { from: 'a', to: 'zz' }).changes).toEqual([]);
     expect(s.dispatch('core.connect', { from: 'a', to: 'b', toSide: 'middle' }).changes).toEqual([]);
+    // JSON Canvas colors only: a preset or hex
+    expect(s.dispatch('core.connect', { from: 'a', to: 'b', color: 'red' }).changes).toEqual([]);
+    expect(s.dispatch('core.connect', { from: 'a', to: 'b', color: '7' }).changes).toEqual([]);
     const r = s.dispatch('core.connect', { id: 'e', from: 'a', to: 'b', fromSide: 'right', toSide: 'left', label: 'go', toEnd: 'arrow', fromEnd: 'none', color: '4', curve: true });
     expect(r.select).toEqual(['e']);
     expect(s.doc.edge('e')).toEqual({ id: 'e', fromNode: 'a', toNode: 'b', fromSide: 'right', toSide: 'left', label: 'go', toEnd: 'arrow', fromEnd: 'none', color: '4', 'x-edge': { curve: true } });

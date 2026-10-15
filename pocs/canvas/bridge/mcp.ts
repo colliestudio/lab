@@ -101,9 +101,9 @@ server.registerTool(
 const kindArg = z.enum(['rect', 'ellipse', 'diamond', 'text', 'sticky']);
 const sideArg = z.enum(['top', 'right', 'bottom', 'left']);
 const endArg = z.enum(['none', 'arrow']);
-const colorHint = 'a CSS color (#hex) or a JSON Canvas preset 1-6';
+const colorHint = '#hex or a JSON Canvas preset 1-6';
 const shapeLook = {
-  stroke: z.string().nullable().optional().describe(`outline and text color, ${colorHint}; null = default`),
+  stroke: z.string().nullable().optional().describe(`outline and text color, a CSS color or a JSON Canvas preset 1-6; null = default`),
   fill: z.string().nullable().optional().describe(`fill color, #hex, or "none" for see-through; null = the kind's default`),
   dashed: z.boolean().optional(),
   size: z.number().nullable().optional().describe('text size in px (default 18); null = default'),
@@ -192,7 +192,13 @@ server.registerTool(
 server.registerTool(
   'canvas_remove_arrow',
   { description: 'Remove arrows by id (shapes stay). To remove shapes, use canvas_remove.', inputSchema: { arrows: z.array(z.string()) } },
-  tool(async (a: { arrows: string[] }) => cmd('core.delete', { ids: a.arrows })),
+  tool(async (a: { arrows: string[] }) => {
+    // core.delete takes node ids too: only arrows go through here
+    const edges = new Set((await c.doc()).edges.map((e) => e.id));
+    const bad = a.arrows.filter((id) => !edges.has(id));
+    if (bad.length) throw new Error(`no arrow ${bad.join(', ')}`);
+    return cmd('core.delete', { ids: a.arrows });
+  }),
 );
 
 server.registerTool(

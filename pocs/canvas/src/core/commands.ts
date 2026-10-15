@@ -199,9 +199,11 @@ function applyEdgeArgs(edge: CanvasEdge, a: EdgeArgs): CanvasEdge | undefined {
   };
   const end = (v: unknown) => v === 'none' || v === 'arrow';
   const str = (v: unknown) => typeof v === 'string';
+  // JSON Canvas colors: a preset "1".."6" or hex
+  const color = (v: unknown) => typeof v === 'string' && /^([1-6]|#[0-9a-f]{3}|#[0-9a-f]{6})$/i.test(v);
   if (
     !put('label', a.label, str) ||
-    !put('color', a.color, str) ||
+    !put('color', a.color, color) ||
     !put('fromEnd', a.fromEnd, end) ||
     !put('toEnd', a.toEnd, end) ||
     !put('fromSide', a.fromSide, isSide) ||
