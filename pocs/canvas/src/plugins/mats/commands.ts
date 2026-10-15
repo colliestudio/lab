@@ -1,4 +1,6 @@
-import { isIds, isNum, pick, set, type CanvasNode, type Change, type Command, type DocView } from '../../core';
+import { isIds, isNum, pick } from '../../core/commands';
+import { set } from '../../core/doc';
+import type { CanvasNode, Change, Command, DocView } from '../../core';
 import { own } from '../cards/commands';
 import { FIELD as CARDS, LAYOUTS, card, cardsIn, groupNode, isDeck, isHand, isHomeDeck, isStacked, pileAt, type Facing, type Layout } from '../cards/deck';
 import {

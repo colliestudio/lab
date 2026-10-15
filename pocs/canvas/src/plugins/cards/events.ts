@@ -1,4 +1,5 @@
-import { count, type CanvasNode, type DocView, type EventSpec } from '../../core';
+import { count } from '../../core/log';
+import type { CanvasNode, DocView, EventSpec } from '../../core';
 import { card, cardsIn, faceLabel, handOf, hiddenFrom, hidesCount, isDeck, isHand, isHomeDeck, isSpot, isStacked, packOf, shownIn } from './deck';
 import { getPack } from './packs';
 

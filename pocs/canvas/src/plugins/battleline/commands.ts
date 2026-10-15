@@ -1,4 +1,6 @@
-import { isIds, isNum, pick, set, toFront, type CanvasNode, type Change, type Command, type CommandCtx, type DocView, type EventSpec } from '../../core';
+import { isIds, isNum, pick, toFront } from '../../core/commands';
+import { set } from '../../core/doc';
+import type { CanvasNode, Change, Command, CommandCtx, DocView, EventSpec } from '../../core';
 import { give, shuffled } from '../cards/commands';
 import { FIELD as CARDS, CARD_H, card, cardNode, cardsHomedAt, cardsIn, deckNode, groupNode, isDeck, isHand, isHomeDeck, isSpot, packOf } from '../cards/deck';
 import { HAND_W, emptyHandSize } from '../cards/layout';
