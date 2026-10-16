@@ -163,6 +163,8 @@ describe('board list page', () => {
     await flush();
     expect(root.querySelectorAll('.home-rename')).toHaveLength(1);
     expect(root.querySelector<HTMLInputElement>('.home-rename')!.getAttribute('aria-label')).toContain('my board');
+    const link = root.querySelector('tr[data-name="alpha"] td.name a')!;
+    expect([link.textContent, link.getAttribute('href')]).toEqual(['renamed', '/b/renamed']);
   });
 
   it('an older list reply that arrives late is dropped', async () => {

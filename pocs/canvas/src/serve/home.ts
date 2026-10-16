@@ -1,5 +1,6 @@
 import './home.css';
 import { createBoard, deleteBoard, listBoards, renameBoard, type BoardEntry } from './api';
+import { boardHref } from './route';
 import { emptyText, toRows } from './rows';
 
 // The board list a canvas service shows on `/`: its own page, no board app loaded. Every action asks the
@@ -150,6 +151,8 @@ export function mountHome(root: HTMLElement, f: typeof fetch = fetch) {
           rowErrors.delete(name);
           done = true;
           if (editing === name) editing = null;
+          link.textContent = renamed.name;
+          link.href = boardHref(renamed.name);
           if (field.isConnected) field.replaceWith(link); // the list may hold off re-rendering for another row's field
           highlight = renamed.name;
           await refresh();
