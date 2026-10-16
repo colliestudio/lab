@@ -3,6 +3,8 @@ export interface BoardInfo {
   /** ms since epoch */
   modified?: number;
   size?: number;
+  /** Listed but not readable yet: a cloud store has the board and hasn't downloaded it (iCloud stub). Reading it throws NotLocalError. */
+  evicted?: true;
 }
 
 /**

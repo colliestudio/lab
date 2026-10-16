@@ -1,7 +1,7 @@
 import { queryNodes } from '../../src/core/query';
 import { FORMAT_VERSION, FormatError } from '../../src/core/format';
 import { makeActor, type Actor } from './host';
-import { BoardFileError, DirError } from './errors';
+import { BoardFileError, DirError, NotLocalError } from './errors';
 import type { Board } from './board';
 import type { BoardDirectory } from './directory';
 
@@ -192,6 +192,7 @@ function decodeName(seg: string): string {
 export function errorReply(e: unknown): ApiReply {
   if (e instanceof DirError) return fail(e.status, e.message);
   if (e instanceof FormatError) return { status: 409, json: { error: e.message, kind: e.newer ? 'newer' : 'invalid' } };
+  if (e instanceof NotLocalError) return { status: 503, json: { error: e.message, kind: 'not-downloaded' } };
   if (e instanceof BoardFileError) return { status: 422, json: { error: e.message, kind: 'invalid' } };
   return fail(500, (e as Error).message);
 }

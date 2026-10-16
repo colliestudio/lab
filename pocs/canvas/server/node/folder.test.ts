@@ -2,7 +2,10 @@ import { existsSync, mkdirSync, symlinkSync, mkdtempSync, readdirSync, readFileS
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { BoardDirectory } from '../core/directory';
+import { NotLocalError } from '../core/errors';
 import { FolderStorage } from './folder';
+import { LOCK_FILE } from './lock';
 
 let dir: string;
 beforeEach(() => (dir = mkdtempSync(join(tmpdir(), 'canvas-folder-'))));
@@ -160,5 +163,55 @@ describe('FolderStorage (one fixed file)', () => {
     expect(await st.read(FolderStorage.nameOf('board.canvas'))).toBeUndefined();
     await st.write('board', '{}');
     expect((await st.list()).map((i) => i.name)).toEqual(['board']);
+  });
+});
+
+describe('FolderStorage (iCloud stubs)', () => {
+  const stub = (name: string) => writeFileSync(join(dir, `.${name}.canvas.icloud`), 'plist');
+
+  it('lists an evicted board once, asks for its download at most once a minute', async () => {
+    stub('Foo');
+    const asked: string[] = [];
+    const st = new FolderStorage(dir, { download: (p) => asked.push(p) });
+    const list = await st.list();
+    expect(list).toEqual([expect.objectContaining({ name: 'Foo', evicted: true })]);
+    await st.list();
+    expect(asked).toEqual([join(st.dir, 'Foo.canvas')]);
+  });
+
+  it('a real file wins over its stub; the lock file is not a board', async () => {
+    stub('Foo');
+    writeFileSync(join(dir, 'Foo.canvas'), '{}');
+    writeFileSync(join(dir, LOCK_FILE), '{}');
+    const asked: string[] = [];
+    const list = await new FolderStorage(dir, { download: (p) => asked.push(p) }).list();
+    expect(list.map((i) => [i.name, i.evicted])).toEqual([['Foo', undefined]]);
+    expect(asked).toEqual([]);
+  });
+
+  it('reading an evicted board throws and starts the download; create, rename onto it and moving it are refused; nothing is written', async () => {
+    stub('Foo');
+    writeFileSync(join(dir, 'Bar.canvas'), '{}');
+    const asked: string[] = [];
+    const st = new FolderStorage(dir, { download: (p) => asked.push(p) });
+    await expect(st.read('Foo')).rejects.toBeInstanceOf(NotLocalError);
+    expect(asked).toHaveLength(1);
+    expect(await st.create('Foo', 'x')).toBe(false);
+    await expect(st.rename('Bar', 'Foo')).rejects.toThrow(/exists/);
+    await expect(st.rename('Foo', 'Baz')).rejects.toBeInstanceOf(NotLocalError);
+    await expect(st.remove('Foo')).rejects.toBeInstanceOf(NotLocalError);
+    expect(existsSync(join(dir, 'Foo.canvas'))).toBe(false);
+    expect(await st.read('Nope')).toBeUndefined();
+  });
+
+  it('the directory shows the evicted text, refuses to open (even with create) and to create over it', async () => {
+    stub('Foo');
+    const d = new BoardDirectory(new FolderStorage(dir, { download: () => {} }), { sweepMs: 0, log: () => {} });
+    expect(await d.list()).toEqual([expect.objectContaining({ name: 'Foo', evicted: true, error: expect.stringContaining('not downloaded') })]);
+    await expect(d.open('Foo', { create: true })).rejects.toBeInstanceOf(NotLocalError);
+    await expect(d.open('foo', { create: true })).rejects.toBeInstanceOf(NotLocalError);
+    await expect(d.create('foo')).rejects.toMatchObject({ status: 409 });
+    expect(existsSync(join(dir, 'Foo.canvas'))).toBe(false);
+    expect(existsSync(join(dir, 'foo.canvas'))).toBe(false);
   });
 });

@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -172,10 +172,14 @@ describe('canvas serve', () => {
 
 describe('canvas serve: the web app', () => {
   let tmp: string;
+  let lastBoards: string;
   const procs: ChildProcess[] = [];
   const start = async (args: string[]) => {
     const p = await freePort();
-    procs.push(spawn(process.execPath, ['--import', 'tsx', 'server/serve.ts', join(tmp, 'boards'), '--port', String(p), ...args], { cwd: root, stdio: 'ignore' }));
+    // one serve per folder (the folder lock): each start gets its own copy
+    const boards = (lastBoards = join(tmp, `boards-${p}`));
+    cpSync(join(tmp, 'boards'), boards, { recursive: true });
+    procs.push(spawn(process.execPath, ['--import', 'tsx', 'server/serve.ts', boards, '--port', String(p), ...args], { cwd: root, stdio: 'ignore' }));
     const u = `http://127.0.0.1:${p}`;
     await until(async () => !!(await fetch(u + '/api/info').catch(() => null))?.ok);
     return u;
@@ -210,7 +214,7 @@ describe('canvas serve: the web app', () => {
     const r = await fetch(u + '/api/boards/broken/status');
     expect(r.status).toBe(422);
     expect(await r.json()).toMatchObject({ kind: 'invalid', error: expect.stringContaining('not a canvas file') });
-    expect(readFileSync(join(tmp, 'boards', 'broken.canvas'), 'utf8')).toBe('{nope');
+    expect(readFileSync(join(lastBoards, 'broken.canvas'), 'utf8')).toBe('{nope');
     const e = ((await (await fetch(u + '/api/boards')).json()) as { name: string; error?: string }[]).find((x) => x.name === 'broken');
     expect(e!.error).toMatch(/not a canvas file/);
   });

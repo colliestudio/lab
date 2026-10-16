@@ -16,3 +16,11 @@ export class BoardFileError extends Error {
     this.name = 'BoardFileError';
   }
 }
+
+/** A board that exists in the folder but isn't on this Mac yet (iCloud evicted it); the download has been asked for. */
+export class NotLocalError extends Error {
+  constructor(name: string) {
+    super(`${name}.canvas is in iCloud but not downloaded to this Mac yet; downloading now, try again in a moment`);
+    this.name = 'NotLocalError';
+  }
+}
