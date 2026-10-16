@@ -348,7 +348,10 @@ async function api(req: IncomingMessage, res: ServerResponse) {
       try {
         // args as one JSON value (typed: numbers, lists), else the plain query parameters
         const args = q.args ? JSON.parse(q.args) : Object.fromEntries(Object.entries(q).filter(([k]) => !['as', 'kind', 'timeout', 'args'].includes(k)));
-        if (viewMatch[1] === 'view') return reply(200, host.view(actor, viewMatch[2], args));
+        if (viewMatch[1] === 'view') {
+          const v = host.view(actor, viewMatch[2], args);
+          return v === undefined ? reply(400, { error: `${viewMatch[2]} has nothing yet (it only has something once it is ready: wait for it)` }) : reply(200, v);
+        }
         const ms = Math.min(Math.max(Number(q.timeout ?? 50), 1), 290) * 1000;
         const v = await host.wait(actor, viewMatch[2], args, ms);
         return reply(200, v === undefined ? { waiting: true, error: `still not ready after ${ms / 1000}s; wait again` } : v);

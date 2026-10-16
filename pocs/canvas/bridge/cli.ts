@@ -1,8 +1,8 @@
 import { catalog } from './catalog';
 import { client } from './client';
-import { cliArgs, kebab } from './flags';
+import { cliArgs, parseArgv } from './flags';
+import { buildForms, findForm, formUsage, type Form } from './forms';
 import { chatText } from '../src/core/chat';
-import type { CliForm } from '../src/core/agent';
 import { PLUGIN_CLI } from '../src/plugins/cli';
 
 // canvas: edit a live canvas from the shell (agents, scripts, people). Talks to the bridge.
@@ -12,39 +12,12 @@ import { PLUGIN_CLI } from '../src/plugins/cli';
 
 const cat = catalog();
 
-interface Form {
-  words: string[];
-  form: CliForm;
-  name: string;
-  kind: 'command' | 'view';
-}
-/** Every plugin CLI form, longest verb first (`chess move` before `chess`). */
-const forms: Form[] = cat
-  .plugins()
-  .flatMap((p) => [
-    ...p.commands.flatMap((name) => (cat.spec(name)?.cli ?? []).map((form) => ({ words: form.verb.split(' '), form, name, kind: 'command' as const }))),
-    ...p.views.flatMap((name) => (cat.viewSpec(name)?.cli ?? []).map((form) => ({ words: form.verb.split(' '), form, name, kind: 'view' as const }))),
-  ])
-  .sort((a, b) => b.words.length - a.words.length);
-
-function usage(f: Form) {
-  const schema = cat.jsonSchema((f.kind === 'command' ? cat.spec(f.name) : cat.viewSpec(f.name))!.args);
-  const req = new Set<string>(schema.required ?? []);
-  const given = new Set([...(f.form.pos ?? []), ...(f.form.rest ? [f.form.rest] : []), ...Object.keys(f.form.set ?? {})]);
-  const positional = [...(f.form.pos ?? []).map((k) => k.toUpperCase()), ...(f.form.rest ? [`${f.form.rest.toUpperCase()}…`] : [])];
-  const flags = Object.keys(schema.properties ?? {})
-    .filter((k) => !given.has(k))
-    .map((k) => {
-      const flag = `--${kebab(k)}${schema.properties[k].type === 'boolean' ? '' : ' V'}`;
-      return req.has(k) ? flag : `[${flag}]`;
-    });
-  return `${f.form.verb} ${[...positional, ...flags].join(' ')}`.trim();
-}
+const forms = buildForms(cat);
 
 function help() {
   const lines = forms.map((f) => {
     const spec = f.kind === 'command' ? cat.spec(f.name)! : cat.viewSpec(f.name)!;
-    return `  ${usage(f)}\n      ${spec.description.split(/(?<=\.)\s/)[0]}`;
+    return `  ${formUsage(cat, f)}\n      ${spec.description.split(/(?<=\.)\s/)[0]}`;
   });
   return `canvas: read and edit a live canvas through the bridge
 
@@ -77,22 +50,7 @@ process.stdout.on('error', (e: NodeJS.ErrnoException) => {
   throw e;
 });
 const argv = process.argv.slice(2);
-const flags: Record<string, string> = {};
-const pos: string[] = [];
-let rest: string[] = [];
-for (let i = 0; i < argv.length; i++) {
-  const a = argv[i];
-  if (a === '--') {
-    rest = argv.slice(i + 1);
-    break;
-  }
-  if (a.startsWith('--')) {
-    const next = argv[i + 1];
-    if (next === undefined || next.startsWith('--')) flags[a.slice(2)] = 'true';
-    else flags[a.slice(2)] = argv[++i];
-  } else if (a === '-n') flags.n = argv[++i];
-  else pos.push(a);
-}
+const { pos, flags, rest } = parseArgv(argv);
 const [command, ...params] = pos;
 const extra = PLUGIN_CLI.find((x) => x.verb.split(' ').every((w, i) => pos[i] === w));
 const c = client({ url: flags.bridge, as: flags.as ?? extra?.as, kind: extra?.kind === 'tool' ? 'tool' : 'agent' });
@@ -156,7 +114,7 @@ async function main() {
       return chat(params[0], params.slice(1));
   }
   if (extra) return extra.run(c, { pos: pos.slice(extra.verb.split(' ').length), flags, rest, say });
-  const f = forms.find((x) => x.words.every((w, i) => pos[i] === w));
+  const f = findForm(forms, pos);
   if (f) return runForm(f, pos.slice(f.words.length));
   throw new Error(`unknown command: ${command}\n\n${help()}`);
 }

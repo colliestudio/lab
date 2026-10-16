@@ -83,3 +83,24 @@ export function cliArgs(schema: Json, form: Pick<CliForm, 'verb' | 'pos' | 'rest
   }
   return out;
 }
+
+/** `a b --x 1 --flag -n 5 -- rest words` to positional words, flags (a bare flag is "true") and what follows `--`. */
+export function parseArgv(argv: string[]) {
+  const flags: Record<string, string> = {};
+  const pos: string[] = [];
+  let rest: string[] = [];
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '--') {
+      rest = argv.slice(i + 1);
+      break;
+    }
+    if (a.startsWith('--')) {
+      const next = argv[i + 1];
+      if (next === undefined || next.startsWith('--')) flags[a.slice(2)] = 'true';
+      else flags[a.slice(2)] = argv[++i];
+    } else if (a === '-n') flags.n = argv[++i];
+    else pos.push(a);
+  }
+  return { pos, flags, rest };
+}
