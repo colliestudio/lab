@@ -54,7 +54,7 @@ export class FolderStorage implements BoardStorage {
     for (const f of names) {
       try {
         const s = await stat(join(this.dir, f));
-        if (s.isFile()) out.push({ name: this.single ? FolderStorage.nameOf(f) : f.slice(0, -EXT.length), modified: s.mtimeMs, size: s.size });
+        if (s.isFile()) out.push({ name: this.single ? FolderStorage.nameOf(f) : f.slice(0, -EXT.length), modified: Math.floor(s.mtimeMs), size: s.size });
       } catch (e) {
         if (!missing(e)) throw e;
       }
