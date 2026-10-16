@@ -3,8 +3,8 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { CLI_CHILD, CLI_CONFIG, CLI_PLAIN, CLI_TASK } from '../../src/plugins/kanban/fixtures';
-import { newTaskFile, patchTask, taskFileName, type TaskPatch } from '../../src/plugins/kanban/markdown';
+import { CLI_CHILD, CLI_CONFIG, CLI_PLAIN, CLI_TASK } from '../fixtures';
+import { newTaskFile, patchTask, taskFileName, type TaskPatch } from '../markdown';
 
 // The oracle: what `backlog task edit` / `task create` write, compared with the patcher on a copy of
 // the same files. Skipped (with the reason printed) when `backlog` is not installed. Only temp dirs.

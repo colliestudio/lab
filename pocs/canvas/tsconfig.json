@@ -14,5 +14,5 @@
     "types": ["vite/client"]
   },
   "include": ["src"],
-  "exclude": ["src/plugins/cli.ts", "src/plugins/*/cli.ts", "src/plugins/*/bot.ts"]
+  "exclude": ["src/plugins/cli.ts", "src/plugins/serve.ts", "src/plugins/*/cli.ts", "src/plugins/*/bot.ts", "src/plugins/*/node"]
 }

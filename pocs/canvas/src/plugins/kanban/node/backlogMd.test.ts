@@ -2,10 +2,10 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSyn
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { CLI_CONFIG } from '../../src/plugins/kanban/fixtures';
-import { newTaskFile, parseTask } from '../../src/plugins/kanban/markdown';
-import { SourceError } from '../../src/plugins/kanban/source';
-import { sourceContract } from '../../src/plugins/kanban/source.contract';
+import { CLI_CONFIG } from '../fixtures';
+import { newTaskFile, parseTask } from '../markdown';
+import { SourceError } from '../source';
+import { sourceContract } from '../source.contract';
 import { BacklogMdSource } from './backlogMd';
 
 const NOW = new Date(Date.UTC(2026, 9, 16, 12, 0));

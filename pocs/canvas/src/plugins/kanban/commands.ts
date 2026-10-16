@@ -1,4 +1,6 @@
-import { isIds, isNum, set, type CanvasNode, type Change, type Command, type DocView } from '../../core';
+import type { CanvasNode, Change, Command, DocView } from '../../core';
+import { isIds, isNum } from '../../core/commands';
+import { set } from '../../core/doc';
 import type { AcItem } from './markdown';
 import { nextTaskId } from './markdown';
 import { CARD_H, CARD_W, FIELD, authorOf, board, byOrder, column, columnsOf, isBoard, isTask, shownIn, task, tasksOf, type BoardField, type TaskField } from './model';
@@ -52,13 +54,14 @@ export function cleanEdit(p: unknown): EditPatch {
 const ns = (id: string, key: string, v: unknown) => set(id, `${FIELD}.${key}`, v);
 const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 
-/** Order `ids` would get in column `status` if `over` replaced their status/ordinal. */
-function orderWith(doc: DocView, boardId: string, status: string, over: Map<string, { status: string; ordinal?: number }>): string[] {
+/** Order the tasks of column `status` (limited to `scope`, when given) would have if `over` replaced their status/ordinal. */
+function orderWith(doc: DocView, boardId: string, status: string, over: Map<string, { status: string; ordinal?: number }>, scope?: Set<string>): string[] {
   const view = (n: CanvasNode): CanvasNode => {
     const o = over.get(n.id);
     return o ? { ...n, [FIELD]: { ...task(n), ...o } } : n;
   };
   return tasksOf(doc, boardId)
+    .filter((t) => !scope || scope.has(t.id))
     .map(view)
     .filter((t) => task(t).status === status)
     .sort(byOrder)
@@ -68,20 +71,22 @@ function orderWith(doc: DocView, boardId: string, status: string, over: Map<stri
 const sameList = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
 
 /**
- * Put task nodes `moving` into column `status` just before `beforeId` (null = at the end), changing as
- * few fields as possible: status only if the existing order already puts them there; else ordinals for
- * the moved cards between their neighbours; else renumber the column (1000, 2000, ...).
+ * Put task nodes `moving` into column `status` just before `beforeId` (null = after the others), changing
+ * as few fields as possible: status only if the existing order already puts them there; else ordinals for
+ * the moved cards between their neighbours; else renumber the column (1000, 2000, ...). Only the tasks in
+ * `scope` (the ones that show) count: hidden ones (older Done tasks, a filter) are never renumbered.
  */
-export function placeInColumn(doc: DocView, boardId: string, status: string, moving: string[], beforeId: string | null): Change[] {
-  const rest = column(doc, boardId, status).filter((t) => !moving.includes(t.id));
+export function placeInColumn(doc: DocView, boardId: string, status: string, moving: string[], beforeId: string | null, scope?: Set<string>): Change[] {
+  const rest = column(doc, boardId, status).filter((t) => !moving.includes(t.id) && (!scope || scope.has(t.id)));
   const at = beforeId === null ? -1 : rest.findIndex((t) => t.id === beforeId);
   const i = at < 0 ? rest.length : at;
   const desired = [...rest.slice(0, i).map((t) => t.id), ...moving, ...rest.slice(i).map((t) => t.id)];
   const statusChanges = moving.filter((id) => task(doc.get(id)!).status !== status).map((id) => ns(id, 'status', status));
+  const scoped = scope && new Set([...scope, ...moving]);
 
   // 1. status only
   const keep = new Map(moving.map((id) => [id, { status, ordinal: task(doc.get(id)!).ordinal }]));
-  if (sameList(orderWith(doc, boardId, status, keep), desired)) return statusChanges;
+  if (sameList(orderWith(doc, boardId, status, keep, scoped), desired)) return statusChanges;
 
   // 2. ordinals for the moved cards only
   const prev = i > 0 ? task(rest[i - 1]).ordinal : undefined;
@@ -94,7 +99,7 @@ export function placeInColumn(doc: DocView, boardId: string, status: string, mov
     const ok = ords.every((o, k) => o > lo && o < hi && (k === 0 || o > ords[k - 1]));
     if (ok) {
       const over = new Map(moving.map((id, k) => [id, { status, ordinal: ords[k] }]));
-      if (sameList(orderWith(doc, boardId, status, over), desired)) return [...statusChanges, ...moving.flatMap((id, k) => (task(doc.get(id)!).ordinal !== ords[k] ? [ns(id, 'ordinal', ords[k])] : []))];
+      if (sameList(orderWith(doc, boardId, status, over, scoped), desired)) return [...statusChanges, ...moving.flatMap((id, k) => (task(doc.get(id)!).ordinal !== ords[k] ? [ns(id, 'ordinal', ords[k])] : []))];
     }
   }
 
@@ -174,7 +179,7 @@ export const commands: Record<string, Command> = {
     const i = Math.max(0, Math.min(visible.length, Math.round(a.index)));
     // before the task that shows at `index`; at the end of what shows (hidden older Done tasks stay where they were)
     const before = i < visible.length ? visible[i].id : null;
-    const changes = placeInColumn(doc, b.id, a.status, moving, before);
+    const changes = placeInColumn(doc, b.id, a.status, moving, before, new Set(visible.map((t) => t.id)));
     const noted = moving.filter((id) => task(doc.get(id)!).note).map((id) => ns(id, 'note', undefined));
     const titles = moving.map((id) => task(doc.get(id)!).taskId ?? task(doc.get(id)!).title);
     const moved = changes.some((c) => c.op === 'set' && c.key.endsWith('.status'));

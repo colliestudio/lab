@@ -147,7 +147,7 @@ const OPS = new Set(['rename', 'delete']);
 export async function directoryApi(dir: BoardDirectory, req: ApiRequest): Promise<ApiReply | undefined> {
   const { method, path } = req;
   try {
-    if (method === 'GET' && path === '/api/info') return ok({ service: 'canvas-serve', format: FORMAT_VERSION, mutable: dir.mutable });
+    if (method === 'GET' && path === '/api/info') return ok({ ...dir.info(), service: 'canvas-serve', format: FORMAT_VERSION, mutable: dir.mutable });
     if (path === '/api/boards') {
       if (method === 'GET') return ok(await dir.list());
       if (method === 'POST') {

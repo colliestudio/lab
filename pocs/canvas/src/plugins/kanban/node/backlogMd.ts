@@ -1,8 +1,8 @@
 import { lstatSync, readdirSync, readFileSync, statSync, watch as fsWatch, realpathSync, type FSWatcher } from 'node:fs';
 import { access, constants, link, mkdir, open, readdir, readFile, rename, stat, unlink } from 'node:fs/promises';
 import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { ID_RE, newTaskFile, nextTaskId, parseConfig, parseTask, patchTask, taskFileName, type BoardConfig, type ParsedTask, type TaskPatch } from '../../src/plugins/kanban/markdown';
-import { SourceError, type Card, type CardPatch, type NewCard, type SourceInfo, type TrackerSource, type WriteOpts } from '../../src/plugins/kanban/source';
+import { ID_RE, newTaskFile, nextTaskId, parseConfig, parseTask, patchTask, taskFileName, type BoardConfig, type ParsedTask, type TaskPatch } from '../markdown';
+import { SourceError, type Card, type CardPatch, type NewCard, type SourceInfo, type TrackerSource, type WriteOpts } from '../source';
 
 // The Backlog.md folder behind a kanban node: the task files, read and written in place, the way the
 // `backlog` CLI does. The only code that touches the folder. Rules:

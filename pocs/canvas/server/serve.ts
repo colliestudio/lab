@@ -10,6 +10,7 @@ import { createNodeServer } from './node/http';
 import { createStaticApp } from './node/static';
 import { mcpHandler } from './node/mcp';
 import { McpService } from './mcp/session';
+import { PLUGIN_SERVE } from '../src/plugins/serve';
 
 // canvas serve: one process that serves every .canvas file in a folder.
 //  - Browsers: http://HOST:PORT/ lists the boards, /b/<board> opens one (the built app, from --app, default the
@@ -38,7 +39,7 @@ function fail(msg: string, code = 2): never {
 
 let args: ReturnType<typeof parseServeArgs>;
 try {
-  args = parseServeArgs(process.argv.slice(2));
+  args = parseServeArgs(process.argv.slice(2), PLUGIN_SERVE.flatMap((x) => x.flags.map((f) => f.name)));
 } catch (e) {
   fail(`${(e as Error).message}\nusage: tsx server/serve.ts <dir> [--port N] [--host H] [--allow-origin URL]… [--host-name NAME]… [--idle-ms N] [--mcp-idle-ms N] [--app DIR]`);
 }
@@ -68,7 +69,23 @@ process.on('exit', () => lock.release());
 // Bridges mark the folder before they check our lock, so one of the two sees the other.
 const bridges = liveBridges(storage.dir);
 if (bridges.length) fail(describeBridges(storage.dir, bridges), 1);
-const directory = new BoardDirectory(storage, { idleMs: args.idleMs, sweepMs: Math.min(10_000, Math.max(50, (args.idleMs ?? 600_000) / 2)), log });
+// Plugins' serve extras (flags, /api/info, work per loaded board): a bad configuration ends the start with its message
+let extras: ReturnType<(typeof PLUGIN_SERVE)[number]['start']>[];
+try {
+  extras = PLUGIN_SERVE.map((x) => x.start({ flags: Object.fromEntries(x.flags.map((f) => [f.name, args.extras?.[f.name] ?? []])), env: process.env }));
+} catch (e) {
+  fail((e as Error).message);
+}
+const directory = new BoardDirectory(storage, {
+  idleMs: args.idleMs,
+  sweepMs: Math.min(10_000, Math.max(50, (args.idleMs ?? 600_000) / 2)),
+  log,
+  attach: (b) => {
+    const stops = extras.flatMap((x) => x.attach?.(b) ?? []);
+    return () => stops.forEach((s) => s());
+  },
+  info: () => Object.assign({}, ...extras.map((x) => x.info?.() ?? {})),
+});
 const appDir = resolve(args.app ?? fileURLToPath(new URL('../dist', import.meta.url)));
 for (const f of ['index.html', 'home.html']) {
   if (!existsSync(join(appDir, f))) console.warn(`canvas serve: ${join(appDir, f)} is missing; the web app won't open until \`pnpm build\` has run (the API works)`);
@@ -87,6 +104,10 @@ const boards = await directory.list();
 log(`canvas serve: ${storage.dir} on http://${host}:${port} (${boards.length} board${boards.length === 1 ? '' : 's'}; open http://${host}:${port}/; app origins allowed: ${guard.origins.join(', ')})`);
 for (const o of hostOrigins) log(`open ${o}/`);
 if (!args.allowOrigins.length && !hostOrigins.length && !process.env.CANVAS_ALLOW_ORIGIN) log(`from another host name (http://<host name>:${port}): start with --allow-origin http://<that name>:${port}`);
+for (const x of extras) {
+  const line = x.describe?.();
+  if (line) log(line);
+}
 log(`lock: ${lock.path}`);
 log(`agents: claude mcp add --transport http canvas http://${host}:${port}/mcp`);
 
