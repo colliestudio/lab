@@ -22,6 +22,9 @@ const str = (description: string): Json => ({ type: 'string', description });
 const num = (description: string): Json => ({ type: 'number', description });
 
 export function toolList(cat: Catalog): ToolSpec[] {
+  // examples come from whatever the plugins describe, never from names written here
+  const first = cat.plugins().flatMap((p) => p.commands).find((n) => cat.spec(n) && cat.owner(n) !== 'core');
+  const e = first ? { name: first, args: cat.spec(first)!.example } : { name: '<plugin>.<command>', args: {} };
   const show = (name: string, value: unknown) => {
     const text = cat.viewSpec(name)?.text;
     return text ? text(value) : json(value);
@@ -32,19 +35,19 @@ export function toolList(cat: Catalog): ToolSpec[] {
     {
       name: 'canvas_look',
       description: 'Look at the canvas. Without `view`: the nodes (id, type, text, position, column, outgoing links), filtered by type/text/column/ext. With `view` (a name from canvas_help, e.g. a game plugin\'s state): that view as text.',
-      inputSchema: obj({ view: str('view name, e.g. one listed by canvas_help'), args: { type: 'object', description: 'the view\'s arguments' }, type: str('text | group | link | file | …'), text: str('substring'), column: str('column (group) label'), ext: str('plugin namespace, e.g. x-sync, x-cards') }),
+      inputSchema: obj({ view: str('view name, e.g. one listed by canvas_help'), args: { type: 'object', description: 'the view\'s arguments' }, type: str('text | group | link | file | …'), text: str('substring'), column: str('column (group) label'), ext: str('plugin namespace on the node (x-…)') }),
       call: async (c, a) => (a.view ? show(a.view, await c.view(a.view, a.args ?? {})) : json(await c.query({ type: a.type, text: a.text, column: a.column, ext: a.ext }))),
     },
     {
       name: 'canvas_do',
-      description: 'Run a command by name, e.g. {"command":"chess.move","args":{"move":"e4"}}. canvas_help lists the commands with their arguments and examples. Node arguments take an id or a title. Bad arguments are refused with the field and an example.',
-      inputSchema: obj({ command: str('command name, e.g. board.add'), args: { type: 'object', description: 'the command\'s arguments (see canvas_help)' } }, ['command']),
+      description: `Run a command by name, e.g. ${JSON.stringify({ command: e.name, args: e.args })}. canvas_help lists the commands with their arguments and examples. Node arguments take an id or a title. Bad arguments are refused with the field and an example.`,
+      inputSchema: obj({ command: str('command name from canvas_help'), args: { type: 'object', description: 'the command\'s arguments (see canvas_help)' } }, ['command']),
       call: async (c, a) => doneText(await c.run(a.command, a.args ?? {})),
     },
     {
       name: 'canvas_help',
       description: 'What can be done here. Without arguments: the plugins. With `plugin`: its guide, commands (arguments, examples) and views. With `command` (or a view name): that one in full.',
-      inputSchema: obj({ plugin: str('plugin id, e.g. board'), command: str('command or view name, e.g. board.add') }),
+      inputSchema: obj({ plugin: str('plugin id from the plugin list'), command: str('command or view name') }),
       call: async (_c, a) => cat.helpText(a.plugin, a.command),
     },
     {
@@ -60,7 +63,7 @@ export function toolList(cat: Catalog): ToolSpec[] {
     {
       name: 'canvas_list',
       description: 'List nodes on the canvas (id, type, text, position, column, outgoing links). Filters are optional.',
-      inputSchema: obj({ type: str('text | group | link | file | …'), text: { type: 'string' }, column: str('column (group) label'), ext: str('plugin namespace, e.g. x-sync, x-cards') }),
+      inputSchema: obj({ type: str('text | group | link | file | …'), text: { type: 'string' }, column: str('column (group) label'), ext: str('plugin namespace on the node (x-…)') }),
       call: async (c, a) => json(await c.query(a)),
     },
     {

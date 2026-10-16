@@ -11,6 +11,10 @@ const files = readdirSync(dir).filter((f) => f.endsWith('.ts') && !/\.test(-util
 // comments are not code: strip them before looking for names
 const code = (f: string) => readFileSync(join(dir, f), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`])\/\/.*$/gm, '$1');
 
+function pluginSources(dirPath = join(dir, '../src/plugins')): string[] {
+  return readdirSync(dirPath, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? pluginSources(join(dirPath, e.name)) : /\.ts$/.test(e.name) && !/\.test\.ts$/.test(e.name) ? [join(dirPath, e.name)] : []));
+}
+
 describe('bridge/ stays generic', () => {
   it('imports no plugin but the list and the CLI extras', () => {
     for (const f of files) {
@@ -18,7 +22,7 @@ describe('bridge/ stays generic', () => {
     }
   });
 
-  it('has no string that is a plugin id or a command, view or tool name of one', () => {
+  it('has no string that names a plugin, its commands, tools or storage fields', () => {
     const cat = catalog();
     const names = new Set<string>(); // plugin ids and command namespaces
     const whole = new Set<string>(); // full command, view and tool names
@@ -33,11 +37,16 @@ describe('bridge/ stays generic', () => {
     }
     names.delete('canvas'); // the generic tools' own prefix
     expect([...names]).toEqual(expect.arrayContaining(['board', 'chess', 'diagram']));
+    // the x- fields plugins write on nodes (x-shape, x-chess…), read off their sources
+    const xfields = new Set<string>();
+    for (const f of pluginSources()) for (const m of readFileSync(f, 'utf8').matchAll(/['"`](x-[a-z][a-z-]*)/g)) xfields.add(m[1]);
+    expect([...xfields]).toEqual(expect.arrayContaining(['x-shape', 'x-chess']));
     for (const f of files) {
       for (const m of code(f).matchAll(/'((?:[^'\\\n]|\\.)*)'|"((?:[^"\\\n]|\\.)*)"|`((?:[^`\\]|\\.)*)`/g)) {
         const s = m[1] ?? m[2] ?? m[3];
-        expect(whole.has(s), `${f}: "${s}" is a plugin command`).toBe(false);
-        for (const n of names) expect(s === n || s.startsWith(`${n}_`), `${f}: "${s}" names the ${n} plugin`).toBe(false);
+        for (const w of whole) expect(new RegExp(`(^|[^A-Za-z0-9.])${w.replace('.', '\\.')}($|[^A-Za-z0-9])`).test(s), `${f}: "${s}" mentions the command ${w}`).toBe(false);
+        for (const n of names) expect(new RegExp(`(^|[^A-Za-z0-9-])${n}_`).test(s) || s === n, `${f}: "${s}" names the ${n} plugin`).toBe(false);
+        for (const x of xfields) expect(s.includes(x), `${f}: "${s}" names the plugin field ${x}`).toBe(false);
       }
     }
   });
