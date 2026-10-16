@@ -9,7 +9,9 @@ import { WebSocket } from 'ws';
 import { client } from '../bridge/client';
 import { freePort, root, until } from '../bridge/process.test-util';
 import { registerCoreCommands } from '../src/core/commands';
+import { guardHosted } from '../src/core/sync';
 import { Store } from '../src/core/store';
+import { createUnique } from '../src/serve/newBoard';
 import { registerPluginLogic } from '../src/plugins/logic';
 import { stableSerialize } from './core/canonical';
 
@@ -151,6 +153,40 @@ describe('canvas serve', () => {
     expect((await entry('new'))!.error).toMatch(/format 99/);
     expect(onDisk('new')).toBe(NEWER);
     expect(existsSync(join(dir, '.canvas-bridge', 'new.canvas.ystate'))).toBe(false);
+  });
+
+  it('File > New board on a served board leaves the board and its file alone and makes another', async () => {
+    const fetchAt = ((p: string, init?: RequestInit) => fetch(url + p, init)) as typeof fetch;
+    const c = await browser('a');
+    guardHosted(c.store); // what joinBridge does when the page joins a served board
+    const before = onDisk('a');
+    expect(() => c.store.load({ nodes: [], edges: [] })).toThrow(/can not be replaced/);
+    await new Promise((r) => setTimeout(r, 700)); // past the board's write debounce: a wipe would be on disk by now
+    expect(c.store.doc.get('x')!.text).toBe('in a');
+    expect(onDisk('a')).toBe(before);
+    c.leave();
+    await until(async () => (await entry('a'))?.browsers === 0);
+    const made = await createUnique('Untitled', undefined, fetchAt);
+    expect(made).toBe('Untitled');
+    expect(JSON.parse(onDisk('Untitled'))).toEqual({ 'x-canvas-format': 1, nodes: [], edges: [] });
+    expect(await createUnique('Untitled', undefined, fetchAt)).toBe('Untitled 2');
+    for (const n of ['Untitled', 'Untitled 2']) expect((await post(`/api/boards/${encodeURIComponent(n)}/delete`)).status).toBe(200);
+  });
+
+  it('Open / drop on a served board imports the file as a new board; a newer one makes none', async () => {
+    const fetchAt = ((p: string, init?: RequestInit) => fetch(url + p, init)) as typeof fetch;
+    const aBefore = onDisk('a');
+    const text = board(node('z', 'imported'));
+    expect(await createUnique('a', text, fetchAt)).toBe('a 2');
+    expect(onDisk('a 2')).toBe(text);
+    expect(onDisk('a')).toBe(aBefore);
+    const c = await browser('a 2');
+    expect(c.store.doc.get('z')!.text).toBe('imported');
+    c.leave();
+    await expect(createUnique('n', NEWER, fetchAt)).rejects.toMatchObject({ status: 409, kind: 'newer' });
+    expect(existsSync(join(dir, 'n.canvas'))).toBe(false);
+    await until(async () => (await entry('a 2'))?.browsers === 0);
+    expect((await post('/api/boards/a%202/delete')).status).toBe(200);
   });
 
   it('refuses a WebSocket without a board in the path, and an unknown board', async () => {
