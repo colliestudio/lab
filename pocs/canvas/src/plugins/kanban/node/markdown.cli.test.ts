@@ -161,6 +161,8 @@ old plan
   run('adding an AC', 'task-5 - Hand.md', HAND, ['--ac', 'fourth'], { ac: [{ text: 'first thing', done: false }, { text: 'second thing', done: false }, { text: 'third', done: true }, { text: 'fourth', done: false }] }, '5');
   run('replacing an old-style description', 'task-6 - Old.md', LEGACY, ['-d', 'New text'], { sections: { description: 'New text' } }, '6');
   run('replacing an old-style plan', 'task-6 - Old.md', LEGACY, ['--plan', 'new plan'], { sections: { plan: 'new plan' } }, '6');
+  run('a heading quoted inside a marked description', 'task-1 - First-task.md', CLI_TASK.replace('Does the thing', 'Does the thing\n\n## Implementation Notes\nQuoted from the old doc.'), ['--check-ac', '1'], { ac: [{ text: 'one', done: true }, { text: 'two', done: false }] }, '1');
+  run('removing an AC item that has a continuation line', 'task-5 - Hand.md', HAND, ['--remove-ac', '2'], { ac: [{ text: 'first thing', done: false }, { text: 'third', done: true }] }, '5');
   it('the CLI refuses a comment with a --- line, as we do', () => {
     const b = project();
     expect(() => cli(b.root, ['task', 'edit', '1', '--comment', 'a\n---\nb', '--comment-author', '@x'])).toThrow();

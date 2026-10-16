@@ -287,9 +287,16 @@ interface Block {
 /** A section from before the markers: the heading and its text up to the next `## ` heading. */
 function legacyBlock(b: string, d: SectionDef): Block | undefined {
   if (d.key === 'comments' || d.key === 'dod') return;
-  const m = new RegExp(`^## ${d.title}[ \\t]*$`, 'm').exec(b);
+  // headings inside a marked block are that block's text (a quoted doc), not sections
+  let masked = b;
+  for (const x of DEFS) {
+    const bi = masked.indexOf(begin(x));
+    const ei = bi < 0 ? -1 : masked.indexOf(endMark(x), bi);
+    if (ei >= 0) masked = masked.slice(0, bi) + masked.slice(bi, ei).replace(/[^\n]/g, ' ') + masked.slice(ei);
+  }
+  const m = new RegExp(`^## ${d.title}[ \\t]*$`, 'm').exec(masked);
   if (!m) return;
-  const next = /^## /m.exec(b.slice(m.index + m[0].length + 1));
+  const next = /^## /m.exec(masked.slice(m.index + m[0].length + 1));
   const end = next ? m.index + m[0].length + 1 + next.index : b.length;
   const inStart = Math.min(b.length, m.index + m[0].length + 1);
   return { start: m.index, end, inStart, inEnd: end, inner: b.slice(inStart, end).replace(/^\n+/, '').replace(/\s+$/, ''), legacy: true };
@@ -550,7 +557,9 @@ export function patchTask(text: string, patch: TaskPatch, now?: Date): string {
         out.splice(lastItem < 0 ? out.length : lastItem + 1, 0, want[kw]);
         lastItem = lastItem < 0 ? out.length - 1 : lastItem + 1;
       }
-      body = fillBlock(body, blk, d, out.join('\n'));
+      // like the CLI, lines that are not items end up after the items when an item was removed
+      const final = want.length < oldTexts.length ? [...out.filter((l) => AC_LINE.test(l.trimEnd())), ...out.filter((l) => !AC_LINE.test(l.trimEnd()))] : out;
+      body = fillBlock(body, blk, d, final.join('\n'));
     } else body = insertBlock(body, d, blockText(d, want.join('\n')));
     changedBody = true;
   }

@@ -33,6 +33,7 @@ export function registerKanbanLogic(store: Store) {
   store.addLayout(layoutRule);
   store.duplicateRules.push(duplicateRule);
   store.exportFilters.push(shapeExport);
+  store.deleteGuards.push((n) => (isTask(n) ? 'kept a task card: tasks are removed in the files (the backlog CLI, archive), the card follows' : undefined));
   store.unlisted.push((n) => isTask(n)); // the task nodes are many: the kanban.board view lists them
 }
 

@@ -264,7 +264,7 @@ describe('hand-written bodies', () => {
     const added = patchTask(HAND_AC, { ac: [...t.ac, { text: 'fourth', done: false }] }, NOW);
     expect(added).toContain('  continuation note\n- [x] #3 third\n- [ ] #4 fourth\n<!-- AC:END -->');
     const removed = patchTask(HAND_AC, { ac: t.ac.slice(1) }, NOW);
-    expect(removed).toContain('- [ ] #1 second thing\n  continuation note\n- [x] #2 third');
+    expect(removed).toContain('- [ ] #1 second thing\n- [x] #2 third\n  continuation note');
     const middle = patchTask(HAND_AC, { ac: [t.ac[0], t.ac[2]] }, NOW);
     expect(middle).toContain('- [ ] #1 first thing');
     expect(middle).toContain('- [x] #2 third');
@@ -294,5 +294,17 @@ describe('hand-written bodies', () => {
     const out = patchTask(dod, { ac: [{ text: 'x', done: false }] }, NOW);
     expect(out.indexOf('AC:BEGIN')).toBeLessThan(out.indexOf('DOD:BEGIN'));
     expect(out).toContain('<!-- DOD:END -->');
+  });
+});
+
+describe('headings inside a marked block', () => {
+  const QUOTED = CLI_TASK.replace('Does the thing', 'Does the thing\n\n## Implementation Notes\nQuoted from the old doc.');
+  it('are the block\'s text, not sections: nothing is nested by an AC edit', () => {
+    const t = parseTask(QUOTED)!;
+    expect(t.description).toContain('Quoted from the old doc.');
+    expect(t.notes).toBe('n1');
+    const out = patchTask(QUOTED, { ac: [{ text: 'one', done: true }, { text: 'two', done: false }] }, NOW);
+    expect(out.match(/NOTES:BEGIN/g)).toHaveLength(1);
+    expect(out.replace(/updated_date: .*\n/, '').replace('- [x] #1 one', '- [ ] #1 one')).toBe(QUOTED);
   });
 });

@@ -150,10 +150,16 @@ export function registerCoreCommands(store: Store) {
       for (const c of doc.children(id)) walk(c.id);
       for (const r of doc.riders(id)) walk(r.id);
     };
-    for (const n of pick(doc, a?.ids)) walk(n.id);
+    const kept: string[] = [];
+    for (const n of pick(doc, a?.ids)) {
+      const why = store.deleteGuards.map((g) => g(n, doc)).find(Boolean);
+      if (why) kept.push(why);
+      else walk(n.id);
+    }
     // edge ids (a picked arrow) go too
     const edges = isIds(a?.ids) ? a.ids.filter((id) => doc.edge(id)) : [];
-    return [...[...out].map((id): Change => ({ op: 'del', id })), ...edges.map((id): Change => ({ op: 'unedge', id }))];
+    const changes = [...[...out].map((id): Change => ({ op: 'del', id })), ...edges.map((id): Change => ({ op: 'unedge', id }))];
+    return kept.length ? { changes, events: [...new Set(kept)].map((text) => ({ type: 'core.kept', text })) } : changes;
   }, spec('delete'));
   /** Deletes arrows only (ids that are not arrows are refused). */
   store.register('core.unedge', (doc, a: { ids: string[] }) => {

@@ -144,7 +144,19 @@ export function pullChanges(doc: DocView, boardId: string, info: SourceInfo, car
   if (!bf.state?.live || bf.state.error) out.changes.push(ns(b.id, 'state', { live: true }));
 
   const nodes = tasksOf(doc, boardId);
-  const byId = new Map(nodes.filter((n) => !task(n).pending && task(n).taskId).map((n) => [task(n).taskId!.toUpperCase(), n]));
+  // one node per task: a second one (an undo that restored a deleted card, a merge) is never written from, so it goes
+  const byId = new Map<string, CanvasNode>();
+  for (const n of nodes.filter((x) => !task(x).pending && task(x).taskId)) {
+    const key = task(n).taskId!.toUpperCase();
+    const have = byId.get(key);
+    if (!have) byId.set(key, n);
+    else {
+      const keep = !task(have).base && task(n).base ? n : have;
+      const drop = keep === n ? have : n;
+      byId.set(key, keep);
+      out.changes.push({ op: 'del', id: drop.id });
+    }
+  }
   const seen = new Set<string>();
   const say = (spec: EventSpec) => !quiet && out.events.push({ ...spec, actor: TRACKER_ACTOR });
 
@@ -228,8 +240,6 @@ export class KanbanSync {
   cycles = 0;
   /** Last error told to the board (so it is told once). */
   private told: string | undefined;
-  /** Task nodes as of the last cycle: one that vanishes without the sync removing it (a viewer's Delete) is brought back by a pull. */
-  private known = new Set<string>();
 
   constructor(
     private host: SyncHost,
@@ -267,8 +277,7 @@ export class KanbanSync {
     if (this.stopped || !this.firstDone) return;
     const doc = this.host.doc();
     const nodes = tasksOf(doc, this.boardId);
-    const lost = [...this.known].some((id) => !doc.get(id));
-    if (!lost && !nodes.some((n) => task(n).pending || outboxOf(task(n)).length || dirtyFields(task(n)).length)) return;
+    if (!nodes.some((n) => task(n).pending || outboxOf(task(n)).length || dirtyFields(task(n)).length)) return;
     clearTimeout(this.pushTimer);
     // pull first: an outside edit of the same field since the last read wins (a full cycle)
     this.pushTimer = setTimeout(() => void this.cycle(), this.opts.pushDelayMs ?? 150);
@@ -281,7 +290,6 @@ export class KanbanSync {
       try {
         await this.pull();
         await this.push();
-        this.remember();
         this.cycles++;
       } catch (e) {
         this.fail(e);
@@ -289,10 +297,6 @@ export class KanbanSync {
     });
     this.queue = run;
     return run;
-  }
-
-  private remember() {
-    this.known = new Set(tasksOf(this.host.doc(), this.boardId).map((n) => n.id));
   }
 
   private now() {
@@ -346,7 +350,7 @@ export class KanbanSync {
         await this.writeFields(dirty);
         continue;
       }
-      const mailed = nodes.find((n) => outboxOf(task(n)).length);
+      const mailed = nodes.find((n) => task(n).taskId && outboxOf(task(n)).length);
       if (mailed) {
         await this.sendComment(mailed);
         continue;

@@ -9,12 +9,6 @@ import { NOW, addBoard, kanbanStore, resetCounter, stampDaysAgo, taskField } fro
 import { BOARD } from './testkit';
 import { FIELD } from './model';
 
-const until = async (cond: () => boolean, ms = 2000) => {
-  const end = Date.now() + ms;
-  while (!cond() && Date.now() < end) await new Promise((r) => setTimeout(r, 10));
-  expect(cond()).toBe(true);
-};
-
 beforeEach(() => {
   resetCounter();
   clock.now = () => NOW;
@@ -339,20 +333,31 @@ describe('comments', () => {
   });
 });
 
-describe('a deleted card (Delete key, core.delete)', () => {
-  it('comes back from the file on the next cycle; the task itself is untouched', async () => {
-    const s = kanbanStore();
-    addBoard(s, { state: undefined });
-    const source = new MemSource(MemSource.info(), cards());
-    const sync = new KanbanSync(hostOf(s), 'b1', source, { pushDelayMs: 5 }).start();
-    await sync.idle();
-    const t = tasksOf(s.doc, 'b1').find((x) => task(x).taskId === 'TASK-2')!;
-    s.dispatch('core.delete', { ids: [t.id] });
-    expect(tasksOf(s.doc, 'b1').some((x) => task(x).taskId === 'TASK-2')).toBe(false);
-    await until(() => tasksOf(s.doc, 'b1').some((x) => task(x).taskId === 'TASK-2'));
-    expect(await source.read('TASK-2')).toBeTruthy();
+describe('a card the viewer tries to delete', () => {
+  it('stays: core.delete refuses a task card (it says so in the log) and still deletes the board with its cards', async () => {
+    const { s, byId, events } = await setup();
+    const id = byId('TASK-2').id;
+    const r = s.dispatch('core.delete', { ids: [id] });
+    expect(r.ok).toBe(true);
+    expect(s.doc.get(id)).toBeDefined();
+    expect(events().at(-1)!.text).toMatch(/kept a task card/);
+    s.dispatch('core.delete', { ids: ['b1'] });
+    expect(s.doc.get(id)).toBeUndefined();
+  });
+
+  it('two nodes for one task collapse to the one with the base; the stale copy is never written from', async () => {
+    const { s, source, sync, byId } = await setup();
+    const keep = byId('TASK-2').id;
+    const node = JSON.parse(JSON.stringify(s.doc.get(keep)));
+    node.id = 'stale';
+    const { base: _b, ...rest } = node['x-kanban'];
+    node['x-kanban'] = { ...rest, title: 'Stale title' };
+    s.apply([{ op: 'add', node }]);
+    await sync.cycle();
+    expect(s.doc.get('stale')).toBeUndefined();
+    expect(s.doc.get(keep)).toBeDefined();
     expect(source.writes).toBe(0);
-    sync.stop();
+    expect((await source.read('TASK-2'))!.title).toBe('Two');
   });
 });
 

@@ -153,6 +153,8 @@ export class Store {
    * guarded node. An undo whose top step changed only guarded nodes skips that step and goes on to
    * the one below; `core.reset` is always undone whole.
    */
+  /** Nodes a plugin does not let a plain delete remove (they go with their container): the reason, shown in the log. */
+  readonly deleteGuards: ((n: CanvasNode, doc: DocView) => string | undefined)[] = [];
   readonly undoGuards: ((id: string, doc: DocView) => string | undefined)[] = [];
   /** Told why an undo/redo was refused (the app shows it). */
   onUndoRefused?: (reason: string) => void;
