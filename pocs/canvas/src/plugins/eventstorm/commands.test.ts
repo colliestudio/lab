@@ -327,6 +327,34 @@ describe('event storm: agent placement, move, attach', () => {
     expect(order(s, b)).toEqual(Array.from({ length: 12 }, (_, i) => `E${i}`));
   });
 
+  it('a loose sticky parked by default stays on the board after a re-pack', () => {
+    const { s, b } = withBoard();
+    for (let i = 0; i < 6; i++) add(s, b, 'event', { text: `E${i}` });
+    const h = add(s, b, 'hotspot', { text: 'Q?' });
+    for (const re of [() => s.dispatch('storm.phase', { board: b, phase: 'timeline' }), () => s.dispatch('storm.tidy', { board: b })]) {
+      re();
+      const B = s.doc.get(b)!;
+      const H = s.doc.get(h)!;
+      expect(s.doc.carrierOf(h)).toBe(b);
+      expect(H.x + H.width).toBeLessThanOrEqual(B.x + B.width);
+      expect(eventsOn(s.doc, b).every((e) => e.x + e.width <= H.x || H.x + H.width <= e.x)).toBe(true);
+    }
+  });
+
+  it('move in explore makes room instead of stacking on a neighbour', () => {
+    const { s, b } = withBoard();
+    const [a, bb, c] = ['A', 'B', 'C'].map((t) => add(s, b, 'event', { text: t }));
+    s.dispatch('storm.move', { id: c, after: a });
+    expect(order(s, b)).toEqual(['A', 'C', 'B']);
+    s.dispatch('storm.move', { id: bb, first: true });
+    expect(order(s, b)).toEqual(['B', 'A', 'C']);
+    s.dispatch('storm.move', { id: bb, before: c });
+    expect(order(s, b)).toEqual(['A', 'B', 'C']);
+    const xs = eventsOn(s.doc, b).map((e) => e.x);
+    expect(new Set(xs).size).toBe(3);
+    expect(a).toBeTruthy();
+  });
+
   it('lane picks the swimlane; after + lane keeps the order and changes the lane', () => {
     const { s, b } = withBoard(['Customer', 'Shop', 'Warehouse']);
     s.dispatch('storm.phase', { board: b, phase: 'timeline' });

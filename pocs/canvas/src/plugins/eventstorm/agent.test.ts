@@ -62,6 +62,8 @@ describe('event storm through the bridge', () => {
     expect(error(h, 'storm.move', { id: cmd, first: true })).toMatch(/storm\.attach/);
     expect(error(h, 'storm.move', { id: 'Order placed' })).toMatch(/one of after, before, first or lane/);
     expect(error(h, 'storm.attach', { id: 'Order placed', on: 'Order placed' })).toMatch(/domain event/);
+    const q = (run(h, 'storm.add', { kind: 'hotspot', text: 'Q?' }) as any).result.id;
+    expect(error(h, 'storm.add', { kind: 'event', text: 'e', after: q })).toMatch(/not on an event; give an event/);
     run(h, 'storm.dots', { dots: 1 });
     expect(run(h, 'storm.vote', { id: 'Order placed' }).ok).toBe(true);
     expect(error(h, 'storm.vote', { id: 'Order placed' })).toMatch(/no votes left on this board \(1 each\)/);

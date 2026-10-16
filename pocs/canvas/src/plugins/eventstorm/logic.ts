@@ -5,6 +5,7 @@ import { boardOf, boardsIn, commands, eventsOn, repair, resetAll, votesCast } fr
 import { flowOf, flowText } from './flow';
 import {
   KINDS,
+  KIND_ORDER,
   MIN_W,
   board as boardF,
   boardHeight,
@@ -30,8 +31,7 @@ import type { PluginLogic } from '../logic';
 // as the call's error); the commands keep the store contract (bad args do nothing), so the UI,
 // which dispatches without prechecks, is unchanged.
 
-const KIND_LIST = ['event', 'hotspot', 'command', 'actor', 'policy', 'read', 'external', 'aggregate'] as const;
-const KIND = z.enum(KIND_LIST);
+const KIND = z.enum(KIND_ORDER);
 const PHASE = z.enum(['explore', 'timeline', 'process', 'aggregates']);
 const board_ = z.optional(nodeRef('event storm board (id or label); default: the only board'));
 const ref = (what: string) => nodeRef(`${what} (id or its text)`);
@@ -45,7 +45,7 @@ const boardName = (b: CanvasNode) => `${nameOf(b)} (${b.id})`;
 function stormBoard(doc: DocView, ref?: string, ...stickyRefs: (string | undefined)[]): CanvasNode {
   const named = ref ? doc.get(ref) : undefined;
   if (named && boardsIn(doc).some((b) => b.id === named.id)) return named;
-  if (ref) throw new Error(`board: ${nameOf(named ?? ({ id: ref } as CanvasNode))} is not an event storm board. Boards: ${boardsIn(doc).map(boardName).join(', ') || 'none'}`);
+  if (ref) throw new Error(`board: ${named ? nameOf(named) : ref} is not an event storm board. Boards: ${boardsIn(doc).map(boardName).join(', ') || 'none'}`);
   for (const r of stickyRefs) {
     const b = r ? boardOf(doc, doc.get(r)) : undefined;
     if (b) return b;
@@ -121,7 +121,7 @@ export const specs: Record<string, CommandSpec> = {
       board: board_,
       after: z.optional(ref('place the event right after this one')),
       on: z.optional(ref('the event this sticky belongs to (not for events)')),
-      lane: z.optional(z.string().check(z.meta({ description: 'swimlane name; default: after/on keeps the event\'s lane, else the first' }))),
+      lane: z.optional(z.string().check(z.meta({ description: 'swimlane name; for events (after keeps the lane unless given); ignored with on, which follows the event\'s lane; default the first' }))),
       x: z.optional(z.number().check(z.meta({ description: 'canvas position (rarely needed)' }))),
       y: z.optional(z.number()),
     }),
@@ -140,7 +140,8 @@ export const specs: Record<string, CommandSpec> = {
         sameBoard(doc, b, a.on, 'on');
       }
       if (a.after) {
-        mustSticky(doc, a.after, 'after');
+        const t = mustSticky(doc, a.after, 'after');
+        if (a.kind === 'event' && !isEvent(t) && !(sticky(t).on && isEvent(doc.get(sticky(t).on!)))) throw new Error(`after: ${nameOf(t)} is a ${KINDS[kindOf(t)].name.toLowerCase()} not on an event; give an event`);
         sameBoard(doc, b, a.after, 'after');
       }
       return { board: b.id, kind: a.kind, text: a.text, after: a.after, on: a.on, lane: a.lane === undefined ? undefined : laneIndex(b, a.lane), x: a.x, y: a.y, by: actorAuthor(ctx) };

@@ -96,7 +96,7 @@ export function stickiesOn(doc: DocView, boardId: string): CanvasNode[] {
  * timeline: slot by slot, each in the middle row of the lane it's in), attached stickies stacked in
  * rows above / below their event, centered on it. Returns position changes and the board's width.
  */
-export function packPlan(b: CanvasNode, events: CanvasNode[], attached: (id: string) => CanvasNode[], enforce: boolean): Change[] {
+export function packPlan(b: CanvasNode, events: CanvasNode[], attached: (id: string) => CanvasNode[], enforce: boolean, loose: CanvasNode[] = []): Change[] {
   const out: Change[] = [];
   const move = (n: CanvasNode, x: number, y: number) => {
     x = Math.round(x);
@@ -121,11 +121,15 @@ export function packPlan(b: CanvasNode, events: CanvasNode[], attached: (id: str
     }
   });
   if (enforce) {
-    const w = Math.max(MIN_W, 2 * PAD + evs.length * COL);
+    // loose stickies (a hotspot parked right of the last event) stay inside the board
+    const w = Math.max(MIN_W, 2 * PAD + evs.length * COL, ...loose.map((n) => n.x + n.width + PAD - b.x));
     if (b.width !== w) out.push(set(b.id, 'width', w));
   }
   return out;
 }
+
+/** Stickies on a board that are neither events nor attached to one. */
+const looseOn = (doc: DocView, b: CanvasNode) => doc.riders(b.id).filter((n) => isSticky(n) && !isEvent(n) && !sticky(n).on);
 
 /** Re-pack a board as it is now. */
 export function packBoard(doc: DocView, b: CanvasNode, extra: { add?: CanvasNode } = {}): Change[] {
@@ -137,7 +141,9 @@ export function packBoard(doc: DocView, b: CanvasNode, extra: { add?: CanvasNode
     if (a && !isEvent(a) && sticky(a).on === id) l.push(a);
     return l;
   };
-  return packPlan(b, events, attached, enforcesTimeline(phaseOf(b)));
+  const loose = looseOn(doc, b);
+  if (a && !isEvent(a) && !sticky(a).on) loose.push(a);
+  return packPlan(b, events, attached, enforcesTimeline(phaseOf(b)), loose);
 }
 
 /** Apply `changes` to a node list (for a plan that must see a new node's final spot). */
@@ -244,17 +250,30 @@ export const move: Command<{ id: string; after?: string; before?: string; first?
   if ((a.after !== undefined && !after) || (a.before !== undefined && !before) || (a.lane !== undefined && lane === undefined)) return [];
   if (!after && !before && !a.first && lane === undefined) return [];
   const enforce = enforcesTimeline(phaseOf(b));
+  const others = eventsOn(doc, b.id).filter((e) => e.id !== ev.id);
   let x = ev.x;
-  if (after) x = after.x + (enforce ? COL / 2 + 1 : COL);
-  else if (before) x = before.x - (enforce ? COL / 2 + 1 : COL);
-  else if (a.first) x = slotX(b, 0) - (enforce ? COL / 2 + 1 : COL);
+  // explore keeps positions as they are, so make room: events at or right of the target spot step right
+  let from: number | undefined;
+  if (enforce) {
+    if (after) x = after.x + COL / 2 + 1;
+    else if (before) x = before.x - COL / 2 - 1;
+    else if (a.first) x = slotX(b, 0) - COL / 2 - 1;
+  } else {
+    if (after) from = x = after.x + COL;
+    else if (before) from = x = before.x;
+    else if (a.first) from = x = Math.min(slotX(b, 0), ...others.map((e) => e.x));
+  }
   const moved: CanvasNode = { ...ev, x, y: lane !== undefined ? eventY(b, lane) : ev.y };
-  const events = eventsOn(doc, b.id).map((e) => (e.id === ev.id ? moved : e));
-  const pack = packPlan(b, events, (id) => attachedTo(doc, id), enforce);
-  const final = placed(moved, pack);
-  const changes: Change[] = pack.filter((c) => c.op !== 'set' || c.id !== ev.id);
-  if (final.x !== ev.x) changes.unshift(set(ev.id, 'x', final.x));
-  if (final.y !== ev.y) changes.unshift(set(ev.id, 'y', final.y));
+  const events = [...others.map((e) => (from !== undefined && e.x >= from ? { ...e, x: e.x + COL } : e)), moved];
+  const pack = packPlan(b, events, (id) => attachedTo(doc, id), enforce, looseOn(doc, b));
+  const changes: Change[] = pack.filter((c) => c.op !== 'set' || !events.some((e) => e.id === c.id));
+  const origin = new Map(eventsOn(doc, b.id).map((e) => [e.id, e]));
+  for (const e of events) {
+    const final = placed(e, pack);
+    const was = origin.get(e.id)!;
+    if (final.y !== was.y) changes.unshift(set(e.id, 'y', final.y));
+    if (final.x !== was.x) changes.unshift(set(e.id, 'x', final.x));
+  }
   if (!changes.length) return [];
   return { changes, events: [{ type: 'storm.move', text: `moved ${quote(ev)}`, targets: [ev.id] }] };
 };
@@ -270,7 +289,7 @@ export const attach: Command<{ id: string; on: string }> = (doc, a) => {
   const view = (n: CanvasNode): CanvasNode => (n.id === s.id ? { ...n, [FIELD]: { ...sticky(n), on: ev.id } } : n);
   const all = doc.nodes.filter(isSticky).map(view);
   const attached = (id: string) => all.filter((n) => !isEvent(n) && sticky(n).on === id);
-  const changes: Change[] = [set(s.id, S('on'), ev.id), ...packPlan(b, eventsOn(doc, b.id), attached, enforcesTimeline(phaseOf(b)))];
+  const changes: Change[] = [set(s.id, S('on'), ev.id), ...packPlan(b, eventsOn(doc, b.id), attached, enforcesTimeline(phaseOf(b)), looseOn(doc, b))];
   return { changes, events: [{ type: 'storm.attach', text: `put ${quote(s)} on ${quote(ev)}`, targets: [s.id] }] };
 };
 
@@ -324,7 +343,7 @@ export const settle: Command<{ ids: string[] }> = (doc, a) => {
   for (const b of boards.values()) {
     const evs = eventsOn(doc, b.id);
     const attached = (id: string) => all.filter((s) => !isEvent(s) && sticky(s).on === id);
-    changes.push(...packPlan(b, evs, attached, enforcesTimeline(phaseOf(b))));
+    changes.push(...packPlan(b, evs, attached, enforcesTimeline(phaseOf(b)), looseOn(doc, b)));
   }
   return changes;
 };
