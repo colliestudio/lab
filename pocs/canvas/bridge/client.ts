@@ -42,11 +42,15 @@ export interface Client extends AgentApi {
 
 const qs = (o: Record<string, string | undefined>) => new URLSearchParams(Object.entries(o).filter((e): e is [string, string] => e[1] !== undefined));
 
-export function client(opts: { url?: string; as?: string; kind?: 'agent' | 'tool' } = {}): Client {
+/** Replaces the HTTP hop: `path` is what would follow the base URL; resolves with the reply text. */
+export type Send = (path: string, init?: { body: unknown }) => Promise<string>;
+
+export function client(opts: { url?: string; as?: string; kind?: 'agent' | 'tool'; send?: Send } = {}): Client {
   const base = (opts.url ?? process.env.CANVAS_BRIDGE ?? 'http://localhost:5222').replace(/\/+$/, '');
   const as = opts.as ?? process.env.CANVAS_AS ?? 'Claude';
   const kind = opts.kind ?? 'agent';
-  const req = async (path: string, init?: { body: unknown }) => {
+  const req: Send = async (path, init) => {
+    if (opts.send) return opts.send(path, init);
     let res: Response;
     try {
       res = await fetch(base + path, init ? { method: 'POST', body: JSON.stringify(init.body), headers: { 'content-type': 'application/json' } } : undefined);

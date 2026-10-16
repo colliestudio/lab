@@ -45,6 +45,20 @@ describe('guard', () => {
   });
 });
 
+describe('guard: methods without a JSON body', () => {
+  const g = makeGuard({ port: 5285 });
+  it('lets a DELETE through without a content type (an MCP session close); every other body method still needs JSON', () => {
+    expect(g.check({ host: 'localhost:5285' }, 'DELETE')).toBeUndefined();
+    expect(g.check({ host: 'localhost:5285' }, 'PUT')).toMatch(/json/);
+    expect(g.check({ host: 'localhost:5285', 'content-type': 'text/plain' }, 'PATCH')).toMatch(/json/);
+    expect(g.check({ host: 'localhost:5285', 'content-type': 'text/plain' }, 'POST')).toMatch(/json/);
+  });
+  it('still checks Host and Origin on a DELETE', () => {
+    expect(g.check({ host: 'evil.example' }, 'DELETE')).toMatch(/Host/);
+    expect(g.check({ host: 'localhost:5285', origin: 'https://evil.example' }, 'DELETE')).toMatch(/Origin/);
+  });
+});
+
 describe('guard with a pairing token', () => {
   const g = makeGuard({ port: 5285, allowOrigins: ['https://canvas.lab.collie.studio'], token: 'sekret-token' });
   const origin = 'https://canvas.lab.collie.studio';

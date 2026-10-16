@@ -5,6 +5,7 @@ import { registerCoreCommands } from '../../core/commands';
 import { registerChessLogic } from '../chess';
 import { isBoard, isPiece } from '../chess/model';
 import { cameraFor, lerpCam } from './camera';
+import { freeSpot } from './commands';
 import { buildChessRoom, indexNodes } from './demo';
 import { freezeMembership, registerFramesLogic, thawMembership } from './index';
 import { frameAt, isFrame, isPortal, memberships, orderedFrames, outline, portalRoom, slides } from './model';
@@ -96,6 +97,41 @@ describe('commands', () => {
     expect(s.doc.carrierOf(piece.id)).toBe(boardId); // the board's rule comes first
     s.dispatch('core.move', { ids: ['f'], dx: 100, dy: 0 });
     expect(s.doc.get(piece.id)!.x).toBe(piece.x + 100);
+  });
+  it('include grows a frame around nodes right of it, never shrinks, keeps the title margin; one undo step', () => {
+    const s = store([frame('f', 0, 0, 400, 300, { z: -1 }), box('in', 50, 80, 40, 40), box('a', 600, 100, 100, 50), box('b', 800, 200, 100, 50)]);
+    const r = s.dispatch('frames.include', { id: 'f', nodes: ['a', 'b'] });
+    expect(r.ok).toBe(true);
+    expect(s.doc.get('f')).toMatchObject({ x: 0, y: 0, width: 940, height: 300 });
+    expect(s.doc.riders('f').map((n) => n.id).sort()).toEqual(['a', 'b', 'in']);
+    expect(frameAt(s.doc.get('a')!, s.doc.nodes)).toBe('f');
+    // already inside: nothing changes; a node above the frame grows it upward by the title room
+    expect(s.dispatch('frames.include', { id: 'f', nodes: ['in'] }).changes).toEqual([]);
+    s.dispatch('core.add', { nodes: [box('top', 100, -200, 60, 60)] });
+    s.dispatch('frames.include', { id: 'f', nodes: ['top'] });
+    expect(s.doc.get('f')).toMatchObject({ x: 0, y: -200 - 40 - 36, height: 300 + 276 });
+    s.undo();
+    expect(s.doc.get('f')).toMatchObject({ y: 0, height: 300 });
+  });
+  it('include moving the frame keeps the presentation order', () => {
+    const s = store([frame('a', 0, 0, 300, 300), frame('b', 1000, 0, 300, 300), box('n', 2000, 0, 50, 50)]);
+    s.dispatch('frames.include', { id: 'b', nodes: ['n'] });
+    s.dispatch('core.add', { nodes: [box('w', -900, 600, 50, 50)] });
+    s.dispatch('frames.include', { id: 'b', nodes: ['w'] });
+    expect(s.doc.get('b')!.x).toBeLessThan(0);
+    expect(orderedFrames(s.doc).map((f) => f.id)).toEqual(['a', 'b']);
+  });
+  it('include does nothing for a non-frame, the frame itself, no nodes, unknown nodes', () => {
+    const s = store([frame('f', 0, 0, 100, 100), box('a', 500, 0, 50, 50)]);
+    expect(s.dispatch('frames.include', { id: 'a', nodes: ['f'] }).changes).toEqual([]);
+    expect(s.dispatch('frames.include', { id: 'f', nodes: ['f'] }).changes).toEqual([]);
+    expect(s.dispatch('frames.include', { id: 'f', nodes: [] }).changes).toEqual([]);
+    expect(s.dispatch('frames.include', { id: 'f', nodes: ['nope'] }).changes).toEqual([]);
+    expect(s.dispatch('frames.include', { id: 'zzz', nodes: ['a'] }).changes).toEqual([]);
+  });
+  it('freeSpot: right of everything, top-aligned; centred on an empty canvas', () => {
+    expect(freeSpot(store().doc, 200, 100)).toEqual({ x: -100, y: -50 });
+    expect(freeSpot(store([box('a', 10, 20, 100, 50), box('b', 300, -40, 100, 50)]).doc, 200, 100)).toEqual({ x: 480, y: -40 });
   });
   it('delete takes the contents; unframe keeps them', () => {
     const s = store([frame('f', 0, 0, 500, 500), box('a', 10, 50, 10, 10)]);

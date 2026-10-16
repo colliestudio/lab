@@ -18,4 +18,8 @@ describe('baseline boards', () => {
   it('proto: Play can click through the arrows; the in-page links are dead (href, no data-goto)', () => {
     expect(verdict('proto')).toEqual({ pages: true, titles: true, html: true, navigation: true, 'in-page-links': false });
   });
+  it('arch (2026-10-16, poc 0db45e0): the agent drew a complete diagram as one Excalidraw scene; graded 0/5 because it has no diagram shapes and no Canvas frame', () => {
+    expect(JOBS.arch.grade(board('arch')).find((c) => c.id === 'components')!.detail).toBe('drew in Excalidraw (1 scene), not diagram shapes');
+    expect(verdict('arch')).toEqual({ frame: false, components: false, 'in-frame': false, connected: false, labeled: false });
+  });
 });

@@ -92,14 +92,18 @@ export class Host {
 
   /** Actors idle longer than `ms` leave the table (their undo history goes with them). */
   sweep(ms: number, now = Date.now()) {
-    for (const [id, s] of this.seats) {
-      if (now - s.last < ms) continue;
-      s.awareness.setLocalState(null);
-      for (const fn of this.seatListeners) fn(s.awareness, false);
-      s.store.undoManager.destroy();
-      s.awareness.destroy(); // its check interval would keep the process (and a closed board) alive
-      this.seats.delete(id);
-    }
+    for (const s of [...this.seats.values()]) if (now - s.last >= ms) this.unseat(s.actor);
+  }
+
+  /** An actor leaves the table now: cursor gone, undo history gone (what it has read of the chat stays). */
+  unseat(actor: Actor) {
+    const s = this.seats.get(actor.id);
+    if (!s) return;
+    s.awareness.setLocalState(null);
+    for (const fn of this.seatListeners) fn(s.awareness, false);
+    s.store.undoManager.destroy();
+    s.awareness.destroy(); // its check interval would keep the process (and a closed board) alive
+    this.seats.delete(actor.id);
   }
 
   seated(): Actor[] {
@@ -189,13 +193,15 @@ export class Host {
    * Resolve when `view` gives a value (a "ready" view returns undefined until then: `chess.turn` until
    * it's the actor's move), or with undefined after `ms`. Re-checked after every doc change.
    */
-  wait(actor: Actor, name: string, args: Record<string, unknown>, ms: number): Promise<unknown> {
+  wait(actor: Actor, name: string, args: Record<string, unknown>, ms: number, signal?: AbortSignal): Promise<unknown> {
     const first = this.view(actor, name, args);
     if (first !== undefined) return Promise.resolve(first);
+    if (signal?.aborted) return Promise.resolve(undefined);
     return new Promise((resolve, reject) => {
       const done = (v: unknown, err?: Error) => {
         clearTimeout(timer);
         clearInterval(keep);
+        signal?.removeEventListener('abort', onAbort);
         this.ydoc.off('afterTransaction', check);
         if (err) reject(err);
         else resolve(v);
@@ -208,8 +214,10 @@ export class Host {
           done(undefined, e as Error);
         }
       };
+      const onAbort = () => done(undefined);
       const timer = setTimeout(() => done(undefined), ms);
       const keep = setInterval(() => this.seat(actor), 30_000); // waiting is being at the table
+      signal?.addEventListener('abort', onAbort, { once: true });
       this.ydoc.on('afterTransaction', check);
     });
   }
@@ -261,19 +269,26 @@ export class Host {
     return out;
   }
 
-  /** Resolve with new messages from others (and mark them seen), or undefined after `ms`. */
-  waitChat(actor: Actor, ms: number): Promise<ChatMessage[] | undefined> {
+  /** How many messages from others the actor has not been shown (does not move its cursor). */
+  unreadChat(actor: Actor): number {
+    return this.chatNew(actor).length;
+  }
+
+  /** Resolve with new messages from others (and mark them seen), or undefined after `ms` or when `signal` aborts (nothing is marked seen then). */
+  waitChat(actor: Actor, ms: number, signal?: AbortSignal): Promise<ChatMessage[] | undefined> {
     this.seat(actor);
     const first = this.chatNew(actor);
     if (first.length) {
       this.markSeen(actor);
       return Promise.resolve(first);
     }
+    if (signal?.aborted) return Promise.resolve(undefined);
     return new Promise((resolve) => {
       const arr = chatArray(this.ydoc);
       const done = (v?: ChatMessage[]) => {
         clearTimeout(timer);
         clearInterval(keep);
+        signal?.removeEventListener('abort', onAbort);
         arr.unobserve(check);
         resolve(v);
       };
@@ -283,8 +298,10 @@ export class Host {
         this.markSeen(actor);
         done(n);
       };
+      const onAbort = () => done(undefined);
       const timer = setTimeout(() => done(undefined), ms);
       const keep = setInterval(() => this.seat(actor), 30_000);
+      signal?.addEventListener('abort', onAbort, { once: true });
       arr.observe(check);
     });
   }

@@ -179,7 +179,7 @@ describe('pieces', () => {
     expect(dropped).toContain('CLAUDECODE');
   });
   it('parses the command line', () => {
-    expect(parseArgs(['all', '--model', 'sonnet', '--budget', '3']).jobs).toEqual(['notes', 'storm', 'proto']);
+    expect(parseArgs(['all', '--model', 'sonnet', '--budget', '3']).jobs).toEqual(['notes', 'storm', 'proto', 'arch']);
     expect(parseArgs(['--grade', '/x', '--job', 'proto'])).toMatchObject({ mode: 'grade', target: '/x', job: 'proto' });
     expect(() => parseArgs(['nope'])).toThrow(/unknown job/);
     expect(() => parseArgs([])).toThrow(/usage/);

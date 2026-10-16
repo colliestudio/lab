@@ -1,8 +1,9 @@
 import { catalog } from './catalog';
-import { client } from './client';
+import { client, type Client } from './client';
 import { cliArgs, parseArgv } from './flags';
 import { buildForms, findForm, formUsage, type Form } from './forms';
 import { chatText } from '../src/core/chat';
+import { apiBase, followChat } from './follow';
 import { PLUGIN_CLI } from '../src/plugins/cli';
 
 // canvas: edit a live canvas from the shell (agents, scripts, people). Talks to the bridge.
@@ -35,6 +36,7 @@ function help() {
   chat say TEXT [--node N]                say something in the table chat (@Name mentions; --node = about a node)
   chat read [-n 20] [--new] [--json]      last messages, or only what's new since you last looked
   chat wait [--timeout S]                 block until someone else says something (≤290 s), print it
+  chat wait --follow                      keep printing what others say, one batch per message (for a Monitor); ends if the service is gone
 
 From the plugins (arguments marked ... take the remaining words; V = a value; none clears where an argument can be cleared):
 ${lines.join('\n')}
@@ -42,6 +44,7 @@ ${PLUGIN_CLI.map((x) => `  ${x.usage}`).join('\n')}
 
   --as NAME     who you are on the board (default $CANVAS_AS or "Claude")
   --bridge URL  default $CANVAS_BRIDGE or http://localhost:5222
+  --canvas NAME a board of canvas serve instead of the bridge: URL is --bridge, else $CANVAS_SERVE, else http://localhost:5231
   --json        print JSON instead of text`;
 }
 
@@ -53,7 +56,8 @@ const argv = process.argv.slice(2);
 const { pos, flags, rest } = parseArgv(argv);
 const [command, ...params] = pos;
 const extra = PLUGIN_CLI.find((x) => x.verb.split(' ').every((w, i) => pos[i] === w));
-const c = client({ url: flags.bridge, as: flags.as ?? extra?.as, kind: extra?.kind === 'tool' ? 'tool' : 'agent' });
+// built in main(): a bad --canvas is reported like any other error
+let c: Client;
 const num = (k: string) => (flags[k] !== undefined ? Number(flags[k]) : undefined);
 const say = (line: string) => console.log(line);
 const parseJson = (s: string | undefined) => {
@@ -65,6 +69,7 @@ const parseJson = (s: string | undefined) => {
 };
 
 async function main() {
+  c = client({ url: apiBase({ bridge: flags.bridge, board: flags.canvas }), as: flags.as ?? extra?.as, kind: extra?.kind === 'tool' ? 'tool' : 'agent' });
   switch (command) {
     case undefined:
     case '--help':
@@ -159,6 +164,7 @@ async function chat(sub: string | undefined, args: string[]) {
       return show(msgs);
     }
     case 'wait': {
+      if (flags.follow) return followChat(c, (t) => console.log(t), { warn: (m) => console.error(`canvas: ${m}`) });
       const msgs = await c.chatWait(num('timeout') ?? 290);
       if (!msgs.length) throw new Error('timed out: nothing new');
       return show(msgs);

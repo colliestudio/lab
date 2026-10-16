@@ -16,6 +16,8 @@ export interface ApiRequest {
   headers: Record<string, string | undefined>;
   /** The parsed JSON body ({} when empty). Rejects on invalid JSON. */
   body(): Promise<any>;
+  /** Aborts a long wait (/wait/*, /chat/wait) without it marking anything seen. */
+  signal?: AbortSignal;
 }
 
 export interface ApiReply {
@@ -63,7 +65,7 @@ export async function boardApi(board: Board, req: ApiRequest): Promise<ApiReply>
           return v === undefined ? fail(400, `${viewMatch[2]} has nothing yet (it only has something once it is ready: wait for it)`) : ok(v);
         }
         const ms = waitMs(q);
-        const v = await host.wait(actor, viewMatch[2], args, ms);
+        const v = await host.wait(actor, viewMatch[2], args, ms, req.signal);
         return ok(v === undefined ? { waiting: true, error: `still not ready after ${ms / 1000}s; wait again` } : v);
       } catch (e) {
         return fail(400, (e as Error).message);
@@ -107,7 +109,7 @@ export async function boardApi(board: Board, req: ApiRequest): Promise<ApiReply>
     if (method === 'GET' && path === '/chat/wait') {
       const actor = actorOf({ as: q.as, kind: q.kind }, req.headers);
       const ms = waitMs(q);
-      const msgs = await host.waitChat(actor, ms);
+      const msgs = await host.waitChat(actor, ms, req.signal);
       return ok(msgs ?? { waiting: true, error: `no new messages after ${ms / 1000}s; wait again` });
     }
     if (method === 'POST' && path === '/cmd') {

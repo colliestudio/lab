@@ -1,5 +1,5 @@
 // Arguments of `server/serve.ts`:
-//   <dir> [--port N] [--host H] [--allow-origin URL]… [--idle-ms N] [--app DIR]
+//   <dir> [--port N] [--host H] [--allow-origin URL]… [--idle-ms N] [--mcp-idle-ms N] [--app DIR]
 // Also --flag=value. A flag's value is never taken for the folder, whatever the order.
 
 export interface ServeArgs {
@@ -9,12 +9,14 @@ export interface ServeArgs {
   allowOrigins: string[];
   /** Unload a board after this long unused (default 10 minutes). */
   idleMs?: number;
+  /** Close an MCP session with no request in flight for this long (default 30 minutes). */
+  mcpIdleMs?: number;
   /** The built web app to serve (default: the repo's dist). */
   app?: string;
 }
 
-const VALUE_FLAGS = new Set(['port', 'host', 'allow-origin', 'idle-ms', 'app']);
-const OPTIONS = '--port, --host, --allow-origin, --idle-ms, --app';
+const VALUE_FLAGS = new Set(['port', 'host', 'allow-origin', 'idle-ms', 'mcp-idle-ms', 'app']);
+const OPTIONS = '--port, --host, --allow-origin, --idle-ms, --mcp-idle-ms, --app';
 
 export function parseServeArgs(argv: string[]): ServeArgs {
   const out: Partial<ServeArgs> & { allowOrigins: string[] } = { allowOrigins: [] };
@@ -36,6 +38,9 @@ export function parseServeArgs(argv: string[]): ServeArgs {
       const n = Number(value);
       if (!/^\d+$/.test(value) || n > 65535) throw new Error(`--port: "${value}" is not a port`);
       out.port = n;
+    } else if (name === 'mcp-idle-ms') {
+      if (!/^\d+$/.test(value)) throw new Error(`--mcp-idle-ms: "${value}" is not a number of milliseconds`);
+      out.mcpIdleMs = Number(value);
     } else if (name === 'idle-ms') {
       if (!/^\d+$/.test(value)) throw new Error(`--idle-ms: "${value}" is not a number of milliseconds`);
       out.idleMs = Number(value);
