@@ -135,8 +135,9 @@ default_build() {
   # (runs where set -e is off: every step is chained)
   mise trust -q "$PWD/mise.toml" || return 1
   mise install -y >/dev/null || return 1
-  # full install to build, then only what serve runs on (tsx, the mcp sdk, ws, yjs, ...)
-  mise exec -- sh -c 'export CI=true; pnpm install --frozen-lockfile && pnpm build && pnpm install --prod --frozen-lockfile'
+  # full install to build, then a fresh install of only what serve runs on (tsx, the mcp sdk, ws, yjs, ...):
+  # `install --prod` over the full tree leaves the dev packages in the virtual store
+  mise exec -- sh -c 'export CI=true; pnpm install --frozen-lockfile && pnpm build && rm -rf node_modules && pnpm install --prod --frozen-lockfile'
 }
 
 cmd_release() {
