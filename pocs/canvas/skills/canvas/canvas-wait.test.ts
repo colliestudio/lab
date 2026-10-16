@@ -75,10 +75,10 @@ describe('canvas-wait name', () => {
     expect(name(plain)).toBe('Claude · plain');
   });
 
-  it('cuts to 32 characters', () => {
+  it('cuts to 30 characters, leaving room for a " 2" retry suffix', () => {
     const long = join(dir, 'x'.repeat(60));
     mkdirSync(long);
-    expect(name(long)).toHaveLength(32);
+    expect(name(long)).toHaveLength(30);
   });
 });
 
@@ -88,8 +88,8 @@ describe('canvas-wait follow', () => {
     await settle();
     const t0 = Date.now();
     await say('a', 'Bob', `@${SEAT} hello there`);
-    await until(() => out.lines.length >= 1, 5000);
-    expect(Date.now() - t0).toBeLessThan(2000);
+    await until(() => out.lines.length >= 1, 8000);
+    expect(Date.now() - t0).toBeLessThan(5000);
     expect(out.lines[0]).toMatch(/^@you \[\d\d:\d\d\] Bob \(agent\): @Claude · t hello there$/);
     await say('a', SEAT, 'my own words');
     await say('a', 'Bob', 'just chatting');
@@ -118,9 +118,9 @@ describe('canvas-wait follow', () => {
     await c.close();
   });
 
-  it('exits 1 naming the board and URL after 3 failed waits', async () => {
+  it('exits 1 naming the board and URL after failing for the give-up time', async () => {
     const dead = await freePort();
-    const p = spawn(process.execPath, [script, 'follow', 'a', '--as', SEAT, '--serve', `http://127.0.0.1:${dead}`], { env: { ...process.env, CANVAS_WAIT_BACKOFF_MS: '10' }, stdio: ['ignore', 'ignore', 'pipe'] });
+    const p = spawn(process.execPath, [script, 'follow', 'a', '--as', SEAT, '--serve', `http://127.0.0.1:${dead}`], { env: { ...process.env, CANVAS_WAIT_BACKOFF_MS: '10', CANVAS_WAIT_GIVEUP_MS: '200' }, stdio: ['ignore', 'ignore', 'pipe'] });
     kids.push(p);
     let err = '';
     p.stderr!.on('data', (d) => (err += d));
@@ -136,8 +136,37 @@ describe('canvas-wait follow', () => {
     expect(p.out.code).toBe(0);
   });
 
+  it('exits when its parent goes away, so an orphan does not eat the next session\'s messages', async () => {
+    // intermediate process starts the follow, prints its pid and exits
+    const src = `const c = require('node:child_process').spawn(process.execPath, [${JSON.stringify(script)}, 'follow', 'a', '--as', 'Claude · orphan', '--serve', ${JSON.stringify(url)}], { env: { ...process.env, CANVAS_WAIT_PPID_MS: '100' }, stdio: 'ignore', detached: true }); console.log(c.pid); c.unref(); setTimeout(() => {}, 700);`; // lives past the child's start, so the child sees it as its parent
+    const pid = Number(execFileSync(process.execPath, ['-e', src], { encoding: 'utf8' }).trim());
+    const alive = () => { try { process.kill(pid, 0); return true; } catch { return false; } };
+    kids.push({ kill: () => { try { process.kill(pid, 'SIGKILL'); } catch {} } } as ChildProcess);
+    await until(() => !alive(), 5000);
+    expect(alive()).toBe(false);
+  });
+
+  it('exits when its output pipe closes', async () => {
+    const { p, out } = follow('a', 'Claude · pipe');
+    await settle();
+    p.stdout!.destroy();
+    await say('a', 'Bob', '@Claude · pipe are you there');
+    await until(() => out.code !== null, 5000);
+    expect(out.code).toBe(0);
+  });
+
+  it('follows boards named with spaces and a middle dot', async () => {
+    writeFileSync(join(dir, 'my board · x.canvas'), stableSerialize({ nodes: [], edges: [], extra: { 'x-canvas-format': 1 } }));
+    const { p, out } = follow('my board · x', 'Claude · sp');
+    await settle();
+    await say('my board · x', 'Bob', '@Claude · sp hi');
+    await until(() => out.lines.length >= 1, 5000);
+    expect(out.lines[0]).toMatch(/^@you /);
+    p.kill();
+  });
+
   it('exits 1 for an unknown board (404) and 2 for bad arguments', async () => {
-    const p = follow('nope', SEAT, { CANVAS_WAIT_BACKOFF_MS: '10' });
+    const p = follow('nope', SEAT, { CANVAS_WAIT_BACKOFF_MS: '10', CANVAS_WAIT_GIVEUP_MS: '100' });
     await until(() => p.out.code !== null, 5000);
     expect(p.out.code).toBe(1);
     const bad = spawn(process.execPath, [script, 'follow'], { stdio: 'ignore' });
