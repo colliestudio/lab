@@ -4,6 +4,8 @@ import { makeActor, type Actor } from './host';
 import { BoardFileError, DirError, NotLocalError } from './errors';
 import type { Board } from './board';
 import type { BoardDirectory } from './directory';
+import { ShotError, parseShotArgs, describeTarget } from './shots';
+import * as Y from 'yjs';
 
 // The HTTP API of a board, as plain functions from a request to a reply: agents and tools
 // (bridge/cli.ts, bridge/mcp.ts) call it, and a transport (server/node/http.ts) carries it.
@@ -25,6 +27,12 @@ export interface ApiReply {
   json?: unknown;
   /** Sent as is, as application/json (/doc: the canonical file text). */
   raw?: string;
+}
+
+function toBase64(bytes: Uint8Array): string {
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(s);
 }
 
 const ok = (json: unknown, status = 200): ApiReply => ({ status, json });
@@ -69,6 +77,26 @@ export async function boardApi(board: Board, req: ApiRequest): Promise<ApiReply>
         return ok(v === undefined ? { waiting: true, error: `still not ready after ${ms / 1000}s; wait again` } : v);
       } catch (e) {
         return fail(400, (e as Error).message);
+      }
+    }
+    // a picture of the board as this seat sees it (PNG as base64); the provider is the process's browser
+    if (method === 'GET' && path === '/shot') {
+      const actor = actorOf({ as: q.as, kind: q.kind }, req.headers);
+      try {
+        if (!board.shots) throw new ShotError(503, 'screenshots are not available here (this server has no browser to take them with)');
+        let args: Record<string, unknown>;
+        try {
+          args = q.args ? JSON.parse(q.args) : {};
+        } catch {
+          throw new ShotError(400, 'args must be a JSON object');
+        }
+        const r = parseShotArgs(args ?? {}, host.store.doc);
+        const stateVector = toBase64(Y.encodeStateVector(host.ydoc));
+        const shot = await board.shots.shoot(board.name, actor, { ...r, stateVector });
+        return ok({ png: toBase64(shot.png), mime: 'image/png', seat: actor.id, target: describeTarget(r.target), width: shot.width, height: shot.height, ms: shot.ms, nodes: shot.nodes });
+      } catch (e) {
+        if (e instanceof ShotError) return fail(e.status, e.message);
+        throw e;
       }
     }
     // what a plugin tells agents (guides, commands with their arguments and examples, views)
@@ -130,7 +158,7 @@ export async function boardApi(board: Board, req: ApiRequest): Promise<ApiReply>
       }
       return ok({ ok: done, error: done ? undefined : `nothing to ${path.slice(1)} for ${actor.name} (each actor undoes only its own steps, while it stays seated)` });
     }
-    return fail(404, 'GET /doc /query /log /status /agent/help?plugin=&command= /view/<name>?args=JSON /wait/<name>?timeout=S /chat/read?new=1&limit=N /chat/wait?timeout=S; POST /agent/run {as,name,args} /chat/say {as,text,node} /cmd {as,name,args} (raw) /undo {as} /redo {as}');
+    return fail(404, 'GET /doc /query /log /status /shot?args=JSON /agent/help?plugin=&command= /view/<name>?args=JSON /wait/<name>?timeout=S /chat/read?new=1&limit=N /chat/wait?timeout=S; POST /agent/run {as,name,args} /chat/say {as,text,node} /cmd {as,name,args} (raw) /undo {as} /redo {as}');
   } catch (e) {
     return fail(500, (e as Error).message);
   }

@@ -377,3 +377,52 @@ describe('validName', () => {
     for (const ok of ['checkout-flow', 'Q3 plan', 'été', 'a.b']) expect(validName(ok), ok).toBeUndefined();
   });
 });
+
+describe('screenshot pages', () => {
+  /** A provider whose pages are connections to the board; drop closes them. */
+  const withShots = () => {
+    const drops: string[] = [];
+    const clients: ReturnType<typeof fakeClient>[] = [];
+    const shots = {
+      shoot: async () => {
+        throw new Error('unused');
+      },
+      drop: async (name: string) => {
+        drops.push(`${name}:${dir.loaded(name)?.connections}`);
+        const open = clients.filter((c) => !c.closed);
+        open.forEach((c) => c.disconnect());
+        return open.length;
+      },
+      close: async () => {},
+    };
+    make(undefined, { shots });
+    return { drops, clients };
+  };
+
+  it('rename and delete drop the pages first, so a warm page does not block them', async () => {
+    const { drops, clients } = withShots();
+    clients.push(fakeClient(await dir.open('a')));
+    await dir.rename('a', 'c');
+    expect(drops).toEqual(['a:1']);
+    expect(st.files.has('c')).toBe(true);
+    clients.push(fakeClient(await dir.open('b')));
+    await dir.remove('b');
+    expect(drops).toEqual(['a:1', 'b:1']);
+  });
+
+  it('a real browser still blocks a rename (409) after the pages are dropped', async () => {
+    withShots();
+    fakeClient(await dir.open('a'));
+    expect(await status(dir.rename('a', 'c'))).toBe(409);
+  });
+
+  it('closeAll and the idle sweep drop the board’s pages before unloading', async () => {
+    const { drops } = withShots();
+    await dir.open('a');
+    await dir.sweep(later());
+    expect(drops).toEqual(['a:0']);
+    await dir.open('b');
+    await dir.closeAll();
+    expect(drops).toEqual(['a:0', 'b:0']);
+  });
+});

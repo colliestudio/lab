@@ -5,6 +5,7 @@ import { stableSerialize } from './canonical';
 import { BoardFileError, DirError } from './errors';
 import type { BoardStorage } from './storage';
 import type { Log } from './transport';
+import type { ShotProvider } from './shots';
 
 export { DirError, NotLocalError } from './errors';
 
@@ -23,6 +24,8 @@ export interface DirectoryOptions {
   prefix?: boolean;
   /** Boards that never unload (bridge mode: the one board it serves). */
   pinned?: string[];
+  /** Takes screenshots; its pages are closed before a board unloads, renames or is deleted. */
+  shots?: ShotProvider;
 }
 
 export interface BoardEntry {
@@ -151,7 +154,7 @@ export class BoardDirectory {
       name = stored ?? name;
       let board: Board;
       try {
-        board = await Board.load(name, this.storage, { create: o.create, log: this.prefixed(name), seatIdleMs: this.opts.seatIdleMs });
+        board = await Board.load(name, this.storage, { create: o.create, log: this.prefixed(name), seatIdleMs: this.opts.seatIdleMs, shots: this.opts.shots });
       } catch (e) {
         if (e instanceof FormatError || e instanceof BoardFileError) this.errors.set(key, { error: e.message, at: Date.now() });
         throw e;
@@ -242,6 +245,7 @@ export class BoardDirectory {
     const b = this.boards.get(fold(name));
     if (!b) return;
     if (this.pinned.has(fold(name))) throw new DirError(409, `${name} is open (pinned)`);
+    await this.dropShots(b);
     if (b.leases > 0) {
       const sessions = b.leases - b.connections;
       const who = [b.connections ? plural(b.connections, 'browser') : '', sessions ? plural(sessions, 'session') : ''].filter(Boolean).join(' / ');
@@ -249,6 +253,15 @@ export class BoardDirectory {
     }
     this.boards.delete(fold(name));
     await b.close();
+  }
+
+  /** Close the screenshot pages of a board: their sockets must not hold it, block a rename or delete, or reconnect into a deleted board. */
+  private async dropShots(b: Board) {
+    if (!this.opts.shots) return;
+    const before = b.connections;
+    const closed = await this.opts.shots.drop(b.name);
+    const end = Date.now() + 1000;
+    while (closed > 0 && b.connections > before - closed && Date.now() < end) await new Promise((r) => setTimeout(r, 10));
   }
 
   // ------------------------------------------------------------ idle boards
@@ -261,6 +274,7 @@ export class BoardDirectory {
       await this.locked([key], async () => {
         // checked again inside the lock: a request may have taken the board since
         if (this.boards.get(key) !== b || !this.idle(b, now)) return;
+        await this.opts.shots?.drop(b.name).catch(() => 0);
         this.boards.delete(key);
         this.log(`unloading ${b.name} (idle)`);
         await b.close().catch((e) => this.log(`could not save ${b.name}: ${(e as Error).message}`));
@@ -278,6 +292,7 @@ export class BoardDirectory {
     this.timer = undefined;
     for (const [key, b] of [...this.boards]) {
       await this.locked([key], async () => {
+        await this.opts.shots?.drop(b.name).catch(() => 0);
         this.boards.delete(key);
         await b.close().catch((e) => this.log(`could not save ${b.name}: ${(e as Error).message}`));
       });

@@ -10,6 +10,7 @@ import { stableSerialize } from './canonical';
 import { BoardFileError, DirError } from './errors';
 import type { BoardStorage } from './storage';
 import type { Conn, Log } from './transport';
+import type { ShotProvider } from './shots';
 
 // One loaded board: the live document (Host) kept in step with its stored text, and the y-websocket
 // protocol over any Conn. The storage and the transport are interfaces (storage.ts, transport.ts): this
@@ -28,6 +29,8 @@ export interface BoardOptions {
   log?: Log;
   /** Seated actors idle longer than this leave the table. Default 3 minutes. */
   seatIdleMs?: number;
+  /** Takes screenshots of this board (see shots.ts); without one the board has none. */
+  shots?: ShotProvider;
 }
 
 type AwarenessChange = { added: number[]; updated: number[]; removed: number[] };
@@ -46,6 +49,7 @@ export class Board {
   lastActive = Date.now();
   readonly seatIdleMs: number;
   readonly log: Log;
+  readonly shots: ShotProvider | undefined;
   private conns = new Map<Conn, ConnState>();
   private holds = 0;
   private seatAwareness = new Set<awarenessProtocol.Awareness>();
@@ -71,6 +75,7 @@ export class Board {
   ) {
     this.log = opts.log ?? ((...m) => console.log(new Date().toISOString().slice(11, 19), ...m));
     this.seatIdleMs = opts.seatIdleMs ?? 3 * 60_000;
+    this.shots = opts.shots;
     this.awareness = new awarenessProtocol.Awareness(this.host.ydoc);
     this.awareness.setLocalState(null); // the server itself is no player
   }
