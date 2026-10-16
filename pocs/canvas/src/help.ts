@@ -58,6 +58,17 @@ export const GROUPS: [string, [string, string][]][] = [
     ],
   ],
   [
+    'Excalidraw frames',
+    [
+      ['Pencil frame tool in the dock, Add › Excalidraw frame', 'Drag a frame out on the table (or click for a default one): a titled piece of paper with the real Excalidraw inside (all its tools, shortcuts, library, Mermaid import)'],
+      ['Double-click, ↵, ✏️, or hover + R O D A T P L', 'Jump in: Excalidraw comes alive inside the frame (with that tool). Scroll and zoom inside move the drawing; the frame stays put'],
+      ['Click anywhere outside, Esc, ✓ Done', 'Jump out: the click also does what it does on the table. The frame keeps showing the drawing where you left it'],
+      ['⤢, right-click', 'Full screen; Rename…, Lock (a static picture), Fit the drawing in the frame. Drag the corner to resize'],
+      ['⌘Z on the table', 'Undoes a whole drawing session (inside the frame ⌘Z is Excalidraw’s own). Others in the room see strokes live'],
+      ['Agents', 'pnpm canvas draw new / add / box / arrow / shapes / rm / title / lock / fit (MCP: canvas_draw_*)'],
+    ],
+  ],
+  [
     'Event log',
     [
       ['', 'What players do that matters shows twice: a short note near the object in the player’s color (“Alex shuffled the deck”, the deck wiggles) and a line in the log. Moving things around isn’t logged'],
