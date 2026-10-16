@@ -2,7 +2,8 @@
 # The always-on canvas serve (launchd agent on the Mini): releases, upgrades, rollback.
 #
 #   release [ref]   tag the ref (default poc), export it to <home>/releases/<tag>, build, switch <home>/current
-#                   to it and (re)start the service. This is the whole upgrade.
+#                   to it and (re)start the service. This is the whole upgrade. If the new release does not
+#                   answer within CANVAS_SERVE_WAIT seconds, current goes back to the previous one (exit 1).
 #   rollback [tag]  switch back to the release before the current one (or the named tag) and restart
 #   install         (re)write the launchd agent for the current release and start it
 #   uninstall       stop and remove the agent; releases stay
@@ -28,6 +29,16 @@ DOMAIN="gui/$(id -u)"
 PLIST="$AGENTS/$LABEL.plist"
 
 die() { echo "serve-service: $*" >&2; exit 1; }
+
+# A scratch run must not touch the real service: the variables that say which service, repo, folder and
+# agent this is are set together or not at all.
+overridden=() unset_=()
+for v in HOME LABEL REPO DATA AGENTS; do
+  if [ -n "$(printenv "CANVAS_SERVE_$v" || true)" ]; then overridden+=("CANVAS_SERVE_$v"); else unset_+=("CANVAS_SERVE_$v"); fi
+done
+if [ "${#overridden[@]}" -gt 0 ] && [ "${#overridden[@]}" -lt 5 ]; then
+  die "set all of CANVAS_SERVE_HOME, _LABEL, _REPO, _DATA, _AGENTS (and _TAG_PREFIX, _PORT, _LOGS) or none; set: ${overridden[*]}; missing: ${unset_[*]}"
+fi
 
 loaded() { "$LAUNCHCTL" print "$DOMAIN/$LABEL" >/dev/null 2>&1; }
 
@@ -93,12 +104,13 @@ wait_unloaded() {
 
 # point current at a release, write the plist, (re)start
 activate() {
-  local tag="$1" rel node new changed=1
+  local tag="$1" nowait="${2:-}" rel node new changed=1
   rel="$(release_dir "$tag")"
   [ -f "$rel/RELEASE" ] || die "no release $tag in $SHOME/releases"
   node="$(node_of "$tag")"
   [ -n "$node" ] || die "no node path recorded for $tag"
-  ln -sfn "releases/$tag" "$SHOME/current"
+  ln -s "releases/$tag" "$SHOME/current.tmp.$$"
+  mv -fh "$SHOME/current.tmp.$$" "$SHOME/current"
   mkdir -p "$LOGS" "$AGENTS"
   new="$(mktemp "${TMPDIR:-/tmp}/canvas-serve-plist.XXXXXX")"
   render_plist "$node" >"$new"
@@ -116,7 +128,7 @@ activate() {
     "$LAUNCHCTL" bootstrap "$DOMAIN" "$PLIST"
   fi
   echo "release $tag active; http://localhost:$PORT/ ; log $LOGS/serve.log"
-  await_up "$tag"
+  [ -n "$nowait" ] || await_up "$tag"
 }
 
 # the new process answers /api/info, or say so
@@ -128,7 +140,8 @@ await_up() {
     sleep 1
   done
   tail -n 15 "$LOGS/serve.log" 2>/dev/null >&2 || true
-  die "$1 did not answer on port $PORT within ${WAIT}s (log above); roll back: bash $0 rollback"
+  echo "serve-service: $1 did not answer on port $PORT within ${WAIT}s (log above)" >&2
+  return 1
 }
 
 default_build() {
@@ -140,30 +153,51 @@ default_build() {
   mise exec -- sh -c 'export CI=true; pnpm install --frozen-lockfile && pnpm build && rm -rf node_modules && pnpm install --prod --frozen-lockfile'
 }
 
+CREATED_REL="" CREATED_TAG=""
+cleanup_release() {
+  # only what this run made, and only while it is unfinished
+  [ -n "$CREATED_REL" ] && rm -rf "$CREATED_REL"
+  [ -n "$CREATED_TAG" ] && git -C "$REPO" tag -d "$CREATED_TAG" >/dev/null 2>&1
+  return 0
+}
+
 cmd_release() {
-  local ref="${1:-$REF}" day n tag rel sha node
+  local ref="${1:-$REF}" day n tag rel sha node prev
   [ -d "$DATA" ] || die "the data folder does not exist: $DATA
 create it first: mkdir -p \"$DATA\""
   git -C "$REPO" rev-parse --verify -q "$ref^{commit}" >/dev/null || die "no such ref in $REPO: $ref"
+  prev="$(current_tag)"
   day="$(date +%Y%m%d)"
   n=1
-  while git -C "$REPO" rev-parse -q --verify "refs/tags/$PREFIX$day-$n" >/dev/null; do n=$((n + 1)); done
+  # a number is free only if neither the tag nor the release dir exists (tags can be deleted or live in another clone)
+  while git -C "$REPO" rev-parse -q --verify "refs/tags/$PREFIX$day-$n" >/dev/null || [ -e "$(release_dir "$PREFIX$day-$n")" ]; do n=$((n + 1)); done
   tag="$PREFIX$day-$n"
   rel="$(release_dir "$tag")"
+  [ ! -e "$rel" ] || die "$rel exists"
+  trap 'cleanup_release' EXIT
+  trap 'exit 130' INT TERM
   git -C "$REPO" tag "$tag" "$ref"
+  CREATED_TAG="$tag"
+  mkdir -p "$SHOME/releases"
+  mkdir "$rel"
+  CREATED_REL="$rel"
   sha="$(git -C "$REPO" rev-parse --short "$tag^{commit}")"
-  mkdir -p "$rel"
   echo "release $tag ($ref @ $sha) -> $rel"
   # RELEASE is written last: a directory without it is an unfinished build and never a rollback target
   if ! { git -C "$REPO" archive "$tag" | tar -x -C "$rel"; } ||
     ! (cd "$rel" && if [ -n "${CANVAS_SERVE_BUILD:-}" ]; then bash -c "$CANVAS_SERVE_BUILD"; else default_build; fi); then
-    rm -rf "$rel"
-    git -C "$REPO" tag -d "$tag" >/dev/null
     die "build failed; tag $tag removed, nothing switched"
   fi
-  if [ -n "${CANVAS_SERVE_NODE:-}" ]; then node="$CANVAS_SERVE_NODE"; else node="$(cd "$rel" && mise which node)"; fi
+  if [ -n "${CANVAS_SERVE_NODE:-}" ]; then node="$CANVAS_SERVE_NODE"; else node="$(cd "$rel" && mise which node)" || die "mise could not find node in $rel"; fi
   printf 'tag=%s\nref=%s\nsha=%s\ndate=%s\nnode=%s\n' "$tag" "$ref" "$(git -C "$REPO" rev-parse "$tag^{commit}")" "$(date -u +%FT%TZ)" "$node" >"$rel/RELEASE"
-  activate "$tag"
+  CREATED_REL="" CREATED_TAG="" # finished: kept from here on, whatever the start does
+  if ! activate "$tag"; then
+    if [ -n "$prev" ]; then
+      echo "serve-service: going back to $prev ($tag is kept for inspection)" >&2
+      activate "$prev" nowait >&2 || true
+    fi
+    exit 1
+  fi
 }
 
 cmd_rollback() {
@@ -180,14 +214,14 @@ cmd_rollback() {
     [ -n "$prev" ] || die "no release before $cur"
     want="$prev"
   fi
-  activate "$want"
+  activate "$want" || die "$want did not come up"
 }
 
 cmd_install() {
   local cur
   cur="$(current_tag)"
   [ -n "$cur" ] || die "no release yet: run release first"
-  activate "$cur"
+  activate "$cur" || die "$cur did not come up"
 }
 
 cmd_uninstall() {
@@ -200,7 +234,7 @@ cmd_status() {
   local cur
   cur="$(current_tag)"
   echo "current: ${cur:-none}"
-  [ -n "$cur" ] && sed -n 's/^sha=/sha: /p;s/^date=/built: /p' "$(release_dir "$cur")/RELEASE"
+  if [ -n "$cur" ] && [ -f "$(release_dir "$cur")/RELEASE" ]; then sed -n 's/^sha=/sha: /p;s/^date=/built: /p' "$(release_dir "$cur")/RELEASE"; elif [ -n "$cur" ]; then echo "current points at a missing release"; fi
   if loaded; then "$LAUNCHCTL" print "$DOMAIN/$LABEL" | grep -E '^\s*(state|pid|last exit code|runs) ' || true; else echo "launchd: $LABEL not loaded"; fi
   echo "info: $(curl -s --max-time 3 "http://localhost:$PORT/api/info" || echo 'no answer')"
   echo "data: $DATA"

@@ -32,7 +32,7 @@ beforeAll(() => {
   execFileSync('git', ['init', '-q', '-b', 'poc', repo]);
   git('add', '-A');
   execFileSync('git', ['-C', repo, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'one']);
-  mkdirSync(p('data'));
+  mkdirSync(p('Collie Canvas & <x>'));
   // loaded state lives in a file: bootstrap sets it, bootout clears it, `print` succeeds while it is set
   writeFileSync(
     p('launchctl'),
@@ -45,7 +45,7 @@ beforeAll(() => {
     CANVAS_SERVE_TAG_PREFIX: PREFIX,
     CANVAS_SERVE_HOME: p('home'),
     CANVAS_SERVE_LABEL: LABEL,
-    CANVAS_SERVE_DATA: p('data'),
+    CANVAS_SERVE_DATA: p('Collie Canvas & <x>'),
     CANVAS_SERVE_PORT: '5299',
     CANVAS_SERVE_AGENTS: p('agents'),
     CANVAS_SERVE_LOGS: p('logs'),
@@ -68,9 +68,10 @@ describe('serve-service.sh', () => {
     expect(existsSync(p('home', 'releases', tag, 'server', 'serve.ts'))).toBe(true);
     expect(target()).toBe(`releases/${tag}`);
     const plist = readFileSync(p('agents', `${LABEL}.plist`), 'utf8');
-    for (const want of [`<string>${LABEL}</string>`, '<string>/usr/bin/true</string>', '<string>server/serve.ts</string>', `<string>${p('data')}</string>`, '<string>--port</string>', '<string>5299</string>', '<string>--host-name</string>', '<string>mini.internal</string>', `<key>WorkingDirectory</key><string>${p('home', 'current')}</string>`, '<key>KeepAlive</key><true/>', '<key>RunAtLoad</key><true/>', p('logs', 'serve.log')]) {
+    for (const want of [`<string>${LABEL}</string>`, '<string>/usr/bin/true</string>', '<string>server/serve.ts</string>', `<string>${p('Collie Canvas &amp; &lt;x&gt;')}</string>`, '<string>--port</string>', '<string>5299</string>', '<string>--host-name</string>', '<string>mini.internal</string>', `<key>WorkingDirectory</key><string>${p('home', 'current')}</string>`, '<key>KeepAlive</key><true/>', '<key>RunAtLoad</key><true/>', p('logs', 'serve.log')]) {
       expect(plist).toContain(want);
     }
+    if (process.platform === 'darwin') expect(spawnSync('plutil', ['-lint', p('agents', `${LABEL}.plist`)]).status).toBe(0);
     expect(calls()).toEqual([`print gui/${uid}/${LABEL}`, `bootstrap gui/${uid} ${p('agents', `${LABEL}.plist`)}`]);
   });
 
@@ -139,5 +140,49 @@ describe('serve-service.sh', () => {
     expect(calls()).toContain(`bootout gui/${uid}/${LABEL}`);
     expect(existsSync(p('agents', `${LABEL}.plist`))).toBe(false);
     expect(readdirSync(p('home', 'releases'))).toHaveLength(2);
+  });
+
+  it('never reuses a release number whose dir exists, even when its tag is gone; a failed build leaves that dir alone', () => {
+    const first = `${PREFIX}${today()}-1`;
+    git('tag', '-d', first);
+    writeFileSync(p('home', 'releases', first, 'marker'), 'mine');
+    const cur = target();
+    const bad = spawnSync('bash', [script, 'release'], { env: { ...process.env, ...env, CANVAS_SERVE_BUILD: 'exit 3' }, encoding: 'utf8' });
+    expect(bad.status).toBe(1);
+    expect(readFileSync(p('home', 'releases', first, 'marker'), 'utf8')).toBe('mine');
+    expect(existsSync(p('home', 'releases', first, 'RELEASE'))).toBe(true);
+    expect(target()).toBe(cur);
+    expect(tags()).not.toContain(first);
+    git('tag', first, 'poc'); // put the tag back for the rest
+  });
+
+  it('a partial CANVAS_SERVE_* override is refused before anything happens', () => {
+    clear();
+    const { CANVAS_SERVE_LABEL: _l, CANVAS_SERVE_AGENTS: _a, ...partial } = env;
+    const r = spawnSync('bash', [script, 'release'], { env: { PATH: process.env.PATH!, HOME: process.env.HOME!, ...partial }, encoding: 'utf8' });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('CANVAS_SERVE_LABEL');
+    expect(calls()).toEqual([]);
+  });
+
+  it('a release that does not answer is rolled back automatically (exit 1), and kept for inspection', () => {
+    expect(sh('install').status).toBe(0);
+    clear();
+    const before = target();
+    const r = spawnSync('bash', [script, 'release'], { env: { ...process.env, ...env, CANVAS_SERVE_WAIT: '1' }, encoding: 'utf8' });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('did not answer');
+    expect(target()).toBe(before);
+    expect(calls().filter((c) => c.startsWith('kickstart')).length).toBe(2); // new release, then back
+    expect(readdirSync(p('home', 'releases')).length).toBe(3);
+  });
+
+  it('status survives a dangling current', () => {
+    const cur = target();
+    execFileSync('ln', ['-sfn', 'releases/nope', p('home', 'current')]);
+    const r = sh('status');
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('missing release');
+    execFileSync('ln', ['-sfn', cur, p('home', 'current')]);
   });
 });
