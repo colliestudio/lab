@@ -48,6 +48,8 @@ describe('initProblems', () => {
     expect(initProblems(parseStream([init(['mcp__canvas__x', 'Bash'])]).init)[0]).toMatch(/Bash/);
     expect(initProblems(parseStream([init(undefined, { plugins: [{ name: 'devteam' }] })]).init)[0]).toMatch(/devteam/);
     expect(initProblems(parseStream([init(undefined, { mcp_servers: [{ name: 'canvas', status: 'failed' }] })]).init)[0]).toMatch(/failed/);
+    expect(initProblems(parseStream([init(undefined, { skills: ['artifact', 'loop'] })]).init, ['artifact'])[0]).toMatch(/artifact/);
+    expect(initProblems(parseStream([init(undefined, { plugins: [{ name: 'b', path: 'builtin' }] })]).init)).toEqual([]);
     expect(initProblems(undefined)).toEqual(['no init event']);
   });
 });

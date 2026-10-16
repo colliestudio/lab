@@ -1,4 +1,6 @@
-import { Store, parse, type DocView } from '../src/core';
+import type { DocView } from '../src/core/doc';
+import { parse } from '../src/core/io';
+import { Store } from '../src/core/store';
 import { registerCoreCommands } from '../src/core/commands';
 import { registerPluginLogic } from '../src/plugins/logic';
 

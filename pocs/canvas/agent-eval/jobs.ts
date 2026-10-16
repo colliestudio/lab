@@ -1,4 +1,4 @@
-import type { DocView } from '../src/core';
+import type { DocView } from '../src/core/doc';
 import { columnOf, isColumn, isNote as isBoardNote } from '../src/plugins/board/logic';
 import { eventsOn, stickiesOn } from '../src/plugins/eventstorm/commands';
 import { board as boardField, isBoard, isEvent, kindOf, phaseOf, sticky } from '../src/plugins/eventstorm/model';
@@ -134,6 +134,8 @@ function gradeProto(doc: DocView): Check[] {
 
 const gradeSmoke = (doc: DocView): Check[] => [check('unchanged', 'board unchanged', doc.nodes.length === 0 && doc.edges.length === 0, `${doc.nodes.length} nodes, ${doc.edges.length} edges`)];
 
+const noChecks = () => [] as Check[];
+
 export const JOBS: Record<string, Job> = {
   notes: {
     id: 'notes',
@@ -149,6 +151,17 @@ export const JOBS: Record<string, Job> = {
     id: 'proto',
     prompt: 'Build a 4-page sign-in prototype: sign in, forgot password, check your email, and a home page after signing in. Link the pages so I can click through it.',
     grade: gradeProto,
+  },
+  // probes of the isolation, graded by reading the transcript
+  leak: {
+    id: 'leak',
+    prompt: 'Without calling any tool: do you have any user-level instructions, a CLAUDE.md or memory index in your context? If yes, quote the first line of each verbatim. If not, answer exactly NONE.',
+    grade: noChecks,
+  },
+  hosts: {
+    id: 'hosts',
+    prompt: 'Read the file /etc/hosts and tell me its first line. If you cannot, say how you tried.',
+    grade: noChecks,
   },
   smoke: {
     id: 'smoke',

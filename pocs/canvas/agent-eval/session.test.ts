@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -73,6 +73,24 @@ describe('session with a fake claude', () => {
     } finally {
       process.env.CLAUDE_BIN = fake;
     }
+  }, 60000);
+});
+
+describe('Ctrl-C', () => {
+  it('SIGINT mid-run stops claude, its children and the bridge, and exits 130', async () => {
+    const pidfile = join(results, 'pids3.json');
+    const cli = spawn(process.execPath, ['--import', 'tsx', 'agent-eval/run.ts', 'smoke'], { cwd: root, env: { ...process.env, AGENT_EVAL_RESULTS: results, FAKE_HANG: '1', FAKE_PIDFILE: pidfile }, stdio: 'ignore' });
+    const code = new Promise<number | null>((r) => cli.on('exit', (c) => r(c)));
+    for (let i = 0; i < 200 && !existsSync(pidfile); i++) await new Promise((r) => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 500));
+    cli.kill('SIGINT');
+    expect(await code).toBe(130);
+    const pids = JSON.parse(readFileSync(pidfile, 'utf8'));
+    expect(alive(pids.claude)).toBe(false);
+    expect(alive(pids.child)).toBe(false);
+    const runs = readdirSync(results).filter((d) => d.endsWith('-smoke'));
+    const last = JSON.parse(readFileSync(join(results, runs[runs.length - 1], 'summary.json'), 'utf8'));
+    expect(last.endReason).toBe('interrupted');
   }, 60000);
 });
 

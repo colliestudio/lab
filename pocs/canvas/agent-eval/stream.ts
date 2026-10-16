@@ -27,6 +27,7 @@ export interface Init {
   model?: string;
   tools: string[];
   mcp: { name: string; status: string }[];
+  /** Plugins that are not built into Claude Code (path other than "builtin"). */
   plugins: string[];
   skills: string[];
   slashCommands: string[];
@@ -89,7 +90,7 @@ export function parseStream(lines: string[]): Transcript {
         model: ev.model,
         tools: names(ev.tools),
         mcp: asArr(ev.mcp_servers).map((s) => ({ name: String(s?.name ?? ''), status: String(s?.status ?? '') })),
-        plugins: names(ev.plugins),
+        plugins: asArr(ev.plugins).filter((p) => p?.path !== 'builtin').map((p) => String(p?.name ?? p)),
         skills: names(ev.skills),
         slashCommands: names(ev.slash_commands),
         raw: ev,
@@ -142,7 +143,7 @@ export function parseStream(lines: string[]): Transcript {
 }
 
 /** Why a transcript is not a clean agent run (init guard). Empty = isolated as intended. */
-export function initProblems(init: Init | undefined): string[] {
+export function initProblems(init: Init | undefined, userSkills: string[] = []): string[] {
   if (!init) return ['no init event'];
   const out: string[] = [];
   const foreign = init.tools.filter((x) => !x.startsWith('mcp__canvas__'));
@@ -153,6 +154,8 @@ export function initProblems(init: Init | undefined): string[] {
   const others = init.mcp.filter((s) => s.name !== 'canvas');
   if (others.length) out.push(`other MCP servers: ${others.map((s) => s.name).join(', ')}`);
   if (init.plugins.length) out.push(`plugins: ${init.plugins.join(', ')}`);
+  const mine = init.skills.filter((s) => userSkills.includes(s));
+  if (mine.length) out.push(`user skills: ${mine.join(', ')}`);
   return out;
 }
 

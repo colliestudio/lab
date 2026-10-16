@@ -1,17 +1,17 @@
 import { spawn, execFileSync, type ChildProcess } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { existsSync, mkdirSync, openSync, closeSync, mkdtempSync, readFileSync, rmSync, writeFileSync, appendFileSync, createWriteStream } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, openSync, closeSync, mkdtempSync, readFileSync, rmSync, writeFileSync, appendFileSync, createWriteStream } from 'node:fs';
 import net from 'node:net';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { homedir, tmpdir } from 'node:os';
 import { loadDoc, type Check } from './grade';
 import { JOBS } from './jobs';
 import { initProblems, parseStream, transcriptMarkdown } from './stream';
 import { summarize, summaryMarkdown, type Meta, type Summary } from './summary';
 
 export const root = fileURLToPath(new URL('..', import.meta.url));
-export const RESULTS = join(root, 'agent-eval', 'results');
+export const RESULTS = process.env.AGENT_EVAL_RESULTS ?? join(root, 'agent-eval', 'results');
 
 export interface Options {
   model?: string;
@@ -37,7 +37,7 @@ export const ISOLATION: Record<string, string[]> = {
   safe: ['--safe-mode'],
   restricted: ['--restricted', '--setting-sources', ''],
 };
-export const DEFAULT_ISOLATION = 'safe';
+export const DEFAULT_ISOLATION = 'sources';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -70,6 +70,15 @@ const alive = (pid: number) => {
     return true;
   } catch {
     return false;
+  }
+};
+
+/** Names of Alex's own skills (~/.claude/skills): none may show up in a fresh agent. */
+const userSkills = () => {
+  try {
+    return readdirSync(join(homedir(), '.claude', 'skills'));
+  } catch {
+    return [];
   }
 };
 
@@ -220,7 +229,7 @@ export async function runJob(jobId: string, o: Options): Promise<Summary> {
           const init = parseStream([line]).init;
           if (init) {
             guarded = true;
-            guardProblems.push(...initProblems(init));
+            guardProblems.push(...initProblems(init, userSkills()));
             if (guardProblems.length) l.stopClaude('harness-error');
           }
         }
