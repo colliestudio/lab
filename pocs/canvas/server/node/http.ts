@@ -104,8 +104,8 @@ export function createNodeServer(o: NodeServerOptions): NodeServer {
     }
     if (socket.destroyed) return lease.release();
     wss.handleUpgrade(req, socket, head, (ws) => {
-      ws.on('close', lease.release);
-      lease.board.connect(wsConn(ws));
+      lease.board.connect(wsConn(ws)); // the connection now keeps the board loaded: the lease has done its job
+      lease.release();
     });
   }
 
