@@ -21,6 +21,7 @@ import {
   isSticky,
   kindOf,
   laneAt,
+  laneTop,
   lanesOf,
   offered,
   phaseOf,
@@ -70,6 +71,8 @@ export function boardOf(doc: DocView, n: CanvasNode | undefined): CanvasNode | u
     cur = c ? doc.get(c) : undefined;
   }
 }
+/** Every event storm board in the doc. */
+export const boardsIn = (doc: DocView): CanvasNode[] => doc.nodes.filter(isBoard);
 /** Events on a board, in timeline order (center x, then y). */
 export function eventsOn(doc: DocView, boardId: string): CanvasNode[] {
   return byTime(doc.riders(boardId).filter(isEvent));
@@ -159,9 +162,11 @@ export const createBoard: Command<{ x: number; y: number; label?: string; lanes?
 /**
  * A new sticky on `board`. Where: `after` (an event: the next slot on the timeline; another
  * sticky: the same row on the next event), `on` (attached to that event, stacked in its column),
- * else centered on (x, y). Kinds the board's phase doesn't offer are refused. Selects it.
+ * else centered on (x, y). With none of these: an event goes at the end of the timeline, any other
+ * kind in the top row right of the last event. `lane` (an index) picks the swimlane for those.
+ * Kinds the board's phase doesn't offer are refused. Selects it.
  */
-export const add: Command<{ board: string; kind: StickyKind; x?: number; y?: number; on?: string; after?: string; text?: string; by?: Author }> = (doc, a, ctx) => {
+export const add: Command<{ board: string; kind: StickyKind; x?: number; y?: number; on?: string; after?: string; lane?: number; text?: string; by?: Author }> = (doc, a, ctx) => {
   const b = boardArg(doc, a?.board);
   if (!b || !isKind(a.kind) || !offered(phaseOf(b)).includes(a.kind)) return [];
   const k = KINDS[a.kind];
@@ -188,6 +193,23 @@ export const add: Command<{ board: string; kind: StickyKind; x?: number; y?: num
       y = after.y;
     }
   } else if (target && isEvent(target) && a.kind !== 'event') on = target.id;
+  const lane = isNum(a.lane) && Number.isInteger(a.lane) ? Math.max(0, Math.min(lanesOf(b).length - 1, a.lane)) : undefined;
+  if (!isNum(a.x) && !isNum(a.y) && !after && !on) {
+    const last = eventsOn(doc, b.id).at(-1);
+    if (a.kind === 'event') {
+      if (last) {
+        x = last.x + (enforcesTimeline(phaseOf(b)) ? COL / 2 + 1 : COL);
+        y = last.y;
+      }
+    } else {
+      y = laneTop(b, lane ?? 0) + (ROW - k.h) / 2;
+      x = last ? last.x + COL : b.x + PAD;
+      // keep clear of loose stickies already in that row
+      const row = doc.riders(b.id).filter((n) => isSticky(n) && !isEvent(n) && !sticky(n).on && Math.abs(n.y - y) < ROW / 2);
+      while (row.some((n) => Math.abs(n.x - x) < COL / 2)) x += COL;
+    }
+  }
+  if (lane !== undefined && a.kind === 'event' && !isNum(a.y) && !on) y = eventY(b, lane);
   const node = stickyNode(ctx.newId(), a.kind, x, y, z, { text: okText(a.text), on, by: okAuthor(a.by) });
   if (on) {
     // a provisional spot past the far end of its column (the plan stacks it there)
@@ -199,6 +221,54 @@ export const add: Command<{ board: string; kind: StickyKind; x?: number; y?: num
   const changes: Change[] = [{ op: 'add', node: placed(node, pack) }, ...pack.filter((c) => c.op !== 'set' || c.id !== node.id)];
   const events: EventSpec[] = node.text ? [{ type: 'storm.add', text: `added ${kindName(a.kind)} ${quote(node)}`, targets: [node.id], actor: logActor(node) }] : [];
   return { changes, select: [node.id], events };
+};
+
+/**
+ * Reorder an event: right after / before another event, to the front, or into another lane (alone
+ * or together with those). Its attached stickies go with it; the pack closes the gaps.
+ */
+export const move: Command<{ id: string; after?: string; before?: string; first?: boolean; lane?: number }> = (doc, a) => {
+  const ev = stickyArg(doc, a?.id);
+  const b = boardOf(doc, ev);
+  if (!ev || !b || !isEvent(ev)) return [];
+  const anchor = (id: unknown) => {
+    const e = stickyArg(doc, id);
+    return e && isEvent(e) && e.id !== ev.id && boardOf(doc, e)?.id === b.id ? e : undefined;
+  };
+  const after = a.after !== undefined ? anchor(a.after) : undefined;
+  const before = a.before !== undefined ? anchor(a.before) : undefined;
+  const lane = isNum(a.lane) && Number.isInteger(a.lane) && a.lane >= 0 && a.lane < lanesOf(b).length ? a.lane : undefined;
+  if ((a.after !== undefined && !after) || (a.before !== undefined && !before) || (a.lane !== undefined && lane === undefined)) return [];
+  if (!after && !before && !a.first && lane === undefined) return [];
+  const enforce = enforcesTimeline(phaseOf(b));
+  let x = ev.x;
+  if (after) x = after.x + (enforce ? COL / 2 + 1 : COL);
+  else if (before) x = before.x - (enforce ? COL / 2 + 1 : COL);
+  else if (a.first) x = slotX(b, 0) - (enforce ? COL / 2 + 1 : COL);
+  const moved: CanvasNode = { ...ev, x, y: lane !== undefined ? eventY(b, lane) : ev.y };
+  const events = eventsOn(doc, b.id).map((e) => (e.id === ev.id ? moved : e));
+  const pack = packPlan(b, events, (id) => attachedTo(doc, id), enforce);
+  const final = placed(moved, pack);
+  const changes: Change[] = pack.filter((c) => c.op !== 'set' || c.id !== ev.id);
+  if (final.x !== ev.x) changes.unshift(set(ev.id, 'x', final.x));
+  if (final.y !== ev.y) changes.unshift(set(ev.id, 'y', final.y));
+  if (!changes.length) return [];
+  return { changes, events: [{ type: 'storm.move', text: `moved ${quote(ev)}`, targets: [ev.id] }] };
+};
+
+/** Put a sticky (not an event) on an event: it rides it and stacks above or below it. */
+export const attach: Command<{ id: string; on: string }> = (doc, a) => {
+  const s = stickyArg(doc, a?.id);
+  const ev = stickyArg(doc, a?.on);
+  const b = boardOf(doc, ev);
+  if (!s || !ev || !b || isEvent(s) || !isEvent(ev) || sticky(s).on === ev.id) return [];
+  const from = boardOf(doc, s);
+  if (from && from.id !== b.id) return [];
+  const view = (n: CanvasNode): CanvasNode => (n.id === s.id ? { ...n, [FIELD]: { ...sticky(n), on: ev.id } } : n);
+  const all = doc.nodes.filter(isSticky).map(view);
+  const attached = (id: string) => all.filter((n) => !isEvent(n) && sticky(n).on === id);
+  const changes: Change[] = [set(s.id, S('on'), ev.id), ...packPlan(b, eventsOn(doc, b.id), attached, enforcesTimeline(phaseOf(b)))];
+  return { changes, events: [{ type: 'storm.attach', text: `put ${quote(s)} on ${quote(ev)}`, targets: [s.id] }] };
 };
 
 /** Set a sticky's words. Logs the first words as "added …", later ones as "renamed …". */
@@ -384,4 +454,4 @@ export const resetAll: Command = (doc) => {
   return out;
 };
 
-export const commands = { createBoard, add, text, kind, settle, tidy, phase, lanes, dots, vote, timer, detach };
+export const commands = { createBoard, add, text, kind, move, attach, settle, tidy, phase, lanes, dots, vote, timer, detach };

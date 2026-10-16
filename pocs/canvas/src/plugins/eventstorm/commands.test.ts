@@ -305,3 +305,84 @@ describe('event storm', () => {
     expect(PAD).toBeGreaterThan(0);
   });
 });
+
+describe('event storm: agent placement, move, attach', () => {
+  const ids = (s: Store, b: string) => eventsOn(s.doc, b).map((e) => e.id);
+
+  it('events with no position go to the end of the timeline, in explore and in timeline', () => {
+    for (const phase of ['explore', 'timeline']) {
+      const { s, b } = withBoard();
+      s.dispatch('storm.phase', { board: b, phase });
+      for (const t of ['A', 'B', 'C']) add(s, b, 'event', { text: t });
+      expect(order(s, b)).toEqual(['A', 'B', 'C']);
+      if (phase === 'timeline') expect(eventsOn(s.doc, b).map((e) => e.x)).toEqual([0, 1, 2].map((i) => slotX(s.doc.get(b)!, i)));
+    }
+  });
+
+  it('lane picks the swimlane; after + lane keeps the order and changes the lane', () => {
+    const { s, b } = withBoard(['Customer', 'Shop', 'Warehouse']);
+    s.dispatch('storm.phase', { board: b, phase: 'timeline' });
+    const a = add(s, b, 'event', { text: 'A', lane: 0 });
+    add(s, b, 'event', { text: 'B', lane: 1 });
+    const c = add(s, b, 'event', { text: 'C', lane: 2, after: a });
+    const B = s.doc.get(b)!;
+    expect(order(s, b)).toEqual(['A', 'C', 'B']);
+    expect(s.doc.get(c)!.y).toBe(eventY(B, 2));
+    expect(eventsOn(s.doc, b).map((e) => e.y)).toEqual([eventY(B, 0), eventY(B, 2), eventY(B, 1)]);
+  });
+
+  it('a loose non-event with no position sits in the top row, clear of the events and of other loose ones', () => {
+    const { s, b } = withBoard();
+    add(s, b, 'event', { text: 'A' });
+    add(s, b, 'event', { text: 'B' });
+    const [i1, i2] = ['Why?', 'And?'].map((t) => add(s, b, 'hotspot', { text: t }));
+    const h1 = s.doc.get(i1)!;
+    const h2 = s.doc.get(i2)!;
+    const last = eventsOn(s.doc, b).at(-1)!;
+    expect(h1.x).toBeGreaterThanOrEqual(last.x + last.width);
+    expect(h1.y + h1.height).toBeLessThan(eventsOn(s.doc, b)[0].y);
+    expect(h2.x).toBeGreaterThanOrEqual(h1.x + h1.width);
+  });
+
+  it('move reorders events (after, before, first), attached stickies follow, lane changes the lane only', () => {
+    const { s, b } = withBoard(['Customer', 'Shop']);
+    s.dispatch('storm.phase', { board: b, phase: 'process' });
+    const [a, bb, c] = ['A', 'B', 'C'].map((t) => add(s, b, 'event', { text: t }));
+    const cmd = add(s, b, 'command', { text: 'Do C', on: c });
+    s.dispatch('storm.move', { id: c, before: a });
+    expect(order(s, b)).toEqual(['C', 'A', 'B']);
+    expect(s.doc.get(cmd)!.x).toBeLessThan(s.doc.get(a)!.x);
+    s.dispatch('storm.move', { id: c, after: bb });
+    expect(order(s, b)).toEqual(['A', 'B', 'C']);
+    s.dispatch('storm.move', { id: bb, first: true });
+    expect(order(s, b)).toEqual(['B', 'A', 'C']);
+    const x = s.doc.get(a)!.x;
+    s.dispatch('storm.move', { id: a, lane: 1 });
+    expect(order(s, b)).toEqual(['B', 'A', 'C']);
+    expect(s.doc.get(a)).toMatchObject({ x, y: eventY(s.doc.get(b)!, 1) });
+    expect(ids(s, b)).toEqual([bb, a, c]);
+    // a non-event, an unknown anchor, no instruction: nothing
+    expect(s.dispatch('storm.move', { id: cmd, after: a }).changes).toEqual([]);
+    expect(s.dispatch('storm.move', { id: c, after: cmd }).changes).toEqual([]);
+    expect(s.dispatch('storm.move', { id: c }).changes).toEqual([]);
+  });
+
+  it('attach puts a sticky on an event (above for a command, below for a policy); detach lets go', () => {
+    const { s, b } = withBoard();
+    s.dispatch('storm.phase', { board: b, phase: 'process' });
+    const e = add(s, b, 'event', { text: 'Order placed' });
+    const c = add(s, b, 'command', { text: 'Place order' });
+    const p = add(s, b, 'policy', { text: 'Take payment' });
+    expect(s.dispatch('storm.attach', { id: c, on: e }).changes.length).toBeGreaterThan(0);
+    s.dispatch('storm.attach', { id: p, on: e });
+    const E = s.doc.get(e)!;
+    expect(sticky(s.doc.get(c)!).on).toBe(e);
+    expect(s.doc.get(c)!.y).toBeLessThan(E.y);
+    expect(s.doc.get(p)!.y).toBeGreaterThan(E.y);
+    expect(s.dispatch('storm.attach', { id: c, on: e }).changes).toEqual([]);
+    expect(s.dispatch('storm.attach', { id: c, on: p }).changes).toEqual([]);
+    expect(s.dispatch('storm.attach', { id: e, on: e }).changes).toEqual([]);
+    s.dispatch('storm.detach', { ids: [c] });
+    expect(sticky(s.doc.get(c)!).on).toBeUndefined();
+  });
+});
