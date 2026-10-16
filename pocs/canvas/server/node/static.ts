@@ -16,9 +16,6 @@ export interface StaticApp {
   handle(req: IncomingMessage, res: ServerResponse): Promise<boolean>;
 }
 
-// split, because bridge/generic.test.ts bans strings that spell a plugin's `x-frame` node field
-const XFO = 'x-' + 'frame-options';
-
 const RESERVED = /^\/(api|ws|mcp)(\/|$)/;
 
 const MIME: Record<string, string> = {
@@ -133,7 +130,7 @@ export function createStaticApp(root: string, guard: Guard): StaticApp {
         'content-length': body.length,
         'x-content-type-options': 'nosniff',
         // the pages load outside the guard's cross-site rule, so no other site may frame them (clickjacking)
-        ...(html ? { 'content-security-policy': "frame-ancestors 'self'", [XFO]: 'SAMEORIGIN' } : {}),
+        ...(html ? { 'content-security-policy': "frame-ancestors 'self'", 'x-frame-options': 'SAMEORIGIN' } : {}),
         'cache-control': html ? 'no-cache' : path.startsWith('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache',
       });
       res.end(req.method === 'HEAD' ? undefined : body);
