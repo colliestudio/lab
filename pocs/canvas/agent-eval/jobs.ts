@@ -84,7 +84,7 @@ const TITLES: [string, RegExp][] = [
 ];
 
 /** Assign each wanted title to a different page, if possible. */
-function assign(titles: string[]): (number | undefined)[] | undefined {
+function assign(titles: string[]): number[] | undefined {
   const used = new Set<number>();
   const pick = (i: number): number[] | undefined => {
     if (i === TITLES.length) return [];
