@@ -320,7 +320,7 @@ export function finishRun(out: string, meta: Meta, jobId = meta.job): Summary {
 export function regrade(out: string): Summary {
   const cmd = JSON.parse(readFileSync(join(out, 'cmd.json'), 'utf8'));
   const meta: Meta = { run: cmd.run, job: cmd.job, head: cmd.head, dirty: cmd.dirty, model: cmd.model, startedAt: cmd.startedAt, durationMs: cmd.durationMs, stoppedBy: cmd.stoppedBy, note: cmd.note };
-  return finishRun(out, meta);
+  return finishRun(out, { ...meta, regraded: { at: new Date().toISOString(), head: gitInfo().head } });
 }
 
 export { alive };

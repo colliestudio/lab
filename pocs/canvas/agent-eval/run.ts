@@ -64,7 +64,7 @@ async function main() {
       return 0;
     }
     if (!a.job) return console.error('--grade <file.canvas> needs --job'), 2;
-    for (const c of JOBS[a.job].grade(loadDoc(readFileSync(t, 'utf8')))) console.log(`${c.pass ? 'pass' : 'FAIL'}  ${c.label}  (${c.detail})`);
+    for (const c of JOBS[a.job].grade(loadDoc(readFileSync(t, 'utf8')))) console.log(`${c.info ? (c.pass ? 'info: yes' : 'info: no') : c.pass ? 'pass' : 'FAIL'}  ${c.label}  (${c.detail})`);
     return 0;
   }
   let interrupted = false;

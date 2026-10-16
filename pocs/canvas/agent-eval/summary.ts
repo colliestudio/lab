@@ -16,6 +16,8 @@ export interface Meta {
   /** Set by the session when it stopped the run itself. */
   stoppedBy?: 'timeout' | 'interrupted' | 'harness-error';
   note?: string;
+  /** Set when a stored run was graded again: when, and with which code. */
+  regraded?: { at: string; head: string };
 }
 
 export interface Summary {
@@ -44,6 +46,7 @@ export interface Summary {
   turns?: number;
   endReason: EndReason;
   note?: string;
+  regraded?: { at: string; head: string };
 }
 
 export function summarize(t: Transcript, checks: Check[], meta: Meta): Summary {
@@ -81,6 +84,7 @@ export function summarize(t: Transcript, checks: Check[], meta: Meta): Summary {
     turns: t.result?.turns,
     endReason,
     note: meta.note,
+    ...(meta.regraded ? { regraded: meta.regraded } : {}),
   };
 }
 
@@ -115,8 +119,8 @@ export function compareTable(runs: Summary[]): string {
   const rows = runs
     .slice()
     .sort((a, b) => (a.job === b.job ? a.startedAt.localeCompare(b.startedAt) : a.job.localeCompare(b.job)))
-    .map((s) => `| ${s.job} | ${s.run} | ${s.head}${s.dirty ? '+' : ''} | ${s.model} | ${s.pass ? 'PASS' : 'FAIL'} ${s.passed}/${s.total} | ${s.toolCalls} | ${s.errors} | ${s.undescribed} | ${tok(s.tokens)} | ${s.costUsd !== undefined ? s.costUsd.toFixed(2) : '-'} | ${Math.round(s.durationMs / 1000)} | ${s.endReason} |`);
-  return ['| job | run | head | model | checks | calls | errors | undescribed | tokens | $ | s | end |', '|---|---|---|---|---|---|---|---|---|---|---|---|', ...rows].join('\n');
+    .map((s) => `| ${s.job} | ${s.run} | ${s.head}${s.dirty ? '+' : ''}${s.regraded ? ` (regraded ${s.regraded.head})` : ''} | ${s.model} | ${s.pass ? 'PASS' : 'FAIL'} ${s.passed}/${s.total} | ${s.toolCalls} | ${s.errors} | ${s.noops ?? '-'} | ${s.undescribed} | ${tok(s.tokens)} | ${s.costUsd !== undefined ? s.costUsd.toFixed(2) : '-'} | ${Math.round(s.durationMs / 1000)} | ${s.endReason} |`);
+  return ['| job | run | head | model | checks | calls | errors | no-ops | undescribed | tokens | $ | s | end |', '|---|---|---|---|---|---|---|---|---|---|---|---|---|', ...rows].join('\n');
 }
 
 export function loadRuns(resultsDir: string): Summary[] {

@@ -40,7 +40,9 @@ describe('session with a fake claude', () => {
     expect(scratchDirs()).toEqual(before);
     // regrading the stored run reproduces the stored grade
     const stored = readFileSync(join(dir, 'grade.json'), 'utf8');
-    regrade(dir);
+    const again = regrade(dir);
+    expect(again.regraded?.head).toBeTruthy();
+    expect(readFileSync(join(dir, 'summary.md'), 'utf8')).toBeTruthy();
     expect(readFileSync(join(dir, 'grade.json'), 'utf8')).toBe(stored);
   }, 60000);
 
@@ -142,7 +144,7 @@ describe('terminal Ctrl-C', () => {
     const cli = spawn(process.execPath, ['--import', 'tsx', 'agent-eval/run.ts', 'smoke'], { cwd: root, env: { ...process.env, AGENT_EVAL_RESULTS: dir, FAKE_HANG: '1', FAKE_PIDFILE: pidfile }, stdio: 'ignore' });
     const code = new Promise<number | null>((r) => cli.on('exit', (c) => r(c)));
     // the run folder appears first, then the bridge starts (about a second)
-    for (let i = 0; i < 200 && !existsSync(dir) || !readdirSync(dir).length; i++) await new Promise((r) => setTimeout(r, 20));
+    for (let i = 0; i < 200 && !(existsSync(dir) && readdirSync(dir).length); i++) await new Promise((r) => setTimeout(r, 20));
     cli.kill('SIGINT');
     expect(await code).toBe(130);
     expect(existsSync(pidfile)).toBe(false);
