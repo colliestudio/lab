@@ -3,7 +3,7 @@ import { Store, type CommandCtx } from '../../core';
 import { registerCoreCommands } from '../../core/commands';
 import { flowOf, flowText, pageFlow, pageWarnings } from './flow';
 import { registerPrototypeLogic } from './logic';
-import { isPage, page, pages } from './model';
+import { isNote, page, pages } from './model';
 
 function store() {
   let n = 0;
@@ -86,7 +86,7 @@ describe('page flow', () => {
       ['Home', '<p data-show="email"></p>'],
     ], [['Sign in', 'Home', 'Go']]);
     s.dispatch('page.note', { x: 0, y: 500, text: 'Do we need the name field? It slows people down a lot', on: id.Home });
-    const note = [...s.doc.nodes].find((n) => !isPage(n))!.id;
+    const note = s.doc.nodes.find((n) => isNote(n))!.id;
     expect(flowText(flowOf(s.doc))).toBe(
       [
         `Prototype: 2 pages. Start page: “Sign in” (${id['Sign in']}); Play starts there.`,
