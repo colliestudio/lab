@@ -18,6 +18,8 @@ export interface DirectoryOptions {
   /** Passed to each board. */
   seatIdleMs?: number;
   log?: Log;
+  /** Start each board's log lines with [name]. Default true (false when there is only one board). */
+  prefix?: boolean;
   /** Boards that never unload (bridge mode: the one board it serves). */
   pinned?: string[];
 }
@@ -147,7 +149,7 @@ export class BoardDirectory {
 
   private prefixed(name: string): Log {
     const log = this.log;
-    return (...m) => log(`[${name}]`, ...m);
+    return this.opts.prefix === false ? log : (...m) => log(`[${name}]`, ...m);
   }
 
   // ------------------------------------------------------------ changing the set of boards
