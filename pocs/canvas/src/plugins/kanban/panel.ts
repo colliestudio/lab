@@ -1,6 +1,7 @@
 import type { App } from '../../core';
 import { derivedLinks, board, columnsOf, isTask, seatOf, task, type Seat, type TaskField } from './model';
 import { PRIORITIES } from './commands';
+import { commentProblem } from './markdown';
 import { esc, labelColor } from './render';
 
 // A task as a document: a side panel next to the canvas. Each part (title, status, labels, assignee,
@@ -330,6 +331,8 @@ export function openTask(app: App, nodeId: string, env: PanelEnv) {
     e.preventDefault();
     const text = comment.value.trim();
     if (!text) return;
+    const bad = commentProblem(text);
+    if (bad) return app.notify(bad);
     comment.value = '';
     app.dispatch('kanban.comment', { id, text });
   });

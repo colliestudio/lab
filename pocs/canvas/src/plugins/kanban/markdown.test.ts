@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ID_RE, newTaskFile, nextTaskId, parseConfig, parseTask, patchTask, stamp, stampTime, taskFileName, yamlScalar } from './markdown';
+import { ID_RE, commentProblem, newTaskFile, nextTaskId, parseConfig, parseTask, patchTask, stamp, stampTime, taskFileName, yamlScalar } from './markdown';
 import { CLI_CHILD, CLI_PLAIN, CLI_TASK } from './fixtures';
 
 // Fixtures are files written by `backlog` 1.53.0 (fixtures.ts); server/kanban/markdown.cli.test.ts
@@ -208,5 +208,91 @@ describe('parseConfig', () => {
     expect(() => parseConfig('')).toThrow(/no settings/);
     expect(() => parseConfig('statuses: []\nproject_name: x\n')).toThrow(/no usable statuses/);
     expect(() => parseConfig('# just a comment\n')).toThrow(/no settings/);
+  });
+});
+
+const HAND_AC = `---
+id: TASK-5
+title: Hand
+status: To Do
+assignee: []
+created_date: '2026-10-16 14:53'
+labels: []
+dependencies: []
+---
+
+## Acceptance Criteria
+<!-- AC:BEGIN -->
+- [ ] first thing
+- [ ] #2 second thing
+  continuation note
+- [x] #3 third
+<!-- AC:END -->
+`;
+const LEGACY = `---
+id: TASK-6
+title: Old
+status: To Do
+assignee: []
+created_date: '2026-10-16 14:53'
+labels: []
+dependencies: []
+---
+
+## Description
+
+Old style text
+second line
+
+## Acceptance Criteria
+
+- [ ] #1 legacy ac
+
+## Implementation Plan
+
+old plan
+`;
+
+describe('hand-written bodies', () => {
+  it('reads AC lines with or without #N', () => {
+    expect(parseTask(HAND_AC)!.ac).toEqual([{ text: 'first thing', done: false }, { text: 'second thing', done: false }, { text: 'third', done: true }]);
+  });
+  it('ticking one item keeps the unnumbered line and the continuation line; only item lines are renumbered', () => {
+    const t = parseTask(HAND_AC)!;
+    const out = patchTask(HAND_AC, { ac: t.ac.map((a, i) => (i === 1 ? { ...a, done: true } : a)) }, NOW);
+    expect(out).toContain('- [ ] #1 first thing\n- [x] #2 second thing\n  continuation note\n- [x] #3 third\n<!-- AC:END -->');
+    const added = patchTask(HAND_AC, { ac: [...t.ac, { text: 'fourth', done: false }] }, NOW);
+    expect(added).toContain('  continuation note\n- [x] #3 third\n- [ ] #4 fourth\n<!-- AC:END -->');
+    const removed = patchTask(HAND_AC, { ac: t.ac.slice(1) }, NOW);
+    expect(removed).toContain('- [ ] #1 second thing\n  continuation note\n- [x] #2 third');
+    const middle = patchTask(HAND_AC, { ac: [t.ac[0], t.ac[2]] }, NOW);
+    expect(middle).toContain('- [ ] #1 first thing');
+    expect(middle).toContain('- [x] #2 third');
+    expect(middle).not.toContain('second thing');
+  });
+  it('a comment with a line of only --- is refused; *** is fine', () => {
+    expect(commentProblem('a\n---\nb')).toMatch(/only '---'/);
+    expect(commentProblem('a\r\n---  \r\nb')).toBeTruthy();
+    expect(() => patchTask(CLI_TASK, { comment: { author: '@x', text: 'a\n---\nauthor: evil' } }, NOW)).toThrow(/only '---'/);
+    expect(commentProblem('a\n***\nb')).toBeUndefined();
+    expect(commentProblem('a --- b\n----')).toBeUndefined();
+  });
+  it('old-style sections without markers are read, and an edit replaces them in place (no second heading)', () => {
+    const t = parseTask(LEGACY)!;
+    expect(t).toMatchObject({ description: 'Old style text\nsecond line', plan: 'old plan', ac: [{ text: 'legacy ac', done: false }] });
+    const out = patchTask(LEGACY, { sections: { description: 'New text' } }, NOW);
+    expect(out.match(/## Description/g)).toHaveLength(1);
+    expect(out).toContain('## Description\n\n<!-- SECTION:DESCRIPTION:BEGIN -->\nNew text\n<!-- SECTION:DESCRIPTION:END -->\n\n## Acceptance Criteria');
+    expect(out).toContain('old plan');
+    const ac = patchTask(LEGACY, { ac: [{ text: 'legacy ac', done: true }] }, NOW);
+    expect(ac.match(/## Acceptance Criteria/g)).toHaveLength(1);
+    expect(parseTask(ac)!.ac).toEqual([{ text: 'legacy ac', done: true }]);
+    expect(patchTask(LEGACY, { sections: { plan: '' } }, NOW)).not.toContain('Implementation Plan');
+  });
+  it('a Definition of Done block is kept and a new AC block goes before it', () => {
+    const dod = CLI_TASK.replace('## Implementation Plan', '## Definition of Done\n<!-- DOD:BEGIN -->\n- [ ] #1 d\n<!-- DOD:END -->\n\n## Implementation Plan').replace(/## Acceptance Criteria[\s\S]*?AC:END -->\n\n/, '');
+    const out = patchTask(dod, { ac: [{ text: 'x', done: false }] }, NOW);
+    expect(out.indexOf('AC:BEGIN')).toBeLessThan(out.indexOf('DOD:BEGIN'));
+    expect(out).toContain('<!-- DOD:END -->');
   });
 });

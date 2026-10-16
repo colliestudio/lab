@@ -1,6 +1,7 @@
 import * as z from 'zod/mini';
 import { command, nodeRef, view, type CommandSpec, type ViewSpec } from '../../core/agent';
 import type { CanvasNode, DocView } from '../../core';
+import { commentProblem } from './markdown';
 import { SOURCE_NAME, type EditPatch } from './commands';
 import { DONE_DAYS, board, clock, columnsOf, isBoard, isTask, shownIn, task, tasksOf, type TaskField } from './model';
 
@@ -165,7 +166,11 @@ export const specs: Record<string, CommandSpec> = {
     description: 'Add a comment to a task (as `backlog task edit --comment`); the author is @ + the first word of your name. The serve writes it within a second.',
     args: z.strictObject({ task: taskRef(), text: z.string().check(z.minLength(1)), board: boardRef }),
     example: { task: 'TASK-12', text: 'Plan agreed, starting.' },
-    toCommand: (a, ctx) => ({ id: needTask(ctx.doc, needBoard(ctx.doc, a.board), a.task).id, text: a.text }),
+    toCommand: (a, ctx) => {
+      const bad = commentProblem(a.text);
+      if (bad) throw new Error(bad);
+      return { id: needTask(ctx.doc, needBoard(ctx.doc, a.board), a.task).id, text: a.text };
+    },
     result: (r, a) => ({ task: a.task, changed: changed(r), pending: true }),
     cli: [{ verb: 'kanban comment', pos: ['task'], rest: 'text' }],
   }),

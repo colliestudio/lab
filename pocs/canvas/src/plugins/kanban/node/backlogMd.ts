@@ -1,7 +1,7 @@
 import { lstatSync, readdirSync, readFileSync, statSync, watch as fsWatch, realpathSync, type FSWatcher } from 'node:fs';
 import { access, constants, link, mkdir, open, readdir, readFile, rename, stat, unlink } from 'node:fs/promises';
 import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { ID_RE, newTaskFile, nextTaskId, parseConfig, parseTask, patchTask, taskFileName, type BoardConfig, type ParsedTask, type TaskPatch } from '../markdown';
+import { ID_RE, commentProblem, newTaskFile, nextTaskId, parseConfig, parseTask, patchTask, taskFileName, type BoardConfig, type ParsedTask, type TaskPatch } from '../markdown';
 import { SourceError, type Card, type CardPatch, type NewCard, type SourceInfo, type TrackerSource, type WriteOpts } from '../source';
 
 // The Backlog.md folder behind a kanban node: the task files, read and written in place, the way the
@@ -218,6 +218,8 @@ export class BacklogMdSource implements TrackerSource {
     if (p.column !== undefined && !this.config.statuses.includes(p.column)) throw new SourceError('invalid', `no status "${p.column}" (statuses: ${this.config.statuses.join(', ')})`);
     if (p.priority && !['high', 'medium', 'low'].includes(p.priority)) throw new SourceError('invalid', `priority must be high, medium or low, not "${p.priority}"`);
     if (p.title !== undefined && !p.title.trim()) throw new SourceError('invalid', 'a title can not be empty');
+    const bad = p.comment && commentProblem(p.comment.text);
+    if (bad) throw new SourceError('invalid', bad);
     return {
       title: p.title?.replace(/\s+/g, ' ').trim(),
       status: p.column,

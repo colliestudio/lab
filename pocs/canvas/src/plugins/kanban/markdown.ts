@@ -253,7 +253,7 @@ export function stampTime(s: string | undefined): number | undefined {
 // ------------------------------------------------------------ body: sections between markers
 
 interface SectionDef {
-  key: 'description' | 'ac' | 'plan' | 'notes' | 'comments';
+  key: 'description' | 'ac' | 'dod' | 'plan' | 'notes' | 'comments';
   title: string;
   mark: string;
   /** A blank line between the header and the BEGIN marker (the AC block has none). */
@@ -263,12 +263,13 @@ interface SectionDef {
 const DEFS: SectionDef[] = [
   { key: 'description', title: 'Description', mark: 'DESCRIPTION', gap: true },
   { key: 'ac', title: 'Acceptance Criteria', mark: 'AC', gap: false },
+  { key: 'dod', title: 'Definition of Done', mark: 'DOD', gap: false },
   { key: 'plan', title: 'Implementation Plan', mark: 'PLAN', gap: true },
   { key: 'notes', title: 'Implementation Notes', mark: 'NOTES', gap: true },
   { key: 'comments', title: 'Comments', mark: 'COMMENTS', gap: true },
 ];
 const def = (key: SectionDef['key']) => DEFS.find((d) => d.key === key)!;
-const begin = (d: SectionDef) => (d.mark === 'AC' ? '<!-- AC:BEGIN -->' : d.mark === 'COMMENTS' ? '<!-- COMMENTS:BEGIN -->' : `<!-- SECTION:${d.mark}:BEGIN -->`);
+const begin = (d: SectionDef) => (d.mark === 'AC' ? '<!-- AC:BEGIN -->' : d.mark === 'DOD' ? '<!-- DOD:BEGIN -->' : d.mark === 'COMMENTS' ? '<!-- COMMENTS:BEGIN -->' : `<!-- SECTION:${d.mark}:BEGIN -->`);
 const endMark = (d: SectionDef) => begin(d).replace(':BEGIN', ':END');
 
 interface Block {
@@ -279,6 +280,19 @@ interface Block {
   inStart: number;
   inEnd: number;
   inner: string;
+  /** An old-style section: a bare `## Title` heading with no markers. */
+  legacy?: true;
+}
+
+/** A section from before the markers: the heading and its text up to the next `## ` heading. */
+function legacyBlock(b: string, d: SectionDef): Block | undefined {
+  if (d.key === 'comments' || d.key === 'dod') return;
+  const m = new RegExp(`^## ${d.title}[ \\t]*$`, 'm').exec(b);
+  if (!m) return;
+  const next = /^## /m.exec(b.slice(m.index + m[0].length + 1));
+  const end = next ? m.index + m[0].length + 1 + next.index : b.length;
+  const inStart = Math.min(b.length, m.index + m[0].length + 1);
+  return { start: m.index, end, inStart, inEnd: end, inner: b.slice(inStart, end).replace(/^\n+/, '').replace(/\s+$/, ''), legacy: true };
 }
 
 function findBlock(b: string, d: SectionDef): Block | undefined {
@@ -286,7 +300,7 @@ function findBlock(b: string, d: SectionDef): Block | undefined {
   let bi = -1;
   for (let from = 0; ; ) {
     const i = b.indexOf(bm, from);
-    if (i < 0) return;
+    if (i < 0) return legacyBlock(b, d);
     if (i === 0 || b[i - 1] === '\n') {
       bi = i;
       break;
@@ -295,7 +309,7 @@ function findBlock(b: string, d: SectionDef): Block | undefined {
   }
   const em = endMark(d);
   const ei = b.indexOf(em, bi);
-  if (ei < 0) return;
+  if (ei < 0) return legacyBlock(b, d);
   const inStart = Math.min(b.length, b.indexOf('\n', bi) + 1 || b.length);
   const inEnd = ei;
   let end = ei + em.length;
@@ -332,15 +346,21 @@ function removeBlock(b: string, blk: Block): string {
   return b.slice(0, cut) + b.slice(blk.end);
 }
 
+/** Put `inner` into the block: between its markers, or (an old-style section) as a marked block in its place. */
+function fillBlock(b: string, blk: Block, d: SectionDef, inner: string): string {
+  if (!blk.legacy) return b.slice(0, blk.inStart) + inner + '\n' + b.slice(blk.inEnd);
+  return b.slice(0, blk.start) + blockText(d, inner) + (blk.end < b.length ? '\n' : '') + b.slice(blk.end);
+}
+
 const tidy = (s: string) => s.replace(/\r\n/g, '\n').replace(/^\n+/, '').replace(/\s+$/, '');
 
-const AC_LINE = /^- \[( |x|X)\] #(\d+) ?(.*)$/;
+const AC_LINE = /^- \[( |x|X)\] (?:#\d+ ?)?(.*)$/;
 function parseAc(inner: string): AcItem[] {
   return inner
     .split('\n')
     .flatMap((l) => {
       const m = AC_LINE.exec(l.trimEnd());
-      return m ? [{ done: m[1] !== ' ', text: m[3] }] : [];
+      return m ? [{ done: m[1] !== ' ', text: m[2] }] : [];
     });
 }
 const acLine = (a: AcItem, i: number) => `- [${a.done ? 'x' : ' '}] #${i + 1} ${a.text}`;
@@ -375,6 +395,11 @@ function parseComments(inner: string): CommentItem[] {
     out.push(c);
   }
   return out;
+}
+
+/** Why a comment text can not be written (the CLI refuses it too): a standalone `---` line would end the entry. */
+export function commentProblem(text: string): string | undefined {
+  return /^---[ \t]*$/m.test(text.replace(/\r\n/g, '\n')) ? "a comment can not contain a line that is only '---' (it would end the entry); use '***' for a rule" : undefined;
 }
 
 export function parseSections(text: string): { sections: Record<SectionKey, string>; ac: AcItem[]; comments: CommentItem[] } {
@@ -467,6 +492,14 @@ export function patchTask(text: string, patch: TaskPatch, now?: Date): string {
   if (patch.priority !== undefined && (patch.priority ?? undefined) !== cur.priority) (put('priority', patch.priority ?? undefined), (changedMeta = true));
   if (patch.ordinal !== undefined && (patch.ordinal ?? undefined) !== cur.ordinal) (put('ordinal', patch.ordinal ?? undefined), (changedOrdinal = true));
 
+  // an edit of the sections or the AC list marks every old-style section of the file, as the CLI does
+  if (patch.ac || Object.values(patch.sections ?? {}).some((v) => v !== undefined)) {
+    for (const d of DEFS) {
+      const blk = findBlock(body, d);
+      if (blk?.legacy && blk.inner) body = fillBlock(body, blk, d, blk.inner);
+    }
+  }
+
   for (const k of SECTION_KEYS) {
     const want = patch.sections?.[k];
     if (want === undefined || tidy(want) === cur[k]) continue;
@@ -475,7 +508,7 @@ export function patchTask(text: string, patch: TaskPatch, now?: Date): string {
     const v = tidy(want);
     if (!v) {
       if (blk) body = removeBlock(body, blk);
-    } else if (blk) body = body.slice(0, blk.inStart) + v + '\n' + body.slice(blk.inEnd);
+    } else if (blk) body = fillBlock(body, blk, d, v);
     else body = insertBlock(body, d, blockText(d, v));
     changedBody = true;
   }
@@ -487,15 +520,44 @@ export function patchTask(text: string, patch: TaskPatch, now?: Date): string {
     if (!want.length) {
       if (blk) body = removeBlock(body, blk);
     } else if (blk) {
-      // keep each line that is already right, byte for byte
+      // item lines are matched to the wanted items by text and kept where they are (renumbered; unchanged ones
+      // byte for byte); an edited text replaces its line, a missing one goes, other lines (notes) stay
       const old = blk.inner.split('\n');
-      const out = want.map((l, i) => (old[i] !== undefined && AC_LINE.test(old[i].trimEnd()) && acLine(parseAc(old[i])[0], i) === l ? old[i] : l));
-      body = body.slice(0, blk.inStart) + out.join('\n') + '\n' + body.slice(blk.inEnd);
+      const oldTexts = old.flatMap((l) => (AC_LINE.test(l.trimEnd()) ? [parseAc(l)[0].text] : []));
+      const out: string[] = [];
+      let kw = 0;
+      let seen = 0;
+      let lastItem = -1;
+      const emit = (idx: number, original?: string) => {
+        out.push(original !== undefined && original.trimEnd() === want[idx] ? original : want[idx]);
+        lastItem = out.length - 1;
+      };
+      for (const line of old) {
+        if (!AC_LINE.test(line.trimEnd())) {
+          out.push(line);
+          continue;
+        }
+        const text = parseAc(line)[0].text;
+        seen++;
+        const rest = oldTexts.slice(seen);
+        const at = patch.ac.findIndex((a, x) => x >= kw && a.text === text);
+        if (at >= 0) {
+          for (; kw < at; kw++) emit(kw);
+          emit(kw++, line);
+        } else if (kw < want.length && !rest.includes(patch.ac[kw].text)) emit(kw++);
+      }
+      for (; kw < want.length; kw++) {
+        out.splice(lastItem < 0 ? out.length : lastItem + 1, 0, want[kw]);
+        lastItem = lastItem < 0 ? out.length - 1 : lastItem + 1;
+      }
+      body = fillBlock(body, blk, d, out.join('\n'));
     } else body = insertBlock(body, d, blockText(d, want.join('\n')));
     changedBody = true;
   }
 
   if (patch.comment && tidy(patch.comment.text)) {
+    const bad = commentProblem(patch.comment.text);
+    if (bad) throw new Error(bad);
     const d = def('comments');
     const entry = `${patch.comment.author ? `author: ${patch.comment.author}\n` : ''}created: ${stamp(now ?? new Date())}\n---\n${tidy(patch.comment.text)}\n---`;
     const blk = findBlock(body, d);

@@ -109,3 +109,60 @@ suite('newTaskFile equals `backlog task create`', () => {
     });
   }
 });
+
+suite('hand-written bodies, patcher vs CLI', () => {
+  const HAND = `---
+id: TASK-5
+title: Hand
+status: To Do
+assignee: []
+created_date: '2026-10-16 14:53'
+labels: []
+dependencies: []
+---
+
+## Acceptance Criteria
+<!-- AC:BEGIN -->
+- [ ] first thing
+- [ ] #2 second thing
+  continuation note
+- [x] #3 third
+<!-- AC:END -->
+`;
+  const LEGACY = `---
+id: TASK-6
+title: Old
+status: To Do
+assignee: []
+created_date: '2026-10-16 14:53'
+labels: []
+dependencies: []
+---
+
+## Description
+
+Old style text
+
+## Implementation Plan
+
+old plan
+`;
+  const run = (name: string, file: string, text: string, cliArgs: string[], patch: TaskPatch, id: string) =>
+    it(name, () => {
+      const a = project();
+      const b = project();
+      writeFileSync(join(a.root, 'backlog', 'tasks', file), text);
+      writeFileSync(join(b.root, 'backlog', 'tasks', file), text);
+      cli(b.root, ['task', 'edit', id, ...cliArgs]);
+      const mine = patchTask(text, patch, NOW);
+      expect(norm(mine)).toBe(norm(readFileSync(join(b.root, 'backlog', 'tasks', file), 'utf8')));
+    });
+  run('ticking an AC keeps unnumbered and continuation lines', 'task-5 - Hand.md', HAND, ['--check-ac', '2'], { ac: [{ text: 'first thing', done: false }, { text: 'second thing', done: true }, { text: 'third', done: true }] }, '5');
+  run('adding an AC', 'task-5 - Hand.md', HAND, ['--ac', 'fourth'], { ac: [{ text: 'first thing', done: false }, { text: 'second thing', done: false }, { text: 'third', done: true }, { text: 'fourth', done: false }] }, '5');
+  run('replacing an old-style description', 'task-6 - Old.md', LEGACY, ['-d', 'New text'], { sections: { description: 'New text' } }, '6');
+  run('replacing an old-style plan', 'task-6 - Old.md', LEGACY, ['--plan', 'new plan'], { sections: { plan: 'new plan' } }, '6');
+  it('the CLI refuses a comment with a --- line, as we do', () => {
+    const b = project();
+    expect(() => cli(b.root, ['task', 'edit', '1', '--comment', 'a\n---\nb', '--comment-author', '@x'])).toThrow();
+  });
+});
