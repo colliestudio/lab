@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
+import { registerBoardLogic } from '../board/logic';
 import type { Store } from '../../core';
 import { FIELDS } from './markdown';
 import { board, clock, outboxOf, column, dirtyFields, tasksOf, task } from './model';
@@ -340,9 +341,18 @@ describe('a card the viewer tries to delete', () => {
     const r = s.dispatch('core.delete', { ids: [id] });
     expect(r.ok).toBe(true);
     expect(s.doc.get(id)).toBeDefined();
-    expect(events().at(-1)!.text).toMatch(/kept a task card/);
-    s.dispatch('core.delete', { ids: ['b1'] });
+    expect(events().at(-1)!.text).toMatch(/kept the task card/);
+    // board.remove goes through the same guard
+    registerBoardLogic(s);
+    const n = events().length;
+    s.dispatch('board.remove', { ids: [id] });
+    expect(s.doc.get(id)).toBeDefined();
+    expect(events().length).toBe(n + 1);
+    // deleting the board with its cards deletes them and logs nothing about keeping
+    const before = events().length;
+    s.dispatch('core.delete', { ids: ['b1', id] });
     expect(s.doc.get(id)).toBeUndefined();
+    expect(events().length).toBe(before);
   });
 
   it('two nodes for one task collapse to the one with the base; the stale copy is never written from', async () => {

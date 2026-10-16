@@ -1,6 +1,7 @@
 import * as z from 'zod/mini';
 import { command, nodeRef, type CommandSpec } from '../../core/agent';
 import type { CanvasEdge, CanvasNode, Change, Command, CommandResult, DocView, EventSpec, Store } from '../../core';
+import { guardedDelete } from '../../core/commands';
 import type { PluginLogic } from '../logic';
 
 // Board: plain JSON Canvas work objects (notes, columns, links, edges) and the commands agents and
@@ -433,7 +434,7 @@ const GUIDE = `Notes and columns on a plain JSON Canvas.
 
 /** The data side of the plugin. No DOM: used by the app, the bridge and tests. */
 export function registerBoardLogic(store: Store) {
-  for (const [name, cmd] of Object.entries(commands)) store.register(`board.${name}`, cmd as Command, specs[name]);
+  for (const [name, cmd] of Object.entries(commands)) store.register(`board.${name}`, (name === 'remove' ? guardedDelete(store, cmd as Command<{ ids: string[] }>) : cmd) as Command, specs[name]);
   store.addRiderRule(columnOf);
 }
 
