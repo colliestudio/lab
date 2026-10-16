@@ -81,3 +81,49 @@ describe('host chat', () => {
     expect(m.node).toBe(id);
   });
 });
+
+describe('aborting waits', () => {
+  it('an aborted waitChat resolves undefined and marks nothing seen', async () => {
+    const h = new Host();
+    h.readChat(bot, { onlyNew: true });
+    const ac = new AbortController();
+    const p = h.waitChat(bot, 5000, ac.signal);
+    ac.abort();
+    expect(await p).toBeUndefined();
+    sendChat(h.ydoc, person, 'late');
+    expect(h.unreadChat(bot)).toBe(1);
+    expect(h.readChat(bot, { onlyNew: true }).map((m) => m.text)).toEqual(['late']);
+  });
+
+  it('an already aborted signal returns at once; a message beats the abort check', async () => {
+    const h = new Host();
+    h.readChat(bot, { onlyNew: true });
+    const ac = new AbortController();
+    ac.abort();
+    expect(await h.waitChat(bot, 5000, ac.signal)).toBeUndefined();
+    sendChat(h.ydoc, person, 'there');
+    expect((await h.waitChat(bot, 5000, ac.signal))?.map((m) => m.text)).toEqual(['there']);
+  });
+
+  it('an aborted view wait resolves undefined and stops listening', async () => {
+    const h = new Host();
+    const ac = new AbortController();
+    const p = h.wait(bot, 'chess.turn', {}, 5000, ac.signal); // no game: not ready
+    ac.abort();
+    expect(await p).toBeUndefined();
+    expect(await h.wait(bot, 'chess.turn', {}, 5000, ac.signal)).toBeUndefined();
+  });
+
+  it('unseat removes the seat and its undo history, keeps what it has read', () => {
+    const h = new Host();
+    h.say(eve, 'x');
+    h.readChat(bot, { limit: 5 });
+    expect(h.seated()).toHaveLength(2);
+    h.unseat(bot);
+    expect(h.seated().map((a) => a.name)).toEqual(['Eve']);
+    sendChat(h.ydoc, person, 'new');
+    expect(h.readChat(bot, { onlyNew: true }).map((m) => m.text)).toEqual(['new']);
+    h.unseat(bot);
+    h.unseat(bot);
+  });
+});
