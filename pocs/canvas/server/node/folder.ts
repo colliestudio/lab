@@ -10,6 +10,7 @@ import type { BoardInfo, BoardStorage } from '../core/storage';
 //  <dir>/<name>.canvas                            the board; the file is the durable record
 //  <dir>/.canvas-bridge/<file>.canvas.ystate      its Yjs history, so open tabs and a restarted server agree
 //  <dir>/.canvas-bridge/<file>.canvas.room        the room a bridge saved it from (bridge/server.ts)
+//  <dir>/.canvas-bridge/open-<pid>.json           a running bridge's marker (lock.ts): a serve refuses the folder
 //  <dir>/.canvas-bridge/trash/<name>-<time>.canvas  deleted boards (real deletion is Finder's job)
 // With `file`, the folder driver serves exactly that one file (bridge mode): any filename, no create,
 // rename or delete.

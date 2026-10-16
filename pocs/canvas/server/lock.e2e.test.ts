@@ -122,6 +122,17 @@ describe('folder lock, in processes', () => {
     await up(b);
   }, 30000);
 
+  it.each(['SIGHUP', 'SIGALRM'] as const)('a bridge ended by %s (as `perl alarm` does) removes its marker', async (sig) => {
+    const d = folder();
+    const port = await freePort();
+    const br = run('bridge/server.ts', [join(d, 'a.canvas'), '--port', String(port)], port);
+    const mark = join(d, '.canvas-bridge', `open-${br.proc.pid}.json`);
+    await until(async () => existsSync(mark));
+    br.proc.kill(sig);
+    await br.exited;
+    expect(existsSync(mark)).toBe(false);
+  }, 30000);
+
   it('a bridge refused by a serve leaves no marker', async () => {
     const d = folder();
     const a = await serve(d);

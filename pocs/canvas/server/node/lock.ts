@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { closeSync, linkSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, unlinkSync, writeFileSync, writeSync } from 'node:fs';
+import { closeSync, linkSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, unlinkSync, writeSync, writeFileSync } from 'node:fs';
 import { hostname, platform, uptime } from 'node:os';
 import { join } from 'node:path';
 
@@ -12,6 +12,10 @@ import { join } from 'node:path';
 //    Written once with exclusive create, removed by its owner on exit (only if `token` is still its own).
 //  - Held = a foreign `machine`, or this machine with the pid alive and the same boot (bootAt within 60 s).
 //    Unparseable or missing = free. After a reboot or a crash the file is stale and the next writer replaces it.
+//  - Bridges (`bridge/server.ts`) don't take the lock: they leave <folder>/.canvas-bridge/open-<pid>.json
+//    { pid, machine, host, bootAt, file, port } while they run (see markBridge/liveBridges below). Any writer
+//    that takes the lock (a serve, the desktop app) must also refuse the folder while liveBridges() is
+//    non-empty, checked right after taking the lock (a bridge marks first, then reads the lock).
 //  - A writer that finds it held must not open boards in that folder live: use the service (`urls`) as the
 //    backend, or open read-only. A writer that writes the folder itself takes the lock the same way.
 //  - iCloud syncs the file with a delay: right after a serve starts there is a window where another Mac
@@ -81,13 +85,16 @@ const alive = (pid: number) => {
   }
 };
 
+/** ioreg can fail for one side (its machine id then falls back to the hostname): same Mac if the hostnames match. */
+function sameMachine(a: { machine: string; host: string }, here: Here): boolean {
+  return a.machine === here.machine || (here.machine === here.host && a.host === here.host) || (a.machine === a.host && a.host === here.host);
+}
+
 function judge(text: string | undefined, here: Here): LockState {
   if (text === undefined) return { held: false, reason: 'no lock' };
   const holder = parse(text);
   if (!holder) return { held: false, reason: 'unreadable lock file (stale)' };
-  // ioreg failed for one of the two (its machine id fell back to the hostname): same Mac if the hostnames match
-  const sameMachine = holder.machine === here.machine || (here.machine === here.host && holder.host === here.host) || (holder.machine === holder.host && holder.host === here.host);
-  if (!sameMachine) return { holder, held: true, reason: `held from ${holder.host}` };
+  if (!sameMachine(holder, here)) return { holder, held: true, reason: `held from ${holder.host}` };
   if (holder.pid === process.pid) return { holder, held: false, reason: 'our own pid (stale)' };
   if (Math.abs(holder.bootAt - here.bootAt) >= BOOT_SLACK_MS) return { holder, held: false, reason: 'from before the last boot (stale)' };
   if (!alive(holder.pid)) return { holder, held: false, reason: `pid ${holder.pid} is gone (stale)` };
@@ -205,9 +212,19 @@ export function acquireFolderLock(dir: string, o: { port: number; urls: string[]
 const BRIDGE_STATE = '.canvas-bridge';
 const bridgeMarker = (dir: string, pid: number) => join(dir, BRIDGE_STATE, `open-${pid}.json`);
 
+/** A pid reused by an unrelated process must not read as a bridge: look at what it runs. */
+function isBridge(pid: number): boolean {
+  try {
+    return execFileSync('ps', ['-o', 'command=', '-p', String(pid)], { encoding: 'utf8', timeout: 5000 }).includes('bridge/server');
+  } catch {
+    return false;
+  }
+}
+
 export interface BridgeMark {
   pid: number;
   machine: string;
+  host: string;
   bootAt: number;
   file: string;
   port: number;
@@ -218,8 +235,10 @@ export function markBridge(dir: string, o: { file: string; port: number; here?: 
   const here = o.here ?? hereInfo();
   const path = bridgeMarker(dir, process.pid);
   mkdirSync(join(dir, BRIDGE_STATE), { recursive: true });
-  const mark: BridgeMark = { pid: process.pid, machine: here.machine, bootAt: Math.round(here.bootAt), file: o.file, port: o.port };
-  writeFileSync(path, JSON.stringify(mark) + '\n');
+  const mark: BridgeMark = { pid: process.pid, machine: here.machine, host: here.host, bootAt: Math.round(here.bootAt), file: o.file, port: o.port };
+  const tmp = `${path}.tmp`; // whole or absent for a reader
+  writeFileSync(tmp, JSON.stringify(mark) + '\n');
+  renameSync(tmp, path);
   return () => {
     try {
       unlinkSync(path);
@@ -240,22 +259,27 @@ export function liveBridges(dir: string, here: Here = hereInfo()): BridgeMark[] 
   const out: BridgeMark[] = [];
   for (const n of names) {
     const path = join(dir, BRIDGE_STATE, n);
-    let m: BridgeMark;
-    try {
-      m = JSON.parse(readFileSync(path, 'utf8')) as BridgeMark;
-    } catch {
-      continue;
-    }
-    if (!m || !Number.isInteger(m.pid) || typeof m.machine !== 'string') continue;
-    const same = m.machine === here.machine || (here.machine === here.host && m.machine === here.host);
-    if (!same) continue;
-    if (m.pid === process.pid) continue;
-    if (Math.abs(m.bootAt - here.bootAt) >= BOOT_SLACK_MS || !alive(m.pid)) {
+    const drop = () => {
       try {
         unlinkSync(path);
       } catch {
         /* gone */
       }
+    };
+    let m: BridgeMark | undefined;
+    try {
+      m = JSON.parse(readFileSync(path, 'utf8')) as BridgeMark;
+    } catch {
+      /* unreadable: stale, like an unparseable lock */
+    }
+    if (!m || !Number.isInteger(m.pid) || typeof m.machine !== 'string' || typeof m.host !== 'string' || typeof m.bootAt !== 'number') {
+      drop();
+      continue;
+    }
+    if (!sameMachine(m, here)) continue; // another Mac's bridge: not ours to judge or remove
+    if (m.pid === process.pid) continue;
+    if (Math.abs(m.bootAt - here.bootAt) >= BOOT_SLACK_MS || !alive(m.pid) || !isBridge(m.pid)) {
+      drop(); // dead, from before the boot, or the pid now belongs to some other process
       continue;
     }
     out.push(m);
@@ -264,4 +288,4 @@ export function liveBridges(dir: string, here: Here = hereInfo()): BridgeMark[] 
 }
 
 export const describeBridges = (dir: string, bs: BridgeMark[]) =>
-  `${dir} has a bridge with a board open (${bs.map((b) => `pid ${b.pid}, ${b.file}`).join('; ')}); stop it first`;
+  `${dir} has a bridge with a board open (${bs.map((b) => `pid ${b.pid}, ${b.file}`).join('; ')}); stop it, or delete ${bs.map((b) => bridgeMarker(dir, b.pid)).join(', ')} if that bridge no longer runs`;

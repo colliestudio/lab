@@ -19,7 +19,7 @@ import { McpService } from './mcp/session';
 //    /delete (to the trash folder) change it
 //  - MCP agents: http://HOST:PORT/mcp (claude mcp add --transport http canvas <that URL>); a session joins boards
 //    with canvas_join and its tools then act there (server/mcp/)
-//  - The folder is locked while it runs (.canvas-serve.lock, node/lock.ts): a second serve or a bridge refuses it.
+//  - The folder is locked while it runs (.canvas-serve.lock, node/lock.ts): a second serve or a bridge refuses it, and it refuses a folder a bridge has open.
 //  - A board loads when first used and unloads when nobody has it open (--idle-ms). Each board's file
 //    stays the durable record, as with the bridge.
 //
