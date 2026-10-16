@@ -1,5 +1,5 @@
 // Arguments of `server/serve.ts`:
-//   <dir> [--port N] [--host H] [--allow-origin URL]… [--idle-ms N]
+//   <dir> [--port N] [--host H] [--allow-origin URL]… [--idle-ms N] [--app DIR]
 // Also --flag=value. A flag's value is never taken for the folder, whatever the order.
 
 export interface ServeArgs {
@@ -9,10 +9,12 @@ export interface ServeArgs {
   allowOrigins: string[];
   /** Unload a board after this long unused (default 10 minutes). */
   idleMs?: number;
+  /** The built web app to serve (default: the repo's dist). */
+  app?: string;
 }
 
-const VALUE_FLAGS = new Set(['port', 'host', 'allow-origin', 'idle-ms']);
-const OPTIONS = '--port, --host, --allow-origin, --idle-ms';
+const VALUE_FLAGS = new Set(['port', 'host', 'allow-origin', 'idle-ms', 'app']);
+const OPTIONS = '--port, --host, --allow-origin, --idle-ms, --app';
 
 export function parseServeArgs(argv: string[]): ServeArgs {
   const out: Partial<ServeArgs> & { allowOrigins: string[] } = { allowOrigins: [] };
@@ -37,7 +39,8 @@ export function parseServeArgs(argv: string[]): ServeArgs {
     } else if (name === 'idle-ms') {
       if (!/^\d+$/.test(value)) throw new Error(`--idle-ms: "${value}" is not a number of milliseconds`);
       out.idleMs = Number(value);
-    } else if (name === 'host') out.host = value;
+    } else if (name === 'app') out.app = value;
+    else if (name === 'host') out.host = value;
     else out.allowOrigins.push(value);
   }
   if (dirs.length !== 1) throw new Error(dirs.length ? `one folder only, got: ${dirs.join(', ')}` : 'a folder of .canvas files is required');

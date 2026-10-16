@@ -9,12 +9,13 @@ describe('parseServeArgs', () => {
   });
 
   it('reads the options in either order and either form', () => {
-    expect(parseServeArgs(['--port', '5248', '/b', '--host=0.0.0.0', '--allow-origin', 'http://a:1', '--allow-origin=http://b:2', '--idle-ms', '300'])).toEqual({
+    expect(parseServeArgs(['--port', '5248', '/b', '--host=0.0.0.0', '--allow-origin', 'http://a:1', '--allow-origin=http://b:2', '--idle-ms', '300', '--app', '/dist'])).toEqual({
       dir: '/b',
       port: 5248,
       host: '0.0.0.0',
       allowOrigins: ['http://a:1', 'http://b:2'],
       idleMs: 300,
+      app: '/dist',
     });
   });
 
@@ -26,5 +27,6 @@ describe('parseServeArgs', () => {
     expect(() => parseServeArgs(['/b', '--port', 'x'])).toThrow(/not a port/);
     expect(() => parseServeArgs(['/b', '--port', '70000'])).toThrow(/not a port/);
     expect(() => parseServeArgs(['/b', '--idle-ms', '-1'])).toThrow(/milliseconds/);
+    expect(() => parseServeArgs(['/b', '--app'])).toThrow(/needs a value/);
   });
 });

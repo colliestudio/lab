@@ -10,6 +10,7 @@ import { wsConn } from './ws';
 // The HTTP and WebSocket front of a BoardDirectory on node:http.
 //  /api/...                  the service API (core/api.ts)
 //  WS /ws/<board>[/...]      a board's live document (y-websocket)
+//  /, /b/<board>, files      the built web app (`app`, serve only), answered before the guard (node/static.ts)
 // With `defaultBoard` (bridge mode) the old single-board routes work too: /doc, /status, ... and a
 // WebSocket on any other path go to that board.
 
@@ -18,6 +19,8 @@ export interface NodeServerOptions {
   guard: Guard;
   log: Log;
   defaultBoard?: string;
+  /** Serve only: the web app's files and pages. Answers before the guard and returns false for /api, /ws, /mcp. */
+  app?: { handle(req: IncomingMessage, res: ServerResponse): Promise<boolean> };
   /** Bridge mode: more fields on the default board's /status (port, room). */
   statusExtra?: () => Record<string, unknown>;
 }
@@ -46,6 +49,7 @@ export function createNodeServer(o: NodeServerOptions): NodeServer {
   }
 
   async function handle(req: IncomingMessage, res: ServerResponse) {
+    if (o.app && (await o.app.handle(req, res))) return;
     const why = guard.check(req.headers, req.method, info(req));
     if (why) {
       refuse(req.method ?? 'request', req, why);

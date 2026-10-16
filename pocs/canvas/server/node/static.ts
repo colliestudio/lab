@@ -42,6 +42,11 @@ const MIME: Record<string, string> = {
 export function createStaticApp(root: string, guard: Guard): StaticApp {
   const base = resolve(root);
 
+  function notFound(res: ServerResponse) {
+    res.writeHead(404, { 'content-type': 'application/json' });
+    res.end('{"error":"not found"}\n');
+  }
+
   function text(res: ServerResponse, status: number, body: string, extra: Record<string, string> = {}) {
     res.writeHead(status, { 'content-type': 'text/plain; charset=utf-8', ...extra });
     res.end(body);
@@ -89,7 +94,7 @@ export function createStaticApp(root: string, guard: Guard): StaticApp {
         }
         const segments = p.slice(1).split('/');
         if (/[\0\\]/.test(p) || segments.some((s) => s === '..' || s.startsWith('.'))) {
-          text(res, 404, 'not found');
+          notFound(res);
           return true;
         }
         rel = p.slice(1);
@@ -97,20 +102,20 @@ export function createStaticApp(root: string, guard: Guard): StaticApp {
       const html = rel === 'home.html' || rel === 'index.html';
       const file = resolve(base, rel);
       if (!file.startsWith(base + sep)) {
-        text(res, 404, 'not found');
+        notFound(res);
         return true;
       }
       const real = await inside(file);
       if (!real) {
         if (html) text(res, 503, `canvas serve: no web app build in ${base}; run \`pnpm build\` (the API at /api still works)`);
-        else text(res, 404, 'not found');
+        else notFound(res);
         return true;
       }
       let body: Buffer;
       try {
         body = await readFile(real);
       } catch {
-        text(res, 404, 'not found');
+        notFound(res);
         return true;
       }
       res.writeHead(200, {
