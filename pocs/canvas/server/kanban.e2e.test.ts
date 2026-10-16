@@ -405,6 +405,60 @@ describe('after a restart and from a hand-edited board file', () => {
   }, 60000);
 });
 
+describe('kanban commands write what `backlog task edit` writes (C14)', () => {
+  const haveCli = spawnSync('backlog', ['--version']).status === 0;
+  if (!haveCli) console.warn('kanban.e2e: `backlog` is not on PATH; the CLI equivalence tests are skipped');
+  const norm = (t: string) => t.replace(/updated_date: '[^']*'/g, "updated_date: 'T'").replace(/^created: .*$/gm, 'created: T');
+  const noOrdinal = (t: string) => t.replace(/^ordinal: .*\n/m, '');
+  // [agent command, args, CLI args (after `task edit <n>`)]; the ordinal line is left out of the comparison: a drag writes one, the CLI's -s does not
+  const OPS: [string, object, string[]][] = [
+    ['kanban.move', { task: 'TASK-2', status: 'In Progress' }, ['-s', 'In Progress']],
+    ['kanban.edit', { task: 'TASK-2', title: "A: new 'title' #3" }, ['-t', "A: new 'title' #3"]],
+    ['kanban.edit', { task: 'TASK-2', assignee: ['@claude'] }, ['-a', '@claude']],
+    ['kanban.edit', { task: 'TASK-2', labels: ['canvas', 'ui'] }, ['-l', 'canvas,ui']],
+    ['kanban.edit', { task: 'TASK-2', priority: 'high' }, ['--priority', 'high']],
+    ['kanban.edit', { task: 'TASK-2', description: 'First line\nsecond line' }, ['-d', 'First line\nsecond line']],
+    ['kanban.edit', { task: 'TASK-2', plan: 'step 1' }, ['--plan', 'step 1']],
+    ['kanban.edit', { task: 'TASK-2', notes: 'a note' }, ['--notes', 'a note']],
+    ['kanban.edit', { task: 'TASK-2', ac: { add: ['first', 'second'] } }, ['--ac', 'first', '--ac', 'second']],
+    ['kanban.edit', { task: 'TASK-2', ac: { check: [2] } }, ['--check-ac', '2']],
+    ['kanban.edit', { task: 'TASK-2', ac: { uncheck: [2] } }, ['--uncheck-ac', '2']],
+    ['kanban.edit', { task: 'TASK-2', ac: { remove: [1] } }, ['--remove-ac', '1']],
+    ['kanban.comment', { task: 'TASK-2', text: 'looks good' }, ['--comment', 'looks good', '--comment-author', '@claude']],
+    ['kanban.edit', { task: 'TASK-1', plan: '' }, ['--plan', '']],
+  ];
+  it.skipIf(!haveCli)('the same ops on a copy through the serve and on an oracle copy through the CLI end in equal files', { timeout: 90000 }, async () => {
+    const a = join(tmp, 'eq-a');
+    const b = join(tmp, 'eq-b');
+    const dirA = project(a, { 'task-1 - First.md': mk('TASK-1', 'First', { labels: ['canvas'], ordinal: 1000, description: 'd', plan: 'p', ac: [{ text: 'one', done: false }] }) });
+    const dirB = project(b, { 'task-1 - First.md': mk('TASK-1', 'First', { labels: ['canvas'], ordinal: 1000, description: 'd', plan: 'p', ac: [{ text: 'one', done: false }] }) });
+    // the two copies start byte-equal (dates fixed by `mk`'s clock: rewrite B from A)
+    for (const n of readdirSync(dirA)) writeFileSync(join(dirB, n), readFileSync(join(dirA, n)));
+    const boards = join(tmp, 'eq-boards');
+    mkdirSync(boards);
+    const s = await startServe(boards, ['--kanban', `demo=${a}`]);
+    expect((await s.post('/api/boards', { name: 'kb' })).status).toBe(201);
+    const v = await viewer(s, 'kb');
+    v.store.dispatch('kanban.addBoard', { x: 0, y: 0, source: 'demo' });
+    await until(() => v.tasks().length === 6);
+    for (const [name, args, cli] of OPS) {
+      const id = String((args as { task: string }).task).replace('TASK-', '');
+      const r = await run(s, name, args);
+      expect(r.json.ok, `${name} ${JSON.stringify(args)}: ${r.json.error}`).toBe(true);
+      const o = spawnSync('backlog', ['task', 'edit', id, ...cli], { cwd: b, encoding: 'utf8' });
+      expect(o.status, `${cli.join(' ')}: ${o.stderr}`).toBe(0);
+      const files = () => [read(dirA, `TASK-${id}`), read(dirB, `TASK-${id}`)].map((t) => noOrdinal(norm(t)));
+      await until(() => files()[0] === files()[1], 4000).catch(() => {});
+      const [x, y] = files();
+      expect(x, `${name} ${JSON.stringify(args)}`).toBe(y);
+    }
+    // and every other file is still as it was
+    for (const n of readdirSync(dirA).filter((n) => !/^task-[12] /.test(n))) expect(readFileSync(join(dirA, n), 'utf8'), n).toBe(readFileSync(join(dirB, n), 'utf8'));
+    v.leave();
+    await s.stop();
+  });
+});
+
 describe('stamps', () => {
   it('the fixtures are dated by UTC like the CLI', () => {
     expect(stamp(new Date(Date.UTC(2026, 9, 16, 1, 2)))).toBe('2026-10-16 01:02');

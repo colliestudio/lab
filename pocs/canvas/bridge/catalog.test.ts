@@ -39,6 +39,35 @@ describe('every spec', () => {
     }
   });
 
+  it('kanban describes move, create, edit, comment, filter, addBoard and the kanban.board view, with a short guide', () => {
+    const p = cat.plugin('kanban')!;
+    expect(p.title && p.summary && p.guide).toBeTruthy();
+    expect(p.guide!.split('\n').length).toBeLessThanOrEqual(15);
+    for (const n of ['kanban.move', 'kanban.create', 'kanban.edit', 'kanban.comment', 'kanban.filter', 'kanban.addBoard']) {
+      expect(cat.spec(n), n).toBeTruthy();
+      expect(cat.owner(n)).toBe('kanban');
+    }
+    expect(p.views).toEqual(['kanban.board']);
+    expect(p.undescribed).toEqual(['kanban.expand']);
+    const t = cat.helpText('kanban');
+    for (const n of ['kanban.move', 'kanban.create', 'kanban.edit', 'kanban.comment']) expect(t).toContain(JSON.stringify(cat.spec(n)!.example));
+    expect(t).toContain('kanban.board');
+    expect(cat.helpText()).toContain('kanban -');
+  });
+
+  it('kanban commands take no path: a path-like extra field is an unknown field', () => {
+    for (const [n, a] of [['kanban.create', { title: 'x' }], ['kanban.move', { task: 'TASK-1', status: 'Done' }], ['kanban.edit', { task: 'TASK-1', title: 'x' }], ['kanban.comment', { task: 'TASK-1', text: 'x' }], ['kanban.addBoard', { source: 'demo' }]] as const) {
+      expect(cat.validate(n, a).ok, n).toBe(true);
+      for (const extra of ['path', 'dir', 'folder', 'root', 'file']) {
+        const r = cat.validate(n, { ...a, [extra]: '/tmp/other' });
+        expect(r.ok, `${n} ${extra}`).toBe(false);
+        expect((r as { error: string }).error).toMatch(/unknown field/);
+      }
+    }
+    expect(cat.validate('kanban.addBoard', { source: '../x' }).ok).toBe(false);
+    expect(cat.validate('kanban.addBoard', { source: '/etc' }).ok).toBe(false);
+  });
+
   it('owners come from registration: chess.* belongs to chess, core.* to core', () => {
     expect(cat.owner('chess.move')).toBe('chess');
     expect(cat.owner('core.connect')).toBe('core');
