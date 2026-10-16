@@ -72,6 +72,11 @@ describe('listing and lazy loading', () => {
     expect([...st.reads.keys()]).not.toContain('../etc/passwd');
   });
 
+  it('a pinned name is never refused for its looks, even for a file that does not exist yet', async () => {
+    make({}, { pinned: ['.odd:name'] });
+    expect((await dir.open('.odd:name', { create: true })).name).toBe('.odd:name');
+  });
+
   it('NFC and NFD spellings of a name are one board', async () => {
     const nfd = 'cafe\u0301';
     const nfc = 'caf\u00e9';

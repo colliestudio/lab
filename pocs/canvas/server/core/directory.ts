@@ -140,7 +140,7 @@ export class BoardDirectory {
       const stored = (await this.storage.list()).find((i) => fold(i.name) === key)?.name;
       if (stored === undefined) {
         // not a board that exists: only a valid name can be created, and a bad one is the caller's mistake
-        const bad = validName(name);
+        const bad = this.pinned.has(key) ? undefined : validName(name); // a pinned name is a file the operator chose
         if (bad) throw new DirError(400, bad);
         if (!o.create) throw new DirError(404, `no board "${name}"`);
       }
