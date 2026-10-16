@@ -85,6 +85,14 @@ describe('folder lock, in processes', () => {
     expect(holder(d).pid).toBe(b.proc.pid);
   }, 30000);
 
+  it('the lock lists host-name URLs before loopback', async () => {
+    const d = folder();
+    const port = await freePort();
+    const a = run('server/serve.ts', [d, '--port', String(port), '--host-name', 'mini.internal'], port);
+    await up(a);
+    expect(holder(d).urls).toEqual([`http://mini.internal:${port}`, `http://127.0.0.1:${port}`]);
+  }, 30000);
+
   it('a serve that cannot listen exits 1 and leaves no lock', async () => {
     const d = folder();
     const busy = net.createServer();

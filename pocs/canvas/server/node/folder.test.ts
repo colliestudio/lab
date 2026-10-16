@@ -179,6 +179,11 @@ describe('FolderStorage (iCloud stubs)', () => {
     expect(asked).toEqual([join(st.dir, 'Foo.canvas')]);
   });
 
+  it('a stub whose name starts with a dot is no board', async () => {
+    writeFileSync(join(dir, '..x.canvas.icloud'), 'p');
+    expect(await new FolderStorage(dir, { download: () => {} }).list()).toEqual([]);
+  });
+
   it('a real file wins over its stub; the lock file is not a board', async () => {
     stub('Foo');
     writeFileSync(join(dir, 'Foo.canvas'), '{}');

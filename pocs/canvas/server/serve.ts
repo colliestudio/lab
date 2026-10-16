@@ -59,7 +59,7 @@ const storage = new FolderStorage(dir);
 // Released on any exit, SIGTERM and a failed listen included; after a SIGKILL the next start finds it stale.
 let lock: ReturnType<typeof acquireFolderLock>;
 try {
-  lock = acquireFolderLock(storage.dir, { port, urls: [`http://${host}:${port}`, ...args.hostNames.map((n) => `http://${n}:${port}`)] });
+  lock = acquireFolderLock(storage.dir, { port, urls: [...args.hostNames.map((n) => `http://${n}:${port}`), `http://${host}:${port}`] });
 } catch (e) {
   if (e instanceof FolderLockedError) fail(e.message, 1);
   throw e;

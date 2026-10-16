@@ -20,7 +20,8 @@ const EXT = '.canvas';
 const SIDECARS = ['.ystate', '.room'];
 
 const fold = (n: string) => n.normalize('NFC').toLowerCase();
-const STUB = /^\.(.+\.canvas)\.icloud$/;
+// (a stubbed name that starts with a dot would be no valid board name)
+const STUB = /^\.([^.].*\.canvas)\.icloud$/;
 const DOWNLOAD_EVERY_MS = 60_000;
 const missing = (e: unknown) => (e as NodeJS.ErrnoException).code === 'ENOENT';
 
@@ -37,7 +38,7 @@ export class FolderStorage implements BoardStorage {
 
   /** `download`: asks the cloud store to fetch an evicted board (default: `brctl download` on macOS). */
   constructor(dir: string, opts: { file?: string; download?: (path: string) => void } = {}) {
-    this.download = opts.download ?? (platform() === 'darwin' ? (p) => void execFile('brctl', ['download', p], () => {}) : () => {});
+    this.download = opts.download ?? (platform() === 'darwin' ? (p) => void execFile(process.env.CANVAS_BRCTL || 'brctl', ['download', p], () => {}) : () => {});
     // the real path, so a symlinked folder (/tmp on macOS) is one folder to the watcher and to names
     this.dir = realpathSync(resolve(opts.file ? dirname(opts.file) : dir));
     this.single = opts.file ? basename(opts.file) : undefined;

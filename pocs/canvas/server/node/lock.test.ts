@@ -1,9 +1,10 @@
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { acquireFolderLock, FolderLockedError, LOCK_FILE, lockState, type Here } from './lock';
+import { root } from '../../bridge/process.test-util';
+import { acquireFolderLock, FolderLockedError, LOCK_FILE, hereInfo, lockState, type Here } from './lock';
 
 const here: Here = { machine: 'M1', host: 'mini', bootAt: 1_000_000_000_000 };
 const dirs: string[] = [];
@@ -76,6 +77,36 @@ describe('folder lock', () => {
     expect(lockState(d, here)).toMatchObject({ held: true });
     expect(() => acquireFolderLock(d, { port: 1, urls: [], here })).toThrow(/macbook/);
   });
+
+  it('a Mac whose ioreg failed (machine = hostname) still recognises its own lock by hostname', () => {
+    const d = tmp();
+    const noIoreg: Here = { machine: 'mini', host: 'mini', bootAt: here.bootAt };
+    write(d, { pid: process.ppid, machine: 'UUID-1', host: 'mini', bootAt: here.bootAt });
+    expect(lockState(d, noIoreg)).toMatchObject({ held: true, reason: expect.stringContaining('running') });
+    write(d, { pid: deadPid(), machine: 'UUID-1', host: 'mini', bootAt: here.bootAt });
+    expect(lockState(d, noIoreg)).toMatchObject({ held: false });
+    write(d, { pid: deadPid(), machine: 'UUID-2', host: 'macbook', bootAt: here.bootAt });
+    expect(lockState(d, noIoreg)).toMatchObject({ held: true }); // another Mac
+  });
+
+  it('simultaneous starters on a stale lock: exactly one wins', async () => {
+    const d = tmp();
+    const real = hereInfo(); // the contenders are real processes: the lock must be this machine's
+    write(d, { pid: deadPid(), machine: real.machine, host: real.host, bootAt: real.bootAt });
+    const code = `import { acquireFolderLock } from './server/node/lock.ts';
+      try { acquireFolderLock(process.argv[1], { port: 1, urls: [] }); console.log('won'); setTimeout(() => {}, 2500); }
+      catch (e) { console.log('lost'); }`;
+    const run = () =>
+      new Promise<string>((resolve) => {
+        const p = spawn(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', code, d], { cwd: root, stdio: ['ignore', 'pipe', 'ignore'] });
+        let out = '';
+        p.stdout.on('data', (c) => (out += c));
+        p.on('close', () => resolve(out.trim()));
+      });
+    const results = await Promise.all(Array.from({ length: 6 }, run));
+    expect(results.filter((r) => r === 'won')).toHaveLength(1);
+    expect(results.filter((r) => r === 'lost')).toHaveLength(5);
+  }, 30000);
 
   it('garbage or an empty file is free', () => {
     const d = tmp();

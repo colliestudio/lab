@@ -76,7 +76,13 @@ const storage = (() => {
 })();
 // A folder that canvas serve serves live has one writer already; a bridge on a file in it would be a second one.
 // (Only checks: bridges legitimately share folders with each other.)
-const locked = lockState(storage.dir);
+let locked: ReturnType<typeof lockState>;
+try {
+  locked = lockState(storage.dir);
+} catch (e) {
+  console.error(`canvas bridge: cannot read the lock in ${storage.dir}: ${(e as Error).message}`);
+  process.exit(2);
+}
 if (locked.held) {
   const h = locked.holder!;
   console.error(`canvas bridge: ${storage.dir} is served live by ${describeHolder(h)}; open the board there${h.urls[0] ? ` (${h.urls[0]}/)` : ''}, or stop that service, or use a file in another folder`);

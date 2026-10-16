@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { closeSync, openSync, readFileSync, unlinkSync, writeSync } from 'node:fs';
+import { closeSync, linkSync, openSync, readFileSync, renameSync, unlinkSync, writeSync } from 'node:fs';
 import { hostname, platform, uptime } from 'node:os';
 import { join } from 'node:path';
 
@@ -85,7 +85,9 @@ function judge(text: string | undefined, here: Here): LockState {
   if (text === undefined) return { held: false, reason: 'no lock' };
   const holder = parse(text);
   if (!holder) return { held: false, reason: 'unreadable lock file (stale)' };
-  if (holder.machine !== here.machine) return { holder, held: true, reason: `held from ${holder.host}` };
+  // ioreg failed for us (machine fell back to the hostname) but worked when the lock was written: same Mac if the hostname matches
+  const sameMachine = holder.machine === here.machine || (here.machine === here.host && holder.host === here.host);
+  if (!sameMachine) return { holder, held: true, reason: `held from ${holder.host}` };
   if (holder.pid === process.pid) return { holder, held: false, reason: 'our own pid (stale)' };
   if (Math.abs(holder.bootAt - here.bootAt) >= BOOT_SLACK_MS) return { holder, held: false, reason: 'from before the last boot (stale)' };
   if (!alive(holder.pid)) return { holder, held: false, reason: `pid ${holder.pid} is gone (stale)` };
@@ -147,13 +149,28 @@ export function acquireFolderLock(dir: string, o: { port: number; urls: string[]
     const text = read(path);
     const state = judge(text, here);
     if (state.held) throw new FolderLockedError(dir, state.holder!);
-    // stale: remove it only if it is still the text we judged (another starter may have replaced it meanwhile)
-    if (read(path) === text) {
-      try {
-        unlinkSync(path);
-      } catch (e2) {
-        if ((e2 as NodeJS.ErrnoException).code !== 'ENOENT') throw e2;
+    // Stale. Move it aside first (atomic: only one of two simultaneous starters gets it) and look at what we
+    // moved: if it is not the text we judged, a live holder replaced it meanwhile, so put it back and refuse.
+    const aside = `${path}.${holder.token}`;
+    let moved: string | undefined;
+    try {
+      renameSync(path, aside);
+      moved = read(aside);
+    } catch (e2) {
+      if ((e2 as NodeJS.ErrnoException).code !== 'ENOENT') throw e2;
+    }
+    if (moved !== undefined) {
+      const was = judge(moved, here);
+      if (moved !== text && was.held) {
+        try {
+          linkSync(aside, path);
+        } catch {
+          /* somebody took the name again: they are the holder now */
+        }
+        unlinkSync(aside);
+        throw new FolderLockedError(dir, was.holder!);
       }
+      unlinkSync(aside);
     }
     try {
       take();

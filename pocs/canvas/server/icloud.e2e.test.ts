@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -25,8 +26,10 @@ beforeAll(async () => {
   writeFileSync(join(dir, 'Bar.canvas'), stableSerialize({ nodes: [], edges: [], extra: { 'x-canvas-format': 1 } }));
   port = await freePort();
   url = `http://127.0.0.1:${port}`;
-  // PATH without brctl's folder: the download request is a no-op here
-  proc = spawn(process.execPath, ['--import', 'tsx', 'server/serve.ts', dir, '--port', String(port)], { cwd: root, stdio: 'ignore', env: { ...process.env, PATH: '/nonexistent' } });
+  // a stand-in for brctl that logs its arguments: the real tool is never called
+  writeFileSync(join(dir, '..brctl'), `#!/bin/sh\necho "$@" >> '${join(dir, '..brctl.log')}'\n`);
+  chmodSync(join(dir, '..brctl'), 0o755);
+  proc = spawn(process.execPath, ['--import', 'tsx', 'server/serve.ts', dir, '--port', String(port)], { cwd: root, stdio: 'ignore', env: { ...process.env, CANVAS_BRCTL: join(dir, '..brctl') } });
   await until(async () => !!(await fetch(url + '/api/info').catch(() => null))?.ok);
 }, 30000);
 afterAll(() => {
@@ -38,6 +41,11 @@ describe('serve with an evicted board', () => {
   it('lists it as evicted, with the reason', async () => {
     const r = await json('GET', '/api/boards');
     expect(r.json).toEqual([expect.objectContaining({ name: 'Bar' }), expect.objectContaining({ name: 'Foo', evicted: true, error: expect.stringContaining('not downloaded') })]);
+  });
+
+  it('asked the cloud store for the download', async () => {
+    await until(() => existsSync(join(dir, '..brctl.log')));
+    expect(readFileSync(join(dir, '..brctl.log'), 'utf8')).toContain(`download ${join(realpathSync(dir), 'Foo.canvas')}`);
   });
 
   it('opening it is a 503 (HTTP and WebSocket) and writes nothing', async () => {
