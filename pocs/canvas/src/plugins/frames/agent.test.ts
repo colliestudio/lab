@@ -130,6 +130,30 @@ describe('frames through the bridge', () => {
     expect(f.captured.map((c: any) => c.title)).toEqual(expect.arrayContaining(['Roadmap']));
   });
 
+  it('include refuses a node held by a smaller frame the grown frame does not reach; reports leaving a parent', () => {
+    const h = new Host();
+    ok(h, 'frames.create', { label: 'A', x: 0, y: 0, width: 1000, height: 800 });
+    ok(h, 'frames.create', { label: 'B', x: 1100, y: 0, width: 600, height: 300 });
+    ok(h, 'diagram.add', { kind: 'rect', text: 'Cache', x: 1120, y: 60, width: 100, height: 60 });
+    expect(error(h, 'frames.include', { id: 'A', nodes: ['Cache'] })).toMatch(/“Cache” \(\w+\) would stay outside: it is held by “B”.*core\.move/);
+    // a nested frame growing past its parent says so
+    const g = new Host();
+    ok(g, 'frames.create', { label: 'Outer', x: 0, y: 0, width: 800, height: 600 });
+    ok(g, 'frames.create', { label: 'Inner', x: 100, y: 100, width: 200, height: 150 });
+    ok(g, 'diagram.add', { kind: 'rect', text: 'Far', x: 2000, y: 100 });
+    expect(ok(g, 'frames.include', { id: 'Inner', nodes: ['Far'], force: true })).toMatchObject({ leftParent: 'Outer' });
+  });
+
+  it('createPortal centres with the clamped size', () => {
+    const h = new Host();
+    const id = ok(h, 'frames.createPortal', { room: 'r', x: 500, y: 500, width: 100 }).id;
+    const p = h.store.doc.get(id)!;
+    expect(p.x + p.width / 2).toBe(500);
+    const qid = ok(h, 'frames.createPortal', { room: 'r2', width: 100 }).id;
+    const q = h.store.doc.get(qid)!;
+    expect(q.width).toBe(160);
+  });
+
   it('rename returns the cleaned label and refuses an empty one', () => {
     const h = new Host();
     ok(h, 'frames.create', { label: 'A' });

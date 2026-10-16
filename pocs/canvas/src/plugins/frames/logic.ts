@@ -3,7 +3,7 @@ import { command, nodeRef, view, type CommandSpec } from '../../core/agent';
 import type { CanvasNode, Command, DocView, Store } from '../../core';
 import { titleOf } from '../../core/query';
 import type { PluginLogic } from '../logic';
-import { cleanLabel, commands, freeSpot, includeBox } from './commands';
+import { MIN_H, MIN_W, cleanLabel, commands, freeSpot, includeBox } from './commands';
 import { frameAt, isFrame, isPortal, memberships, orderedFrames } from './model';
 import { framesOf, framesText } from './text';
 
@@ -47,7 +47,7 @@ function needPortal(doc: DocView, id: string): CanvasNode {
 }
 
 /** Riders of a frame before an include ran, per call (the adapter and the result share the ctx). */
-const included = new WeakMap<object, Set<string>>();
+const included = new WeakMap<object, { before: Set<string>; parent?: string }>();
 const order = (doc: DocView, id: string) => orderedFrames(doc).findIndex((f) => f.id === id) + 1;
 const inside = (doc: DocView, id: string) => doc.riders(id).filter((n) => doc.isVisible(n.id)).length;
 const changed = (r: { changes: unknown[] }) => r.changes.length;
@@ -110,14 +110,34 @@ export const specs: Record<string, CommandSpec> = {
         const swallowed = ctx.doc.nodes.filter((g) => isFrame(g) && g.id !== id && !nodes.includes(g.id) && !before.has(g.id) && frameAt(g, nodesAfter) === id);
         if (swallowed.length) throw new Error(`that would also take in the frame${swallowed.length > 1 ? 's' : ''} ${swallowed.map((g) => quoted(g, g.id)).join(', ')}. Move the nodes next to ${quoted(f, id)} with core.move first, or pass force: true`);
       }
-      included.set(ctx, before);
+      // each node must end up in this frame by the real membership rule: one already held by a smaller
+      // frame, a board column or a chess board stays there unless the holder itself ends up in this frame
+      const grown = includeBox(f, nodes.map((n) => ctx.doc.get(n)!));
+      const after = ctx.doc.nodes.map((n) => (n.id === id ? { ...n, ...grown } : n));
+      for (const n of nodes) {
+        let cur = n;
+        let holder: string | undefined;
+        for (let i = 0; i < 20; i++) {
+          const next = ctx.doc.carrierOf(cur) ?? frameAt(ctx.doc.get(cur)!, after);
+          if (next === id) {
+            holder = undefined;
+            break;
+          }
+          if (!next) break;
+          holder ??= next;
+          cur = next;
+        }
+        if (holder) throw new Error(`${quoted(ctx.doc.get(n), n)} would stay outside: it is held by ${quoted(ctx.doc.get(holder), holder)}. Move it out first with core.move, or include ${quoted(ctx.doc.get(holder), holder)} instead`);
+      }
+      const parent = ctx.doc.carrierOf(id);
+      included.set(ctx, { before, ...(parent ? { parent } : {}) });
       return { id, nodes };
     },
     result: (r, a, ctx) => {
       const f = ctx.doc.get(a.id)!;
-      const before = included.get(ctx) ?? new Set<string>();
+      const { before, parent } = included.get(ctx) ?? { before: new Set<string>() };
       const captured = ctx.doc.riders(a.id).filter((n) => !before.has(n.id) && !a.nodes.includes(n.id)).map((n) => ({ id: n.id, title: titleOf(n) || n.type }));
-      return { id: a.id, width: f.width, height: f.height, inside: inside(ctx.doc, a.id), ...(captured.length ? { captured } : {}), changed: changed(r) };
+      return { id: a.id, width: f.width, height: f.height, inside: inside(ctx.doc, a.id), ...(captured.length ? { captured } : {}), ...(parent && ctx.doc.carrierOf(a.id) !== parent ? { leftParent: titleOf(ctx.doc.get(parent)!) } : {}), changed: changed(r) };
     },
   }),
   rename: command({
@@ -178,8 +198,8 @@ export const specs: Record<string, CommandSpec> = {
     toCommand: (a, ctx) => {
       if ((a.x === undefined) !== (a.y === undefined)) throw new Error('give both x and y (center), or neither');
       if (a.x !== undefined) return a;
-      const w = a.width ?? 560;
-      const h = a.height ?? 440;
+      const w = Math.max(MIN_W, a.width ?? 560);
+      const h = Math.max(MIN_H, a.height ?? 440);
       const p = freeSpot(ctx.doc, w, h);
       return { ...a, x: p.x + w / 2, y: p.y + h / 2 };
     },

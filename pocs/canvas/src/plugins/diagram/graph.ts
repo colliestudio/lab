@@ -113,6 +113,6 @@ export function graphText(g: Graph): string {
       out.push(`  ${ref(a.from.title, a.from.id)} ${a.ends} ${ref(a.to.title, a.to.id)}: ${tail}`);
     }
   }
-  if (g.overlaps.length) out.push('Overlapping: ' + g.overlaps.map(([a, b]) => `${ref(byId.get(a)!.text, a)} and ${ref(byId.get(b)!.text, b)}`).join('; '));
+  if (g.overlaps.length) out.push('Overlapping: ' + g.overlaps.map(([a, b]) => `${ref(byId.get(a)!.text || '(no text)', a)} and ${ref(byId.get(b)!.text || '(no text)', b)}`).join('; '));
   return out.join('\n');
 }
