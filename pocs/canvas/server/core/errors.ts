@@ -11,8 +11,12 @@ export class DirError extends Error {
 
 /** A board file the server cannot read as a canvas (not JSON, not a canvas). The file is left as it is. */
 export class BoardFileError extends Error {
-  constructor(name: string, cause: Error) {
-    super(`${name}.canvas is not a canvas file the server can read: ${cause.message}. The file is untouched.`);
+  constructor(name: string, cause: Error, existing = true) {
+    super(
+      existing
+        ? `${name}.canvas is not a canvas file the server can read: ${cause.message}. The file is untouched.`
+        : `the text for "${name}" is not a canvas file: ${cause.message}. No board was made.`,
+    );
     this.name = 'BoardFileError';
   }
 }

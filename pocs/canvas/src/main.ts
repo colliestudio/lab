@@ -1,11 +1,12 @@
 import './style.css';
-import { App, type Room, chromeButton, joinBridge, joinRoom, loadPlayer, mountChat, mountChrome, mountLog, mountZoomControl, savePlayer, openFile, parse, persistLocally, persistViewport, resetFileHandle, roomDbName, saveFile, type CanvasDoc } from './core';
+import { App, type Room, chromeButton, joinBridge, joinRoom, loadPlayer, mountChat, mountChrome, mountLog, mountZoomControl, savePlayer, openFile, parse, serialize, persistLocally, persistViewport, resetFileHandle, roomDbName, saveFile, type CanvasDoc } from './core';
 import { copyText, createRoomFrom, mountRoomStatus, roomFromUrl, roomLink } from './share';
 import { openBridgeDialog } from './bridgeDialog';
 import { bridgeFromLocation, bridgeHref, rememberBridge } from './bridges';
 import { askName } from './nameDialog';
 import { probeBoard } from './serve/probe';
 import { boardWsUrl, servedBoardName } from './serve/route';
+import { createUnique, fileStem, openServedBoard } from './serve/newBoard';
 import { showBoardScreen } from './serve/boardScreen';
 import { cardsPlugin } from './plugins/cards';
 import { chessPlugin } from './plugins/chess';
@@ -75,6 +76,36 @@ function openDoc(doc: CanvasDoc & { skipped?: string[] }, name: string) {
   flash(doc.skipped?.length ? `Opened ${name} (skipped ${doc.skipped.length} bad entries)` : `Opened ${name}`);
 }
 
+/**
+ * What this page's board is: 'served' / 'bridge' once connected (the store refuses `load` for both), 'pending' on a served
+ * page until the service answers (replaces are refused meanwhile), null for a local board.
+ * Runtime state, not the URL: on a static host `/b/x` boots local and behaves locally.
+ */
+let hosted: 'served' | 'bridge' | 'pending' | null = SERVED !== null ? 'pending' : null;
+/** New board / Open / drop while the board is not ours to replace: a bridge's file, or a served page still waiting for the service to answer. */
+const refuse = () => flash(hosted === 'pending' ? 'Opening the board…' : REFUSE);
+const REFUSE = 'This board is the bridge’s file: New board and Open would overwrite it';
+const failed = (what: string, e: unknown) => flash(`${what} failed: ${(e as Error).message}`);
+
+/** A served board is a file the service keeps: New board makes another board and opens it. */
+async function servedNew() {
+  try {
+    const { name, sameTab } = await openServedBoard(() => createUnique('Untitled', undefined));
+    flash(`Made ${name}${sameTab ? '' : ': opened in a new tab'}`);
+  } catch (e) {
+    failed('New board', e);
+  }
+}
+/** Open / drop on a served board: the file becomes a new served board. */
+async function servedImport(fileName: string, text: string) {
+  try {
+    const { name } = await openServedBoard(() => createUnique(fileStem(fileName), text));
+    flash(`Imported ${fileName} as ${name}`);
+  } catch (e) {
+    failed('Open', e);
+  }
+}
+
 async function doSave(saveAs = false) {
   try {
     const name = await saveFile(app.store.exportDoc(), { saveAs });
@@ -84,9 +115,14 @@ async function doSave(saveAs = false) {
   }
 }
 async function doOpen() {
+  if (hosted === 'bridge' || hosted === 'pending') return refuse();
   try {
     const res = await openFile();
     if (!res) return;
+    if (hosted === 'served') {
+      resetFileHandle(); // the picked file must not become the save target of the served board, whatever the import does
+      return void (await servedImport(res.name, serialize(res.doc)));
+    }
     openDoc(res.doc, res.name);
   } catch (e) {
     flash(`Open failed: ${(e as Error).message}`);
@@ -101,6 +137,8 @@ app.registerMainMenuItem({
   entry: () => ({
     label: 'New board',
     run: () => {
+      if (hosted === 'served') return void servedNew();
+      if (hosted === 'bridge' || hosted === 'pending') return refuse();
       if (confirm(ROOM ? 'Start a new board for everyone in this room?' : 'Start a new board? Unsaved changes are lost.')) newBoard();
     },
   }),
@@ -157,9 +195,12 @@ window.addEventListener('drop', async (e) => {
   e.preventDefault();
   const file = e.dataTransfer?.files[0];
   if (!file) return;
+  if (hosted === 'bridge' || hosted === 'pending') return refuse();
   try {
+    const doc = parse(await file.text()); // a file that is no canvas fails here, before a board is made for it
+    if (hosted === 'served') return void (await servedImport(file.name, serialize(doc)));
     resetFileHandle();
-    openDoc(parse(await file.text()), file.name);
+    openDoc(doc, file.name);
   } catch (err) {
     flash(`Open failed: ${(err as Error).message}`);
   }
@@ -181,7 +222,7 @@ function openBridge() {
 
 const view = persistViewport(app, VIEW_KEY);
 if (BRIDGE) startBridge(BRIDGE);
-else if (SERVED !== null) void probeBoard(SERVED).then((p) => (p.kind === 'ok' ? startBridge(boardWsUrl(location, SERVED), { name: p.name }) : p.kind === 'none' ? startLocal() : showBoardScreen(p, SERVED)));
+else if (SERVED !== null) void probeBoard(SERVED).then((p) => (p.kind === 'ok' ? startBridge(boardWsUrl(location, SERVED), { name: p.name }) : p.kind === 'none' ? ((hosted = null), startLocal()) : showBoardScreen(p, SERVED)));
 else startLocal();
 
 /** No service: the board of this browser (IndexedDB), or a room. */
@@ -242,6 +283,7 @@ function startLocal() {
 
 /** Bridge mode (?bridge=ws://host:5222): the table is a .canvas file a bridge process hosts; agents join it. A board of a canvas service (`served`) is the same, on this origin. */
 function startBridge(url: string, served?: { name: string }) {
+  hosted = served ? 'served' : 'bridge';
   const stored = loadPlayer();
   const room = joinBridge(app, url, { id: stored.id, name: stored.name, color: stored.color }, BRIDGE_ADDR?.token);
   (window as any).room = room;

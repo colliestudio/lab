@@ -258,3 +258,21 @@ describe('adoptViewRules', () => {
     expect(heard).toBe(1);
   });
 });
+
+describe('refuseLoad', () => {
+  it('a hosted store refuses load and keeps its document, log and updates', () => {
+    const s = store({ nodes: [{ id: 'a', type: 'text', x: 0, y: 0, width: 1, height: 1, text: 'keep' }], edges: [] });
+    const before = JSON.stringify(s.doc.nodes);
+    let updates = 0;
+    s.ydoc.on('update', () => updates++);
+    s.refuseLoad = 'hosted';
+    expect(() => s.load({ nodes: [], edges: [] })).toThrow('hosted');
+    expect(JSON.stringify(s.doc.nodes)).toBe(before);
+    expect(updates).toBe(0);
+  });
+  it('an unset store loads as before', () => {
+    const s = store({ nodes: [{ id: 'a', type: 'text', x: 0, y: 0, width: 1, height: 1, text: 'x' }], edges: [] });
+    s.load({ nodes: [], edges: [] });
+    expect(s.doc.nodes).toHaveLength(0);
+  });
+});

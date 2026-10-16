@@ -21,5 +21,5 @@ export { Viewport } from './viewport';
 export { mountZoomControl } from './zoomControl';
 export { Presence, mountPresenceView, type PlayerInfo, type Peer } from './presence';
 export { loadPlayer, savePlayer, PALETTE, MAX_NAME, type StoredPlayer } from './player';
-export { joinRoom, joinBridge, signalingUrl, roomDbName, type Room } from './sync';
+export { joinRoom, joinBridge, guardHosted, HOSTED_REFUSAL, signalingUrl, roomDbName, type Room } from './sync';
 export { parseBridgeAddress, bridgeLink, parseRoomRef, type BridgeAddress } from './bridgeAddress';

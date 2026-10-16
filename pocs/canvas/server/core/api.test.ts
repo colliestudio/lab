@@ -70,6 +70,16 @@ describe('directoryApi and serviceApi', () => {
   let dir: BoardDirectory;
   afterEach(() => dir.closeAll());
 
+  it('create with text: the file is the text; a non-string text is 400, a newer one 409, junk 422', async () => {
+    const call = svc();
+    expect(await call('POST', '/api/boards', { name: 'imp', text: stamped('q') })).toMatchObject({ status: 201, json: { name: 'imp' } });
+    expect(st.files.get('imp')).toBe(stamped('q'));
+    expect((await call('POST', '/api/boards', { name: 'x', text: 5 }))!.status).toBe(400);
+    expect(await call('POST', '/api/boards', { name: 'n', text: stableSerialize({ nodes: [], edges: [], extra: { 'x-canvas-format': 99 } }) })).toMatchObject({ status: 409, json: { kind: 'newer' } });
+    expect(await call('POST', '/api/boards', { name: 'j', text: 'junk' })).toMatchObject({ status: 422, json: { kind: 'invalid' } });
+    expect([...st.files.keys()]).toEqual(['imp']);
+  });
+
   it('info, list, create, rename, delete and their status codes', async () => {
     const call = svc({ a: stamped('x') });
     expect(await call('GET', '/api/info')).toMatchObject({ status: 200, json: { service: 'canvas-serve', format: 1 } });
