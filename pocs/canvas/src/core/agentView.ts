@@ -7,7 +7,7 @@ import { Viewport } from './viewport';
 // page-side API the screenshot provider drives (window.canvasShot). It knows nothing about the
 // provider: an Electron window or a headless Chrome call the same functions.
 
-export type ShotTarget = { kind: 'board' } | { kind: 'node'; id: string } | { kind: 'region'; x: number; y: number; width: number; height: number };
+export type ShotTarget = { kind: 'all' } | { kind: 'node'; id: string } | { kind: 'region'; x: number; y: number; width: number; height: number };
 
 export interface FrameOpts {
   target: ShotTarget;
@@ -120,7 +120,7 @@ export function mountAgentView(app: App): CanvasShotApi {
 
   const aim = (t: ShotTarget, padding: number) => {
     const doc = app.store.doc;
-    if (t.kind === 'board') return app.view.fit(padding);
+    if (t.kind === 'all') return app.view.fit(padding);
     if (t.kind === 'region') return app.view.fitBox(t, padding, Viewport.MAX);
     const n = doc.get(t.id);
     if (!n || !doc.isVisible(t.id) || app.isConcealed(n)) throw new Error(`node ${t.id} is not shown to ${app.viewer}`);

@@ -58,7 +58,7 @@ describe('canvasShot.frame (A2, A3)', () => {
   it('board / node / region aim the camera so the target sits inside the view with the padding', async () => {
     const { app, shot } = table();
     app.store.load({ nodes, edges: [] });
-    await shot.frame({ target: { kind: 'board' }, padding: 40 });
+    await shot.frame({ target: { kind: 'all' }, padding: 40 });
     for (const n of nodes) {
       const s = screen(app, n);
       expect(s.x).toBeGreaterThanOrEqual(40 - 0.5);
@@ -86,7 +86,7 @@ describe('canvasShot.frame (A2, A3)', () => {
     app.dispatch('cards.hideCount', { id: h, on: true });
     await expect(shot.frame({ target: { kind: 'node', id: 'c0' } })).rejects.toThrow('not shown to bob');
     await expect(shot.frame({ target: { kind: 'node', id: 'nope' } })).rejects.toThrow('not shown to bob');
-    const r = await shot.frame({ target: { kind: 'board' }, labels: true });
+    const r = await shot.frame({ target: { kind: 'all' }, labels: true });
     expect(r.nodes.map((n) => n.id)).not.toContain('c0');
   });
 
@@ -103,10 +103,10 @@ describe('canvasShot.frame (A2, A3)', () => {
       expect(y).toBeLessThan(H);
     }
     expect([...root.querySelectorAll('.cv-shot-label')].map((e) => e.textContent)).toEqual(['a']);
-    const again = await shot.frame({ target: { kind: 'board' }, labels: true });
+    const again = await shot.frame({ target: { kind: 'all' }, labels: true });
     expect(again.nodes.map((n) => n.id).sort()).toEqual(['a', 'b', 'c']);
     expect(root.querySelectorAll('.cv-shot-label')).toHaveLength(3);
-    await shot.frame({ target: { kind: 'board' }, labels: false });
+    await shot.frame({ target: { kind: 'all' }, labels: false });
     expect(root.querySelectorAll('.cv-shot-label')).toHaveLength(0);
   });
 });
@@ -140,7 +140,7 @@ describe('observer and freshness (A4)', () => {
     server.getMap('m').set('a', 1);
     const sv = btoa(String.fromCharCode(...Y.encodeStateVector(server)));
     let done = false;
-    const p = shot.frame({ target: { kind: 'board' }, stateVector: sv }).then(() => (done = true));
+    const p = shot.frame({ target: { kind: 'all' }, stateVector: sv }).then(() => (done = true));
     await new Promise((r) => setTimeout(r, 120));
     expect(done).toBe(false);
     Y.applyUpdate(app.store.ydoc, Y.encodeStateAsUpdate(server));

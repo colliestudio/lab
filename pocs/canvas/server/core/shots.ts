@@ -59,7 +59,7 @@ const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n
 /** Validate the tool arguments (node, region, labels, width, height, padding) into a request; a node given as a title resolves to its id. */
 export function parseShotArgs(args: Record<string, unknown>, doc: { nodes: { id: string; type?: string }[] }): Omit<ShotRequest, 'stateVector'> {
   if (args.node !== undefined && args.region !== undefined) throw new ShotError(400, 'give a node or a region, not both');
-  let target: ShotTarget = { kind: 'board' };
+  let target: ShotTarget = { kind: 'all' };
   if (args.node !== undefined) {
     try {
       target = { kind: 'node', id: resolveNode(doc as Parameters<typeof resolveNode>[0], String(args.node)).id };
@@ -83,4 +83,4 @@ export function parseShotArgs(args: Record<string, unknown>, doc: { nodes: { id:
   };
 }
 
-export const describeTarget = (t: ShotTarget) => (t.kind === 'board' ? 'whole board' : t.kind === 'node' ? `node ${t.id}` : `region ${t.x},${t.y} ${t.width}x${t.height}`);
+export const describeTarget = (t: ShotTarget) => (t.kind === 'all' ? 'whole board' : t.kind === 'node' ? `node ${t.id}` : `region ${t.x},${t.y} ${t.width}x${t.height}`);

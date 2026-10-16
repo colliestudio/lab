@@ -83,8 +83,8 @@ async function startServe() {
   base = `http://127.0.0.1:${port}`;
   await until(async () => !!(await fetch(base + '/api/info').catch(() => null))?.ok);
 }
-const api = async (path: string, body?: unknown) => (await fetch(`${base}/api/boards${path}`, body === undefined ? undefined : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })).json() as Promise<any>;
-const run = (board: string, name: string, args: object, who = 'Setup') => api(`/${board}/agent/run`, { as: who, name, args });
+const api = async (path: string, body?: Record<string, unknown>) => (await fetch(`${base}/api/boards${path}`, body === undefined ? undefined : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })).json() as Promise<any>;
+const run = (board: string, name: string, args: Record<string, unknown>, who = 'Setup') => api(`/${board}/agent/run`, { as: who, name, args });
 
 describe.skipIf(!CHROME)('screenshots in a real browser', () => {
   beforeAll(async () => {
@@ -106,7 +106,7 @@ describe.skipIf(!CHROME)('screenshots in a real browser', () => {
     rmSync(boardsDir, { recursive: true, force: true });
   });
 
-  const call = async (name: string, args: object = {}) => mcp.callTool({ name, arguments: args });
+  const call = async (name: string, args: Record<string, unknown> = {}) => mcp.callTool({ name, arguments: args });
 
   it('A14: a serve answers canvas_screenshot with a 1000x750 PNG that shows node colors and the prototype page inside its iframe', async () => {
     const red = (await run('main', 'board.add', { text: 'red', x: 0, y: 0, color: '1' })).result.id;
@@ -138,7 +138,7 @@ describe.skipIf(!CHROME)('screenshots in a real browser', () => {
   }, 60_000);
 
   it('A16: another player’s hand shows its card backs to the agent seat; the agent’s own hand shows faces', async () => {
-    const post = (name: string, args: object) => api('/hands/cmd', { as: 'Setup', name, args });
+    const post = (name: string, args: Record<string, unknown>) => api('/hands/cmd', { as: 'Setup', name, args });
     await post('cards.addPack', { x: 0, y: -900 });
     const other = (await post('cards.newHand', { owner: 'p1', label: 'P1', x: -400, y: 300 })).select[0];
     const mine = (await post('cards.newHand', { owner: 'agent:claude', label: 'Claude', x: 500, y: 300 })).select[0];

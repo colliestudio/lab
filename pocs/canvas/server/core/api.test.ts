@@ -151,7 +151,7 @@ describe('/shot', () => {
     expect(Buffer.from((r.json as { png: string }).png, 'base64')).toEqual(Buffer.from(PNG));
     expect(calls[0].board).toBe('demo');
     expect(calls[0].actor.id).toBe('tool:claude-code');
-    expect(calls[0].r).toMatchObject({ target: { kind: 'board' }, width: 1000, height: 750, padding: 40, labels: false });
+    expect(calls[0].r).toMatchObject({ target: { kind: 'all' }, width: 1000, height: 750, padding: 40, labels: false });
     expect(calls[0].r.stateVector).toMatch(/^[A-Za-z0-9+/=]+$/);
   });
 

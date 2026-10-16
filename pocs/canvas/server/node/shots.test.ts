@@ -5,7 +5,7 @@ import { HeadlessShots, type ShotBrowser, type ShotPage } from './shots';
 
 // HeadlessShots with a fake browser: how views are kept, serialized and closed.
 
-const req = (over: Partial<ShotRequest> = {}): ShotRequest => ({ target: { kind: 'board' }, width: 1000, height: 750, padding: 40, labels: false, stateVector: 'AA==', ...over });
+const req = (over: Partial<ShotRequest> = {}): ShotRequest => ({ target: { kind: 'all' }, width: 1000, height: 750, padding: 40, labels: false, stateVector: 'AA==', ...over });
 const claude = makeActor('Claude');
 const codex = makeActor('Codex');
 
