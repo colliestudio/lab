@@ -201,6 +201,17 @@ describe('HeadlessShots', () => {
     await s.close();
   });
 
+  it('a warm view is not evicted by another seat asking in the same tick', async () => {
+    const f = fake();
+    const s = make(f, { maxViews: 1 });
+    await s.shoot('demo', claude, req());
+    const [a, b] = await Promise.allSettled([s.shoot('demo', claude, req()), s.shoot('demo', codex, req())]);
+    expect(a.status).toBe('fulfilled');
+    expect(b).toMatchObject({ status: 'rejected', reason: { status: 503 } });
+    expect(f.pages[0].closed).toBe(false);
+    await s.close();
+  });
+
   it('a stale shot that fails after its view was closed does not drop the seat’s newer view', async () => {
     let fail = () => {};
     let first = true;

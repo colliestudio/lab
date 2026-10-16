@@ -66,6 +66,8 @@ export class HeadlessShots implements ShotProvider {
   private views = new Map<string, Promise<View>>();
   /** The views that finished opening (the ones that can be evicted). */
   private ready = new Map<string, View>();
+  /** Seats with a shot asked for but not yet on a view (still opening, or between the lookup and the queue): their view is not evictable. */
+  private claims = new Map<string, number>();
   private timer: ReturnType<typeof setInterval> | undefined;
   private emptySince = 0;
   private readonly idleMs: number;
@@ -151,7 +153,7 @@ export class HeadlessShots implements ShotProvider {
 
   /** Close the least recently used view that has no shot queued; false when every view is busy or still opening. */
   private evictIdle(): boolean {
-    const idle = [...this.ready.values()].filter((v) => v.busy === 0).sort((a, b) => a.lastUsed - b.lastUsed)[0];
+    const idle = [...this.ready.values()].filter((v) => v.busy === 0 && !this.claims.get(v.key)).sort((a, b) => a.lastUsed - b.lastUsed)[0];
     if (!idle) return false;
     void this.close1(idle, 'too many views');
     return true;
@@ -172,9 +174,19 @@ export class HeadlessShots implements ShotProvider {
 
   async shoot(board: string, actor: Actor, r: ShotRequest): Promise<Shot> {
     const start = Date.now();
-    const v = await this.view(board, actor, { width: r.width, height: r.height });
-    v.lastUsed = Date.now(); // before anything can interleave: an idle sweep must not close a view that has a shot queued
-    v.busy++;
+    const key = `${actor.id}@${board}`;
+    this.claims.set(key, (this.claims.get(key) ?? 0) + 1);
+    let v: View;
+
+    try {
+      v = await this.view(board, actor, { width: r.width, height: r.height });
+      v.lastUsed = Date.now(); // an idle sweep must not close a view that has a shot queued
+      v.busy++;
+    } finally {
+      const n = (this.claims.get(key) ?? 1) - 1;
+      if (n) this.claims.set(key, n);
+      else this.claims.delete(key);
+    }
     const run = v.chain.then(() => this.take(v, r), () => this.take(v, r));
     v.chain = run.catch(() => {});
     const shot = await run.finally(() => v.busy--);
