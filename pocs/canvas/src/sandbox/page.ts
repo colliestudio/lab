@@ -160,6 +160,7 @@ function srcdocFrame(html: string, scripts: boolean, state: Record<string, strin
     if (e.source !== frame.contentWindow || e.origin !== 'null') return;
     const m = runtimeMessage(e.data, key);
     if (m === 'loaded') watch.onLoaded();
+    else if (m === 'leaving') watch.onLeaving();
     else if (m === 'escape') frame.dispatchEvent(new Event(PAGE_ESCAPE));
   };
   window.addEventListener('message', onMsg);

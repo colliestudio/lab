@@ -41,16 +41,19 @@ const json = (v: unknown) => JSON.stringify(v).replace(/</g, '\\u003c');
 
 /**
  * Runs inside the page, first in the document: clicks on `[data-goto]` / `[data-back]`, `data-store`
- * fields, `data-show`, `window.canvas`, Escape and the load handshake. Every message carries the
- * per-frame key (field `auth`; `key` is taken by `set`), which lives only in this closure: the page can't read this script (it removes its
- * own element), can't patch what it uses (the globals are captured first, messages are object
- * literals) and can't forge a trusted key event.
+ * fields, `data-show`, `window.canvas`, Escape, and the `loaded` / `leaving` handshake. Every message
+ * carries the per-frame key (field `auth`; `key` is taken by `set`), which lives only in this
+ * closure. The page can't read this script (it removes its own element), can't patch what it uses
+ * (the globals are captured first, messages are object literals) and can't forge a trusted event
+ * (`isTrusted`: key presses, `load`, `beforeunload`).
  */
 export function pageRuntime(key: string, state: Record<string, string>): string {
   return `(() => {
   const TAG = ${json(TAG)}, KEY = ${json(key)};
   const apply = Reflect.apply, keyOf = Object.getOwnPropertyDescriptor(KeyboardEvent.prototype, 'key').get, up = parent;
   const state = ${json(state)};
+  // a navigation of this frame (even one that never commits a document: 204, download, window.stop()) announces itself
+  addEventListener('beforeunload', (ev) => { if (ev.isTrusted) up.postMessage({ tag: TAG, auth: KEY, kind: 'leaving' }, '*'); });
   const goto = (target) => up.postMessage({ tag: TAG, auth: KEY, kind: 'goto', target: String(target || '') }, '*');
   const back = () => up.postMessage({ tag: TAG, auth: KEY, kind: 'back' }, '*');
   const set = (k, v) => { state[k] = String(v); up.postMessage({ tag: TAG, auth: KEY, kind: 'set', key: String(k), value: String(v) }, '*'); };
@@ -101,11 +104,11 @@ export function frameAttrs(scripts: boolean): Record<string, string> {
 export const frameKey = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('');
 
 /** A message from the runtime that is for the frame host, not the canvas (anything else: undefined). */
-export function runtimeMessage(data: unknown, key: string): 'loaded' | 'escape' | undefined {
+export function runtimeMessage(data: unknown, key: string): 'loaded' | 'escape' | 'leaving' | undefined {
   if (!data || typeof data !== 'object') return;
   const d = data as Record<string, unknown>;
   if (d.tag !== TAG || d.auth !== key) return;
-  return d.kind === 'loaded' || d.kind === 'escape' ? d.kind : undefined;
+  return d.kind === 'loaded' || d.kind === 'escape' || d.kind === 'leaving' ? d.kind : undefined;
 }
 
 /** Does this message carry the frame's key? (the key makes a navigated-away document in the same window untrusted) */
@@ -136,6 +139,8 @@ export function loadWatch(scripts: boolean, foreign: () => void, ms = 2000) {
       vouched = true;
       clearTimeout(timer);
     },
+    /** The runtime saw its frame navigate: foreign right away (a navigation may never load a document). */
+    onLeaving: fire,
     dispose() {
       done = true;
       clearTimeout(timer);

