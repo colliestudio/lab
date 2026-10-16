@@ -45,7 +45,7 @@ describe('bridge/ stays generic', () => {
       for (const m of code(f).matchAll(/'((?:[^'\\\n]|\\.)*)'|"((?:[^"\\\n]|\\.)*)"|`((?:[^`\\]|\\.)*)`/g)) {
         const s = m[1] ?? m[2] ?? m[3];
         for (const w of whole) expect(new RegExp(`(^|[^A-Za-z0-9.])${w.replace('.', '\\.')}($|[^A-Za-z0-9])`).test(s), `${f}: "${s}" mentions the command ${w}`).toBe(false);
-        for (const n of names) expect(new RegExp(`(^|[^A-Za-z0-9-])${n}_`).test(s) || s === n, `${f}: "${s}" names the ${n} plugin`).toBe(false);
+        for (const n of names) expect(new RegExp(`(^|[^A-Za-z0-9-])${n}_`).test(s) || s === n || (s !== 'board.canvas' && new RegExp(`(^|[^A-Za-z0-9.-])${n}\\.([a-z]|$)`).test(s)), `${f}: "${s}" names the ${n} plugin`).toBe(false);
         for (const x of xfields) expect(s.includes(x), `${f}: "${s}" names the plugin field ${x}`).toBe(false);
       }
     }
