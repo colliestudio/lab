@@ -18,11 +18,11 @@ afterEach(async () => {
   await dir.closeAll();
 });
 
-async function start(app?: NodeServerOptions['app']) {
+async function start(app?: NodeServerOptions['app'], mcp?: NodeServerOptions['mcp']) {
   const st = new MemoryStorage({ demo: stableSerialize({ nodes: [], edges: [], extra: { 'x-canvas-format': 1 } }) });
   dir = new BoardDirectory(st, { sweepMs: 0, log: () => {} });
   const log = () => {};
-  server = createNodeServer({ directory: dir, guard: makeGuard({ port: 0 }), log, app });
+  server = createNodeServer({ directory: dir, guard: makeGuard({ port: 0 }), log, app, mcp });
   await server.listen(0, '127.0.0.1');
   return (server.http.address() as AddressInfo).port;
 }
@@ -99,5 +99,34 @@ describe('an app that throws', () => {
     expect(r.status).toBe(500);
     expect(await r.json()).toEqual({ error: 'boom' });
     expect((await fetch(`http://127.0.0.1:${port}/api/info`)).status).toBe(200);
+  });
+});
+
+describe('app and mcp mounted together', () => {
+  it('/mcp?x reaches mcp, /mcp/ is the JSON 404, / goes to the app', async () => {
+    const seen: string[] = [];
+    const port = await start(
+      {
+        handle: async (req, res) => {
+          if (req.url !== '/') return false;
+          seen.push('app');
+          res.end('home');
+          return true;
+        },
+      },
+      {
+        handle: async (req, res) => {
+          seen.push('mcp ' + req.url);
+          res.end('mcp');
+        },
+      },
+    );
+    const get = (path: string) => fetch(`http://127.0.0.1:${port}${path}`);
+    expect(await (await get('/mcp?x')).text()).toBe('mcp');
+    const slash = await get('/mcp/');
+    expect(slash.status).toBe(404);
+    expect(slash.headers.get('content-type')).toBe('application/json');
+    expect(await (await get('/')).text()).toBe('home');
+    expect(seen).toEqual(['mcp /mcp?x', 'app']);
   });
 });
