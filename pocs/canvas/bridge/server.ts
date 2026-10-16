@@ -346,13 +346,34 @@ async function api(req: IncomingMessage, res: ServerResponse) {
       const q = Object.fromEntries(url.searchParams) as Record<string, string | undefined>;
       const actor = actorOf({ as: q.as, kind: q.kind }, req);
       try {
-        if (viewMatch[1] === 'view') return reply(200, host.view(actor, viewMatch[2], q));
+        // args as one JSON value (typed: numbers, lists), else the plain query parameters
+        const args = q.args ? JSON.parse(q.args) : Object.fromEntries(Object.entries(q).filter(([k]) => !['as', 'kind', 'timeout', 'args'].includes(k)));
+        if (viewMatch[1] === 'view') return reply(200, host.view(actor, viewMatch[2], args));
         const ms = Math.min(Math.max(Number(q.timeout ?? 50), 1), 290) * 1000;
-        const v = await host.wait(actor, viewMatch[2], q, ms);
+        const v = await host.wait(actor, viewMatch[2], args, ms);
         return reply(200, v === undefined ? { waiting: true, error: `still not ready after ${ms / 1000}s; wait again` } : v);
       } catch (e) {
         return reply(400, { error: (e as Error).message });
       }
+    }
+    // what a plugin tells agents (guides, commands with their arguments and examples, views)
+    if (req.method === 'GET' && url.pathname === '/agent/help') {
+      try {
+        const plugin = url.searchParams.get('plugin') ?? undefined;
+        const name = url.searchParams.get('command') ?? undefined;
+        return reply(200, url.searchParams.has('text') ? { text: host.catalog.helpText(plugin, name) } : host.catalog.helpJson(plugin, name));
+      } catch (e) {
+        return reply(400, { error: (e as Error).message });
+      }
+    }
+    // a command as an agent: args checked against the plugin's description, node titles resolved
+    if (req.method === 'POST' && url.pathname === '/agent/run') {
+      const b = await body(req);
+      const actor = actorOf(b, req);
+      const r = host.run(actor, String(b.name), b.args ?? {});
+      if (!r.ok) return reply(400, { ok: false, error: r.error });
+      if (r.changed) log(`${actor.name}: ${b.name} ${JSON.stringify(b.args ?? {}).slice(0, 120)}`);
+      return reply(200, { ok: true, result: r.result, text: r.text, undescribed: r.undescribed, changed: r.changed });
     }
     // chat: say / read / wait as an actor (see ideas/chat.md); the messages live in the doc
     if (req.method === 'POST' && url.pathname === '/chat/say') {
@@ -396,7 +417,7 @@ async function api(req: IncomingMessage, res: ServerResponse) {
       }
       return reply(200, { ok: done, error: done ? undefined : `nothing to ${url.pathname.slice(1)} for ${actor.name} (each actor undoes only its own steps, while it stays seated)` });
     }
-    reply(404, { error: 'GET /doc /query /log /status /view/<name> /wait/<name>?timeout=S /chat/read?new=1&limit=N /chat/wait?timeout=S; POST /chat/say {as,text,node} POST /cmd {as,name,args} /undo {as} /redo {as}' });
+    reply(404, { error: 'GET /doc /query /log /status /agent/help?plugin=&command= /view/<name>?args=JSON /wait/<name>?timeout=S /chat/read?new=1&limit=N /chat/wait?timeout=S; POST /agent/run {as,name,args} /chat/say {as,text,node} /cmd {as,name,args} (raw) /undo {as} /redo {as}' });
   } catch (e) {
     reply(500, { error: (e as Error).message });
   }

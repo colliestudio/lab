@@ -1,6 +1,7 @@
 import * as Y from 'yjs';
 import { Awareness } from 'y-protocols/awareness';
 import { parse } from '../src/core/io';
+import { resolveNode } from '../src/core/query';
 import { Store, type DispatchResult } from '../src/core/store';
 import { registerCoreCommands } from '../src/core/commands';
 import type { CanvasDoc, CanvasNode, Change } from '../src/core/doc';
@@ -217,7 +218,13 @@ export class Host {
   /** Say something at the table as `actor` (seats it); `node` = a node this is about (the cursor goes there). */
   say(actor: Actor, text: string, node?: string): ChatMessage {
     const seat = this.seat(actor);
-    if (node && !this.store.doc.get(node)) throw new Error(`no such node: ${node}`);
+    if (node) {
+      try {
+        node = resolveNode(this.store.doc, node).id; // an id, or a title
+      } catch (e) {
+        throw new Error((e as Error).message.includes('matches') ? (e as Error).message : `no such node: ${node}`);
+      }
+    }
     this.chatCursor(actor); // first contact: what was said before isn't "new" to it
     const msg = sendChat(this.ydoc, { id: actor.id, name: actor.name, color: actor.color, kind: actor.kind === 'tool' ? 'tool' : 'agent' }, text, { node });
     if (!msg) throw new Error('nothing to say: the message is empty');
