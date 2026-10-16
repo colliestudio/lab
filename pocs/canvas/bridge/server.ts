@@ -5,7 +5,7 @@ import { parseBridgeArgs } from './args';
 import { BoardDirectory } from '../server/core/directory';
 import { makeGuard } from '../server/node/guard';
 import { FolderStorage } from '../server/node/folder';
-import { describeHolder, lockState } from '../server/node/lock';
+import { describeHolder, lockState, markBridge } from '../server/node/lock';
 import { createNodeServer } from '../server/node/http';
 import { wsConn } from '../server/node/ws';
 import { joinRelay, relayUrl } from './relay';
@@ -76,14 +76,19 @@ const storage = (() => {
 })();
 // A folder that canvas serve serves live has one writer already; a bridge on a file in it would be a second one.
 // (Only checks: bridges legitimately share folders with each other.)
+// The marker goes first (and is dropped again if the lock is held), so a serve starting at the same moment sees one of the two.
+let unmark = () => {};
+process.on('exit', () => unmark());
 let locked: ReturnType<typeof lockState>;
 try {
+  unmark = markBridge(storage.dir, { file, port });
   locked = lockState(storage.dir);
 } catch (e) {
   console.error(`canvas bridge: cannot read the lock in ${storage.dir}: ${(e as Error).message}`);
   process.exit(2);
 }
 if (locked.held) {
+  unmark();
   const h = locked.holder!;
   console.error(`canvas bridge: ${storage.dir} is served live by ${describeHolder(h)}; open the board there${h.urls[0] ? ` (${h.urls[0]}/)` : ''}, or stop that service, or use a file in another folder`);
   process.exit(2);

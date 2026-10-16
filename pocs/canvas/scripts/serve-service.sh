@@ -25,6 +25,7 @@ AGENTS="${CANVAS_SERVE_AGENTS:-$HOME/Library/LaunchAgents}"
 LOGS="${CANVAS_SERVE_LOGS:-$HOME/Library/Logs/canvas-serve}"
 LAUNCHCTL="${CANVAS_SERVE_LAUNCHCTL:-launchctl}"
 WAIT="${CANVAS_SERVE_WAIT:-30}"
+LOG_MAX="${CANVAS_SERVE_LOG_MAX:-5242880}"
 DOMAIN="gui/$(id -u)"
 PLIST="$AGENTS/$LABEL.plist"
 
@@ -103,6 +104,18 @@ wait_unloaded() {
   return 1
 }
 
+# serve.log grows forever otherwise: at every (re)start, a log over LOG_MAX bytes becomes serve.log.1 (older ones shift, three kept).
+# launchd opens the file when it spawns the process, so the move is safe right before a start.
+rotate_log() {
+  local f="$LOGS/serve.log" i size
+  [ -f "$f" ] || return 0
+  size="$(wc -c <"$f" | tr -d ' ')"
+  [ "$size" -gt "$LOG_MAX" ] || return 0
+  for i in 2 1; do [ -f "$f.$i" ] && mv -f "$f.$i" "$f.$((i + 1))"; done
+  mv -f "$f" "$f.1"
+  return 0
+}
+
 # point current at a release, write the plist, (re)start
 activate() {
   local tag="$1" nowait="${2:-}" rel node new changed=1
@@ -113,6 +126,7 @@ activate() {
   ln -s "releases/$tag" "$SHOME/current.tmp.$$"
   mv -fh "$SHOME/current.tmp.$$" "$SHOME/current"
   mkdir -p "$LOGS" "$AGENTS"
+  rotate_log
   new="$(mktemp "${TMPDIR:-/tmp}/canvas-serve-plist.XXXXXX")"
   render_plist "$node" >"$new"
   if [ -f "$PLIST" ] && cmp -s "$new" "$PLIST"; then changed=0; fi

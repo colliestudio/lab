@@ -4,7 +4,7 @@ import type { Client } from './client';
 // What the CLI adds for a canvas serve: --canvas NAME picks a board of the service, and
 // `chat wait --follow` keeps printing what others say (for a Monitor or a terminal).
 
-export const DEFAULT_SERVE = 'http://localhost:5231';
+export const DEFAULT_SERVE = 'http://localhost:5310';
 
 /** Where the CLI talks: a board of the service (`--canvas`), else the bridge as before (undefined = the client's default). */
 export function apiBase(o: { bridge?: string; board?: string }, env: Record<string, string | undefined> = process.env): string | undefined {

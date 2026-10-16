@@ -105,6 +105,33 @@ describe('folder lock, in processes', () => {
     busy.close();
   }, 30000);
 
+  it('a serve refuses a folder where a bridge has a board open; after the bridge stops it starts', async () => {
+    const d = folder();
+    const bport = await freePort();
+    const br = run('bridge/server.ts', [join(d, 'a.canvas'), '--port', String(bport)], bport);
+    await until(async () => !!(await fetch(`http://127.0.0.1:${bport}/api/info`).catch(() => null))?.ok);
+    const a = await serve(d);
+    expect(await a.exited).toBe(1);
+    expect(a.stderr()).toContain(`pid ${br.proc.pid}`);
+    expect(a.stderr()).toContain('bridge');
+    expect(existsSync(join(d, LOCK_FILE))).toBe(false);
+    br.proc.kill('SIGTERM');
+    await br.exited;
+    expect(existsSync(join(d, '.canvas-bridge', `open-${br.proc.pid}.json`))).toBe(false);
+    const b = await serve(d);
+    await up(b);
+  }, 30000);
+
+  it('a bridge refused by a serve leaves no marker', async () => {
+    const d = folder();
+    const a = await serve(d);
+    await up(a);
+    const port = await freePort();
+    const b = run('bridge/server.ts', [join(d, 'a.canvas'), '--port', String(port)], port);
+    expect(await b.exited).toBe(2);
+    expect(existsSync(join(d, '.canvas-bridge', `open-${b.proc.pid}.json`))).toBe(false);
+  }, 30000);
+
   it('a bridge on a file in a served folder exits 2 and creates nothing', async () => {
     const d = folder();
     const a = await serve(d);

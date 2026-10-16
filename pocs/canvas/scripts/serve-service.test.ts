@@ -187,6 +187,27 @@ describe('serve-service.sh', () => {
     expect(readdirSync(p('home', 'releases')).length).toBe(3);
   });
 
+  it('rotates serve.log over the size limit at a restart: .1 newest, three kept; a small log stays', () => {
+    const log = p('logs', 'serve.log');
+    const w = (name: string, text: string) => writeFileSync(name, text);
+    w(log, 'small');
+    expect(sh('install').status).toBe(0);
+    expect(readFileSync(log, 'utf8')).toBe('small');
+    expect(existsSync(`${log}.1`)).toBe(false);
+    // chain: live -> .1, old .1 -> .2, old .2 -> .3, old .3 dropped
+    w(`${log}.1`, 'one');
+    w(`${log}.2`, 'two');
+    w(`${log}.3`, 'three');
+    w(log, 'live'.padEnd(50, '-'));
+    const r = spawnSync('bash', [script, 'install'], { env: { ...process.env, ...env, CANVAS_SERVE_LOG_MAX: '10' }, encoding: 'utf8' });
+    expect(r.status, r.stderr).toBe(0);
+    expect(existsSync(log)).toBe(false); // launchd creates the new one when it spawns
+    expect(readFileSync(`${log}.1`, 'utf8')).toMatch(/^live/);
+    expect(readFileSync(`${log}.2`, 'utf8')).toBe('one');
+    expect(readFileSync(`${log}.3`, 'utf8')).toBe('two');
+    expect(existsSync(`${log}.4`)).toBe(false);
+  });
+
   it('status survives a dangling current', () => {
     const cur = target();
     execFileSync('ln', ['-sfn', 'releases/nope', p('home', 'current')]);

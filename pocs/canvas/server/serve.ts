@@ -5,7 +5,7 @@ import { BoardDirectory } from './core/directory';
 import { parseServeArgs } from './serve-args';
 import { FolderStorage } from './node/folder';
 import { makeGuard } from './node/guard';
-import { acquireFolderLock, FolderLockedError } from './node/lock';
+import { acquireFolderLock, describeBridges, FolderLockedError, liveBridges } from './node/lock';
 import { createNodeServer } from './node/http';
 import { createStaticApp } from './node/static';
 import { mcpHandler } from './node/mcp';
@@ -65,6 +65,9 @@ try {
   throw e;
 }
 process.on('exit', () => lock.release());
+// Bridges mark the folder before they check our lock, so one of the two sees the other.
+const bridges = liveBridges(storage.dir);
+if (bridges.length) fail(describeBridges(storage.dir, bridges), 1);
 const directory = new BoardDirectory(storage, { idleMs: args.idleMs, sweepMs: Math.min(10_000, Math.max(50, (args.idleMs ?? 600_000) / 2)), log });
 const appDir = resolve(args.app ?? fileURLToPath(new URL('../dist', import.meta.url)));
 for (const f of ['index.html', 'home.html']) {

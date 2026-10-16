@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { closeSync, linkSync, openSync, readFileSync, renameSync, unlinkSync, writeSync } from 'node:fs';
+import { closeSync, linkSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, unlinkSync, writeFileSync, writeSync } from 'node:fs';
 import { hostname, platform, uptime } from 'node:os';
 import { join } from 'node:path';
 
@@ -198,3 +198,70 @@ export function acquireFolderLock(dir: string, o: { port: number; urls: string[]
     },
   };
 }
+
+// Bridge markers: the other direction. A bridge writes boards in its folder too, so it leaves
+// <folder>/.canvas-bridge/open-<pid>.json while it runs, and a serve that would take the folder refuses while one
+// is alive. Same-machine only: a marker from another Mac is not judged (its pid means nothing here) and not removed.
+const BRIDGE_STATE = '.canvas-bridge';
+const bridgeMarker = (dir: string, pid: number) => join(dir, BRIDGE_STATE, `open-${pid}.json`);
+
+export interface BridgeMark {
+  pid: number;
+  machine: string;
+  bootAt: number;
+  file: string;
+  port: number;
+}
+
+/** Marks the folder as in use by this bridge. Returns the release (sync, for exit handlers). */
+export function markBridge(dir: string, o: { file: string; port: number; here?: Here }): () => void {
+  const here = o.here ?? hereInfo();
+  const path = bridgeMarker(dir, process.pid);
+  mkdirSync(join(dir, BRIDGE_STATE), { recursive: true });
+  const mark: BridgeMark = { pid: process.pid, machine: here.machine, bootAt: Math.round(here.bootAt), file: o.file, port: o.port };
+  writeFileSync(path, JSON.stringify(mark) + '\n');
+  return () => {
+    try {
+      unlinkSync(path);
+    } catch {
+      /* already gone */
+    }
+  };
+}
+
+/** Bridges running on this machine with a board open in the folder. Markers of dead ones are removed. */
+export function liveBridges(dir: string, here: Here = hereInfo()): BridgeMark[] {
+  let names: string[];
+  try {
+    names = readdirSync(join(dir, BRIDGE_STATE)).filter((n) => /^open-\d+\.json$/.test(n));
+  } catch {
+    return [];
+  }
+  const out: BridgeMark[] = [];
+  for (const n of names) {
+    const path = join(dir, BRIDGE_STATE, n);
+    let m: BridgeMark;
+    try {
+      m = JSON.parse(readFileSync(path, 'utf8')) as BridgeMark;
+    } catch {
+      continue;
+    }
+    if (!m || !Number.isInteger(m.pid) || typeof m.machine !== 'string') continue;
+    const same = m.machine === here.machine || (here.machine === here.host && m.machine === here.host);
+    if (!same) continue;
+    if (m.pid === process.pid) continue;
+    if (Math.abs(m.bootAt - here.bootAt) >= BOOT_SLACK_MS || !alive(m.pid)) {
+      try {
+        unlinkSync(path);
+      } catch {
+        /* gone */
+      }
+      continue;
+    }
+    out.push(m);
+  }
+  return out;
+}
+
+export const describeBridges = (dir: string, bs: BridgeMark[]) =>
+  `${dir} has a bridge with a board open (${bs.map((b) => `pid ${b.pid}, ${b.file}`).join('; ')}); stop it first`;
