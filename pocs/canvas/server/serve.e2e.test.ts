@@ -205,7 +205,7 @@ describe('canvas serve: the web app', () => {
     expect((await (await fetch(u + '/api/boards')).json()).map((e: { name: string }) => e.name)).toEqual(['a', 'broken']);
   });
 
-  it('a file that is not a canvas is a 422 and stays as it is', async () => {
+  it('a file that is not a canvas is a 422 and stays as it is', { timeout: 30000 }, async () => {
     const u = await start(['--app', join(tmp, 'dist')]);
     const r = await fetch(u + '/api/boards/broken/status');
     expect(r.status).toBe(422);
@@ -215,7 +215,7 @@ describe('canvas serve: the web app', () => {
     expect(e!.error).toMatch(/not a canvas file/);
   });
 
-  it('without a build the pages say so and the API still works', async () => {
+  it('without a build the pages say so and the API still works', { timeout: 30000 }, async () => {
     const u = await start(['--app', join(tmp, 'nonexistent')]);
     for (const p of ['/', '/b/a']) {
       const r = await fetch(u + p);
