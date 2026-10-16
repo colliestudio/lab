@@ -34,7 +34,7 @@ export interface BoardEntry {
 }
 
 /** Board identity: letter case and Unicode normalization (Finder/iCloud store names decomposed) don't tell boards apart. */
-const fold = (name: string) => name.normalize('NFC').toLowerCase();
+export const fold = (name: string) => name.normalize('NFC').toLowerCase();
 
 /** Why `name` can't be a board name, or undefined when it can. Names are file stems, never paths. */
 export function validName(name: string): string | undefined {
