@@ -61,7 +61,8 @@ export function createNodeServer(o: NodeServerOptions): NodeServer {
         reply = await directory.use(o.defaultBoard, (b) => boardApi(b, api));
         if (api.method === 'GET' && api.path === '/status' && reply.status === 200) {
           const { name: _name, ...rest } = reply.json as Record<string, unknown>;
-          reply = { status: 200, json: { ...rest, ...o.statusExtra?.() } };
+          const extra = o.statusExtra?.() ?? {};
+          reply = { status: 200, json: { file: extra.file, port: extra.port, ...rest, ...extra } };
         }
       }
       send(res, reply ?? { status: 404, json: { error: 'GET /api/info /api/boards; a board: /api/boards/<name>/doc /status … (WebSocket: /ws/<name>)' } });
@@ -103,6 +104,8 @@ export function createNodeServer(o: NodeServerOptions): NodeServer {
       return deny(r.status, r.status === 404 ? 'Not Found' : r.status === 409 ? 'Conflict' : r.status === 400 ? 'Bad Request' : 'Internal Server Error');
     }
     if (socket.destroyed) return lease.release();
+    // a handshake ws rejects (bad headers) never calls back: the lease must not outlive the socket
+    socket.once('close', lease.release);
     wss.handleUpgrade(req, socket, head, (ws) => {
       lease.board.connect(wsConn(ws)); // the connection now keeps the board loaded: the lease has done its job
       lease.release();
