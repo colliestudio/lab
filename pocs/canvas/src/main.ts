@@ -228,7 +228,7 @@ if (BRIDGE) startBridge(BRIDGE);
 else if (SERVED !== null) void probeBoard(SERVED).then((p) => {
     if (p.kind === 'ok') return startBridge(boardWsUrl(location, SERVED), { name: p.name });
     // the screenshot page has no board screen to show: it says why it has nothing to shoot, at once
-    if (AGENT_VIEW) return agentViewFailed(p.kind === 'none' ? `board not found: no board "${SERVED}"` : `board not available: "${SERVED}" cannot be opened`);
+    if (AGENT_VIEW) return agentViewFailed(p.kind === 'missing' ? `board not found: ${p.error}` : `board not available: ${p.kind === 'none' ? 'the service did not answer' : p.error}`);
     return p.kind === 'none' ? ((hosted = null), startLocal()) : showBoardScreen(p, SERVED);
   });
 else startLocal();
