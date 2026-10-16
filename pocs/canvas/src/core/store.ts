@@ -155,7 +155,7 @@ export class Store {
   selection: ReadonlySet<string> = new Set();
   private commands = new Map<string, Command>();
   private specs = new Map<string, CommandSpec>();
-  private views = new Map<string, ViewSpec>();
+  private viewSpecs = new Map<string, ViewSpec>();
   private listeners = new Set<() => void>();
   private view: DocView | null = null;
   /** Plain copies of nodes, kept until that node changes (a drag rewrites one node, not all of them). */
@@ -277,16 +277,16 @@ export class Store {
 
   /** A plugin's read for agents (see agent.ts): a pure function of the doc, the args and who asks. */
   registerView(name: string, spec: ViewSpec) {
-    if (this.views.has(name)) throw new Error(`view already registered: ${name}`);
-    this.views.set(name, spec);
+    if (this.viewSpecs.has(name)) throw new Error(`view already registered: ${name}`);
+    this.viewSpecs.set(name, spec);
   }
 
-  view(name: string): ViewSpec | undefined {
-    return this.views.get(name);
+  viewSpec(name: string): ViewSpec | undefined {
+    return this.viewSpecs.get(name);
   }
 
   viewNames(): string[] {
-    return [...this.views.keys()].sort();
+    return [...this.viewSpecs.keys()].sort();
   }
 
   has(name: string) {

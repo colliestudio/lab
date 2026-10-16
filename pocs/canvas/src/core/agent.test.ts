@@ -19,7 +19,7 @@ describe('command specs', () => {
     const s = new Store();
     const v = view({ description: 'x', args: z.strictObject({}), read: () => 1 });
     s.registerView('t.v', v);
-    expect(s.view('t.v')).toBe(v);
+    expect(s.viewSpec('t.v')).toBe(v);
     expect(s.viewNames()).toEqual(['t.v']);
     expect(() => s.registerView('t.v', v)).toThrow(/already registered/);
   });
