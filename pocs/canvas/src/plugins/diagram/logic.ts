@@ -215,12 +215,13 @@ const GUIDE = `Diagrams: shapes (rect, ellipse, diamond, text, sticky) with word
 - Shapes are referred to by id or by their text.
 - Check with the view diagram.graph (canvas_look with view "diagram.graph"): shapes with ids, kinds, boxes and frame, arrows with labels, overlapping shapes.
 - To put a diagram in a frame: draw it, then frames.create {around: [shape ids], label}.
-- core.move moves shapes, core.delete removes them (and their arrows).`;
+- core.move moves shapes, core.delete removes them (and their arrows).
+- An Excalidraw drawing (canvas_draw_*) is one node with its own shapes inside; diagram shapes are separate nodes, so core.connect, frames and core.move work on them.`;
 
 export const specs: Record<string, CommandSpec> = {
   add: command({
     description:
-      'Add a diagram shape (rect, ellipse, diamond, text, sticky). Place it with x/y (top-left), cx/cy (center), beside `near` (on `side`), or right of everything. With `from` it is a new shape connected by an arrow from that shape (the fast flowchart step; `side` = which side of `from` the arrow leaves, `at` = where the new center goes). Returns the new id (and the arrow id with `from`).',
+      'Add a diagram shape (rect, ellipse, diamond, text, sticky). Place it with x/y (top-left), cx/cy (center), beside `near` (on `side`), or right of everything. With `from` it is a new shape connected by an arrow from that shape (the fast flowchart step; `side` = which side of `from` the arrow leaves, `at` = where the new center goes). Returns the new id (and the arrow id with `from`). For a diagram (architecture, flowchart): add the shapes, join them with canvas_arrow, then frame them with canvas_do frames.create {around: [shapes], label}. Each shape is its own node, which is what arrows, frames and moves work on.',
     args: z.strictObject({
       kind: z.optional(kind.check(z.meta({ description: 'default rect' }))),
       text: z.optional(z.string()),
