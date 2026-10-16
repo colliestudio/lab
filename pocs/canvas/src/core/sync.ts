@@ -94,11 +94,6 @@ export function joinRoom(app: App, id: string, me: PlayerInfo, signal = signalin
   };
 }
 
-/**
- * Join a canvas bridge (bridge/server.ts): a Node process that hosts the doc for a .canvas file on
- * disk, over WebSocket (y-websocket protocol). Agents and tools edit through it; they show up here
- * as players. The bridge is the host and the persistence (the file), so nothing is stored locally.
- */
 export const HOSTED_REFUSAL = 'this board is a file the service or bridge keeps: it can not be replaced from here';
 
 /** A board kept by a service or bridge: the store refuses whole-document replaces. */
@@ -106,6 +101,11 @@ export function guardHosted(store: Store) {
   store.refuseLoad = HOSTED_REFUSAL;
 }
 
+/**
+ * Join a canvas bridge (bridge/server.ts): a Node process that hosts the doc for a .canvas file on
+ * disk, over WebSocket (y-websocket protocol). Agents and tools edit through it; they show up here
+ * as players. The bridge is the host and the persistence (the file), so nothing is stored locally.
+ */
 export function joinBridge(app: App, url: string, me: PlayerInfo, token?: string): Room & { synced: Promise<void> } {
   guardHosted(app.store);
   const provider = new WebsocketProvider(url.replace(/\/+$/, ''), 'canvas', app.store.ydoc, { params: token ? { token } : {} });

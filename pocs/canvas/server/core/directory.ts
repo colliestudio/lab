@@ -180,7 +180,7 @@ export class BoardDirectory {
       try {
         checkFormat(parse(text));
       } catch (e) {
-        throw e instanceof FormatError ? e : new BoardFileError(name, e as Error);
+        throw e instanceof FormatError ? e : new BoardFileError(name, e as Error, false);
       }
     }
     return this.locked([fold(name)], async () => {

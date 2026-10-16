@@ -53,13 +53,13 @@ describe('openServedBoard', () => {
     expect(open).toHaveBeenCalledWith('', '_blank');
     expect(tab.location.href).toBe('');
     release('my board');
-    expect(await p).toBe('my board');
+    expect(await p).toEqual({ name: 'my board', sameTab: false });
     expect(tab.location.href).toBe('/b/my%20board');
     expect(tab.opener).toBeNull();
   });
   it('goes there in this tab when the tab was blocked', async () => {
     const { win } = fakeWin(true);
-    await openServedBoard(async () => 'b', win);
+    expect(await openServedBoard(async () => 'b', win)).toEqual({ name: 'b', sameTab: true });
     expect(win.location.href).toBe('/b/b');
   });
   it('closes the blank tab and rethrows when the board could not be made', async () => {

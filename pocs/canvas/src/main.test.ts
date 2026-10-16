@@ -32,11 +32,19 @@ describe('empty boards', () => {
 describe('hosted boards', () => {
   const src = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
   it('New board, Open and drop branch on the hosted state before they touch the store', () => {
-    expect(src).toMatch(/let hosted: 'served' \| 'bridge' \| null/);
-    expect(src).toMatch(/run: \(\) => \{\s*if \(hosted === 'served'\) return void servedNew\(\);\s*if \(hosted === 'bridge'\) return flash\(REFUSE\);/);
-    expect(src).toMatch(/async function doOpen\(\) \{\s*if \(hosted === 'bridge'\) return flash\(REFUSE\);/);
-    expect(src).toMatch(/if \(hosted === 'served'\) return void \(await servedImport\(file\.name, text\)\)/);
+    expect(src).toMatch(/let hosted: 'served' \| 'bridge' \| 'pending' \| null = SERVED !== null \? 'pending' : null;/);
+    expect(src).toMatch(/run: \(\) => \{\s*if \(hosted === 'served'\) return void servedNew\(\);\s*if \(hosted === 'bridge' \|\| hosted === 'pending'\) return refuse\(\);/);
+    expect(src).toMatch(/async function doOpen\(\) \{\s*if \(hosted === 'bridge' \|\| hosted === 'pending'\) return refuse\(\);/);
+    expect(src).toMatch(/if \(hosted === 'served'\) return void \(await servedImport\(file\.name, serialize\(doc\)\)\)/);
     expect(src).toMatch(/hosted = served \? 'served' : 'bridge';/);
+  });
+  it('a served page is pending until the probe answers, and local again on none', () => {
+    expect(src).toMatch(/p\.kind === 'none' \? \(\(hosted = null\), startLocal\(\)\)/);
+  });
+  it('Edit > Reset table stays the undoable core.reset on hosted boards', () => {
+    const reset = src.slice(src.indexOf("id: 'edit.reset'"), src.indexOf("id: 'app.bridge'"));
+    expect(reset).toContain("app.dispatch('core.reset'");
+    expect(reset).not.toMatch(/hosted|servedNew|refuse/);
   });
   it('opens no window itself: the tab opens in newBoard.ts, before its await', () => {
     expect(src).not.toMatch(/window\.open|win\.open/);

@@ -32,9 +32,9 @@ export async function createUnique(base: string, text: string | undefined, f: ty
 /**
  * Open the board `make` creates in a new tab. The tab opens first, in the click's gesture (browsers block a
  * window.open after an await), and is pointed at the board once it exists; when blocked, this tab goes
- * there (the current board is safe on the service, so nothing is lost). Rethrows `make`'s error.
+ * there (the current board is safe on the service, so nothing is lost). Returns the name and whether this tab was used. Rethrows `make`'s error.
  */
-export async function openServedBoard(make: () => Promise<string>, win: Pick<Window, 'open' | 'location'> = window): Promise<string> {
+export async function openServedBoard(make: () => Promise<string>, win: Pick<Window, 'open' | 'location'> = window): Promise<{ name: string; sameTab: boolean }> {
   const tab = win.open('', '_blank');
   let name: string;
   try {
@@ -47,7 +47,7 @@ export async function openServedBoard(make: () => Promise<string>, win: Pick<Win
     tab.opener = null;
     tab.location.href = boardHref(name);
   } else win.location.href = boardHref(name);
-  return name;
+  return { name, sameTab: !tab };
 }
 
 /** A file name without its .canvas / .json extension. */
