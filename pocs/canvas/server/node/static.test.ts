@@ -76,11 +76,28 @@ describe('static app', () => {
   });
 
   it('never hands out anything outside the app folder', async () => {
-    for (const p of ['/..%2f..%2fetc/passwd', '/%2e%2e/%2e%2e/x', '/assets/../../package.json', '/assets/%2e%2e%2f%2e%2e%2fpackage.json', '/a%00b', '/assets%5c..%5ca.js', '/.secret', '/link.txt', '/assets', '/%ZZ']) {
+    for (const p of ['/..%2f..%2fetc/passwd', '/%2e%2e/%2e%2e/x', '/assets/../../package.json', '/assets/%2e%2e%2f%2e%2e%2fpackage.json', '/a%00b', '/assets%5c..%5ca.js', '/.secret', '/link.txt', '/assets', '/%ZZ', '//%', '//[', '/%61pi/info', '//api/info', '/api/..%2f', '/%2561pi']) {
       const r = await call(port, p);
-      expect([400, 404], p).toContain(r.status);
+      expect([400, 404, 418], p).toContain(r.status);
       expect(r.body, p).not.toMatch(/OUTSIDE|dot|root:/);
     }
+  });
+
+  it('a request target that is not a URL is a 400 and the server lives on', async () => {
+    for (const p of ['//%', '//[']) expect((await call(port, p)).status, p).toBe(400);
+    expect((await call(port, '/')).status).toBe(200);
+  });
+
+  it('the pages cannot be framed by other sites; assets need not say', async () => {
+    for (const p of ['/', '/b/x']) expect((await call(port, p)).headers, p).toMatchObject({ 'content-security-policy': "frame-ancestors 'self'", 'x-frame-options': 'SAMEORIGIN' });
+    expect((await call(port, '/assets/a.js')).headers['x-frame-options']).toBeUndefined();
+  });
+
+  it('encoded and protocol-relative spellings of the reserved paths agree with the API router', async () => {
+    // WHATWG-normalized like http.ts: %61pi is not /api (static answers, 404), //api/info has host "api"
+    expect((await call(port, '/%61pi/info')).status).toBe(404);
+    expect((await call(port, '//api/info')).status).toBe(404); // host "api", path /info
+    expect((await call(port, '/api/..')).body).toBe('<title>home</title>');
   });
 
   it('only GET and HEAD; HEAD has no body', async () => {

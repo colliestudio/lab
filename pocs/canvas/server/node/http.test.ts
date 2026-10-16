@@ -71,6 +71,9 @@ describe('with the web app mounted', () => {
         expect(r.status, p).toBe(404);
         expect(r.headers.get('content-type'), p).toBe('application/json');
       }
+      // a target that is not a URL does not take the process down, and an app that throws is a 500
+      expect((await get(port, '//%')).status).toBe(400);
+      expect((await get(port, '/')).status).toBe(200);
       expect(await badUpgrade(port, '/ws/demo')).toBe(400); // reaches the WebSocket server
       // a cross-site navigation gets the page but not the data
       const cross = { 'sec-fetch-site': 'cross-site' };
@@ -80,5 +83,21 @@ describe('with the web app mounted', () => {
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }
+  });
+});
+
+describe('an app that throws', () => {
+  it('is a 500 and the server keeps answering', async () => {
+    let n = 0;
+    const port = await start({
+      handle: async () => {
+        if (n++ === 0) throw new Error('boom');
+        return false;
+      },
+    });
+    const r = await fetch(`http://127.0.0.1:${port}/x`);
+    expect(r.status).toBe(500);
+    expect(await r.json()).toEqual({ error: 'boom' });
+    expect((await fetch(`http://127.0.0.1:${port}/api/info`)).status).toBe(200);
   });
 });
