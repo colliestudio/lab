@@ -123,24 +123,33 @@ function proto(o: { pages?: string[][]; edges?: [number, number][]; blank?: bool
 }
 
 describe('proto grader', () => {
-  it('passes links made by data-goto only, or by edges only', () => {
-    expect(failed('proto', proto())).toEqual([]);
-    const noGoto = PAGES.map(([t]) => [t, `<h1>${t}</h1><input>`]);
-    expect(failed('proto', proto({ pages: noGoto, edges: [[0, 1], [1, 2], [0, 3]] }))).toEqual([]);
+  it('passes clickable links plus arrows on the canvas', () => {
+    expect(failed('proto', proto({ edges: [[0, 1], [1, 2], [0, 3]] }))).toEqual([]);
+  });
+  it('data-goto without arrows is clickable but not linked on the canvas', () => {
+    expect(failed('proto', proto())).toEqual(['edges']);
+  });
+  it('arrows without data-goto are not clickable: Play only follows data-goto', () => {
+    const noGoto = PAGES.map(([t]) => [t, `<h1>${t}</h1><input><a href="#x">go</a>`]);
+    expect(failed('proto', proto({ pages: noGoto, edges: [[0, 1], [1, 2], [0, 3]] }))).toEqual(['navigation']);
+  });
+  it('an empty data-goto follows the only outgoing arrow', () => {
+    const p = [['Sign in', '<input><button data-goto="">Go</button>'], ['Forgot password', '<input><button data-goto="">Go</button>'], ['Check your email', '<button data-goto="">Go</button>'], ['Home', '<h1>Welcome</h1>']];
+    expect(failed('proto', proto({ pages: p, edges: [[0, 1], [1, 2], [2, 3]] }))).toEqual([]);
   });
   it('fails 3 pages, blank HTML, no links', () => {
     expect(failed('proto', proto({ pages: PAGES.slice(0, 3) }))).toContain('pages');
     expect(failed('proto', proto({ blank: true }))).toContain('html');
     const noLinks = PAGES.map(([t]) => [t, `<h1>${t}</h1><input>`]);
-    expect(failed('proto', proto({ pages: noLinks }))).toEqual(['navigation']);
+    expect(failed('proto', proto({ pages: noLinks }))).toEqual(['navigation', 'edges']);
   });
   it('fails a disconnected 4th page', () => {
     const p = PAGES.map(([t, h]) => [t, h.replace(/data-goto="Home"/, 'data-goto="Forgot password"')]);
-    expect(failed('proto', proto({ pages: p }))).toEqual(['navigation']);
+    expect(failed('proto', proto({ pages: p, edges: [[0, 1], [1, 2], [0, 3]] }))).toEqual(['navigation']);
   });
   it('fails a missing sign-in input', () => {
     const p = PAGES.map(([t, h], i) => [t, i === 0 ? h.replace('<input name="email">', '') : h]);
-    expect(failed('proto', proto({ pages: p }))).toEqual(['html']);
+    expect(failed('proto', proto({ pages: p, edges: [[0, 1], [1, 2], [0, 3]] }))).toEqual(['html']);
   });
 });
 
