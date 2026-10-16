@@ -77,6 +77,9 @@ export function buildCatalog(logic: readonly PluginLogic[] = PLUGIN_LOGIC) {
     return js;
   };
 
+  /** The JSON Schema for MCP clients: the node-reference marker (bridge-internal) is left out. */
+  const publicSchema = (schema: ArgSchema): Json => JSON.parse(JSON.stringify(jsonSchema(schema), (k, v) => (k === 'format' && v === 'canvas-node' ? undefined : v)));
+
   const moreHint = (name: string, kind: 'command' | 'view') => {
     const p = owner.get(name);
     return `More: canvas_help ${JSON.stringify(kind === 'command' ? { plugin: p, command: name } : { plugin: p })}`;
@@ -138,6 +141,7 @@ export function buildCatalog(logic: readonly PluginLogic[] = PLUGIN_LOGIC) {
 
   /** Plain-text help: all plugins; one plugin (guide, commands, views); one command or view in full. */
   const helpText = (pluginId?: string, name?: string): string => {
+    if (name && pluginId && !name.includes('.')) name = `${pluginId}.${name}`;
     if (name) {
       if (store.spec(name)) return `${commandText(name)}\n  run: canvas_do ${JSON.stringify({ command: name, args: store.spec(name)!.example })}`;
       if (store.viewSpec(name)) return `${viewText(name)}\n  read: canvas_look ${JSON.stringify({ view: name })}`;
@@ -170,6 +174,7 @@ export function buildCatalog(logic: readonly PluginLogic[] = PLUGIN_LOGIC) {
   };
   /** The same help as JSON (GET /agent/help). */
   const helpJson = (pluginId?: string, name?: string): unknown => {
+    if (name && pluginId && !name.includes('.')) name = `${pluginId}.${name}`;
     if (name) {
       if (store.spec(name)) return commandJson(name);
       if (store.viewSpec(name)) return viewJson(name);
@@ -192,6 +197,7 @@ export function buildCatalog(logic: readonly PluginLogic[] = PLUGIN_LOGIC) {
     commandNames: () => store.commandNames(),
     viewNames: () => store.viewNames(),
     jsonSchema,
+    publicSchema,
     validate,
     resolveRefs,
     helpText,

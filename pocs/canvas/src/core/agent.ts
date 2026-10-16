@@ -83,3 +83,14 @@ export class Redirect {
   ) {}
 }
 export const redirect = (command: string, args: unknown) => new Redirect(command, args);
+
+/** A command line verb a plugin adds that is not just a command call (it reads a file, runs a loop). Node-only; lives in the plugin's cli.ts. */
+export interface CliExtra {
+  verb: string;
+  usage: string;
+  /** Default actor name when `--as` is not given. */
+  as?: string;
+  /** Acts as a tool (its edits are logged under that name) rather than as an agent. */
+  kind?: 'tool';
+  run(api: AgentApi, input: { pos: string[]; flags: Record<string, string>; rest: string[]; say(line: string): void }): Promise<void>;
+}

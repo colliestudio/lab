@@ -7,7 +7,7 @@ const cat = buildCatalog();
 const all = cat.plugins();
 const described = all.flatMap((p) => p.commands.filter((n) => cat.spec(n)));
 const claude = makeActor('Claude');
-const err = (r: { ok: boolean }) => (r as { error: string }).error;
+const err = (r: { ok: boolean }) => (r as unknown as { error: string }).error;
 
 describe('every spec', () => {
   it('has a description, an example that parses, and cli names that exist in its schema', () => {
