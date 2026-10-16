@@ -159,6 +159,7 @@ describe('srcdoc page frames', () => {
     // in-page anchors set the hash from script instead of navigating the frame (a navigation would remove it)
     expect(rt).toContain("closest('a[href], area[href]')");
     expect(rt).toContain('location.hash = href');
+    expect(rt).toContain('if (e.defaultPrevented) return;');
     expect(rt).toContain('.trim()');
     // a navigation that commits no document (204, download, stop) still fires a trusted beforeunload first
     expect(rt).toMatch(/addEventListener\('beforeunload', \(ev\) => \{ if \(ev\.isTrusted\) up\.postMessage\(\{[^}]*kind: 'leaving'/);

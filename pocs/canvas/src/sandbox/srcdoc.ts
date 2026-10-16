@@ -65,15 +65,7 @@ export function pageRuntime(key: string, state: Record<string, string>): string 
   addEventListener('load', (ev) => { if (ev.isTrusted) up.postMessage({ tag: TAG, auth: KEY, kind: 'loaded' }, '*'); });
   addEventListener('keydown', (ev) => { if (ev.isTrusted && apply(keyOf, ev, []) === 'Escape') up.postMessage({ tag: TAG, auth: KEY, kind: 'escape' }, '*'); }, true);
   document.addEventListener('click', (e) => {
-    // a link to a place in this document would navigate the frame (and count as leaving): set the hash from script instead (hashchange and :target work, the frame stays)
-    const link = e.target.closest && e.target.closest('a[href], area[href]');
     const el = e.target.closest && e.target.closest('[data-goto], [data-back]');
-    const href = link && !el ? String(link.getAttribute('href')).trim() : '';
-    if (href[0] === '#') {
-      e.preventDefault();
-      location.hash = href;
-      return;
-    }
     if (!el) return;
     e.preventDefault();
     if (el.hasAttribute('data-back')) return back();
@@ -82,6 +74,18 @@ export function pageRuntime(key: string, state: Record<string, string>): string 
     if (form && !form.reportValidity()) return;
     goto(el.getAttribute('data-goto'));
   }, true);
+  // A link to a place in this document would navigate the frame (and count as leaving): set the hash from script
+  // instead (hashchange and :target work, the frame stays). Bubble phase on window, so a page's own click
+  // handler that called preventDefault wins.
+  addEventListener('click', (e) => {
+    if (e.defaultPrevented) return;
+    const link = e.target.closest && e.target.closest('a[href], area[href]');
+    const href = link ? String(link.getAttribute('href')).trim() : '';
+    if (href[0] === '#') {
+      e.preventDefault();
+      location.hash = href;
+    }
+  });
   document.addEventListener('submit', (e) => e.preventDefault(), true);
   const sync = (el) => { if (el.dataset && el.dataset.store) set(el.dataset.store, el.type === 'checkbox' ? (el.checked ? 'yes' : '') : el.value); };
   document.addEventListener('input', (e) => sync(e.target), true);
