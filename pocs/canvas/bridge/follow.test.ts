@@ -11,7 +11,7 @@ describe('apiBase', () => {
     expect(apiBase({ bridge: 'http://x:1' }, { CANVAS_SERVE: 'http://s' })).toBe('http://x:1');
   });
   it('--canvas builds the service URL: --bridge, else $CANVAS_SERVE, else the default; the name is encoded', () => {
-    expect(apiBase({ board: 'my board' }, {})).toBe('http://localhost:5231/api/boards/my%20board');
+    expect(apiBase({ board: 'my board' }, {})).toBe('http://localhost:5310/api/boards/my%20board');
     expect(apiBase({ board: 'b' }, { CANVAS_SERVE: 'http://localhost:5252/' })).toBe('http://localhost:5252/api/boards/b');
     expect(apiBase({ board: 'b/c', bridge: 'http://h:9' }, { CANVAS_SERVE: 'http://s' })).toBe('http://h:9/api/boards/b%2Fc');
     expect(() => apiBase({ board: '' }, {})).toThrow('needs a board name');

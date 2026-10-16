@@ -7,7 +7,7 @@
 import { execFile, execFileSync } from 'node:child_process';
 import { basename } from 'node:path';
 
-const DEFAULT_SERVE = 'http://localhost:5231'; // keep in step with `canvas serve`'s default port
+const DEFAULT_SERVE = 'http://localhost:5310'; // the always-on serve; a dev `pnpm serve` defaults to 5231
 const MAX_NAME = 30; // canvas_join rejects names over 32; leaves room for the skill's " 2" retry suffix
 
 const git = (...args) => {

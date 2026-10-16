@@ -1,10 +1,10 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { root } from '../../bridge/process.test-util';
-import { acquireFolderLock, FolderLockedError, LOCK_FILE, hereInfo, lockState, type Here } from './lock';
+import { acquireFolderLock, FolderLockedError, LOCK_FILE, hereInfo, describeBridges, liveBridges, lockState, markBridge, type Here } from './lock';
 
 const here: Here = { machine: 'M1', host: 'mini', bootAt: 1_000_000_000_000 };
 const dirs: string[] = [];
@@ -122,5 +122,52 @@ describe('folder lock', () => {
       expect(JSON.parse(readFileSync(a.path, 'utf8')).pid).toBe(process.pid);
       a.release();
     }
+  });
+
+  it('bridge markers: a live bridge process counts; our own, dead, pre-boot and unrelated-live-pid ones do not (and are cleaned); foreign machines and a missing-ioreg Mac are judged like the lock', async () => {
+    const d = tmp();
+    const dir = join(d, '.canvas-bridge');
+    const mark = (pid: number, extra: object = {}) => {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, `open-${pid}.json`), JSON.stringify({ pid, machine: 'M1', host: 'mini', bootAt: here.bootAt, file: 'x.canvas', port: 1, ...extra }));
+    };
+    expect(liveBridges(d, here)).toEqual([]);
+    // a live process whose command line says bridge/server (an arg is enough)
+    const bridge = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 20000)', 'bridge/server.ts'], { stdio: 'ignore' });
+    const dead = deadPid();
+    mark(bridge.pid!);
+    mark(process.ppid); // alive, but not a bridge: a reused pid
+    mark(dead);
+    mark(process.pid);
+    mark(1, { bootAt: here.bootAt - 3_600_000 });
+    mark(2, { machine: 'M2', host: 'macbook' });
+    writeFileSync(join(dir, 'open-3.json'), '{ torn');
+    try {
+      expect(liveBridges(d, here).map((b) => b.pid)).toEqual([bridge.pid]);
+      expect(existsSync(join(dir, `open-${process.ppid}.json`))).toBe(false);
+      expect(existsSync(join(dir, `open-${dead}.json`))).toBe(false);
+      expect(existsSync(join(dir, 'open-1.json'))).toBe(false);
+      expect(existsSync(join(dir, 'open-3.json'))).toBe(false);
+      expect(existsSync(join(dir, 'open-2.json'))).toBe(true);
+      expect(existsSync(join(dir, `open-${process.pid}.json`))).toBe(true);
+      // the bridge's ioreg failed (machine = hostname); ours worked: same Mac by hostname
+      mark(bridge.pid!, { machine: 'mini', host: 'mini' });
+      expect(liveBridges(d, here).map((b) => b.pid)).toEqual([bridge.pid]);
+      const msg = describeBridges(d, liveBridges(d, here));
+      expect(msg).toContain(join(dir, `open-${bridge.pid}.json`));
+      expect(msg).toContain('delete');
+    } finally {
+      bridge.kill('SIGKILL');
+    }
+  });
+
+  it('markBridge writes this pid and its release removes it', () => {
+    const d = tmp();
+    const off = markBridge(d, { file: join(d, 'a.canvas'), port: 7, here });
+    const f = join(d, '.canvas-bridge', `open-${process.pid}.json`);
+    expect(JSON.parse(readFileSync(f, 'utf8'))).toMatchObject({ pid: process.pid, machine: 'M1', host: 'mini', port: 7 });
+    off();
+    off();
+    expect(existsSync(f)).toBe(false);
   });
 });

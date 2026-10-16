@@ -5,7 +5,7 @@ import { parseBridgeArgs } from './args';
 import { BoardDirectory } from '../server/core/directory';
 import { makeGuard } from '../server/node/guard';
 import { FolderStorage } from '../server/node/folder';
-import { describeHolder, lockState } from '../server/node/lock';
+import { describeHolder, lockState, markBridge } from '../server/node/lock';
 import { createNodeServer } from '../server/node/http';
 import { wsConn } from '../server/node/ws';
 import { joinRelay, relayUrl } from './relay';
@@ -75,15 +75,24 @@ const storage = (() => {
   }
 })();
 // A folder that canvas serve serves live has one writer already; a bridge on a file in it would be a second one.
-// (Only checks: bridges legitimately share folders with each other.)
+// Bridges don't take the lock (they legitimately share folders with each other); they leave a marker so a serve refuses the folder.
+// The marker goes first (and is dropped again if the lock is held), so a serve starting at the same moment sees one of the two.
+let unmark = () => {};
+process.on('exit', () => unmark());
+// Signals that end a bridge before stop() exists (startup) or that Node doesn't handle by default (SIGHUP, SIGALRM from
+// `perl -e 'alarm …'`) must still run the exit handler, or the marker stays behind.
+let ready = false;
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGALRM'] as const) process.on(sig, () => (ready ? void stop() : process.exit(1)));
 let locked: ReturnType<typeof lockState>;
 try {
+  unmark = markBridge(storage.dir, { file, port });
   locked = lockState(storage.dir);
 } catch (e) {
-  console.error(`canvas bridge: cannot read the lock in ${storage.dir}: ${(e as Error).message}`);
+  console.error(`canvas bridge: cannot mark or read the lock in ${storage.dir}: ${(e as Error).message}`);
   process.exit(2);
 }
 if (locked.held) {
+  unmark();
   const h = locked.holder!;
   console.error(`canvas bridge: ${storage.dir} is served live by ${describeHolder(h)}; open the board there${h.urls[0] ? ` (${h.urls[0]}/)` : ''}, or stop that service, or use a file in another folder`);
   process.exit(2);
@@ -176,5 +185,4 @@ async function stop(code = 0) {
     process.exit(code);
   }
 }
-process.on('SIGINT', () => void stop());
-process.on('SIGTERM', () => void stop());
+ready = true;

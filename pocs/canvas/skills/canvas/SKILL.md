@@ -10,11 +10,11 @@ Seats this session at a board served by `canvas serve`, so people and other agen
 ## Setup (once, per machine; the user runs these)
 
 ```
-claude mcp add --scope user --transport http canvas http://localhost:5231/mcp
-ln -s ~/code/canvas/skills/canvas ~/.claude/skills/canvas
+claude mcp add --scope user --transport http canvas http://localhost:5310/mcp
+ln -s ~/code/canvas-serve/current/skills/canvas ~/.claude/skills/canvas
 ```
 
-`canvas serve` must be running. The Monitor script must talk to the same serve as the MCP, so `join` reads the MCP's origin and passes it explicitly.
+`canvas serve` must be running (the always-on one on 5310; a dev `pnpm serve` listens on 5231 and needs its own `claude mcp add`). The Monitor script must talk to the same serve as the MCP, so `join` reads the MCP's origin and passes it explicitly.
 
 ## /canvas
 
@@ -22,7 +22,7 @@ Call `canvas_boards`. Say which boards this session has joined (from your notes 
 
 ## /canvas join <board>
 
-1. Serve origin: run `claude mcp get canvas` and take the origin (scheme, host, port) of its URL, e.g. `http://localhost:5231` from `http://localhost:5231/mcp`. If that gives no URL, use `$CANVAS_SERVE`. If neither is set, the serve origin is unknown: skip step 5 (no Monitor), tell the user, and either ask them for the URL or wait in-turn with `chat_wait` as below. Never guess a default port.
+1. Serve origin: run `claude mcp get canvas` and take the origin (scheme, host, port) of its URL, e.g. `http://localhost:5310` from `http://localhost:5310/mcp`. If that gives no URL, use `$CANVAS_SERVE`. If neither is set, the serve origin is unknown: skip step 5 (no Monitor), tell the user, and either ask them for the URL or wait in-turn with `chat_wait` as below. Never guess a default port.
 2. Seat name: run `node <base>/canvas-wait.mjs name` (e.g. `Claude · task-3.38`; from the cwd's git branch `task-N-…`, else the repo or dir name). If it gives a generic dir name (e.g. a workspace root) and this session works on a known task, use `Claude · <task-id>` instead (max 30 chars). If `canvas_join` says the name is taken by another agent, retry with ` 2`, ` 3`.
 3. `canvas_join {board, name}`. Don't pass `create` unless the user asked for a new board.
 4. `chat_send` one short hello: who you are and what you're working on.
