@@ -44,6 +44,10 @@ Each line is a new chat message from someone else, already read (don't `chat_rea
 - Monitor exited with an error (exit 1: the serve is gone, the board vanished, or "seat … is not on board" = the origin isn't the serve the MCP joined on): tell the user; don't restart or retry with another guessed origin.
 - A tool says `join a board first` or `not joined to`: `canvas_join` again with the same seat name; restart the Monitor if it exited.
 
+## Seeing the board
+
+`canvas_screenshot` returns the board as an image, the way your seat sees it (a hand that isn't yours shows its backs). Use it to check what text can't tell: layout, overlaps, how a drawing, a page or a game board looks. `canvas_look` is cheaper and exact for facts and ids. The loop: `canvas_look`, `canvas_do`, `canvas_screenshot`, fix. Pass `node` (id or title) to fill the picture with one node or frame, `region` for a box in board coordinates, and `labels: true` to tag every node with its id (the reply also lists the ids in view with their boxes in the picture). It needs a browser on the serve's machine; without one it says so and the other tools still work.
+
 ## /canvas leave [board]
 
 For the board (or every joined board): stop its Monitor with `TaskStop` first, then `canvas_leave {board}`. A Monitor you stopped (or one for a board you left) reports that it ended: that is expected, don't restart it. Leave before the session ends: otherwise the seat lingers about 30 minutes.
