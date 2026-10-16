@@ -147,6 +147,8 @@ describe('proto grader', () => {
     const withAnchor = (a: string) => PAGES.map(([t, h], i) => [t, i === 3 ? `${h}${a}` : h]);
     expect(failed('proto', proto({ pages: withAnchor('<a href="#faq">FAQ</a><section id="faq"></section>') }))).toEqual([]);
     expect(failed('proto', proto({ pages: withAnchor('<a href="#faq">FAQ</a>') }))).toEqual(['no-broken-links']);
+    expect(failed('proto', proto({ pages: withAnchor('<a href="#faq">FAQ</a><input name="faq"><i data-id="faq"></i>') }))).toEqual(['no-broken-links']);
+    expect(failed('proto', proto({ pages: withAnchor('<a href="#faq">FAQ</a><a name="faq"></a>') }))).toEqual([]);
     expect(failed('proto', proto({ pages: withAnchor('<a href="#">x</a>') }))).toEqual(['no-broken-links']);
   });
   it('passes links in the pages, a start page and arrows: 6 required, both info pass', () => {

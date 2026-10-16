@@ -114,11 +114,12 @@ const gotoTargets = (html: string) => [...html.matchAll(/\bdata-goto\s*=\s*(?:"(
  * inside a data-goto container (the container navigates) still counts, like a listener added by a script.
  */
 function deadAnchors(html: string): number {
+  const esc = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return [...html.matchAll(/<a\b[^>]*>/gi)].filter((m) => {
     const h = /\bhref\s*=\s*["']#([^"']*)["']/i.exec(m[0]);
     if (!h || /\b(data-goto|data-back|onclick)\b/i.test(m[0])) return false;
     const target = h[1];
-    return !target || !new RegExp(`\\b(id|name)\\s*=\\s*["']${target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["']`, 'i').test(html);
+    return !target || !new RegExp(`(?<![\\w-])id\\s*=\\s*["']${esc(target)}["']|<a\\b[^>]*\\bname\\s*=\\s*["']${esc(target)}["']`, 'i').test(html);
   }).length;
 }
 
