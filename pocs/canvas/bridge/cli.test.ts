@@ -97,29 +97,14 @@ describe('CLI lines reach the same commands', () => {
 });
 
 describe('plugin CLI extras', () => {
-  it('sync-backlog and bot chess are registered, with the actor names they used before', () => {
-    expect(PLUGIN_CLI.map((x) => x.verb)).toEqual(['sync-backlog', 'bot chess']);
-    expect(PLUGIN_CLI[0]).toMatchObject({ as: 'Backlog.md', kind: 'tool' });
-    expect(PLUGIN_CLI[1]).toMatchObject({ as: 'Bot' });
-  });
-
-  it('sync-backlog reads `backlog task list --plain` and calls board.sync', async () => {
-    vi.resetModules();
-    const exec = vi.fn(() => '\nTo Do:\n  [HIGH] TASK-1 - First\n');
-    vi.doMock('node:child_process', () => ({ execFileSync: exec }));
-    const { syncBacklog } = await import('../src/plugins/board/cli');
-    const run = vi.fn(async () => ({ result: { changed: 0 } }));
-    const out: string[] = [];
-    await syncBacklog.run({ run, view: vi.fn(), wait: vi.fn(), log: vi.fn() } as never, { pos: [], flags: { dir: '/tmp' }, rest: ['--status', 'x'], say: (l) => out.push(l) });
-    expect(exec).toHaveBeenCalledWith('backlog', ['task', 'list', '--plain', '--status', 'x'], expect.objectContaining({ cwd: '/tmp' }));
-    expect(run).toHaveBeenCalledWith('board.sync', expect.objectContaining({ items: expect.any(Array) }));
-    expect(out[0]).toMatch(/already up to date/);
-    vi.doUnmock('node:child_process');
+  it('bot chess is registered, with the actor name it used before; sync-backlog is gone (the kanban node replaces it)', () => {
+    expect(PLUGIN_CLI.map((x) => x.verb)).toEqual(['bot chess']);
+    expect(PLUGIN_CLI[0]).toMatchObject({ as: 'Bot' });
   });
 
   it('bot chess rejects a bad color before touching the bridge', async () => {
     const api = { run: vi.fn(), view: vi.fn(), wait: vi.fn(), log: vi.fn() };
-    await expect(PLUGIN_CLI[1].run(api as never, { pos: [], flags: { color: 'purple' }, rest: [], say() {} })).rejects.toThrow(/--color/);
+    await expect(PLUGIN_CLI[0].run(api as never, { pos: [], flags: { color: 'purple' }, rest: [], say() {} })).rejects.toThrow(/--color/);
     expect(api.view).not.toHaveBeenCalled();
   });
 });

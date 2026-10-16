@@ -75,7 +75,7 @@ export const nodeRef = (description = 'node id, or its title (a unique prefix/su
 export const command = <S extends ArgSchema>(s: CommandSpec<S>) => s as unknown as CommandSpec;
 export const view = <S extends ArgSchema>(s: ViewSpec<S>) => s as unknown as ViewSpec;
 
-/** What plugin CLI extras (bot, sync-backlog) talk to; bridge/client.ts implements it. */
+/** What plugin CLI extras (bot chess) talk to; bridge/client.ts implements it. */
 export interface AgentApi {
   run(name: string, args: object): Promise<{ result: unknown; text?: string }>;
   view<T = any>(name: string, args?: object): Promise<T>;

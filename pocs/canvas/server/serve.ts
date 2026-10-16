@@ -25,6 +25,7 @@ import { PLUGIN_SERVE } from '../src/plugins/serve';
 //    stays the durable record, as with the bridge.
 //
 // Usage: tsx server/serve.ts <dir> [--port 5231] [--host 127.0.0.1] [--allow-origin URL]… [--host-name NAME]… [--idle-ms N] [--mcp-idle-ms N] [--app DIR]
+//  Plugins add flags of their own (src/plugins/serve.ts), e.g. --kanban name=path: a Backlog.md project a kanban node can show.
 //  Binds 127.0.0.1 by default. Reached by another host name (http://mini.internal:5231) or serving a browser
 //  app from another origin, it must be listed: --allow-origin http://mini.internal:5231
 //  (or $CANVAS_ALLOW_ORIGIN, comma separated); see node/guard.ts. --host-name mini.internal is the short form for a

@@ -9,7 +9,7 @@ import type { PluginLogic } from '../logic';
 // same way (the actor is whoever dispatched it).
 //
 // Columns are `group` nodes. A note rides on the column its center sits in (moves with it).
-// `board.sync` mirrors an outside list (Backlog.md tasks, GitHub issues) into columns: items keep
+// `board.sync` mirrors an outside list (issues, a script's output) into columns: items keep
 // stable ids (`<source>:<key>`), human placement survives a re-sync unless the item changed column.
 
 export const NOTE_W = 260;
@@ -429,7 +429,7 @@ const GUIDE = `Notes and columns on a plain JSON Canvas.
 - Name nodes by id or by title; a unique prefix or substring of the title is enough ("Doing", "Order placed").
 - board.update edits text or color, moves a node (x/y, dx/dy) or puts it into a column.
 - board.connect draws a plain link with an optional label; re-linking updates the label. Styled arrows are core.connect.
-- board.sync mirrors an outside list (Backlog.md tasks, issues) into columns and is safe to re-run; the CLI form is "canvas sync-backlog".`;
+- board.sync mirrors an outside list (issues, a script's output) into columns and is safe to re-run. For a Backlog.md folder use a kanban node instead.`;
 
 /** The data side of the plugin. No DOM: used by the app, the bridge and tests. */
 export function registerBoardLogic(store: Store) {
