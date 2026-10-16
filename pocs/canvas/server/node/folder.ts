@@ -1,6 +1,9 @@
+import { execFile } from 'node:child_process';
 import { watch, realpathSync, type FSWatcher } from 'node:fs';
 import { mkdir, open, readdir, readFile, rename, stat, unlink, writeFile, access } from 'node:fs/promises';
 import { basename, dirname, extname, join, resolve } from 'node:path';
+import { platform } from 'node:os';
+import { NotLocalError } from '../core/errors';
 import type { BoardInfo, BoardStorage } from '../core/storage';
 
 // Boards as .canvas files in one folder (iCloud, Dropbox, a git repo all work: it is just files).
@@ -10,11 +13,16 @@ import type { BoardInfo, BoardStorage } from '../core/storage';
 //  <dir>/.canvas-bridge/trash/<name>-<time>.canvas  deleted boards (real deletion is Finder's job)
 // With `file`, the folder driver serves exactly that one file (bridge mode): any filename, no create,
 // rename or delete.
+// iCloud can evict a board: Finder shows it, the folder holds only a stub `.<name>.canvas.icloud`. Such a board
+// is listed as `evicted` (nothing reads or writes it), and asking for it triggers a download (`brctl download`).
 
 const EXT = '.canvas';
 const SIDECARS = ['.ystate', '.room'];
 
 const fold = (n: string) => n.normalize('NFC').toLowerCase();
+// (a stubbed name that starts with a dot would be no valid board name)
+const STUB = /^\.([^.].*\.canvas)\.icloud$/;
+const DOWNLOAD_EVERY_MS = 60_000;
 const missing = (e: unknown) => (e as NodeJS.ErrnoException).code === 'ENOENT';
 
 export class FolderStorage implements BoardStorage {
@@ -25,7 +33,12 @@ export class FolderStorage implements BoardStorage {
   private watchers = new Map<string, Set<() => void>>();
   private fsWatcher: FSWatcher | undefined;
 
-  constructor(dir: string, opts: { file?: string } = {}) {
+  private downloads = new Map<string, number>();
+  private readonly download: (path: string) => void;
+
+  /** `download`: asks the cloud store to fetch an evicted board (default: `brctl download` on macOS). */
+  constructor(dir: string, opts: { file?: string; download?: (path: string) => void } = {}) {
+    this.download = opts.download ?? (platform() === 'darwin' ? (p) => void execFile(process.env.CANVAS_BRCTL || 'brctl', ['download', p], () => {}) : () => {});
     // the real path, so a symlinked folder (/tmp on macOS) is one folder to the watcher and to names
     this.dir = realpathSync(resolve(opts.file ? dirname(opts.file) : dir));
     this.single = opts.file ? basename(opts.file) : undefined;
@@ -49,9 +62,37 @@ export class FolderStorage implements BoardStorage {
     return join(this.stateDir, this.fileName(name) + ext);
   }
 
+  /** Ask for the download of an evicted board, at most once a minute per board. */
+  private fetchEvicted(file: string) {
+    const now = Date.now();
+    if (now - (this.downloads.get(file) ?? 0) < DOWNLOAD_EVERY_MS) return;
+    this.downloads.set(file, now);
+    this.download(join(this.dir, file));
+  }
+
+  /** The stub of a board file that isn't there, if iCloud has evicted it. */
+  private async stubOf(file: string): Promise<string | undefined> {
+    if (this.single) return undefined;
+    const stub = `.${file}.icloud`;
+    return (await exists(join(this.dir, stub))) ? stub : undefined;
+  }
+
   async list(): Promise<BoardInfo[]> {
-    const names = this.single ? [this.single] : (await readdir(this.dir, { withFileTypes: true })).filter((e) => e.name.endsWith(EXT) && !e.name.startsWith('.') && e.isFile()).map((e) => e.name);
+    const entries = this.single ? [] : await readdir(this.dir, { withFileTypes: true });
+    const names = this.single ? [this.single] : entries.filter((e) => e.name.endsWith(EXT) && !e.name.startsWith('.') && e.isFile()).map((e) => e.name);
     const out: BoardInfo[] = [];
+    const have = new Set(names.map(fold));
+    for (const e of entries) {
+      const stubbed = STUB.exec(e.name)?.[1];
+      if (!stubbed || !e.isFile() || have.has(fold(stubbed))) continue;
+      try {
+        const s = await stat(join(this.dir, e.name));
+        out.push({ name: stubbed.slice(0, -EXT.length), modified: Math.floor(s.mtimeMs), evicted: true });
+        this.fetchEvicted(stubbed);
+      } catch (err) {
+        if (!missing(err)) throw err;
+      }
+    }
     for (const f of names) {
       try {
         const s = await stat(join(this.dir, f));
@@ -68,8 +109,12 @@ export class FolderStorage implements BoardStorage {
     try {
       return await readFile(this.path(name), 'utf8');
     } catch (e) {
-      if (missing(e)) return undefined;
-      throw e;
+      if (!missing(e)) throw e;
+      if (await this.stubOf(this.fileName(name))) {
+        this.fetchEvicted(this.fileName(name));
+        throw new NotLocalError(name);
+      }
+      return undefined;
     }
   }
 
@@ -98,6 +143,7 @@ export class FolderStorage implements BoardStorage {
   }
 
   async create(name: string, text: string) {
+    if (await this.stubOf(this.fileName(name))) return false;
     let fh;
     try {
       fh = await open(this.path(name), 'wx');
@@ -114,6 +160,8 @@ export class FolderStorage implements BoardStorage {
   }
 
   async rename(from: string, to: string) {
+    await this.mustBeLocal(from);
+    if (await this.stubOf(this.fileName(to))) throw new Error(`${to} exists`);
     if (fold(from) !== fold(to) && (await exists(this.path(to)))) throw new Error(`${to} exists`);
     await rename(this.path(from), this.path(to));
     for (const ext of SIDECARS) {
@@ -125,7 +173,16 @@ export class FolderStorage implements BoardStorage {
     }
   }
 
+  /** An evicted board can't be moved or deleted from here: the file isn't on this machine. */
+  private async mustBeLocal(name: string) {
+    if (!(await exists(this.path(name))) && (await this.stubOf(this.fileName(name)))) {
+      this.fetchEvicted(this.fileName(name));
+      throw new NotLocalError(name);
+    }
+  }
+
   async remove(name: string) {
+    await this.mustBeLocal(name);
     const trash = join(this.stateDir, 'trash');
     await mkdir(trash, { recursive: true });
     const stem = `${name}-${new Date().toISOString().replace(/[:.]/g, '-')}`;

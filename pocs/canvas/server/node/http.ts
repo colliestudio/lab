@@ -114,7 +114,7 @@ export function createNodeServer(o: NodeServerOptions): NodeServer {
     } catch (e) {
       const r = errorReply(e);
       refuse('WebSocket', req, (r.json as { error: string }).error);
-      return deny(r.status, r.status === 404 ? 'Not Found' : r.status === 409 ? 'Conflict' : r.status === 400 ? 'Bad Request' : r.status === 422 ? 'Unprocessable Entity' : 'Internal Server Error');
+      return deny(r.status, r.status === 404 ? 'Not Found' : r.status === 409 ? 'Conflict' : r.status === 400 ? 'Bad Request' : r.status === 422 ? 'Unprocessable Entity' : r.status === 503 ? 'Service Unavailable' : 'Internal Server Error');
     }
     if (socket.destroyed) return lease.release();
     // a handshake ws rejects (bad headers) never calls back: the lease must not outlive the socket

@@ -5,7 +5,7 @@ describe('parseServeArgs', () => {
   it('needs exactly one folder', () => {
     expect(() => parseServeArgs([])).toThrow(/folder .* required/);
     expect(() => parseServeArgs(['a', 'b'])).toThrow(/one folder only/);
-    expect(parseServeArgs(['/boards'])).toEqual({ dir: '/boards', allowOrigins: [] });
+    expect(parseServeArgs(['/boards'])).toEqual({ dir: '/boards', allowOrigins: [], hostNames: [] });
   });
 
   it('reads the options in either order and either form', () => {
@@ -14,9 +14,16 @@ describe('parseServeArgs', () => {
       port: 5248,
       host: '0.0.0.0',
       allowOrigins: ['http://a:1', 'http://b:2'],
+      hostNames: [],
       idleMs: 300,
       app: '/dist',
     });
+  });
+
+  it('--host-name repeats and takes comma lists; only bare host names', () => {
+    expect(parseServeArgs(['/b', '--host-name', 'mini.internal', '--host-name=Other.local,third']).hostNames).toEqual(['mini.internal', 'other.local', 'third']);
+    for (const bad of ['http://x', 'x:1', 'a/b', 'a,,b', 'a b']) expect(() => parseServeArgs(['/b', `--host-name=${bad}`])).toThrow(/bare host name/);
+    expect(() => parseServeArgs(['/b', '--host-name='])).toThrow(/needs a value/);
   });
 
   it('refuses unknown options, missing and bad values', () => {

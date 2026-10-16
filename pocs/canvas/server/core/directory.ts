@@ -6,7 +6,7 @@ import { BoardFileError, DirError } from './errors';
 import type { BoardStorage } from './storage';
 import type { Log } from './transport';
 
-export { DirError } from './errors';
+export { DirError, NotLocalError } from './errors';
 
 // All the boards of one storage: listed from storage, loaded on first use, unloaded when idle.
 // One Board per name in memory, so two clients of a board always share one document.
@@ -30,6 +30,8 @@ export interface BoardEntry {
   loaded: boolean;
   browsers: number;
   modified?: number;
+  /** In the cloud store but not downloaded to this machine yet. */
+  evicted?: true;
   /** Why the board can't be opened (a newer format, or a file that is not a canvas), once an open has failed. */
   error?: string;
 }
@@ -91,7 +93,8 @@ export class BoardDirectory {
           loaded: !!b,
           browsers: b?.browsers ?? 0,
           modified: i.modified,
-          ...(err && !(i.modified && i.modified > err.at) ? { error: err.error } : {}),
+          ...(i.evicted ? { evicted: true as const, error: 'in iCloud, not downloaded to this Mac yet (downloading)' } : {}),
+          ...(!i.evicted && err && !(i.modified && i.modified > err.at) ? { error: err.error } : {}),
         };
       })
       .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
