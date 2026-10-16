@@ -143,6 +143,12 @@ const info = (job: string, s: Store | string) => Object.fromEntries(grade(job, s
 const detail = (job: string, s: Store | string, id: string) => grade(job, s).find((c) => c.id === id)!.detail;
 
 describe('proto grader', () => {
+  it('an in-page #id anchor with a target is not dead; one without a target, or a bare #, is', () => {
+    const withAnchor = (a: string) => PAGES.map(([t, h], i) => [t, i === 3 ? `${h}${a}` : h]);
+    expect(failed('proto', proto({ pages: withAnchor('<a href="#faq">FAQ</a><section id="faq"></section>') }))).toEqual([]);
+    expect(failed('proto', proto({ pages: withAnchor('<a href="#faq">FAQ</a>') }))).toEqual(['no-broken-links']);
+    expect(failed('proto', proto({ pages: withAnchor('<a href="#">x</a>') }))).toEqual(['no-broken-links']);
+  });
   it('passes links in the pages, a start page and arrows: 6 required, both info pass', () => {
     const s = proto({ edges: ALL_EDGES });
     expect(failed('proto', s)).toEqual([]);
@@ -220,6 +226,10 @@ function checkout(pages: string[][] = [CART, SHIP, PAY, CONF], start = 0) {
 const swap = (p: string[], from: string | RegExp, to: string) => [p[0], p[1].replace(from, to)];
 
 describe('checkout grader', () => {
+  it('a CSS [data-back] selector is not a back button', () => {
+    const css = swap(PAY, '<button data-back>Back</button>', '<style>[data-back]{color:red}</style>');
+    expect(failed('checkout', checkout([CART, SHIP, css, CONF]))).toEqual(['back']);
+  });
   it('passes the good flow: forward links, back, shared name; no-broken-links is info', () => {
     const s = checkout();
     expect(failed('checkout', s)).toEqual([]);

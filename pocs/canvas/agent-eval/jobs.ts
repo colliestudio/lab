@@ -108,9 +108,18 @@ function assign(titles: string[], wanted: [string, RegExp][] = TITLES): number[]
 /** The `data-goto` values in a page's HTML, any element. */
 const gotoTargets = (html: string) => [...html.matchAll(/\bdata-goto\s*=\s*(?:"([^"]*)"|'([^']*)')/gi)].map((m) => (m[1] ?? m[2]).trim());
 
-/** Dead anchors: `<a href="#…">` with no data-goto, data-back or onclick (clicking sets location.hash and does nothing). */
+/**
+ * Dead anchors: `<a href="#">` or `href="#x"` with no id/name "x" in the page, and no data-goto, data-back
+ * or onclick on the anchor itself (clicking sets location.hash and nothing happens). Not covered: an anchor
+ * inside a data-goto container (the container navigates) still counts, like a listener added by a script.
+ */
 function deadAnchors(html: string): number {
-  return [...html.matchAll(/<a\b[^>]*>/gi)].filter((m) => /\bhref\s*=\s*["']#/i.test(m[0]) && !/\b(data-goto|data-back|onclick)\b/i.test(m[0])).length;
+  return [...html.matchAll(/<a\b[^>]*>/gi)].filter((m) => {
+    const h = /\bhref\s*=\s*["']#([^"']*)["']/i.exec(m[0]);
+    if (!h || /\b(data-goto|data-back|onclick)\b/i.test(m[0])) return false;
+    const target = h[1];
+    return !target || !new RegExp(`\\b(id|name)\\s*=\\s*["']${target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["']`, 'i').test(html);
+  }).length;
 }
 
 /** Links inside the pages: `p>to` for every data-goto that resolves, and those that don't. */
@@ -140,8 +149,8 @@ function reach(start: string | undefined, edges: Iterable<string>): Set<string> 
 
 /** Page P can go back: a data-back element, a data-goto to `prev`, or canvas.back() in a script. */
 function backOk(doc: DocView, p: CanvasNode, prev: CanvasNode): boolean {
-  const html = page(p).html;
-  if (/\bdata-back\b/i.test(html) || /\bcanvas\s*\.\s*back\s*\(/.test(html)) return true;
+  const html = page(p).html.replace(/<style\b[\s\S]*?<\/style>/gi, '');
+  if (/<[a-z][^>]*\bdata-back\b/i.test(html) || /\bcanvas\s*\.\s*back\s*\(/.test(html)) return true;
   return gotoTargets(html).some((t) => resolveLink(doc, p.id, t)?.to === prev.id);
 }
 
