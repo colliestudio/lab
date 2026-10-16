@@ -44,6 +44,9 @@ function line(m, seat) {
 async function follow(board, seat, serve) {
   const base = `${serve.replace(/\/+$/, '')}/api/boards/${encodeURIComponent(board)}`;
   const backoff = Number(process.env.CANVAS_WAIT_BACKOFF_MS) || 1000;
+  // A Monitor's process outlives a session that ends without stopping it; this bounds the leak
+  // (and the seat it keeps warm) to the Monitor's own 30 minute limit.
+  setTimeout(() => process.exit(0), Number(process.env.CANVAS_WAIT_MAX_MS) || 30 * 60 * 1000);
   let failures = 0;
   for (;;) {
     try {

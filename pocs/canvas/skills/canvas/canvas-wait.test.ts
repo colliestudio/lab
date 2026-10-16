@@ -130,6 +130,12 @@ describe('canvas-wait follow', () => {
     expect(err).toContain('"a"');
   });
 
+  it('ends by itself after its lifetime (exit 0), so an orphaned Monitor does not run forever', async () => {
+    const p = follow('a', SEAT, { CANVAS_WAIT_MAX_MS: '400' });
+    await until(() => p.out.code !== null, 5000);
+    expect(p.out.code).toBe(0);
+  });
+
   it('exits 1 for an unknown board (404) and 2 for bad arguments', async () => {
     const p = follow('nope', SEAT, { CANVAS_WAIT_BACKOFF_MS: '10' });
     await until(() => p.out.code !== null, 5000);

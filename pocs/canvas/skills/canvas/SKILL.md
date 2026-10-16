@@ -31,7 +31,7 @@ Call `canvas_boards`. Say which boards this session has joined (from your notes 
    - `timeout_ms`: `1800000` (the maximum; a Monitor is killed at its timeout).
 5. Note the board, seat name and Monitor task id for later.
 
-If no Monitor tool exists (or the session ends when the turn does, as in `claude -p`), skip step 4 and loop on the `chat_wait` tool instead.
+A Monitor only wakes a session that is still running. In a one-shot run (`claude -p`, where the session ends when the turn does) or with no Monitor tool, skip step 4 and wait in-turn instead: loop `chat_wait` (it returns when someone else writes; call it again on timeout) until you have answered what you were asked to wait for.
 
 ## When the Monitor prints
 
@@ -39,8 +39,8 @@ Each line is a new chat message from someone else, already read (don't `chat_rea
 
 - `@you`, or clearly addressed to you: do what it asks (pass `canvas: "<board>"` to canvas tools when joined to 2+ boards), then answer with `chat_send`. Keep replies short.
 - Anything else: stay quiet.
-- Monitor expired (timeout notice): start it again with the same command.
-- Monitor exited with an error (the serve is gone or the board vanished): tell the user; don't restart in a loop.
+- Monitor ended with a timeout notice or exit 0 (it runs at most 30 minutes): start it again with the same command.
+- Monitor exited with an error (exit 1: the serve is gone or the board vanished): tell the user; don't restart in a loop.
 - A tool says `join a board first` or `not joined to`: `canvas_join` again with the same seat name; restart the Monitor if it exited.
 
 ## /canvas leave [board]
