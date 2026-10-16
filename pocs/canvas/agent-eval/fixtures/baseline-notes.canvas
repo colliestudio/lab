@@ -1,0 +1,135 @@
+{
+	"nodes": [
+		{
+			"id": "98148648d97d8d71",
+			"type": "group",
+			"label": "To do",
+			"x": 696,
+			"y": 0,
+			"width": 300,
+			"height": 400
+		},
+		{
+			"id": "38f9130265d4d29a",
+			"type": "group",
+			"label": "Decided",
+			"x": 348,
+			"y": 0,
+			"width": 300,
+			"height": 400
+		},
+		{
+			"id": "7e9165400f5f8a80",
+			"type": "group",
+			"label": "Ideas",
+			"x": 0,
+			"y": 0,
+			"width": 300,
+			"height": 400
+		},
+		{
+			"id": "73f761dcff712eb5",
+			"type": "text",
+			"text": "Hiking day\nHalf-day trail walk for team bonding",
+			"x": 20,
+			"y": 44,
+			"width": 260,
+			"height": 90
+		},
+		{
+			"id": "baccfe4264f586aa",
+			"type": "text",
+			"text": "Cooking class\nGroup dinner we make ourselves",
+			"x": 20,
+			"y": 150,
+			"width": 260,
+			"height": 90
+		},
+		{
+			"id": "2dcc5352e6fd71e3",
+			"type": "text",
+			"text": "Lightning talks\n5-min talks from anyone who wants",
+			"x": 20,
+			"y": 256,
+			"width": 260,
+			"height": 90
+		},
+		{
+			"id": "3815c6c3532f9857",
+			"type": "text",
+			"text": "Dates: Nov 12–14\nThree days, midweek",
+			"x": 368,
+			"y": 44,
+			"width": 260,
+			"height": 90
+		},
+		{
+			"id": "4fce7458b3d6efaa",
+			"type": "text",
+			"text": "Location: mountain lodge\nWithin 2 hours' drive",
+			"x": 368,
+			"y": 150,
+			"width": 260,
+			"height": 90
+		},
+		{
+			"id": "1f2d517f295f664a",
+			"type": "text",
+			"text": "Book the lodge\nConfirm rooms for 12 people",
+			"x": 716,
+			"y": 44,
+			"width": 260,
+			"height": 90
+		},
+		{
+			"id": "a5738cbed3eaf27a",
+			"type": "text",
+			"text": "Arrange transport\nRent a van or carpool",
+			"x": 716,
+			"y": 150,
+			"width": 260,
+			"height": 90
+		},
+		{
+			"id": "7e90aca5b8d16778",
+			"type": "text",
+			"text": "Send agenda\nShare schedule with the team",
+			"x": 716,
+			"y": 256,
+			"width": 260,
+			"height": 90
+		}
+	],
+	"edges": [
+		{
+			"id": "055c75e9ff9b32c0",
+			"fromNode": "3815c6c3532f9857",
+			"toNode": "1f2d517f295f664a",
+			"label": "dates needed to book"
+		},
+		{
+			"id": "34ffcbfa4467368b",
+			"fromNode": "4fce7458b3d6efaa",
+			"toNode": "1f2d517f295f664a",
+			"label": "which venue"
+		},
+		{
+			"id": "469a151dd6d03144",
+			"fromNode": "4fce7458b3d6efaa",
+			"toNode": "73f761dcff712eb5",
+			"label": "trails nearby?"
+		},
+		{
+			"id": "781c01f7d91331e3",
+			"fromNode": "4fce7458b3d6efaa",
+			"toNode": "a5738cbed3eaf27a",
+			"label": "where we're going"
+		},
+		{
+			"id": "f7a07ee9d9afb804",
+			"fromNode": "1f2d517f295f664a",
+			"toNode": "7e90aca5b8d16778",
+			"label": "confirm before sending"
+		}
+	]
+}

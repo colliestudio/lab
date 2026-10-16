@@ -1,0 +1,21 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
+import { loadDoc } from './grade';
+import { JOBS } from './jobs';
+
+// Boards the first real agent runs produced (2026-10-16, poc b37e48f): pin what the graders say about them.
+const board = (job: string) => loadDoc(readFileSync(join(__dirname, 'fixtures', `baseline-${job}.canvas`), 'utf8'));
+const verdict = (job: string) => Object.fromEntries(JOBS[job].grade(board(job)).map((c) => [c.id, c.pass]));
+
+describe('baseline boards', () => {
+  it('notes: a sensible board passes everything', () => {
+    expect(verdict('notes')).toEqual({ columns: true, 'notes-per-column': true, 'no-empty-notes': true, links: true });
+  });
+  it('storm: stickies from the diagram plugin are not an event storm board', () => {
+    expect(verdict('storm')).toMatchObject({ board: false, events: false, commands: false });
+  });
+  it('proto: pages and arrows exist, but nothing is clickable (href, no data-goto)', () => {
+    expect(verdict('proto')).toEqual({ pages: true, titles: true, html: true, navigation: false, edges: true });
+  });
+});
