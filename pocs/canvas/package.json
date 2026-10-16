@@ -8,7 +8,7 @@
     "dev:app": "vite --port 5190 --strictPort",
     "dev:signal": "wrangler dev --config signaling/wrangler.toml --port 5192",
     "build": "pnpm typecheck && vite build",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p signaling && tsc --noEmit -p bridge",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p signaling && tsc --noEmit -p bridge && tsc --noEmit -p agent-eval",
     "test": "vitest run",
     "preview": "vite preview --port 5190 --strictPort",
     "deploy": "pnpm build && wrangler deploy --config signaling/wrangler.deploy.toml",
@@ -16,7 +16,8 @@
     "test:leak": "node scripts/page-leak.mjs",
     "bridge": "tsx bridge/server.ts",
     "canvas": "tsx bridge/cli.ts",
-    "canvas-mcp": "tsx bridge/mcp.ts"
+    "canvas-mcp": "tsx bridge/mcp.ts",
+    "agent:eval": "tsx agent-eval/run.ts"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261009.1",
