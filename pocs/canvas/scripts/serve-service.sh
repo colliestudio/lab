@@ -9,7 +9,7 @@
 #   uninstall       stop and remove the agent; releases stay
 #   status          current release, launchd state, what the server answers, releases
 #
-# Everything is overridable with CANVAS_SERVE_* (tests and QA use scratch values; see the defaults below).
+# macOS only (launchd, BSD mv/sed). Everything is overridable with CANVAS_SERVE_* (tests and QA use scratch values; see the defaults below).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -33,11 +33,11 @@ die() { echo "serve-service: $*" >&2; exit 1; }
 # A scratch run must not touch the real service: the variables that say which service, repo, folder and
 # agent this is are set together or not at all.
 overridden=() unset_=()
-for v in HOME LABEL REPO DATA AGENTS; do
+for v in HOME LABEL REPO DATA AGENTS PORT LOGS TAG_PREFIX; do
   if [ -n "$(printenv "CANVAS_SERVE_$v" || true)" ]; then overridden+=("CANVAS_SERVE_$v"); else unset_+=("CANVAS_SERVE_$v"); fi
 done
-if [ "${#overridden[@]}" -gt 0 ] && [ "${#overridden[@]}" -lt 5 ]; then
-  die "set all of CANVAS_SERVE_HOME, _LABEL, _REPO, _DATA, _AGENTS (and _TAG_PREFIX, _PORT, _LOGS) or none; set: ${overridden[*]}; missing: ${unset_[*]}"
+if [ "${#overridden[@]}" -gt 0 ] && [ "${#unset_[@]}" -gt 0 ]; then
+  die "set all of CANVAS_SERVE_HOME, _LABEL, _REPO, _DATA, _AGENTS, _PORT, _LOGS, _TAG_PREFIX or none; set: ${overridden[*]}; missing: ${unset_[*]}"
 fi
 
 loaded() { "$LAUNCHCTL" print "$DOMAIN/$LABEL" >/dev/null 2>&1; }
@@ -99,7 +99,8 @@ PLIST
 wait_unloaded() {
   local i
   for i in $(seq 1 50); do loaded || return 0; sleep 0.2; done
-  die "$LABEL is still loaded after bootout"
+  echo "serve-service: $LABEL is still loaded after bootout" >&2
+  return 1
 }
 
 # point current at a release, write the plist, (re)start
@@ -119,7 +120,7 @@ activate() {
   if loaded; then
     if [ "$changed" = 1 ]; then
       "$LAUNCHCTL" bootout "$DOMAIN/$LABEL" || true
-      wait_unloaded
+      wait_unloaded || return 1
       "$LAUNCHCTL" bootstrap "$DOMAIN" "$PLIST"
     else
       "$LAUNCHCTL" kickstart -k "$DOMAIN/$LABEL"
@@ -132,11 +133,21 @@ activate() {
 }
 
 # the new process answers /api/info, or say so
+# The process launchd runs now is the one that holds the folder lock (not an older one, or another server on the port).
+# Without a pid from launchctl there is nothing to compare.
+new_process() {
+  local lpid fpid
+  lpid="$("$LAUNCHCTL" print "$DOMAIN/$LABEL" 2>/dev/null | sed -n 's/^[[:space:]]*pid = \([0-9][0-9]*\)$/\1/p' | head -n 1)"
+  [ -n "$lpid" ] || return 0
+  fpid="$(sed -n 's/.*"pid": *\([0-9][0-9]*\).*/\1/p' "$DATA/.canvas-serve.lock" 2>/dev/null | head -n 1)"
+  [ "$lpid" = "$fpid" ]
+}
+
 await_up() {
   local i
   [ "$WAIT" = 0 ] && return 0
   for i in $(seq 1 "$WAIT"); do
-    if curl -sf --max-time 2 "http://localhost:$PORT/api/info" >/dev/null 2>&1; then echo "up on port $PORT"; return 0; fi
+    if curl -sf --max-time 2 "http://localhost:$PORT/api/info" >/dev/null 2>&1 && new_process; then echo "up on port $PORT"; return 0; fi
     sleep 1
   done
   tail -n 15 "$LOGS/serve.log" 2>/dev/null >&2 || true

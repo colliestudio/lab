@@ -3,6 +3,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSyn
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { freePort } from '../bridge/process.test-util';
 
 // scripts/serve-service.sh against a fake repo, scratch dirs and a launchctl stub that logs its arguments.
 // Nothing here touches launchd, the real repo's tags or the real data folder.
@@ -20,11 +21,13 @@ const git = (...a: string[]) => execFileSync('git', ['-C', repo, ...a], { encodi
 const sh = (...a: string[]) => spawnSync('bash', [script, ...a], { env: { ...process.env, ...env }, encoding: 'utf8' });
 const calls = () => (existsSync(p('launchctl.log')) ? readFileSync(p('launchctl.log'), 'utf8').trim().split('\n').filter(Boolean) : []);
 const clear = () => writeFileSync(p('launchctl.log'), '');
-const today = () => new Date().toISOString().slice(0, 10).replace(/-/g, '');
+// local date, as the script's `date +%Y%m%d`
+const today = () => execFileSync('date', ['+%Y%m%d'], { encoding: 'utf8' }).trim();
 const tags = () => git('tag', '-l', `${PREFIX}*`).split('\n').filter(Boolean);
 const target = () => readlinkSync(p('home', 'current'));
 
-beforeAll(() => {
+beforeAll(async () => {
+  const port = String(await freePort());
   root = mkdtempSync(join(tmpdir(), 't339-script-'));
   repo = p('repo');
   mkdirSync(join(repo, 'server'), { recursive: true });
@@ -46,7 +49,7 @@ beforeAll(() => {
     CANVAS_SERVE_HOME: p('home'),
     CANVAS_SERVE_LABEL: LABEL,
     CANVAS_SERVE_DATA: p('Collie Canvas & <x>'),
-    CANVAS_SERVE_PORT: '5299',
+    CANVAS_SERVE_PORT: port,
     CANVAS_SERVE_AGENTS: p('agents'),
     CANVAS_SERVE_LOGS: p('logs'),
     CANVAS_SERVE_LAUNCHCTL: p('launchctl'),
@@ -68,7 +71,7 @@ describe('serve-service.sh', () => {
     expect(existsSync(p('home', 'releases', tag, 'server', 'serve.ts'))).toBe(true);
     expect(target()).toBe(`releases/${tag}`);
     const plist = readFileSync(p('agents', `${LABEL}.plist`), 'utf8');
-    for (const want of [`<string>${LABEL}</string>`, '<string>/usr/bin/true</string>', '<string>server/serve.ts</string>', `<string>${p('Collie Canvas &amp; &lt;x&gt;')}</string>`, '<string>--port</string>', '<string>5299</string>', '<string>--host-name</string>', '<string>mini.internal</string>', `<key>WorkingDirectory</key><string>${p('home', 'current')}</string>`, '<key>KeepAlive</key><true/>', '<key>RunAtLoad</key><true/>', p('logs', 'serve.log')]) {
+    for (const want of [`<string>${LABEL}</string>`, '<string>/usr/bin/true</string>', '<string>server/serve.ts</string>', `<string>${p('Collie Canvas &amp; &lt;x&gt;')}</string>`, '<string>--port</string>', `<string>${env.CANVAS_SERVE_PORT}</string>`, '<string>--host-name</string>', '<string>mini.internal</string>', `<key>WorkingDirectory</key><string>${p('home', 'current')}</string>`, '<key>KeepAlive</key><true/>', '<key>RunAtLoad</key><true/>', p('logs', 'serve.log')]) {
       expect(plist).toContain(want);
     }
     if (process.platform === 'darwin') expect(spawnSync('plutil', ['-lint', p('agents', `${LABEL}.plist`)]).status).toBe(0);
@@ -163,6 +166,13 @@ describe('serve-service.sh', () => {
     expect(r.status).toBe(1);
     expect(r.stderr).toContain('CANVAS_SERVE_LABEL');
     expect(calls()).toEqual([]);
+  });
+
+  it('a scratch run without its own port is refused (it would test the real service)', () => {
+    const { CANVAS_SERVE_PORT: _p, ...noPort } = env;
+    const r = spawnSync('bash', [script, 'status'], { env: { PATH: process.env.PATH!, HOME: process.env.HOME!, ...noPort }, encoding: 'utf8' });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('CANVAS_SERVE_PORT');
   });
 
   it('a release that does not answer is rolled back automatically (exit 1), and kept for inspection', () => {

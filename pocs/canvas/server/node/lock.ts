@@ -85,8 +85,8 @@ function judge(text: string | undefined, here: Here): LockState {
   if (text === undefined) return { held: false, reason: 'no lock' };
   const holder = parse(text);
   if (!holder) return { held: false, reason: 'unreadable lock file (stale)' };
-  // ioreg failed for us (machine fell back to the hostname) but worked when the lock was written: same Mac if the hostname matches
-  const sameMachine = holder.machine === here.machine || (here.machine === here.host && holder.host === here.host);
+  // ioreg failed for one of the two (its machine id fell back to the hostname): same Mac if the hostnames match
+  const sameMachine = holder.machine === here.machine || (here.machine === here.host && holder.host === here.host) || (holder.machine === holder.host && holder.host === here.host);
   if (!sameMachine) return { holder, held: true, reason: `held from ${holder.host}` };
   if (holder.pid === process.pid) return { holder, held: false, reason: 'our own pid (stale)' };
   if (Math.abs(holder.bootAt - here.bootAt) >= BOOT_SLACK_MS) return { holder, held: false, reason: 'from before the last boot (stale)' };
@@ -167,6 +167,8 @@ export function acquireFolderLock(dir: string, o: { port: number; urls: string[]
         } catch {
           /* somebody took the name again: they are the holder now */
         }
+        // Residual: a third starter that took the name between our rename and this link-back leaves two writers;
+        // we drop our copy and report the holder we saw. Needs three starters within microseconds.
         unlinkSync(aside);
         throw new FolderLockedError(dir, was.holder!);
       }

@@ -85,6 +85,11 @@ describe('folder lock', () => {
     expect(lockState(d, noIoreg)).toMatchObject({ held: true, reason: expect.stringContaining('running') });
     write(d, { pid: deadPid(), machine: 'UUID-1', host: 'mini', bootAt: here.bootAt });
     expect(lockState(d, noIoreg)).toMatchObject({ held: false });
+    // the reverse: the lock was written while ioreg failed, we have the UUID now
+    write(d, { pid: process.ppid, machine: 'mini', host: 'mini', bootAt: here.bootAt });
+    expect(lockState(d, here)).toMatchObject({ held: true, reason: expect.stringContaining('running') });
+    write(d, { pid: deadPid(), machine: 'macbook', host: 'macbook', bootAt: here.bootAt });
+    expect(lockState(d, here)).toMatchObject({ held: true, reason: expect.stringContaining('held from') });
     write(d, { pid: deadPid(), machine: 'UUID-2', host: 'macbook', bootAt: here.bootAt });
     expect(lockState(d, noIoreg)).toMatchObject({ held: true }); // another Mac
   });
