@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { PLUGIN_CLI } from '../src/plugins/cli';
 import { catalog } from './catalog';
 import { cliArgs, coerce, parseArgv } from './flags';
-import { buildForms, findForm } from './forms';
+import { buildForms, findForm, formUsage } from './forms';
 import { Host, makeActor } from './host';
 
 // Every line the CLI offered before the generic rewrite still reaches the same command with the
@@ -165,5 +165,44 @@ describe('draw verbs', () => {
     expect(line(h, seen, 'draw fit')).toMatchObject({ name: 'excalidraw.frame', args: { view: null } });
     expect(line(h, seen, 'draw title New name')).toMatchObject({ name: 'excalidraw.frame', args: { title: 'New name' } });
     expect(line(h, seen, 'draw shapes')).toEqual({ view: 'excalidraw.shapes', args: {} });
+  });
+});
+
+describe('generated help matches what the verbs accept', () => {
+  it('every flag in a verb’s usage line is accepted by that verb', () => {
+    for (const f of forms) {
+      const usage = formUsage(cat, f);
+      const spec = f.kind === 'command' ? cat.spec(f.name)! : cat.viewSpec(f.name)!;
+      for (const m of usage.matchAll(/--([a-z][a-z-]*)/g)) {
+        if (m[1] === 'timeout') continue;
+        try {
+          cliArgs(cat.jsonSchema(spec.args), f.form, [], { [m[1]]: 'true' });
+        } catch (e) {
+          expect((e as Error).message, `${usage}: --${m[1]}`).not.toMatch(/unknown flag/);
+        }
+      }
+    }
+  });
+
+  it('compose verbs show their real usage and reject flags they do not read', () => {
+    const box = findForm(forms, ['draw', 'box'])!;
+    expect(formUsage(cat, box)).toBe('draw box LABEL [--type rectangle|ellipse|diamond] [--ref R] [--in N]');
+    expect(formUsage(cat, findForm(forms, ['draw', 'arrow'])!)).toBe('draw arrow FROM TO [--label L] [--in N]');
+    expect(() => cliArgs({}, box.form, ['x'], { colour: 'red' })).toThrow(/unknown flag --colour \(flags: --in --type --ref\)/);
+    expect(formUsage(cat, findForm(forms, ['draw', 'add'])!)).toContain('[--in V]'); // the alias, not --drawing
+  });
+
+  it('shows the choices for enums and the timeout of wait verbs', () => {
+    expect(formUsage(cat, findForm(forms, ['shape'])!)).toContain('shape rect|ellipse|diamond|text|sticky TEXT…');
+    expect(formUsage(cat, findForm(forms, ['shape'])!)).toContain('--side top|right|bottom|left');
+    expect(formUsage(cat, findForm(forms, ['arrow'])!)).toContain('--start none|arrow');
+    expect(formUsage(cat, findForm(forms, ['chess', 'wait'])!)).toContain('[--timeout S]');
+  });
+
+  it('chess sit still takes w and b', () => {
+    const { h, seen } = setup();
+    line(h, seen, 'chess new');
+    expect(line(h, seen, 'chess sit w')).toMatchObject({ name: 'chess.sit', args: { color: 'w' } });
+    expect(line(h, seen, 'chess sit b')).toMatchObject({ name: 'chess.sit', args: { color: 'b' } });
   });
 });

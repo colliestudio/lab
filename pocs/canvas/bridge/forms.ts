@@ -26,18 +26,26 @@ export function buildForms(cat: Catalog): Form[] {
 export const findForm = (forms: Form[], pos: string[]) =>
   forms.filter((x) => x.words.every((w, i) => pos[i] === w)).sort((a, b) => b.words.length - a.words.length)[0];
 
-/** One line of usage: `style NODE [--text V] [--dashed]`. */
+/** One line of usage: `style NODE [--text V] [--dashed]`; values show their choices (`--side top|right|bottom|left`). */
 export function formUsage(cat: Catalog, f: Form): string {
+  if (f.form.usage) return f.form.usage;
   const spec = f.kind === 'command' ? cat.spec(f.name)! : cat.viewSpec(f.name)!;
   const schema = cat.jsonSchema(spec.args);
+  const props: Record<string, any> = schema.properties ?? {};
   const req = new Set<string>(schema.required ?? []);
   const given = new Set([...(f.form.pos ?? []), ...(f.form.rest ? [f.form.rest] : []), ...Object.keys(f.form.set ?? {})]);
-  const positional = [...(f.form.pos ?? []).map((k) => k.toUpperCase()), ...(f.form.rest ? [`${f.form.rest.toUpperCase()}…`] : [])];
-  const flags = Object.keys(schema.properties ?? {})
+  const choices = (k: string) => {
+    const p = props[k]?.anyOf ? props[k].anyOf.find((m: { type?: string }) => m.type !== 'null') : props[k];
+    return p?.enum ? p.enum.join('|') : undefined;
+  };
+  const positional = [...(f.form.pos ?? []).map((k) => choices(k) ?? k.toUpperCase()), ...(f.form.rest ? [`${f.form.rest.toUpperCase()}…`] : [])];
+  const flagOf = (k: string) => Object.entries(f.form.alias ?? {}).find(([, arg]) => arg === k)?.[0] ?? kebab(k);
+  const flags = Object.keys(props)
     .filter((k) => !given.has(k))
     .map((k) => {
-      const flag = `--${kebab(k)}${schema.properties[k].type === 'boolean' ? '' : ' V'}`;
+      const flag = `--${flagOf(k)}${props[k].type === 'boolean' ? '' : ` ${choices(k) ?? 'V'}`}`;
       return req.has(k) ? flag : `[${flag}]`;
     });
+  if (f.kind === 'view' && (spec as { wait?: true }).wait) flags.push('[--timeout S]');
   return `${f.form.verb} ${[...positional, ...flags].join(' ')}`.trim();
 }

@@ -60,8 +60,13 @@ function propFor(props: Json, flag: string): string | undefined {
  * `rest` for the remaining words), then flags. Unknown flags and leftover words are errors that
  * list what is accepted.
  */
-export function cliArgs(schema: Json, form: Pick<CliForm, 'verb' | 'pos' | 'rest' | 'set' | 'keepNone' | 'alias' | 'compose'>, words: string[], flags: Record<string, string>): Record<string, unknown> {
-  if (form.compose) return form.compose(words, Object.fromEntries(Object.entries(flags).filter(([k]) => !GLOBAL_FLAGS.has(k))));
+export function cliArgs(schema: Json, form: Pick<CliForm, 'verb' | 'pos' | 'rest' | 'set' | 'keepNone' | 'alias' | 'compose' | 'accepts'>, words: string[], flags: Record<string, string>): Record<string, unknown> {
+  if (form.compose) {
+    const own = Object.entries(flags).filter(([k]) => !GLOBAL_FLAGS.has(k));
+    const bad = own.filter(([k]) => !(form.accepts ?? []).includes(k));
+    if (bad.length) throw new Error(`${form.verb}: unknown flag --${bad[0][0]} (flags: ${(form.accepts ?? []).map((a) => `--${a}`).join(' ') || 'none'})`);
+    return form.compose(words, Object.fromEntries(own));
+  }
   const props: Json = schema.properties ?? {};
   const out: Record<string, unknown> = { ...form.set };
   const keep = new Set(form.keepNone ?? []);

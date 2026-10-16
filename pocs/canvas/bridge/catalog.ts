@@ -41,6 +41,16 @@ function typeName(p: Json): string {
   return p.type ?? 'any';
 }
 
+/** The sub-schema at an issue path (properties by name, array items by index; the non-null side of a nullable). */
+function schemaAt(js: Json, path: (string | number)[]): Json | undefined {
+  let cur: Json | undefined = js;
+  for (const seg of path) {
+    const c: Json | undefined = cur?.anyOf ? (cur.anyOf as Json[]).find((m) => m.type !== 'null') : cur;
+    cur = typeof seg === 'number' ? c?.items : c?.properties?.[seg];
+  }
+  return cur?.anyOf ? (cur.anyOf as Json[]).find((m) => m.type !== 'null') : cur;
+}
+
 export function buildCatalog(logic: readonly PluginLogic[] = PLUGIN_LOGIC) {
   const store = new Store();
   const entries = [CORE, ...logic];
@@ -91,9 +101,12 @@ export function buildCatalog(logic: readonly PluginLogic[] = PLUGIN_LOGIC) {
     if (!spec) return { ok: false, error: unknownError(name, kind) };
     const r = z.safeParse(spec.args, args ?? {});
     if (r.success) return { ok: true, value: r.data as Record<string, unknown> };
-    const known = Object.keys(jsonSchema(spec.args).properties ?? {});
     const lines = r.error.issues.flatMap((i) => {
-      if (i.code === 'unrecognized_keys') return i.keys.map((k) => `args.${[...i.path, k].join('.')}: unknown field (fields: ${known.join(', ') || 'none'})`);
+      if (i.code === 'unrecognized_keys') {
+        // the fields of the object that has the stray key, not of the top level
+        const known = Object.keys(schemaAt(jsonSchema(spec.args), i.path as (string | number)[])?.properties ?? {});
+        return i.keys.map((k) => `args.${[...i.path, k].join('.')}: unknown field (fields: ${known.join(', ') || 'unknown'})`);
+      }
       const path = i.path.length ? `args.${i.path.join('.')}` : 'args';
       return [`${path}: ${i.message.replace(/^Invalid input: /, '')}`];
     });

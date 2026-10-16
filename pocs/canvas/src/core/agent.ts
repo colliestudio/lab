@@ -30,6 +30,9 @@ export interface CliForm {
   /** Flag name to arg name when they differ (`--in` for `drawing`). */
   alias?: Record<string, string>;
   /** Builds the args itself from the words and flags (for verbs that wrap their input, like `draw box`). */
+  /** With `compose`: the usage line for help (the schema doesn't describe these words and flags), and the flags it reads. */
+  usage?: string;
+  accepts?: string[];
   compose?(words: string[], flags: Record<string, string>): Record<string, unknown>;
 }
 

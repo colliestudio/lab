@@ -524,8 +524,8 @@ const specs: Record<string, CommandSpec> = {
     tool: 'canvas_draw_add',
     cli: [
       { verb: 'draw add', rest: 'shapes', alias: IN },
-      { verb: 'draw box', alias: IN, compose: (w, f) => ({ ...pickFlag(f), shapes: [{ type: f.type ?? 'rectangle', label: w.join(' '), ref: f.ref }] }) },
-      { verb: 'draw arrow', alias: IN, compose: (w, f) => ({ ...pickFlag(f), shapes: [{ type: 'arrow', from: w[0], to: w[1], label: f.label }] }) },
+      { verb: 'draw box', alias: IN, accepts: ['in', 'type', 'ref'], usage: 'draw box LABEL [--type rectangle|ellipse|diamond] [--ref R] [--in N]', compose: (w, f) => ({ ...pickFlag(f), shapes: [{ type: f.type ?? 'rectangle', label: w.join(' '), ref: f.ref }] }) },
+      { verb: 'draw arrow', alias: IN, accepts: ['in', 'label'], usage: 'draw arrow FROM TO [--label L] [--in N]', compose: (w, f) => ({ ...pickFlag(f), shapes: [{ type: 'arrow', from: w[0], to: w[1], label: f.label }] }) },
     ],
     toCommand: (a, ctx) => ({ id: drawingId(ctx.doc, a.drawing), shapes: a.shapes }),
     result: (_r, a, ctx) => describe(ctx.doc.get(drawingId(ctx.doc, a.drawing))!),

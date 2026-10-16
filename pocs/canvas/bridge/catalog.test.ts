@@ -71,6 +71,12 @@ describe('validation errors', () => {
     expect(err(run('nope.x', {}))).toContain('plugins: ');
   });
 
+  it('a stray key in a nested object lists the fields of that object', () => {
+    const e = err(run('board.sync', { source: 's', columns: [], items: [{ key: 'k', column: 'c', text: 't', bogus: 1 }] }));
+    expect(e).toContain('args.items.0.bogus: unknown field (fields: key, column, text, color, data)');
+    expect(err(run('board.sync', { source: 's', columns: [], items: [], at: { x: 1, y: 2, z: 3 } }))).toContain('args.at.z: unknown field (fields: x, y)');
+  });
+
   it('several issues are all listed', () => {
     const e = err(run('board.add', { x: 'a', y: 'b' }));
     expect(e).toContain('args.text');

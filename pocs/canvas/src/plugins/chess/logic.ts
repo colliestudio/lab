@@ -30,7 +30,7 @@ export const specs: Record<string, CommandSpec> = {
   }),
   sit: command({
     description: 'Take a seat at a color (white or black): from then on only you move that color. `leave` stands up.',
-    args: z.strictObject({ color: z.enum(['white', 'black']), leave: z.optional(z.boolean()), board: board_ }),
+    args: z.strictObject({ color: z.enum(['white', 'black', 'w', 'b']), leave: z.optional(z.boolean()), board: board_ }),
     example: { color: 'white' },
     tool: 'chess_sit',
     cli: [{ verb: 'chess sit', pos: ['color'] }],
