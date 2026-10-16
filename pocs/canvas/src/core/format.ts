@@ -10,13 +10,13 @@ export const FORMAT_VERSION = 1;
 
 export class FormatError extends Error {
   constructor(
-    readonly found: number | string,
+    readonly found: unknown,
     readonly supported = FORMAT_VERSION,
   ) {
     super(
-      typeof found === 'number'
+      typeof found === 'number' && Number.isInteger(found) && found > supported
         ? `this board is format ${found}; this server supports up to ${supported}. Update the server to open it (the file is untouched).`
-        : `${FORMAT_KEY} must be a positive integer (found ${JSON.stringify(found)})`,
+        : `${FORMAT_KEY} must be a positive integer (found ${JSON.stringify(found) ?? 'nothing'})`,
     );
     this.name = 'FormatError';
   }
@@ -26,7 +26,7 @@ export class FormatError extends Error {
 export function formatOf(extra: Record<string, unknown> | undefined): number {
   const v = extra?.[FORMAT_KEY];
   if (v === undefined) return 1;
-  if (typeof v !== 'number' || !Number.isInteger(v) || v < 1) throw new FormatError(typeof v === 'number' ? String(v) : JSON.stringify(v));
+  if (typeof v !== 'number' || !Number.isInteger(v) || v < 1) throw new FormatError(typeof v === 'number' ? String(v) : v);
   return v;
 }
 

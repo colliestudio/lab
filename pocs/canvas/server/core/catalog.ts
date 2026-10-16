@@ -6,11 +6,11 @@ import { resolveNode } from '../../src/core/query';
 import { Store } from '../../src/core/store';
 import { PLUGIN_LOGIC, useLogic, type PluginLogic } from '../../src/plugins/logic';
 
-// What the bridge knows about plugins, built from their logic: which plugin owns which commands and
-// views, which are described, how to validate args and how to explain them. The bridge itself names
+// What the server knows about plugins, built from their logic: which plugin owns which commands and
+// views, which are described, how to validate args and how to explain them. The server itself names
 // no plugin; everything here comes from the specs the plugins register (src/core/agent.ts).
 
-// zod/mini ships without messages ("Invalid input"); the bridge processes load English once
+// zod/mini ships without messages ("Invalid input"); the server processes load English once
 z.config(z.locales.en());
 
 export interface PluginInfo {

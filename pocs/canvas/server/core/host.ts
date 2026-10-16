@@ -12,11 +12,11 @@ import { Redirect, type AgentCtx } from '../../src/core/agent';
 import { catalog, type Catalog } from './catalog';
 import { describeDiff, diffFile, stableSerialize } from './canonical';
 
-// The bridge's document side, without network or disk (server.ts adds those): one Y.Doc that
+// The server's document side, without network or disk (server.ts adds those): one Y.Doc that
 // browsers sync with, a Store per actor on that doc (each agent its own undo history and log name),
 // and the two-way mapping to the .canvas file text.
 
-/** Who acts through the bridge. `id` is stable per agent (log, presence, future permissions). */
+/** Who acts through the server. `id` is stable per agent (log, presence, future permissions). */
 export interface Actor extends LogActor {
   kind: 'agent' | 'tool' | 'file';
 }
