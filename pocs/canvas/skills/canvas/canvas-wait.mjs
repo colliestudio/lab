@@ -81,7 +81,8 @@ async function follow(board, seat, serve) {
       if (checking || !chain.size) return;
       checking = true;
       const now = await links([...chain.keys()]);
-      if ([...chain].some(([pid, ppid]) => now.get(pid) !== ppid)) stop(0);
+      // No output at all means `ps` itself failed (fork error under load), not that every link is gone.
+      if (now.size && [...chain].some(([pid, ppid]) => now.get(pid) !== ppid)) stop(0);
       checking = false;
     }, Number(process.env.CANVAS_WAIT_PPID_MS) || 3000),
   ];
@@ -97,7 +98,9 @@ async function follow(board, seat, serve) {
         if (!r.ok) throw new Error(`HTTP ${r.status} ${(await r.text()).slice(0, 120)}`);
         const st = await r.json();
         if (!Array.isArray(st?.actors)) throw new Error('unexpected reply (not a canvas serve?)');
-        if (!st.actors.some((a) => a?.name === seat)) {
+        // The serve seats actors by slug (makeActor in server/core/host.ts), so fold the same way.
+        const slug = seat.slice(0, 32).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'agent';
+        if (!st.actors.some((a) => a?.id === `agent:${slug}`)) {
           process.stderr.write(`canvas-wait: seat "${seat}" is not on board "${board}" at ${serve} (wrong --serve? join over MCP first)\n`);
           code = 1;
           break;

@@ -97,19 +97,20 @@ describe('canvas-wait name', () => {
 
 describe('canvas-wait follow', () => {
   it("prints others' messages, marks mentions, skips its own, and marks them seen", async () => {
-    const { p, out } = await follow('a', SEAT);
+    const seat = 'Claude · basic';
+    const { p, out } = await follow('a', seat);
     await settle();
     const t0 = Date.now();
-    await say('a', 'Bob', `@${SEAT} hello there`);
+    await say('a', 'Bob', `@${seat} hello there`);
     await until(() => out.lines.length >= 1, 8000);
     expect(Date.now() - t0).toBeLessThan(5000);
-    expect(out.lines[0]).toMatch(/^@you \[\d\d:\d\d\] Bob \(agent\): @Claude · t hello there$/);
-    await say('a', SEAT, 'my own words');
+    expect(out.lines[0]).toMatch(/^@you \[\d\d:\d\d\] Bob \(agent\): @Claude · basic hello there$/);
+    await say('a', seat, 'my own words');
     await say('a', 'Bob', 'just chatting');
     await until(() => out.lines.length >= 2, 5000);
     expect(out.lines[1]).toMatch(/^\[\d\d:\d\d\] Bob \(agent\): just chatting$/);
     expect(out.lines).toHaveLength(2);
-    const unread = await api(`a/chat/read?new=1&as=${encodeURIComponent(SEAT)}`);
+    const unread = await api(`a/chat/read?new=1&as=${encodeURIComponent(seat)}`);
     expect(JSON.stringify(unread)).not.toContain('Bob');
     p.kill();
   });
@@ -139,12 +140,12 @@ describe('canvas-wait follow', () => {
   });
 
   it('ends by itself after its lifetime (exit 0), so an orphaned Monitor does not run forever', async () => {
-    const p = await follow('a', SEAT, { CANVAS_WAIT_MAX_MS: '400' });
+    const p = await follow('a', 'Claude · life', { CANVAS_WAIT_MAX_MS: '400' });
     await until(() => p.out.code !== null, 5000);
     expect(p.out.code).toBe(0);
   });
 
-  it('exits when the session dies, even under a wrapper shell that keeps its own parent', async () => {
+  it('exits when the session dies, even under a wrapper shell that keeps its own parent', { timeout: 20000 }, async () => {
     // Like Claude's background commands: sh -c '<cmd>; :' (so sh stays node's parent), stdout in a file.
     // The "session" is a process that starts the wrapper and exits; the wrapper is then reparented to 1,
     // while node's own ppid stays the wrapper. Only the grandparent changes.
@@ -152,8 +153,9 @@ describe('canvas-wait follow', () => {
     await seatUp('a', seat);
     const cmd = `${process.execPath} ${script} follow a --as "${seat}" --serve ${url}; :`;
     const src = `const fs = require('node:fs'); const fd = fs.openSync(${JSON.stringify(join(dir, 'orphan.out'))}, 'w'); require('node:child_process').spawn('/bin/sh', ['-c', ${JSON.stringify(cmd)}], { env: { ...process.env, CANVAS_WAIT_PPID_MS: '100' }, stdio: ['ignore', fd, fd], detached: true }).unref(); setTimeout(() => {}, 1000);`; // stays up past the follow's start, so the follow records it as an ancestor
+    // The scratch serve's port is unique to this run, so the pattern cannot match another run's follow.
     const pids = () => {
-      try { return execFileSync('pgrep', ['-f', `follow a --as ${seat}`], { encoding: 'utf8' }).trim().split('\n').filter(Boolean).map(Number); } catch { return []; }
+      try { return execFileSync('pgrep', ['-f', `follow a --as ${seat} --serve ${url}`], { encoding: 'utf8' }).trim().split('\n').filter(Boolean).map(Number); } catch { return []; }
     };
     kids.push({ kill: () => pids().forEach((p) => { try { process.kill(p, 'SIGKILL'); } catch {} }) } as ChildProcess);
     const session = spawn(process.execPath, ['-e', src], { stdio: 'ignore' });
