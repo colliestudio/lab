@@ -45,7 +45,7 @@ export class Board {
   /** Last time something happened here (a change, a connection, a lease released). */
   lastActive = Date.now();
   readonly seatIdleMs: number;
-  private readonly log: Log;
+  readonly log: Log;
   private conns = new Map<Conn, ConnState>();
   private holds = 0;
   private seatAwareness = new Set<awarenessProtocol.Awareness>();
