@@ -9,7 +9,7 @@ import * as decoding from 'lib0/decoding';
 import { randomBytes } from 'node:crypto';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { Host, makeActor, type Actor } from './host';
-import { queryNodes } from './query';
+import { queryNodes } from '../src/core/query';
 import { parseBridgeArgs } from './args';
 import { makeGuard } from './guard';
 import { joinRelay, relayUrl } from './relay';

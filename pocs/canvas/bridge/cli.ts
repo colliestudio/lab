@@ -3,7 +3,7 @@ import { homedir } from 'node:os';
 import { client } from './client';
 import { parseBacklog } from './backlog';
 import { COLORS, gameText, playMove, runBot, waitForTurn } from './chess';
-import { chatText } from './chatText';
+import { chatText } from '../src/core/chat';
 import type { GameView } from '../src/plugins/chess/game';
 
 // canvas: edit a live canvas from the shell (agents, scripts, people). Talks to the bridge.
@@ -271,7 +271,7 @@ async function main() {
 }
 
 async function chat(sub: string | undefined, args: string[]) {
-  const show = async (msgs: Awaited<ReturnType<typeof c.chatRead>>) => (flags.json ? console.log(JSON.stringify(msgs, null, 2)) : msgs.length && console.log(await chatText(c, msgs)));
+  const show = async (msgs: Awaited<ReturnType<typeof c.chatRead>>) => (flags.json ? console.log(JSON.stringify(msgs, null, 2)) : msgs.length && console.log(chatText(msgs, await c.doc())));
   switch (sub) {
     case 'say': {
       if (!args.length) throw new Error('chat say TEXT [--node N]');

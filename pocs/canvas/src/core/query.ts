@@ -1,4 +1,4 @@
-import type { CanvasNode, DocView } from '../src/core/doc';
+import type { CanvasNode, DocView } from './doc';
 
 // Reading the board for agents: compact node summaries and filters, plus "which node does this
 // name mean" so agents can say `connect "Order placed" "Payment taken"` instead of ids.

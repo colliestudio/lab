@@ -17,6 +17,10 @@ import { logic as prototype } from './prototype/logic';
  */
 export interface PluginLogic {
   id: string;
+  /** For help: a name, a one-line summary and a short guide (how to work with it; at most 15 lines). */
+  title?: string;
+  summary?: string;
+  guide?: string;
   register(store: Store): void;
 }
 

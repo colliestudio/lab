@@ -1,7 +1,7 @@
 import { parse } from '../src/core/io';
 import type { CanvasDoc } from '../src/core/doc';
 import type { ChatMessage } from '../src/core/chat';
-import { resolveNode, type NodeSummary } from './query';
+import { resolveNode, type NodeSummary } from '../src/core/query';
 
 // Thin client for the bridge's HTTP API (used by the CLI and the MCP server). Agents never touch
 // Yjs: they send named commands; the bridge runs them as a seated player.

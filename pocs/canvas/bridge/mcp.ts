@@ -3,7 +3,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import { client } from './client';
 import { COLORS, gameText, playMove, waitForTurn } from './chess';
-import { chatText } from './chatText';
+import { chatText } from '../src/core/chat';
 import type { GameView } from '../src/plugins/chess/game';
 
 // MCP server: the same operations as the CLI, as tools, so a Claude agent can read the board and
@@ -317,7 +317,7 @@ server.registerTool(
     description: 'Read the table chat: the last `limit` messages (default 20), or only what is new since you last looked (`only_new`).',
     inputSchema: { limit: z.number().optional(), only_new: z.boolean().optional() },
   },
-  tool(async (a: { limit?: number; only_new?: boolean }) => (await chatText(c, await c.chatRead({ limit: a.limit, onlyNew: a.only_new }))) || (a.only_new ? '(nothing new)' : '(no messages)')),
+  tool(async (a: { limit?: number; only_new?: boolean }) => chatText(await c.chatRead({ limit: a.limit, onlyNew: a.only_new }), await c.doc()) || (a.only_new ? '(nothing new)' : '(no messages)')),
 );
 
 server.registerTool(
@@ -326,7 +326,7 @@ server.registerTool(
     description: 'Block until someone else says something in the table chat, then return the new messages. Returns "nothing new" after timeout_s (default 240); call again. Reply with chat_send.',
     inputSchema: { timeout_s: z.number().optional() },
   },
-  tool(async (a: { timeout_s?: number }) => (await chatText(c, await c.chatWait(a.timeout_s ?? 240))) || 'nothing new yet; call chat_wait again'),
+  tool(async (a: { timeout_s?: number }) => chatText(await c.chatWait(a.timeout_s ?? 240), await c.doc()) || 'nothing new yet; call chat_wait again'),
 );
 
 await server.connect(new StdioServerTransport());

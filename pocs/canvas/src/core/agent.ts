@@ -72,3 +72,12 @@ export interface AgentApi {
   wait<T = any>(name: string, args?: object, timeoutS?: number): Promise<T | undefined>;
   log(n?: number): Promise<{ text: string }[]>;
 }
+
+/** Returned by `toCommand` to run a different command (diagram.add with a source runs diagram.addConnected). */
+export class Redirect {
+  constructor(
+    readonly command: string,
+    readonly args: unknown,
+  ) {}
+}
+export const redirect = (command: string, args: unknown) => new Redirect(command, args);
