@@ -18,4 +18,7 @@ describe('baseline boards', () => {
   it('proto: Play can click through the arrows; the in-page links are dead (href, no data-goto)', () => {
     expect(verdict('proto')).toEqual({ pages: true, titles: true, html: true, navigation: true, 'in-page-links': false });
   });
+  it('arch (2026-10-16, poc 0db45e0): the agent drew one excalidraw scene, no diagram shapes and no frame', () => {
+    expect(verdict('arch')).toEqual({ frame: false, components: false, 'in-frame': false, connected: false, labeled: false });
+  });
 });
