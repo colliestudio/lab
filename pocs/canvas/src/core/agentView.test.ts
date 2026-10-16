@@ -148,3 +148,16 @@ describe('observer and freshness (A4)', () => {
     expect(done).toBe(true);
   });
 });
+
+describe('read-only view', () => {
+  it('dispatch does nothing and says why, so a plugin timer cannot write', () => {
+    const { app } = table();
+    app.store.load({ nodes: [text('a', 0, 0)], edges: [] });
+    app.readOnly = true;
+    const r = app.dispatch('core.delete', { ids: ['a'] });
+    expect(r).toMatchObject({ ok: false, error: expect.stringContaining('read-only') });
+    expect(app.node('a')).toBeDefined();
+    app.readOnly = false;
+    expect(app.dispatch('core.delete', { ids: ['a'] }).ok).toBe(true);
+  });
+});

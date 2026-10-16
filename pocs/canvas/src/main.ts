@@ -40,6 +40,7 @@ const app = new App(document.getElementById('table')!);
   app.viewer = p.id;
   app.player = { id: p.id, name: p.name, color: p.color };
 }
+if (AGENT_VIEW) app.readOnly = true;
 const chrome = mountChrome(app);
 const flash = chrome.toast;
 // every plugin's data side from the shared list (the bridge registers the same list); `use` below adds the DOM side
@@ -224,7 +225,12 @@ function openBridge() {
 
 const view = AGENT_VIEW ? null : persistViewport(app, VIEW_KEY);
 if (BRIDGE) startBridge(BRIDGE);
-else if (SERVED !== null) void probeBoard(SERVED).then((p) => (p.kind === 'ok' ? startBridge(boardWsUrl(location, SERVED), { name: p.name }) : p.kind === 'none' ? ((hosted = null), startLocal()) : showBoardScreen(p, SERVED)));
+else if (SERVED !== null) void probeBoard(SERVED).then((p) => {
+    if (p.kind === 'ok') return startBridge(boardWsUrl(location, SERVED), { name: p.name });
+    // the screenshot page has no board screen to show: it says why it has nothing to shoot, at once
+    if (AGENT_VIEW) return agentViewFailed(p.kind === 'none' ? `board not found: no board "${SERVED}"` : `board not available: "${SERVED}" cannot be opened`);
+    return p.kind === 'none' ? ((hosted = null), startLocal()) : showBoardScreen(p, SERVED);
+  });
 else startLocal();
 
 /** No service: the board of this browser (IndexedDB), or a room. */
@@ -328,6 +334,12 @@ function startBridge(url: string, served?: { name: string }) {
     app.view.fit();
     flash(served ? `Opened ${served.name}` : 'Connected: this table is the bridge’s .canvas file');
   });
+}
+
+function agentViewFailed(why: string) {
+  const failed = Promise.reject(new Error(why));
+  failed.catch(() => {});
+  (window as any).canvasSynced = failed;
 }
 
 /** The screenshot page: the seat's view of the board, read-only, no status pill, chat, toasts or remembered bridge. */

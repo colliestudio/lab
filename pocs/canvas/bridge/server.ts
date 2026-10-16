@@ -133,6 +133,7 @@ const server = createNodeServer({
   guard,
   log,
   defaultBoard: name,
+  // only what the app page loads: a new top-level file in the build (favicon, worker) must be added here
   app: createStaticApp(fileURLToPath(new URL('../dist', import.meta.url)), guard, { only: /^\/(b|assets|excalidraw)\// }),
   statusExtra: () => ({ file, port, room: joinRef ? { id: joinRef.room, online: relay?.online() ?? false } : undefined }),
 });
