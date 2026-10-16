@@ -17,6 +17,17 @@ let dir: string;
 let url: string;
 let proc: ChildProcess;
 const kids: ChildProcess[] = [];
+const clients: Client[] = [];
+
+/** Seat `seat` on `board` the way the skill does: a real MCP canvas_join. Returns a caller for the client's tools. */
+async function seatUp(board: string, seat: string) {
+  const c = new Client({ name: 'test', version: '1' });
+  await c.connect(new StreamableHTTPClientTransport(new URL(url + '/mcp')));
+  clients.push(c);
+  const call = async (n: string, args: Record<string, unknown> = {}) => ((await c.callTool({ name: n, arguments: args })).content as { text: string }[])[0].text;
+  await call('canvas_join', { board, name: seat });
+  return call;
+}
 
 const api = async (path: string, body?: unknown) => {
   const r = await fetch(url + '/api/boards/' + path, body === undefined ? {} : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
@@ -25,7 +36,8 @@ const api = async (path: string, body?: unknown) => {
 const say = (board: string, as: string, text: string) => api(`${board}/chat/say`, { as, text });
 
 /** Run `follow` and collect its stdout lines. */
-function follow(board: string, seat: string, env: Record<string, string> = {}) {
+async function follow(board: string, seat: string, env: Record<string, string> = {}) {
+  const call = await seatUp(board, seat);
   const p = spawn(process.execPath, [script, 'follow', board, '--as', seat, '--serve', url], { env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
   kids.push(p);
   const out = { lines: [] as string[], err: '', code: null as number | null };
@@ -38,7 +50,7 @@ function follow(board: string, seat: string, env: Record<string, string> = {}) {
   });
   p.stderr!.on('data', (d) => (out.err += d));
   p.on('exit', (c) => (out.code = c));
-  return { p, out };
+  return { p, out, call };
 }
 const settle = () => new Promise((r) => setTimeout(r, 300));
 
@@ -56,6 +68,7 @@ beforeAll(async () => {
 
 afterAll(() => {
   for (const k of kids) k.kill('SIGKILL');
+  for (const c of clients) void c.close().catch(() => {});
   proc?.kill('SIGKILL');
   rmSync(dir, { recursive: true, force: true });
 });
@@ -84,7 +97,7 @@ describe('canvas-wait name', () => {
 
 describe('canvas-wait follow', () => {
   it("prints others' messages, marks mentions, skips its own, and marks them seen", async () => {
-    const { p, out } = follow('a', SEAT);
+    const { p, out } = await follow('a', SEAT);
     await settle();
     const t0 = Date.now();
     await say('a', 'Bob', `@${SEAT} hello there`);
@@ -103,11 +116,7 @@ describe('canvas-wait follow', () => {
 
   it('shares the seat with an MCP join: printed once, not unread over MCP', async () => {
     const seat = 'Claude · shared';
-    const c = new Client({ name: 'test', version: '1' });
-    await c.connect(new StreamableHTTPClientTransport(new URL(url + '/mcp')));
-    const call = async (n: string, args: Record<string, unknown> = {}) => ((await c.callTool({ name: n, arguments: args })).content as { text: string }[])[0].text;
-    await call('canvas_join', { board: 'b', name: seat });
-    const { p, out } = follow('b', seat);
+    const { p, out, call } = await follow('b', seat);
     await settle();
     await say('b', 'Bob', `@${seat} ping`);
     await until(() => out.lines.length >= 1, 5000);
@@ -115,7 +124,6 @@ describe('canvas-wait follow', () => {
     expect(await call('chat_read', { only_new: true })).not.toContain('ping');
     p.kill();
     await call('canvas_leave', { board: 'b' });
-    await c.close();
   });
 
   it('exits 1 naming the board and URL after failing for the give-up time', async () => {
@@ -131,23 +139,33 @@ describe('canvas-wait follow', () => {
   });
 
   it('ends by itself after its lifetime (exit 0), so an orphaned Monitor does not run forever', async () => {
-    const p = follow('a', SEAT, { CANVAS_WAIT_MAX_MS: '400' });
+    const p = await follow('a', SEAT, { CANVAS_WAIT_MAX_MS: '400' });
     await until(() => p.out.code !== null, 5000);
     expect(p.out.code).toBe(0);
   });
 
-  it('exits when its parent goes away, so an orphan does not eat the next session\'s messages', async () => {
-    // intermediate process starts the follow, prints its pid and exits
-    const src = `const c = require('node:child_process').spawn(process.execPath, [${JSON.stringify(script)}, 'follow', 'a', '--as', 'Claude · orphan', '--serve', ${JSON.stringify(url)}], { env: { ...process.env, CANVAS_WAIT_PPID_MS: '100' }, stdio: 'ignore', detached: true }); console.log(c.pid); c.unref(); setTimeout(() => {}, 700);`; // lives past the child's start, so the child sees it as its parent
-    const pid = Number(execFileSync(process.execPath, ['-e', src], { encoding: 'utf8' }).trim());
-    const alive = () => { try { process.kill(pid, 0); return true; } catch { return false; } };
-    kids.push({ kill: () => { try { process.kill(pid, 'SIGKILL'); } catch {} } } as ChildProcess);
-    await until(() => !alive(), 5000);
-    expect(alive()).toBe(false);
+  it('exits when the session dies, even under a wrapper shell that keeps its own parent', async () => {
+    // Like Claude's background commands: sh -c '<cmd>; :' (so sh stays node's parent), stdout in a file.
+    // The "session" is a process that starts the wrapper and exits; the wrapper is then reparented to 1,
+    // while node's own ppid stays the wrapper. Only the grandparent changes.
+    const seat = 'Claude · orphan';
+    await seatUp('a', seat);
+    const cmd = `${process.execPath} ${script} follow a --as "${seat}" --serve ${url}; :`;
+    const src = `const fs = require('node:fs'); const fd = fs.openSync(${JSON.stringify(join(dir, 'orphan.out'))}, 'w'); require('node:child_process').spawn('/bin/sh', ['-c', ${JSON.stringify(cmd)}], { env: { ...process.env, CANVAS_WAIT_PPID_MS: '100' }, stdio: ['ignore', fd, fd], detached: true }).unref(); setTimeout(() => {}, 1000);`; // stays up past the follow's start, so the follow records it as an ancestor
+    const pids = () => {
+      try { return execFileSync('pgrep', ['-f', `follow a --as ${seat}`], { encoding: 'utf8' }).trim().split('\n').filter(Boolean).map(Number); } catch { return []; }
+    };
+    kids.push({ kill: () => pids().forEach((p) => { try { process.kill(p, 'SIGKILL'); } catch {} }) } as ChildProcess);
+    const session = spawn(process.execPath, ['-e', src], { stdio: 'ignore' });
+    await until(() => pids().length > 0, 5000);
+    expect(pids().length).toBeGreaterThan(0);
+    await new Promise((r) => session.once('exit', r));
+    await until(() => pids().length === 0, 5000);
+    expect(pids()).toEqual([]);
   });
 
   it('exits when its output pipe closes', async () => {
-    const { p, out } = follow('a', 'Claude · pipe');
+    const { p, out } = await follow('a', 'Claude · pipe');
     await settle();
     p.stdout!.destroy();
     await say('a', 'Bob', '@Claude · pipe are you there');
@@ -157,7 +175,7 @@ describe('canvas-wait follow', () => {
 
   it('follows boards named with spaces and a middle dot', async () => {
     writeFileSync(join(dir, 'my board · x.canvas'), stableSerialize({ nodes: [], edges: [], extra: { 'x-canvas-format': 1 } }));
-    const { p, out } = follow('my board · x', 'Claude · sp');
+    const { p, out } = await follow('my board · x', 'Claude · sp');
     await settle();
     await say('my board · x', 'Bob', '@Claude · sp hi');
     await until(() => out.lines.length >= 1, 5000);
@@ -166,10 +184,20 @@ describe('canvas-wait follow', () => {
   });
 
   it('exits 1 for an unknown board (404) and 2 for bad arguments', async () => {
-    const p = follow('nope', SEAT, { CANVAS_WAIT_BACKOFF_MS: '10', CANVAS_WAIT_GIVEUP_MS: '100' });
-    await until(() => p.out.code !== null, 5000);
-    expect(p.out.code).toBe(1);
+    const env = { ...process.env, CANVAS_WAIT_BACKOFF_MS: '10', CANVAS_WAIT_GIVEUP_MS: '100' };
+    const p = spawn(process.execPath, [script, 'follow', 'nope', '--as', SEAT, '--serve', url], { env, stdio: 'ignore' });
+    kids.push(p);
+    expect(await new Promise((r) => p.once('exit', r))).toBe(1);
     const bad = spawn(process.execPath, [script, 'follow'], { stdio: 'ignore' });
     expect(await new Promise((r) => bad.once('exit', r))).toBe(2);
+  });
+
+  it('exits 1 when the seat is not on that serve (not joined over MCP)', async () => {
+    const p = spawn(process.execPath, [script, 'follow', 'a', '--as', 'Claude · nobody', '--serve', url], { stdio: ['ignore', 'ignore', 'pipe'] });
+    kids.push(p);
+    let err = '';
+    p.stderr!.on('data', (d) => (err += d));
+    expect(await new Promise((r) => p.once('exit', r))).toBe(1);
+    expect(err).toContain('seat "Claude · nobody" is not on board "a"');
   });
 });

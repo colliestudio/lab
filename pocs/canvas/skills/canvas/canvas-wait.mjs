@@ -4,7 +4,7 @@
 //   node canvas-wait.mjs follow <board> --as <seat> [--serve URL]
 //                                                  print each new chat message as one line (for a Monitor)
 
-import { execFileSync } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { basename } from 'node:path';
 
 const DEFAULT_SERVE = 'http://localhost:5231'; // keep in step with `canvas serve`'s default port
@@ -56,18 +56,54 @@ async function follow(board, seat, serve) {
     ac.abort();
   };
   // A Monitor's process outlives a session that ends without stopping it, and an orphan would keep
-  // answering for the seat and eat the next session's messages. Bounds: its own 30 minute limit,
-  // and the parent going away (reparented, so ppid changes) or the output pipe closing.
-  const ppid = process.ppid;
+  // answering for the seat and eat the next session's messages. Bounds: its own lifetime (under the
+  // Monitor's 30 minute timeout, so it ends cleanly first), the output pipe closing, and its
+  // ancestors changing. Claude runs commands under a wrapper shell with stdout in a file, so our own
+  // parent survives the session: record a few ancestors (parent, grandparent, ...) and stop when any
+  // of their parents changes or one is gone.
+  const links = (pids) =>
+    new Promise((res) =>
+      execFile('ps', ['-o', 'pid=,ppid=', '-p', pids.join(',')], { encoding: 'utf8' }, (e, out) => {
+        res(new Map(String(out).split('\n').map((l) => l.trim().split(/\s+/)).filter((p) => p.length === 2)));
+      }),
+    );
+  const chain = new Map(); // pid -> its ppid when we started
+  for (let pid = String(process.ppid); Number(pid) > 1 && chain.size < 4; ) {
+    const next = (await links([pid])).get(pid);
+    if (!next) break;
+    chain.set(pid, next);
+    pid = next;
+  }
+  let checking = false;
   const timers = [
-    setTimeout(() => stop(0), Number(process.env.CANVAS_WAIT_MAX_MS) || 30 * 60 * 1000),
-    setInterval(() => process.ppid !== ppid && stop(0), Number(process.env.CANVAS_WAIT_PPID_MS) || 2000),
+    setTimeout(() => stop(0), Number(process.env.CANVAS_WAIT_MAX_MS) || 29 * 60 * 1000),
+    setInterval(async () => {
+      if (checking || !chain.size) return;
+      checking = true;
+      const now = await links([...chain.keys()]);
+      if ([...chain].some(([pid, ppid]) => now.get(pid) !== ppid)) stop(0);
+      checking = false;
+    }, Number(process.env.CANVAS_WAIT_PPID_MS) || 3000),
   ];
   process.stdout.on('error', () => stop(0));
   let failedSince = 0;
   let failures = 0;
+  let seated = false;
   while (code === null) {
     try {
+      if (!seated) {
+        // The seat comes from the MCP join; a missing one means this is not the MCP's serve.
+        const r = await fetch(`${base}/status`, { signal: ac.signal });
+        if (!r.ok) throw new Error(`HTTP ${r.status} ${(await r.text()).slice(0, 120)}`);
+        const st = await r.json();
+        if (!Array.isArray(st?.actors)) throw new Error('unexpected reply (not a canvas serve?)');
+        if (!st.actors.some((a) => a?.name === seat)) {
+          process.stderr.write(`canvas-wait: seat "${seat}" is not on board "${board}" at ${serve} (wrong --serve? join over MCP first)\n`);
+          code = 1;
+          break;
+        }
+        seated = true;
+      }
       const r = await fetch(`${base}/chat/wait?as=${encodeURIComponent(seat)}&timeout=290`, { signal: ac.signal });
       if (!r.ok) throw new Error(`HTTP ${r.status} ${(await r.text()).slice(0, 120)}`);
       const body = await r.json();
