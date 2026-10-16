@@ -25,7 +25,7 @@
 - `bridge/host.ts` — doc, per-actor seats, file apply/merge. `bridge/canonical.ts` — stable serialize, diff. `bridge/query.ts` — summaries, filters, resolve node by id or title.
 - `bridge/cli.ts` — `canvas status|list|query|show|add-node|add-column|update|move|connect|disconnect|rm|undo|redo|log|cmd|sync-backlog`. Nodes by id or title (unique prefix/substring).
 - `bridge/mcp.ts` — MCP stdio server: `canvas_list, canvas_add_node, canvas_update_node, canvas_connect, canvas_remove, canvas_undo, canvas_log`.
-- App: `?bridge=ws://host:5222` joins the bridge (no IndexedDB, no starter deck; toolbar shows players incl. agents).
+- App: `?bridge=ws://host:5222` joins the bridge (no IndexedDB, no starter deck; top right shows players incl. agents).
 - Tests: +15 (edges, board commands, sync, canonical/diff/merge, host undo-per-actor, Yjs round trip, backlog parser). 244 total on the original branch; the merge branch adds the undo-step test, the guard and argument parser tests.
 - `bridge/guard.ts` + `bridge/args.ts`: request guard and argument parsing (a flag before the file is not the file; unknown flags are an error).
 
@@ -50,7 +50,7 @@ Reaching a bridge from the deployed app, a bridge joining an existing room, one-
 From the worktree `~/code/canvas-wt/agent-bridge` (ports are examples; `$APP` and `$BRIDGE` = the vite and bridge ports):
 
 1. `git init /tmp/demo` with `.canvas-bridge/` in its `.gitignore`, then `pnpm bridge /tmp/demo/board.canvas --port $BRIDGE --allow-origin http://localhost:$APP` (creates the file; add `--host 0.0.0.0` only to open it to the LAN, and then `--allow-origin` the LAN origin too).
-2. `pnpm exec vite --port $APP --strictPort`; open `http://mini.internal:$APP/?bridge=ws://mini.internal:$BRIDGE` (on the Mini itself `localhost` for both). `export CANVAS_BRIDGE=http://127.0.0.1:$BRIDGE` for the shell. Two tabs to see two people (tabs in one browser share a name and color: rename one from the toolbar).
+2. `pnpm exec vite --port $APP --strictPort`; open `http://mini.internal:$APP/?bridge=ws://mini.internal:$BRIDGE` (on the Mini itself `localhost` for both). `export CANVAS_BRIDGE=http://127.0.0.1:$BRIDGE` for the shell. Two tabs to see two people (tabs in one browser share a name and color: rename one from the top right or Menu ▸ Room).
 3. Agent from the shell, watch the browser:
    - `pnpm canvas add-node "Order placed"`
    - `pnpm canvas add-node "Payment taken" --near "Order placed" --color 4`
@@ -109,7 +109,7 @@ Gaps the API showed:
 - Browser in bridge mode doesn't persist offline edits if the bridge is down when the tab closes.
 - File edits with invalid JSON are skipped (logged) until fixed; meanwhile doc changes aren't written (the file isn't overwritten). Skipped malformed nodes in a valid file are dropped from the doc.
 - Per-agent undo: fixed in core `Store.step` (undo takes exactly the top step; one that someone else overwrote is dropped and reported as nothing to undo, instead of undoing the step before it). Not fixed: undoing an older step can still restore a value over a later File/person edit of the same field when the agent edited that field again in between (Yjs only protects what it can tell was overwritten).
-- Calling `undo --as X` (or any call) seats X: it shows in the toolbar as a player for 3 min.
+- Calling `undo --as X` (or any call) seats X: it shows top right as a player for 3 min.
 - `pnpm canvas` prints pnpm's command echo on stderr; stdout is clean for scripts.
 
 ## Effort to make it real

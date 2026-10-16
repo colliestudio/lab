@@ -5,6 +5,7 @@ import { client } from './client';
 import { COLORS, gameText, playMove, waitForTurn } from './chess';
 import { chatText } from './chatText';
 import type { GameView } from '../src/plugins/chess/game';
+import { describe, isDrawing, pickFrame, type Shape } from '../src/plugins/excalidraw/logic';
 
 // MCP server: the same operations as the CLI, as tools, so a Claude agent can read the board and
 // add/move/link nodes live while people watch (it is seated as a player: cursor, log name, undo).
@@ -92,6 +93,113 @@ server.registerTool(
   'canvas_remove',
   { description: 'Remove nodes (their links go too).', inputSchema: { nodes: z.array(ref) } },
   tool(async (a: { nodes: string[] }) => cmd('board.remove', { ids: await Promise.all(a.nodes.map((n) => c.resolve(n))) })),
+);
+
+// ---------------------------------------------------------------- diagrams: shapes and arrows
+// Boxes, ellipses, diamonds, text and sticky notes joined by arrows (the diagram plugin). Same
+// commands the toolbar and handles run, so a person sees them appear and can undo them.
+
+const kindArg = z.enum(['rect', 'ellipse', 'diamond', 'text', 'sticky']);
+const sideArg = z.enum(['top', 'right', 'bottom', 'left']);
+const endArg = z.enum(['none', 'arrow']);
+const colorHint = '#hex or a JSON Canvas preset 1-6';
+const shapeLook = {
+  stroke: z.string().nullable().optional().describe(`outline and text color, a CSS color or a JSON Canvas preset 1-6; null = default`),
+  fill: z.string().nullable().optional().describe(`fill color, #hex, or "none" for see-through; null = the kind's default`),
+  dashed: z.boolean().optional(),
+  size: z.number().nullable().optional().describe('text size in px (default 18); null = default'),
+};
+
+server.registerTool(
+  'canvas_add_shape',
+  {
+    description:
+      'Add a diagram shape (rect, ellipse, diamond, text, sticky). Place it with x/y (top-left), cx/cy (center) or right of everything. With `from` it is a new shape connected by an arrow from that shape (the fast flowchart step; `side` = which side of `from` the arrow leaves, `at` = where the new center goes). Returns the new id.',
+    inputSchema: {
+      kind: kindArg.optional().describe('default rect'),
+      text: z.string().optional(),
+      x: z.number().optional(),
+      y: z.number().optional(),
+      cx: z.number().optional(),
+      cy: z.number().optional(),
+      width: z.number().optional(),
+      height: z.number().optional(),
+      from: ref.optional().describe('connect from this shape'),
+      side: sideArg.optional(),
+      at: z.object({ x: z.number(), y: z.number() }).optional(),
+      label: z.string().optional().describe('label for the arrow (with `from`)'),
+      ...shapeLook,
+    },
+  },
+  tool(async ({ from, ...a }: { from?: string } & Record<string, unknown>) => {
+    const r = from ? await cmd('diagram.addConnected', { ...a, from: await c.resolve(from) }) : await cmd('diagram.add', a);
+    return { id: r.select?.[0] };
+  }),
+);
+
+server.registerTool(
+  'canvas_style_shape',
+  {
+    description: 'Change a diagram shape: text, kind, colors, dashed, text size, and its place or size (x/y absolute, dx/dy relative, width/height). null clears a color or size.',
+    inputSchema: { node: ref, text: z.string().optional(), kind: kindArg.optional(), x: z.number().optional(), y: z.number().optional(), dx: z.number().optional(), dy: z.number().optional(), width: z.number().optional(), height: z.number().optional(), ...shapeLook },
+  },
+  tool(async ({ node, ...a }: { node: string } & Record<string, unknown>) => {
+    const id = await c.resolve(node);
+    await cmd('diagram.update', { id, ...a });
+    return { id };
+  }),
+);
+
+const arrowLook = {
+  label: z.string().nullable().optional().describe('text on the arrow; null/"" removes it'),
+  from_side: sideArg.nullable().optional().describe('side of the first shape the arrow leaves; default: the side facing the other shape'),
+  to_side: sideArg.nullable().optional(),
+  start: endArg.optional().describe('arrowhead at the start (default none)'),
+  end: endArg.optional().describe('arrowhead at the end (default arrow)'),
+  dashed: z.boolean().optional(),
+  curve: z.boolean().optional().describe('curved instead of straight'),
+  color: z.string().nullable().optional().describe(colorHint),
+};
+const arrowArgs = (a: { label?: string | null; from_side?: string | null; to_side?: string | null; start?: string; end?: string; dashed?: boolean; curve?: boolean; color?: string | null }) => ({
+  label: a.label,
+  fromSide: a.from_side,
+  toSide: a.to_side,
+  fromEnd: a.start,
+  toEnd: a.end,
+  dashed: a.dashed,
+  curve: a.curve,
+  color: a.color,
+});
+
+server.registerTool(
+  'canvas_arrow',
+  { description: 'Draw a diagram arrow from one shape to another, optionally labelled and styled. Returns the arrow id (for canvas_edit_arrow / canvas_remove_arrow; canvas_list shows each node’s outgoing arrows).', inputSchema: { from: ref, to: ref, ...arrowLook } },
+  tool(async (a: { from: string; to: string } & Parameters<typeof arrowArgs>[0]) => {
+    const [from, to] = await Promise.all([c.resolve(a.from), c.resolve(a.to)]);
+    const r = await cmd('core.connect', { from, to, ...arrowArgs(a) });
+    return { id: r.select?.[0] };
+  }),
+);
+
+server.registerTool(
+  'canvas_edit_arrow',
+  { description: 'Change an arrow: label, sides, arrowheads, dashed, curve, color.', inputSchema: { arrow: z.string().describe('arrow id'), ...arrowLook } },
+  tool(async (a: { arrow: string } & Parameters<typeof arrowArgs>[0]) => {
+    await cmd('core.edge', { id: a.arrow, ...arrowArgs(a) });
+    return { id: a.arrow };
+  }),
+);
+
+server.registerTool(
+  'canvas_remove_arrow',
+  { description: 'Remove arrows by id (shapes stay). To remove shapes, use canvas_remove.', inputSchema: { arrows: z.array(z.string()) } },
+  tool(async (a: { arrows: string[] }) => {
+    // core.delete takes node ids too: only arrows go through here
+    const edges = new Set((await c.doc()).edges.map((e) => e.id));
+    const bad = a.arrows.filter((id) => !edges.has(id));
+    if (bad.length) throw new Error(`no arrow ${bad.join(', ')}`);
+    return cmd('core.delete', { ids: a.arrows });
+  }),
 );
 
 server.registerTool(
@@ -220,6 +328,80 @@ server.registerTool(
     inputSchema: { timeout_s: z.number().optional() },
   },
   tool(async (a: { timeout_s?: number }) => (await chatText(c, await c.chatWait(a.timeout_s ?? 240))) || 'nothing new yet; call chat_wait again'),
+);
+
+// ------------------------------------------------------------ Excalidraw drawings
+const drawingId = async (node?: string) => {
+  const ds = (await c.doc()).nodes.filter(isDrawing);
+  if (node) return pickFrame(ds, node) ?? c.resolve(node);
+  if (ds.length === 1) return ds[0].id;
+  throw new Error(ds.length ? `${ds.length} drawings: pass drawing (${ds.map((d) => d.id).join(', ')})` : 'no drawing on the canvas: canvas_draw_new first');
+};
+const shape = z
+  .object({
+    type: z.enum(['rectangle', 'ellipse', 'diamond', 'text', 'arrow']),
+    ref: z.string().optional().describe('your name for it (becomes its id when free): arrows point at refs or shape ids'),
+    label: z.string().optional().describe('text inside a shape, or on an arrow'),
+    text: z.string().optional().describe('for type text'),
+    x: z.number().optional(),
+    y: z.number().optional(),
+    width: z.number().optional(),
+    height: z.number().optional(),
+    size: z.number().optional().describe('font size for type text (default 20)'),
+    from: z.string().optional().describe('arrow start: ref or shape id'),
+    to: z.string().optional().describe('arrow end: ref or shape id'),
+    stroke: z.string().optional().describe('#hex'),
+    fill: z.string().optional().describe('#hex'),
+    dashed: z.boolean().optional(),
+    ends: z.enum(['none', 'end', 'both']).optional(),
+  })
+  .passthrough();
+const drawingRef = z.string().optional().describe('frame node id or title (default: the only Excalidraw frame on the canvas)');
+
+server.registerTool(
+  'canvas_draw_new',
+  {
+    description:
+      'Put a new Excalidraw frame on the canvas: a titled frame people draw in with the real Excalidraw (it scrolls/zooms inside; the frame keeps its size), optionally with shapes. x/y = center (640x440), or top-left with width/height. Returns its id.',
+    inputSchema: { title: z.string().optional(), x: z.number().optional(), y: z.number().optional(), width: z.number().optional(), height: z.number().optional(), shapes: z.array(shape).optional() },
+  },
+  tool(async (a: { title?: string; x?: number; y?: number; width?: number; height?: number; shapes?: unknown[] }) => ({
+    id: (await cmd('excalidraw.create', { x: a.x ?? 0, y: a.y ?? 0, width: a.width, height: a.height, title: a.title, shapes: a.shapes as Shape[] | undefined })).select?.[0],
+  })),
+);
+server.registerTool(
+  'canvas_draw_shapes',
+  { description: "List an Excalidraw drawing's shapes: id, type, label, position, arrows (from → to ids).", inputSchema: { drawing: drawingRef } },
+  tool(async (a: { drawing?: string }) => {
+    const id = await drawingId(a.drawing);
+    return describe((await c.doc()).nodes.find((n) => n.id === id)!);
+  }),
+);
+server.registerTool(
+  'canvas_draw_add',
+  {
+    description:
+      'Add shapes to an Excalidraw drawing: boxes (rectangle/ellipse/diamond with a label), text, arrows between shapes (from/to = a ref from this call or an existing shape id, optional label). x/y are the drawing’s own coordinates (see canvas_draw_shapes; boxes ~140x70); without x/y shapes go in a row right of the drawing. The frame shows new shapes (it re-fits if they fall outside its view).',
+    inputSchema: { drawing: drawingRef, shapes: z.array(shape) },
+  },
+  tool(async (a: { drawing?: string; shapes: unknown[] }) => {
+    const id = await drawingId(a.drawing);
+    await cmd('excalidraw.add', { id, shapes: a.shapes });
+    return describe((await c.doc()).nodes.find((n) => n.id === id)!);
+  }),
+);
+server.registerTool(
+  'canvas_draw_remove',
+  { description: 'Delete shapes from an Excalidraw drawing by id (their labels go too).', inputSchema: { drawing: drawingRef, ids: z.array(z.string()) } },
+  tool(async (a: { drawing?: string; ids: string[] }) => cmd('excalidraw.remove', { id: await drawingId(a.drawing), ids: a.ids })),
+);
+
+server.registerTool(
+  'canvas_draw_frame',
+  { description: 'Change an Excalidraw frame: title, locked (a static picture people cannot draw in until unlocked), fit (show the whole drawing again).', inputSchema: { drawing: drawingRef, title: z.string().optional(), locked: z.boolean().optional(), fit: z.boolean().optional() } },
+  tool(async (a: { drawing?: string; title?: string; locked?: boolean; fit?: boolean }) =>
+    cmd('excalidraw.frame', { id: await drawingId(a.drawing), title: a.title, locked: a.locked, view: a.fit ? null : undefined }),
+  ),
 );
 
 await server.connect(new StdioServerTransport());

@@ -1,7 +1,9 @@
 import './core.css';
 import { registerCoreCommands } from './commands';
-import type { CanvasNode, CarrierOf, DuplicateRule, LayoutRule, ParentOf } from './doc';
-import type { KeyBinding, Kit, MenuItem, MenuProvider, ObjectType, Plugin } from './plugin';
+import type { CanvasEdge, CanvasNode, CarrierOf, DocView, DuplicateRule, LayoutRule, ParentOf } from './doc';
+import type { DockItem, KeyBinding, Kit, MainMenuItem, MenuItem, MenuProvider, ObjectType, Plugin, Tool } from './plugin';
+import { Registry } from './registry';
+import { registerCoreChrome } from './chromeView';
 import { Store, type Command, type DispatchResult, type DocFilter } from './store';
 import { View } from './view';
 import { Viewport } from './viewport';
@@ -21,8 +23,21 @@ export class App {
   readonly keys = new Map<string, KeyBinding>();
   readonly menu: MenuItem[] = [];
   readonly menuProviders: MenuProvider[] = [];
+  /** Creation tools (toolbar buttons), in registration order. */
+  readonly tools: Tool[] = [];
+  /** A double-click on the empty table (`at` = world point). First handler that returns true wins. */
+  readonly emptyDoubleClicks: ((at: { x: number; y: number }, app: App) => boolean | void)[] = [];
+  /** ⌘C: plain copies of the selected nodes and the arrows between them, for ⌘V. */
+  clipboard: { nodes: CanvasNode[]; edges: CanvasEdge[]; pastes: number } | null = null;
   /** Kits for the Add menu, in registration order. */
   readonly kits: Kit[] = [];
+  /** Buttons of the bottom dock, and rows of the main menu (top-left). */
+  readonly dock = new Registry<DockItem>();
+  readonly mainMenu = new Registry<MainMenuItem>();
+  /** Run when the whole table was replaced (New board, Open, drop a file). */
+  readonly tableReplacedHooks: ((app: App) => void)[] = [];
+  /** Run when the local player changes name or color (see `registerRenameHook`). */
+  readonly renameHooks: ((app: App, me: PlayerInfo) => void)[] = [];
   readonly view: View;
   viewer = LOCAL_PLAYER;
   /** Set when the table is shared (multiplayer); null when playing solo. */
@@ -31,6 +46,7 @@ export class App {
   player: PlayerInfo = { id: LOCAL_PLAYER, name: 'Me', color: '#888888' };
   private notifiers = new Set<(msg: string) => void>();
   /** Privacy rules: is `node` hidden from `viewer` (its content must not leak via presence either)? */
+  readonly edgeOwners: ((e: CanvasEdge, doc: DocView) => boolean)[] = [];
   readonly hiders: ((node: CanvasNode, viewer: string) => boolean)[] = [];
   /** Where others see my pointer: a rule may park it (e.g. over my private cards → at my hand's tab). */
   readonly cursorRules: ((p: { x: number; y: number }, app: App) => { x: number; y: number } | undefined)[] = [];
@@ -50,6 +66,36 @@ export class App {
     this.registerKey({ key: 'shift+1', label: 'Zoom to fit', run: () => this.view.fit() });
     this.registerKey({ key: 'mod+d', label: 'Duplicate', run: () => this.dispatch('core.duplicate', { ids: [...this.store.selection] }) });
     this.registerKey({ key: 'shift+2', label: 'Zoom to selection', run: () => this.view.zoomToSelection() });
+    // only with something to copy / paste: else the browser's own copy of selected page text runs
+    this.registerKey({ key: 'mod+c', label: 'Copy', when: () => this.selected().length > 0 && !getSelection()?.toString(), run: () => this.copy() });
+    this.registerKey({ key: 'mod+v', label: 'Paste', when: () => !!this.clipboard, run: () => this.paste() });
+    registerCoreChrome(this);
+  }
+
+  /** Remember the selected nodes (as ⌘D would copy them) and the arrows between them. */
+  copy(): boolean {
+    const doc = this.store.doc;
+    const nodes: CanvasNode[] = [];
+    for (const n of this.selected()) {
+      if (doc.parentOf(n.id)) continue;
+      let copy: CanvasNode | null | undefined;
+      for (const rule of this.store.duplicateRules) if ((copy = rule(n, doc, () => undefined)) !== undefined) break;
+      if (copy !== null) nodes.push(structuredClone(copy ?? n));
+    }
+    if (!nodes.length) return false;
+    const ids = new Set(nodes.map((n) => n.id));
+    const edges = doc.edges.filter((e) => ids.has(e.fromNode) && ids.has(e.toNode)).map((e) => structuredClone(e));
+    this.clipboard = { nodes, edges, pastes: 0 };
+    this.notify(nodes.length === 1 ? 'Copied' : `Copied ${nodes.length} objects`);
+    return true;
+  }
+
+  /** Put the copied objects on the table, a little further down-right each time. */
+  paste() {
+    const c = this.clipboard;
+    if (!c) return;
+    const k = ++c.pastes;
+    this.dispatch('core.paste', { nodes: c.nodes, edges: c.edges, dx: 24 * k, dy: 24 * k });
   }
 
   use(plugin: Plugin) {
@@ -68,12 +114,38 @@ export class App {
   registerKey(k: KeyBinding) {
     this.keys.set(k.key.toLowerCase(), k);
   }
+  /** A plain right-click row (context action). Returns a disposer. */
   registerMenuItem(item: MenuItem) {
     this.menu.push(item);
+    return () => void remove(this.menu, item);
   }
-  /** Right-click menu built per selection (submenus, checkmarks, disabled reasons). */
+  /** Context actions: the right-click menu built per selection (submenus, checkmarks, disabled reasons). Returns a disposer. */
   registerMenu(provider: MenuProvider) {
     this.menuProviders.push(provider);
+    return () => void remove(this.menuProviders, provider);
+  }
+  /** A button in the bottom dock. Returns a disposer. */
+  registerDockItem(item: DockItem) {
+    return this.dock.add(item);
+  }
+  /** A row in the main menu (top-left); see `MainMenuItem` for where it lands. Returns a disposer. */
+  registerMainMenuItem(item: MainMenuItem) {
+    return this.mainMenu.add(item);
+  }
+  /** Run after the shell replaced the table (New, Open): drop per-table state such as a plugin's mode. */
+  onTableReplaced(fn: (app: App) => void) {
+    this.tableReplacedHooks.push(fn);
+  }
+  tableReplaced() {
+    for (const fn of this.tableReplacedHooks) fn(this);
+  }
+  /** Called after the local player renamed or recolored (cards relabel their hand). */
+  registerRenameHook(fn: (app: App, me: PlayerInfo) => void) {
+    this.renameHooks.push(fn);
+  }
+  /** The shell calls this after saving a new name or color. */
+  playerRenamed(me: PlayerInfo) {
+    for (const fn of this.renameHooks) fn(this, me);
   }
   /** Containment: contained nodes aren't rendered or selectable and are deleted with their parent. */
   registerParentRule(rule: ParentOf) {
@@ -91,8 +163,17 @@ export class App {
   registerReset(cmd: Command) {
     this.store.resets.push(cmd);
   }
+  /** A creation tool: toolbar button and key; the next press-drag on the table calls `create`. */
+  registerTool(tool: Tool) {
+    this.tools.push(tool);
+  }
+  /** React to a double-click on the empty table. */
+  registerEmptyDoubleClick(fn: (at: { x: number; y: number }, app: App) => boolean | void) {
+    this.emptyDoubleClicks.push(fn);
+  }
   registerKit(kit: Kit) {
     this.kits.push(kit);
+    this.dock.touch(); // the dock's Add button shows once there is a kit
   }
   /** Layouts place contained nodes (fanned hands, rows...); derived on read, never stored. */
   registerLayout(rule: LayoutRule) {
@@ -114,7 +195,7 @@ export class App {
     this.store.appendLog(events);
   }
 
-  /** Show a short message to the local user (toolbar status). */
+  /** Show a short message to the local user (shown above the dock). */
   notify(msg: string) {
     for (const fn of this.notifiers) fn(msg);
   }
@@ -126,6 +207,15 @@ export class App {
   /** A rule saying a node is hidden from a viewer: no presence outlines on it, never broadcast. */
   registerHider(fn: (node: CanvasNode, viewer: string) => boolean) {
     this.hiders.push(fn);
+  }
+  /** Claim edges a plugin draws itself; core's edge layer skips them, so every edge has one renderer. */
+  registerEdgeRenderer(owns: (e: CanvasEdge, doc: DocView) => boolean) {
+    this.edgeOwners.push(owns);
+  }
+  /** Is this edge drawn by a plugin rather than core? */
+  edgeOwned(e: CanvasEdge): boolean {
+    const doc = this.store.doc;
+    return this.edgeOwners.some((f) => f(e, doc));
   }
   registerCursorRule(fn: (p: { x: number; y: number }, app: App) => { x: number; y: number } | undefined) {
     this.cursorRules.push(fn);
@@ -188,4 +278,9 @@ export class App {
     const [x, y] = this.viewport.toWorld(r.clientWidth / 2, r.clientHeight / 2);
     return { x: Math.round(x), y: Math.round(y) };
   }
+}
+
+function remove<T>(list: T[], item: T) {
+  const i = list.indexOf(item);
+  if (i >= 0) list.splice(i, 1);
 }

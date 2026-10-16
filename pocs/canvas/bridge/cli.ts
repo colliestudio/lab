@@ -5,6 +5,7 @@ import { parseBacklog } from './backlog';
 import { COLORS, gameText, playMove, runBot, waitForTurn } from './chess';
 import { chatText } from './chatText';
 import type { GameView } from '../src/plugins/chess/game';
+import { describe, isDrawing, pickFrame, type Shape } from '../src/plugins/excalidraw/logic';
 
 // canvas: edit a live canvas from the shell (agents, scripts, people). Talks to the bridge.
 //   pnpm canvas <command> [args] [--as NAME] [--bridge URL]
@@ -20,8 +21,17 @@ const HELP = `canvas: read and edit a live canvas through the bridge
   add-column LABEL [--x X --y Y]
   update N [--text T] [--label L] [--color C|none]
   move N (--x X --y Y | --dx DX --dy DY | --column C)
-  connect FROM TO [--label L]
+  connect FROM TO [--label L]            plain link (board)
   disconnect FROM TO
+  shape KIND [TEXT] [--x X --y Y | --near N --side top|right|bottom|left] [--from N]
+        [--width W --height H] [--stroke C] [--fill C|none] [--dashed] [--size PX]
+                                          diagram shape: rect|ellipse|diamond|text|sticky; --from N = new shape with an arrow from N
+  style N [--text T] [--kind K] [--stroke C|none] [--fill C|none] [--dashed true|false] [--size PX]
+        [--x X --y Y | --dx DX --dy DY] [--width W --height H]
+  arrow FROM TO [--label L] [--from-side S] [--to-side S] [--start arrow|none] [--end arrow|none]
+        [--dashed] [--curve] [--color 1-6|#hex]   diagram arrow; prints its id
+  arrow-edit ID [--label L|none] [--from-side S] [--to-side S] [--start E] [--end E] [--dashed true|false] [--curve true|false] [--color C|none]
+  arrow-rm ID [ID…]
   rm N [N…]
   undo | redo                             your own last step (per --as)
   log [-n 20]
@@ -38,6 +48,21 @@ const HELP = `canvas: read and edit a live canvas through the bridge
   bot chess [--color black] [--depth 2] [--delay 600] [--keep]
                                           built-in opponent: sits, waits, moves (as --as, default "Bot")
   chess commands take --board ID when there is more than one board
+
+  draw new [--title T] [--x X --y Y] [--width W --height H] [--shapes JSON]
+                                          a new Excalidraw frame (centered at x/y, or top-left with width/height); prints its id
+  draw shapes [--in N] [--json]           the drawing's shapes: id, type, label, x/y, arrows from→to
+  draw add JSON [--in N]                  add shapes: [{"type":"rectangle","ref":"a","label":"Start"},
+                                            {"type":"ellipse","ref":"b","label":"End"},{"type":"arrow","from":"a","to":"b","label":"go"}]
+                                          types rectangle|ellipse|diamond (label, x, y, width, height, stroke, fill, dashed),
+                                          text (text, size), arrow (from, to = ref or shape id; label, dashed, ends none|end|both)
+                                          a free ref becomes the shape's id; x/y = the drawing's own coordinates
+                                          (see draw shapes); no x/y = a row right of the drawing's shapes
+  draw box LABEL [--type rectangle|ellipse|diamond] [--ref R] [--in N]
+  draw arrow FROM TO [--label L] [--in N]
+  draw rm ID [ID…] [--in N]
+  draw title T | lock | unlock | fit [--in N]   the frame: rename, static picture on/off, fit the drawing
+  --in N: the frame (node id or title); default the only one on the canvas
 
   chat say TEXT [--node N]                say something in the table chat (@Name mentions; --node = about a node)
   chat read [-n 20] [--new] [--json]      last messages, or only what's new since you last looked
@@ -78,6 +103,88 @@ async function run(name: string, args: unknown) {
   if (!r.ok) throw new Error(r.error ?? 'failed');
   if (!r.changed) console.log('(no change)');
   return r;
+}
+
+/** The drawing a draw command works on: --in, else the only one on the canvas. */
+async function drawing() {
+  const ds = (await c.doc()).nodes.filter(isDrawing);
+  if (flags.in) return pickFrame(ds, flags.in) ?? c.resolve(flags.in);
+  if (ds.length === 1) return ds[0].id;
+  throw new Error(ds.length ? `${ds.length} drawings on the canvas: pick one with --in (${ds.map((d) => d.id).join(', ')})` : 'no drawing on the canvas: draw new');
+}
+
+async function draw([sub, ...args]: string[]) {
+  const parseShapes = (j?: string) => {
+    if (!j) throw new Error('shapes JSON missing');
+    const v = JSON.parse(j);
+    return (Array.isArray(v) ? v : [v]) as Shape[];
+  };
+  switch (sub) {
+    case 'new': {
+      const shapes = flags.shapes ? parseShapes(flags.shapes) : undefined;
+      const r = await run('excalidraw.create', { x: num('x') ?? 0, y: num('y') ?? 0, width: num('width'), height: num('height'), title: flags.title, shapes });
+      return console.log(r.select?.[0] ?? '');
+    }
+    case 'shapes': {
+      const id = await drawing();
+      const n = (await c.doc()).nodes.find((x) => x.id === id)!;
+      const list = describe(n);
+      if (flags.json) return console.log(JSON.stringify(list, null, 2));
+      for (const s of list) console.log(`${s.id.padEnd(22)} ${s.type.padEnd(9)} ${String(s.x).padStart(6)},${String(s.y).padEnd(6)} ${s.label ?? ''}${s.from ? `  ${s.from} → ${s.to}` : ''}`);
+      return;
+    }
+    case 'add':
+      return void (await run('excalidraw.add', { id: await drawing(), shapes: parseShapes(args.join(' ')) }));
+    case 'box':
+      return void (await run('excalidraw.add', { id: await drawing(), shapes: [{ type: (flags.type ?? 'rectangle') as 'rectangle', label: args.join(' '), ref: flags.ref }] }));
+    case 'arrow':
+      return void (await run('excalidraw.add', { id: await drawing(), shapes: [{ type: 'arrow', from: args[0], to: args[1], label: flags.label }] }));
+    case 'rm':
+      return void (await run('excalidraw.remove', { id: await drawing(), ids: args }));
+    case 'title':
+      return void (await run('excalidraw.frame', { id: await drawing(), title: args.join(' ') }));
+    case 'lock':
+    case 'unlock':
+      return void (await run('excalidraw.frame', { id: await drawing(), locked: sub === 'lock' }));
+    case 'fit':
+      return void (await run('excalidraw.frame', { id: await drawing(), view: null }));
+    default:
+      throw new Error('draw new | shapes | add | box | arrow | rm | title | lock | unlock | fit (see canvas help)');
+  }
+}
+
+const bool = (k: string) => (flags[k] !== undefined ? flags[k] !== 'false' : undefined);
+const clear = (v: string | undefined) => (v === 'none' ? null : v);
+/** The arrow options shared by `arrow` and `arrow-edit` (core.connect / core.edge arguments). */
+function arrowFlags() {
+  return {
+    label: flags.label === 'none' ? null : flags.label,
+    fromSide: flags['from-side'],
+    toSide: flags['to-side'],
+    fromEnd: flags.start,
+    toEnd: flags.end,
+    dashed: bool('dashed'),
+    curve: bool('curve'),
+    color: clear(flags.color),
+  };
+}
+
+/** A spot beside node `near` (default: below it). */
+async function nearSpot(near: string, side = 'bottom') {
+  const n = (await c.doc()).nodes.find((x) => x.id === near);
+  if (!n) throw new Error(`no node ${near}`);
+  const gap = 90;
+  const w = num('width') ?? 160;
+  const h = num('height') ?? 90;
+  const pos: Record<string, { x: number; y: number }> = {
+    bottom: { x: n.x + n.width / 2 - w / 2, y: n.y + n.height + gap },
+    top: { x: n.x + n.width / 2 - w / 2, y: n.y - gap - h },
+    right: { x: n.x + n.width + gap, y: n.y + n.height / 2 - h / 2 },
+    left: { x: n.x - gap - w, y: n.y + n.height / 2 - h / 2 },
+  };
+  const p = pos[side];
+  if (!p) throw new Error(`bad --side ${side}`);
+  return p;
 }
 
 async function main() {
@@ -135,6 +242,54 @@ async function main() {
       await run('board.connect', { from, to, label: flags.label });
       return console.log(`${from} → ${to}`);
     }
+    case 'shape': {
+      const kind = params[0];
+      const text = params.slice(1).join(' ').replace(/\\n/g, '\n');
+      const style = { stroke: flags.stroke, fill: flags.fill, dashed: flags.dashed ? flags.dashed !== 'false' : undefined, size: num('size'), width: num('width'), height: num('height') };
+      if (flags.from) {
+        const from = await c.resolve(flags.from);
+        const r = await run('diagram.addConnected', { from, kind, text, side: flags.side, at: num('x') !== undefined && num('y') !== undefined ? { x: num('x'), y: num('y') } : undefined, label: flags.label, ...style });
+        return console.log(r.select?.[0] ?? '');
+      }
+      const near = flags.near ? await c.resolve(flags.near) : undefined;
+      const r = await run('diagram.add', { kind, text, x: num('x'), y: num('y'), ...(near ? await nearSpot(near, flags.side) : {}), ...style });
+      return console.log(r.select?.[0] ?? '');
+    }
+    case 'style': {
+      const id = await c.resolve(params[0]);
+      await run('diagram.update', {
+        id,
+        text: flags.text?.replace(/\\n/g, '\n'),
+        kind: flags.kind,
+        stroke: clear(flags.stroke),
+        fill: flags.fill,
+        dashed: flags.dashed ? flags.dashed !== 'false' : undefined,
+        size: num('size'),
+        x: num('x'),
+        y: num('y'),
+        dx: num('dx'),
+        dy: num('dy'),
+        width: num('width'),
+        height: num('height'),
+      });
+      return console.log(id);
+    }
+    case 'arrow': {
+      const [from, to] = await Promise.all([c.resolve(params[0]), c.resolve(params[1])]);
+      const r = await run('core.connect', { from, to, ...arrowFlags() });
+      return console.log(r.select?.[0] ?? '');
+    }
+    case 'arrow-edit': {
+      await run('core.edge', { id: params[0], ...arrowFlags() });
+      return console.log(params[0]);
+    }
+    case 'arrow-rm': {
+      // core.delete takes node ids too: only arrows go through here
+      const edges = new Set((await c.doc()).edges.map((e) => e.id));
+      const bad = params.filter((id) => !edges.has(id));
+      if (bad.length) throw new Error(`no arrow ${bad.join(', ')}`);
+      return void (await run('core.delete', { ids: params }));
+    }
     case 'disconnect': {
       const [from, to] = await Promise.all([c.resolve(params[0]), c.resolve(params[1])]);
       return void (await run('board.disconnect', { from, to }));
@@ -164,6 +319,8 @@ async function main() {
       const log = await c.log(1);
       return console.log(r.changed ? log[0]?.text : `backlog: ${input.items.length} tasks, board already up to date`);
     }
+    case 'draw':
+      return draw(params);
     case 'chat':
       return chat(params[0], params.slice(1));
     case 'chess':

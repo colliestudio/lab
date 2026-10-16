@@ -1,8 +1,11 @@
 import type { App } from './app';
 import { raise } from './commands';
 import type { CanvasNode, DocView } from './doc';
+import { EdgeLayer, type Box } from './edges';
+import { inlineEdit, TEXT_INPUT } from './inlineEdit';
 import { Menu } from './menu';
-import type { MenuEntry, ObjectType, RenderCtx } from './plugin';
+import { toolForKey } from './toolKeys';
+import type { MenuEntry, ObjectType, RenderCtx, Tool } from './plugin';
 import { Viewport, wheelZoomFactor } from './viewport';
 
 type Pt = { x: number; y: number };
@@ -19,6 +22,8 @@ type Gesture =
       start: Pt;
       applied: Pt;
       moved: boolean;
+      /** Pressed inside a text editor (see onPointerDown). */
+      inEditor?: boolean;
       target?: string;
       mode?: string;
       /** A local drag (see ObjectType.dragsLocally): moves on this screen only until the drop. */
@@ -26,6 +31,8 @@ type Gesture =
       /** Nothing it would move can move (ObjectType.movable): the drag does nothing. */
       still?: boolean;
     }
+  | { kind: 'edge'; id: string }
+  | { kind: 'draw'; start: Pt; tool: Tool; moved: boolean }
   | { kind: 'marquee'; start: Pt; base: Set<string>; /** the object the press fell through (never box-selected) */ skip?: string }
   | { kind: 'pinch'; dist: number; mid: Pt };
 
@@ -41,8 +48,7 @@ export class View {
   private contentKeys = new Map<string, string>();
   /** Box geometry last written per node: unchanged boxes get no style writes. */
   private boxKeys = new Map<string, string>();
-  private edgeLayer: SVGSVGElement | undefined;
-  private edgeKey = '';
+  private edgeLayer: EdgeLayer;
   /** Nodes moving with the current drag (promoted to their own layers: moving them repaints nothing). */
   private moving: string[] = [];
   private marquee: HTMLElement;
@@ -50,10 +56,11 @@ export class View {
   private gesture: Gesture | null = null;
   private pointers = new Map<number, Pt>();
   private spaceDown = false;
-  /** Active tool: select (default) or hand (plain drag pans). */
-  tool: 'select' | 'hand' = 'select';
-  private toolListeners = new Set<(t: 'select' | 'hand') => void>();
+  /** Active tool: select (default), hand (plain drag pans) or the id of a creation tool (App.tools). */
+  tool = 'select';
+  private toolListeners = new Set<(t: string) => void>();
   private lastClick = { id: '', t: 0 };
+  private lastEmptyClick = { t: 0, x: 0, y: 0 };
   /** Where the last right-click menu opened, in world coordinates (e.g. "new … here"). */
   menuPoint: Pt | undefined;
   /** Node under the mouse when no button is pressed (for "hovered" keyboard targets). */
@@ -74,6 +81,7 @@ export class View {
     this.world = el('div', 'cv-world');
     this.marquee = el('div', 'cv-marquee');
     root.append(this.world, this.marquee);
+    this.edgeLayer = new EdgeLayer(this.world);
     this.menu = new Menu(root);
 
     app.viewport.onChange(() => this.applyViewport());
@@ -177,50 +185,19 @@ export class View {
     }
   }
 
-  /** JSON Canvas edges between rendered nodes: straight lines box edge to box edge, arrow at `toEnd` (default arrow). */
+  /** JSON Canvas edges between rendered nodes (see edges.ts for the two looks). */
   private renderEdges(doc: DocView, alive: Set<string>) {
-    const shown = doc.edges.filter((e) => alive.has(e.fromNode) && alive.has(e.toNode));
     const off = (id: string) => (this.localDrag?.ids.has(id) ? this.localDrag : undefined);
-    const boxOf = (id: string) => {
+    const boxOf = (id: string): Box => {
       const n = doc.get(id)!;
       const o = off(id);
       return { x: n.x + (o?.dx ?? 0), y: n.y + (o?.dy ?? 0), w: n.width, h: n.height };
     };
-    const lines = shown.map((e) => ({ e, a: boxOf(e.fromNode), b: boxOf(e.toNode) }));
-    const key = JSON.stringify(lines);
-    if (key === this.edgeKey) return;
-    this.edgeKey = key;
-    if (!this.edgeLayer) {
-      this.edgeLayer = document.createElementNS(SVG, 'svg');
-      this.edgeLayer.classList.add('cv-edges');
-      this.edgeLayer.innerHTML = `<defs><marker id="cv-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z"/></marker></defs><g></g>`;
-      this.world.prepend(this.edgeLayer);
-    }
-    const g = this.edgeLayer.querySelector('g')!;
-    g.replaceChildren();
-    for (const { e, a, b } of lines) {
-      const ca = { x: a.x + a.w / 2, y: a.y + a.h / 2 };
-      const cb = { x: b.x + b.w / 2, y: b.y + b.h / 2 };
-      const p = clipToBox(cb, ca, a);
-      const q = clipToBox(ca, cb, b);
-      const line = document.createElementNS(SVG, 'line');
-      line.setAttribute('x1', String(p.x));
-      line.setAttribute('y1', String(p.y));
-      line.setAttribute('x2', String(q.x));
-      line.setAttribute('y2', String(q.y));
-      if (e.color) line.style.stroke = e.color;
-      if ((e.toEnd ?? 'arrow') === 'arrow') line.setAttribute('marker-end', 'url(#cv-arrow)');
-      if (e.fromEnd === 'arrow') line.setAttribute('marker-start', 'url(#cv-arrow)');
-      line.dataset.edgeId = e.id;
-      g.append(line);
-      if (e.label) {
-        const t = document.createElementNS(SVG, 'text');
-        t.setAttribute('x', String((p.x + q.x) / 2));
-        t.setAttribute('y', String((p.y + q.y) / 2 - 6));
-        t.textContent = e.label;
-        g.append(t);
-      }
-    }
+    const shown = doc.edges.filter((e) => alive.has(e.fromNode) && alive.has(e.toNode) && !this.app.edgeOwned(e));
+    this.edgeLayer.render(
+      shown.map((e) => ({ e, a: boxOf(e.fromNode), b: boxOf(e.toNode) })),
+      this.app.store.selection,
+    );
   }
 
   private applyViewport() {
@@ -263,12 +240,17 @@ export class View {
     if (sel.length) this.fit(80, sel, Viewport.MAX);
   }
 
-  setTool(t: 'select' | 'hand') {
+  setTool(t: string) {
     this.tool = t;
     this.root.classList.toggle('cv-hand', t === 'hand');
+    this.root.classList.toggle('cv-drawing', t !== 'select' && t !== 'hand');
     for (const fn of this.toolListeners) fn(t);
   }
-  onToolChange(fn: (t: 'select' | 'hand') => void) {
+  /** The creation tool picked, if one is. */
+  private drawTool(): Tool | undefined {
+    return this.app.tools.find((t) => t.id === this.tool);
+  }
+  onToolChange(fn: (t: string) => void) {
     this.toolListeners.add(fn);
     return () => this.toolListeners.delete(fn);
   }
@@ -288,10 +270,13 @@ export class View {
   private onPointerDown(e: PointerEvent) {
     if (e.button === 2) return;
     this.closeMenu();
-    this.root.focus({ preventScroll: true });
+    // a press inside a text editor keeps the caret: focus stays, and the press only becomes a drag
+    // (committing the text first) once it moves
+    const inEditor = !!(e.target as Element).closest?.('.cv-editing');
+    if (!inEditor) this.root.focus({ preventScroll: true });
     const p = this.local(e);
     this.pointers.set(e.pointerId, p);
-    this.root.setPointerCapture(e.pointerId);
+    if (!inEditor) this.root.setPointerCapture(e.pointerId);
 
     if (this.pointers.size === 2) {
       // second finger: switch to pinch, abandon whatever the first finger started
@@ -321,7 +306,21 @@ export class View {
       this.root.classList.add('cv-panning');
       return;
     }
+    const tool = this.drawTool();
+    if (tool && e.button === 0) {
+      this.gesture = { kind: 'draw', start: this.world_(p), tool, moved: false };
+      if (!e.shiftKey) this.app.store.select([]);
+      return;
+    }
     if (!nodeEl) {
+      const edgeId = (e.target as Element).closest<HTMLElement>('[data-edge-id]')?.dataset.edgeId;
+      if (edgeId && this.app.store.doc.edge(edgeId)) {
+        const next = new Set(e.shiftKey ? this.app.store.selection : []);
+        next.add(edgeId);
+        this.app.store.select(next);
+        this.gesture = { kind: 'edge', id: edgeId };
+        return;
+      }
       this.gesture = { kind: 'marquee', start: this.world_(p), base: new Set(e.shiftKey ? this.app.store.selection : []) };
       if (!e.shiftKey) this.app.store.select([]);
       return;
@@ -364,7 +363,7 @@ export class View {
     const ids = this.app.selected().map((n) => n.id);
     raise(this.app.store, ids.filter((x) => this.app.canMove(x)));
     const w = this.world_(p);
-    this.gesture = { kind: 'drag', ids, clickId: id, shift: e.shiftKey || e.metaKey, down: e, start: w, applied: { x: 0, y: 0 }, moved: false };
+    this.gesture = { kind: 'drag', ids, clickId: id, shift: e.shiftKey || e.metaKey, down: e, start: w, applied: { x: 0, y: 0 }, moved: false, inEditor };
     this.app.presence?.setHeld(this.app.publicIds(ids));
   }
 
@@ -401,6 +400,12 @@ export class View {
         if (!g.moved && Math.hypot(tx, ty) * this.app.viewport.zoom < DRAG_THRESHOLD) return;
         if (!g.moved) {
           g.moved = true;
+          if (g.inEditor) {
+            // the press became a drag: keep the typed text, then move the shape
+            (document.activeElement as HTMLElement | null)?.blur();
+            getSelection()?.removeAllRanges();
+            this.root.setPointerCapture(e.pointerId);
+          }
           const clicked = this.app.node(g.clickId);
           const ct = clicked && this.app.typeOf(clicked);
           if (clicked && !g.shift && ct?.dragsLocally?.(clicked, this.app)) {
@@ -413,6 +418,8 @@ export class View {
             if (!together) g.ids = [g.clickId];
             this.localDrag = { ids: new Set(g.ids), dx: 0, dy: 0 };
             ct.onLocalDrag?.(clicked, 'start', this.app);
+          } else if (g.down.altKey && !g.shift && this.altDuplicate(g)) {
+            // ⌥-drag moves copies; the originals stay
           } else this.maybeSwapDragged(g);
           // pinned objects (a mat's zones outside edit mode) stay where they are
           g.ids = g.ids.filter((x) => this.app.canMove(x));
@@ -437,6 +444,16 @@ export class View {
         this.lastDragEvent = e;
         const t = this.findDropTarget(g, e);
         this.setDropTarget(g, t?.id, t?.mode, this.world_(p));
+        return;
+      }
+      case 'draw': {
+        const w = this.world_(p);
+        if (!g.moved && Math.hypot(w.x - g.start.x, w.y - g.start.y) * this.app.viewport.zoom < DRAG_THRESHOLD) return;
+        g.moved = true;
+        const r = rect(g.start, w);
+        const s1 = this.app.viewport;
+        this.marquee.classList.add('cv-ghost');
+        Object.assign(this.marquee.style, { display: 'block', left: `${r.x * s1.zoom + s1.x}px`, top: `${r.y * s1.zoom + s1.y}px`, width: `${r.w * s1.zoom}px`, height: `${r.h * s1.zoom}px` });
         return;
       }
       case 'marquee': {
@@ -481,7 +498,20 @@ export class View {
     if (!g) return;
 
     if (g.kind === 'pan' && !g.moved && g.onEmpty) this.app.store.select([]);
-    if (g.kind === 'marquee') this.marquee.style.display = 'none';
+    if (g.kind === 'marquee') {
+      this.marquee.style.display = 'none';
+      this.emptyClick(g, e);
+    }
+    if (g.kind === 'draw') {
+      this.marquee.style.display = 'none';
+      this.marquee.classList.remove('cv-ghost');
+      const w = this.world_(this.local(e));
+      const r = g.moved ? rect(g.start, w) : { x: g.start.x, y: g.start.y, w: 0, h: 0 };
+      this.app.store.newUndoStep();
+      g.tool.create(this.app, { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.w), height: Math.round(r.h) });
+      this.setTool('select');
+    }
+    if (g.kind === 'edge') this.edgeClick(g.id);
     if (g.kind !== 'drag') return;
 
     for (const id of g.ids) this.els.get(id)?.classList.remove('cv-dragging');
@@ -505,6 +535,7 @@ export class View {
       this.endDrag(g.ids, target ? target.id : undefined);
       return;
     }
+    if (g.inEditor) return; // a click in the editor only moves the caret
     // plain click
     if (!g.shift && this.app.store.selection.size > 1) this.app.store.select([g.clickId]);
     const clicked = this.app.node(g.clickId);
@@ -520,6 +551,67 @@ export class View {
     } else {
       this.lastClick = { id: g.clickId, t: now };
     }
+  }
+
+  /** A press-release on the empty table: two in a row are a double-click (plugins may make something there). */
+  private emptyClick(g: Extract<Gesture, { kind: 'marquee' }>, e: PointerEvent) {
+    if (g.skip) return;
+    const w = this.world_(this.local(e));
+    if (Math.hypot(w.x - g.start.x, w.y - g.start.y) * this.app.viewport.zoom >= DRAG_THRESHOLD) return;
+    const now = performance.now();
+    const last = this.lastEmptyClick;
+    if (now - last.t < DOUBLE_CLICK_MS && Math.hypot(w.x - last.x, w.y - last.y) * this.app.viewport.zoom < 8) {
+      this.lastEmptyClick = { t: 0, x: 0, y: 0 };
+      this.app.store.newUndoStep();
+      for (const fn of this.app.emptyDoubleClicks) if (fn(w, this.app)) break;
+    } else this.lastEmptyClick = { t: now, x: w.x, y: w.y };
+  }
+
+  /** A click on an arrow: a second one in a row edits its label. */
+  private edgeClick(id: string) {
+    const now = performance.now();
+    if (this.lastClick.id === id && now - this.lastClick.t < DOUBLE_CLICK_MS) {
+      this.lastClick = { id: '', t: 0 };
+      this.editEdgeLabel(id);
+    } else this.lastClick = { id, t: now };
+  }
+
+  /** Type the label of an arrow where it sits. Only styled arrows (see edges.ts) have a label to type into. */
+  editEdgeLabel(id: string) {
+    const edge = this.app.store.doc.edge(id);
+    if (!edge || this.edgeLayer.editing) return;
+    this.app.store.select([id]);
+    this.edgeLayer.editing = id;
+    this.render();
+    const labelEl = this.edgeLayer.labelEl(id);
+    if (!labelEl) {
+      this.edgeLayer.editing = undefined;
+      return;
+    }
+    const end = (text: string | undefined) => {
+      this.edgeLayer.editing = undefined;
+      if (text !== undefined && text.trim() !== (edge.label ?? '')) this.app.dispatch('core.edge', { id, label: text.trim() || null }, { merge: true });
+      this.render();
+      this.root.focus({ preventScroll: true });
+    };
+    this.app.store.newUndoStep();
+    inlineEdit(labelEl, { enterCommits: true, onCommit: end, onCancel: () => end(undefined) });
+  }
+
+  /** ⌥-drag: the dragged objects stay and copies move instead. False if some of them don't allow it. */
+  private altDuplicate(g: Extract<Gesture, { kind: 'drag' }>): boolean {
+    const nodes = g.ids.map((id) => this.app.node(id));
+    if (!nodes.every((n) => n && this.app.typeOf(n)?.altDragDuplicates)) return false;
+    const order = this.app.store.doc.nodes.filter((n) => g.ids.includes(n.id)).map((n) => n.id);
+    let res: ReturnType<App['dispatch']> | undefined;
+    this.app.store.merged(() => (res = this.app.dispatch('core.duplicate', { ids: g.ids, dx: 0, dy: 0 })));
+    const copies = res?.select;
+    if (!copies?.length) return false;
+    g.clickId = copies[Math.max(0, order.indexOf(g.clickId))] ?? copies[0];
+    g.ids = copies;
+    this.anchor = g.clickId;
+    this.promote([]);
+    return true;
   }
 
   /** Figma-style: wheel pans (Shift = horizontal), ⌘/Ctrl+wheel and trackpad pinch zoom at the pointer. */
@@ -551,7 +643,7 @@ export class View {
 
   private onKeyDown(e: KeyboardEvent) {
     const t = e.target;
-    if (t instanceof Element && t.closest('input, textarea, select, [contenteditable="true"]')) return;
+    if (t instanceof Element && t.closest(TEXT_INPUT)) return;
     if (e.key === ' ') {
       e.preventDefault();
       const sb = this.app.keys.get('space');
@@ -567,9 +659,28 @@ export class View {
     const store = this.app.store;
     if (e.key === 'Escape') {
       this.closeMenu();
+      if (this.gesture?.kind === 'draw') {
+        this.gesture = null;
+        this.marquee.style.display = 'none';
+      }
+      if (this.tool !== 'select') this.setTool('select');
       store.select([]);
       return;
     }
+    // a creation tool's key, where its plugin says it applies (before the plugins' own keys)
+    if (!mod && !e.altKey && !e.shiftKey && !store.selection.size) {
+      const k = e.key.toLowerCase();
+      // context decides who gets a shared letter (see toolForKey)
+      const over = this.hovered ? this.app.node(this.hovered) : undefined;
+      const tool = toolForKey(this.app.tools, this.app.keys, k, over, this.app);
+      if (tool) {
+        e.preventDefault();
+        this.setTool(this.tool === tool.id ? 'select' : tool.id);
+        return;
+      }
+    }
+    // typing on a lone object that edits its text types into it (before letter shortcuts such as H or a plugin's keys)
+    if (e.key.length === 1 && this.editByKey(e, mod)) return;
     if ((e.key === 'Delete' || e.key === 'Backspace') && store.selection.size) {
       e.preventDefault();
       this.app.dispatch('core.delete', { ids: [...store.selection] });
@@ -617,7 +728,31 @@ export class View {
     if (binding && (!binding.when || binding.when(this.app))) {
       e.preventDefault();
       binding.run(this.app);
+      return;
     }
+    this.editByKey(e, mod);
+  }
+
+  /** Enter, or a typed character, on a lone selected object that can edit its text: edit it (an arrow: its label). */
+  private editByKey(e: KeyboardEvent, mod: boolean): boolean {
+    const sel = this.app.store.selection;
+    if (sel.size !== 1 || mod || e.altKey) return false;
+    const [id] = sel;
+    const typed = e.key.length === 1;
+    if (e.key !== 'Enter' && !typed) return false;
+    if (this.app.store.doc.edge(id)) {
+      if (e.key !== 'Enter') return false;
+      e.preventDefault();
+      this.editEdgeLabel(id);
+      return true;
+    }
+    const n = this.app.node(id);
+    const type = n && this.app.typeOf(n);
+    if (!n || !type?.edit || !this.app.canMove(id)) return false;
+    e.preventDefault();
+    this.app.store.newUndoStep();
+    type.edit(n, this.app, typed ? e.key : undefined);
+    return true;
   }
 
   /** Tell each moved type its move ended (state after any drop): a drag, or a nudge with the arrow keys. */
@@ -763,9 +898,14 @@ export class View {
     this.openMenu(entries, this.local(e), title);
   }
 
-  /** Show a menu at a table point, or anchored below an element (e.g. an object's tab). */
-  openMenu(entries: MenuEntry[], at: { x: number; y: number } | Element, title?: string) {
-    this.menu.open(entries, at, title);
+  /** Show a menu at a table point, or anchored below (`above`: over) an element (e.g. an object's tab, a dock button). */
+  openMenu(entries: MenuEntry[], at: { x: number; y: number } | Element, title?: string, opts?: { above?: boolean }) {
+    this.menu.open(entries, at, title, opts);
+  }
+
+  /** The element the open menu hangs from (so its button can toggle it). */
+  get menuAnchor() {
+    return this.menu.anchor;
   }
 
   closeMenu() {
@@ -777,19 +917,6 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string) {
   const e = document.createElement(tag);
   e.className = cls;
   return e;
-}
-
-const SVG = 'http://www.w3.org/2000/svg';
-
-/** Where the segment from `from` toward the center `to` of `box` crosses the box's border. */
-export function clipToBox(from: Pt, to: Pt, box: { x: number; y: number; w: number; h: number }): Pt {
-  const dx = from.x - to.x;
-  const dy = from.y - to.y;
-  if (!dx && !dy) return to;
-  const sx = dx ? box.w / 2 / Math.abs(dx) : Infinity;
-  const sy = dy ? box.h / 2 / Math.abs(dy) : Infinity;
-  const s = Math.min(1, sx, sy);
-  return { x: to.x + dx * s, y: to.y + dy * s };
 }
 
 function renderFallback(n: CanvasNode, box: HTMLElement) {

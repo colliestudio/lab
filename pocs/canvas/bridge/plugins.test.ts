@@ -12,6 +12,7 @@ import { logic as cardsLogic } from '../src/plugins/cards/logic';
 import { chessPlugin } from '../src/plugins/chess';
 import { clockPlugin } from '../src/plugins/clock';
 import { stormPlugin } from '../src/plugins/eventstorm';
+import { diagramPlugin } from '../src/plugins/diagram';
 import { createFramesPlugin } from '../src/plugins/frames';
 import { PLUGIN_LOGIC, registerPluginLogic, useLogic } from '../src/plugins/logic';
 import { matsPlugin } from '../src/plugins/mats';
@@ -30,7 +31,7 @@ const bridgeCommands: string[] = JSON.parse(
 function browserCommands() {
   const app = new App(document.createElement('div'));
   registerPluginLogic(app.store);
-  for (const p of [cardsPlugin, chessPlugin, clockPlugin, battleLinePlugin, matsPlugin, boardPlugin, stormPlugin, prototypePlugin, createFramesPlugin({ room: null, enter() {}, connect: null })]) app.use(p);
+  for (const p of [cardsPlugin, chessPlugin, clockPlugin, battleLinePlugin, matsPlugin, boardPlugin, stormPlugin, prototypePlugin, diagramPlugin, createFramesPlugin({ room: null, enter() {}, connect: null })]) app.use(p);
   return app.store.commandNames();
 }
 
@@ -40,13 +41,13 @@ describe('bridge plugin logic', () => {
   });
 
   it('covers every plugin', () => {
-    for (const prefix of ['core.', 'cards.', 'chess.', 'clock.', 'battleline.', 'mats.', 'board.', 'storm.', 'page.', 'frames.']) {
+    for (const prefix of ['core.', 'cards.', 'chess.', 'clock.', 'battleline.', 'mats.', 'board.', 'diagram.', 'storm.', 'page.', 'frames.']) {
       expect(bridgeCommands.some((c) => c.startsWith(prefix)), prefix).toBe(true);
     }
   });
 
   it('registers frames last (its rider rule must follow the others)', () => {
-    expect(PLUGIN_LOGIC.map((e) => e.id)).toEqual(['cards', 'chess', 'clock', 'battleline', 'mats', 'board', 'eventstorm', 'prototype', 'frames']);
+    expect(PLUGIN_LOGIC.map((e) => e.id)).toEqual(['cards', 'chess', 'clock', 'battleline', 'mats', 'board', 'diagram', 'eventstorm', 'prototype', 'excalidraw', 'frames']);
   });
 
   it('useLogic skips logic a store already has', () => {

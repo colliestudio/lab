@@ -141,7 +141,7 @@ export function geometry(cx: number, cy: number) {
     /** A side's played tactics row: beside its formations, past the discard pile. */
     played: (side: Side) => ({ x: right + 60, y: Math.round(side === 'a' ? cy + NEAR + (FORM_H - PLAYED_H) / 2 : cy - NEAR - FORM_H + (FORM_H - PLAYED_H) / 2) }),
     tally: { x: left - 70 - CARD_W, y: Math.round(cy - TALLY.h / 2 - 12) },
-    /** The mat under it all (Add… › Battle Line): decks to played tactics, formation to formation. */
+    /** The mat under it all (+ › Battle Line): decks to played tactics, formation to formation. */
     mat: { x: left - 100 - CARD_W, y: cy - NEAR - FORM_H - 40, w: right + 60 + PLAYED_W + 40 - (left - 100 - CARD_W), h: 2 * (NEAR + FORM_H + 40) },
     /** A hand's top-left: below side a's formations, above side b's. */
     hand: (side: Side, w: number, h: number) => ({ x: Math.round(cx - w / 2), y: side === 'a' ? cy + NEAR + FORM_H + 80 : cy - NEAR - FORM_H - 80 - h }),

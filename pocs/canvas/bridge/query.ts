@@ -16,7 +16,9 @@ export interface NodeSummary {
   column?: string;
   /** Plugin namespaces on it (x-cards, x-sync…). */
   ext?: string[];
-  links?: { to: string; label?: string }[];
+  /** Diagram shape look (x-shape): kind, colors, dashed, size. */
+  shape?: Record<string, unknown>;
+  links?: { id: string; to: string; label?: string }[];
 }
 
 export const titleOf = (n: CanvasNode) => (n.label ?? n.text ?? n.url ?? n.file ?? '').split('\n')[0].replace(/^#+\s*/, '').trim();
@@ -24,7 +26,8 @@ export const titleOf = (n: CanvasNode) => (n.label ?? n.text ?? n.url ?? n.file 
 export function summarize(doc: DocView, n: CanvasNode): NodeSummary {
   const carrier = doc.carrierOf(n.id);
   const ext = Object.keys(n).filter((k) => k.startsWith('x-'));
-  const links = doc.edges.filter((e) => e.fromNode === n.id).map((e) => ({ to: e.toNode, ...(e.label ? { label: e.label } : {}) }));
+  const links = doc.edges.filter((e) => e.fromNode === n.id).map((e) => ({ id: e.id, to: e.toNode, ...(e.label ? { label: e.label } : {}) }));
+  const shape = n['x-shape'] as Record<string, unknown> | undefined;
   const text = n.text ?? n.label ?? n.url ?? n.file;
   return {
     id: n.id,
@@ -37,6 +40,7 @@ export function summarize(doc: DocView, n: CanvasNode): NodeSummary {
     ...(n.color ? { color: n.color } : {}),
     ...(carrier ? { column: titleOf(doc.get(carrier)!) } : {}),
     ...(ext.length ? { ext } : {}),
+    ...(shape ? { shape } : {}),
     ...(links.length ? { links } : {}),
   };
 }

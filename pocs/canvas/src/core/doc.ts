@@ -45,6 +45,8 @@ export interface CanvasDoc {
 /** Read-only snapshot handed to commands and renderers. `nodes` sorted by z (bottom first). */
 export interface DocView extends CanvasDoc {
   get(id: string): CanvasNode | undefined;
+  /** An edge by id. */
+  edge(id: string): CanvasEdge | undefined;
   /**
    * Nodes shown on the table: everything not contained in another node (e.g. cards inside a deck),
    * plus contained nodes a layout places (e.g. cards fanned out in a hand).
@@ -77,6 +79,8 @@ export type Change =
   | { op: 'del'; id: string }
   /** Add or replace an edge (both ends must exist when applied, else it's skipped). */
   | { op: 'edge'; edge: CanvasEdge }
+  /** Set one field of an edge (`key` may be "x-edge.dashed"); `value: undefined` deletes it. Like `set` for nodes. */
+  | { op: 'edgeset'; id: string; key: string; value: unknown }
   | { op: 'unedge'; id: string };
 
 export const set = (id: string, key: string, value: unknown): Change => ({ op: 'set', id, key, value });
@@ -160,6 +164,7 @@ function buildView(doc: CanvasDoc, parentRules: readonly ParentOf[], riderRules:
   const nodes = doc.nodes.slice().sort(byZ);
   const map = new Map(nodes.map((n) => [n.id, n]));
   const get = (id: string) => map.get(id);
+  const edgeMap = new Map(doc.edges.map((e) => [e.id, e]));
   const { up: parent, down: kids } = link(nodes, get, parentRules);
   // contained nodes don't ride (their container already carries them)
   const { up: carrier, down: riders } = link(
@@ -173,6 +178,7 @@ function buildView(doc: CanvasDoc, parentRules: readonly ParentOf[], riderRules:
     edges: doc.edges,
     extra: doc.extra,
     get,
+    edge: (id) => edgeMap.get(id),
     visible: nodes.filter((n) => shown(n.id)),
     isVisible: (id) => map.has(id) && shown(id),
     styleOf: (id) => {

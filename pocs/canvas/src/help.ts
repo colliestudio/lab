@@ -1,10 +1,19 @@
 import type { App, Change, Command } from './core';
 
-const GROUPS: [string, [string, string][]][] = [
+export const GROUPS: [string, [string, string][]][] = [
+  [
+    'Screen',
+    [
+      ['Menu (top left)', 'File, Edit, Room, Add, game submenus (New hand, Play prototype), Bridge…, Help'],
+      ['Dock (bottom)', 'Select, hand and + (put something on the table); tooltips name each button and its shortcut'],
+      ['People, Chat, Share (top right)', 'Who is here and the connection, the chat, and the invite link'],
+      ['Zoom and ? (bottom right)', 'Zoom out / % / in / fit, and this help. Messages (saved, opened, link copied) appear above the dock'],
+    ],
+  ],
   [
     'Table',
     [
-      ['V / H', 'Select tool / hand tool (toolbar buttons too)'],
+      ['V / H', 'Select tool / hand tool (the dock has both)'],
       ['Drag empty table', 'Box select: touching objects (⇧ adds, ⌥ only fully inside)'],
       ['Wheel / two-finger scroll', 'Pan (⇧wheel sideways)'],
       ['Space+drag, middle-drag, hand tool', 'Pan'],
@@ -13,24 +22,50 @@ const GROUPS: [string, [string, string][]][] = [
       ['⇧0 or ⌘0', 'Zoom to 100%'],
       ['⇧1 or 0', 'Zoom to fit everything'],
       ['⇧2', 'Zoom to selection'],
-      ['⌘Z / ⇧⌘Z', 'Undo / redo'],
+      ['⌘Z / ⇧⌘Z', 'Undo / redo (also Menu ▸ Edit)'],
       ['Right-click', 'Actions for what is under the pointer'],
-      ['Add…', 'Put a deck of cards (face up, sorted, spread out; L stacks it), a chess set, a game clock, a Battle Line table or a mat (empty, poker table, player mat, solitaire) in the view (or open the chess piece palette)'],
-      ['Reset', 'Everything back to its starting state, keeping what is on the table (one undo): decks get all their cards back face down and shuffled, boards their 32 pieces, clocks their time'],
+      ['+ (dock), menu ▸ Add', 'Put a deck of cards (face up, sorted, spread out; L stacks it), a chess set, a game clock, a Battle Line table or a mat (empty, poker table, player mat, solitaire) in the view (or open the chess piece palette)'],
+      ['Menu ▸ Edit ▸ Reset table', 'Everything back to its starting state, keeping what is on the table (one undo): decks get all their cards back face down and shuffled, boards their 32 pieces, clocks their time'],
       ['⇧L, Log (bottom left)', 'Event log: who shuffled, drew, dealt, played, showed, gave, claimed, moved a chess piece, started or paused the clock, and when. Click an entry to go to its object; while the log is closed a badge counts the others’ new entries'],
       ['?', 'This help'],
     ],
   ],
   [
+    'Diagrams (shapes and arrows)',
+    [
+      ['R O D T S', 'Rectangle, ellipse, diamond, text, sticky note tool (also in the dock). Only with nothing selected (else typing edits the selected shape) and with the pointer not over another kind of object: over a deck S and D keep shuffle and draw, over a frame O is the outline. Click = default size, drag = that size. Esc leaves the tool'],
+      ['Double-click empty board', 'A line of text right there'],
+      ['↵, double-click, or just type', 'Edit the selected shape’s text in place. Esc or a click elsewhere keeps it (⌘↵ too); ⌫ inside edits text, not the shape'],
+      ['Hover a shape, drag a dot', 'Pull an arrow: let go on another shape to connect (near its edge picks the side), on empty board for a new connected shape of the same kind, or just click the dot for the next one'],
+      ['Click an arrow, ↵ or double-click', 'Select it (⌫ deletes); edit its label in place. The left panel sets color, dashed, curved and arrowheads'],
+      ['Left panel', 'Shape kind, stroke, fill, dashed, text size for the selected shapes'],
+      ['Drag a square on a selected shape', 'Resize (⇧ on a corner keeps the proportions)'],
+      ['⌥drag', 'Drag a copy'],
+      ['⌘C / ⌘V', 'Copy and paste shapes with the arrows between them (inside the app)'],
+      ['⌘D', 'Duplicate (arrows between the copies come along)'],
+    ],
+  ],
+  [
     'Prototype pages',
     [
-      ['Add… › Prototype: example signup flow', 'Five linked HTML pages (a signup/checkout flow) with sticky notes. Add… › blank page / sticky note for your own'],
+      ['+ › Prototype: example signup flow', 'Five linked HTML pages (a signup/checkout flow) with sticky notes. + › blank page / sticky note for your own'],
       ['I, or ✋ on the page', 'Interact: clicks go into the page; its links follow the arrows and the view glides to the next page (Esc in the page stops)'],
       ['↵, double-click', 'Edit the page: title, device, HTML with a live preview (⌘↵ saves)'],
-      ['▶ Play, ⇧↵, ▶ on a page', 'Play full screen from the selected / start page: Back (←), breadcrumb, link chips, notes (N), restart (R), Esc exits. In a room others get “Follow”'],
+      ['Menu ▸ Game ▸ Play prototype, ⇧↵, ▶ on a page, right-click the table', 'Play full screen from the selected / start page: Back (←), breadcrumb, link chips, notes (N), restart (R), Esc exits. In a room others get “Follow”'],
       ['Right-click a page', 'Link to another page (the arrow’s label = the action), links from here, start page, device, size, add note, auto-link'],
       ['Right-click the table', 'Arrange pages as a flow (left → right by step), auto-link every data-goto link, new page'],
       ['In page HTML', 'data-goto="Page title or action" follows a link, data-back goes back, data-store="key" keeps a field, data-show="key" shows it, canvas.goto()/canvas.state for scripts. Pages run sandboxed: no network, no storage, no access to the canvas'],
+    ],
+  ],
+  [
+    'Excalidraw frames',
+    [
+      ['Pencil frame tool in the dock, Add › Excalidraw frame', 'Drag a frame out on the table (or click for a default one): a titled piece of paper with the real Excalidraw inside (all its tools, shortcuts, library, Mermaid import)'],
+      ['Double-click, ↵, ✏️, or hover + R O D A T P L', 'Jump in: Excalidraw comes alive inside the frame (with that tool). Scroll and zoom inside move the drawing; the frame stays put'],
+      ['Click anywhere outside, Esc, ✓ Done', 'Jump out: the click also does what it does on the table. The frame keeps showing the drawing where you left it'],
+      ['⤢, right-click', 'Full screen; Rename…, Lock (a static picture), Fit the drawing in the frame. Drag the corner to resize'],
+      ['⌘Z on the table', 'Undoes a whole drawing session (inside the frame ⌘Z is Excalidraw’s own). Others in the room see strokes live'],
+      ['Agents', 'pnpm canvas draw new / add / box / arrow / shapes / rm / title / lock / fit (MCP: canvas_draw_*)'],
     ],
   ],
   [
@@ -49,7 +84,8 @@ const GROUPS: [string, [string, string][]][] = [
       ['⌘A', 'Select everything on the table'],
       ['Esc', 'Clear selection'],
       ['Delete / Backspace, right-click › Delete', 'Delete selection (a board takes its pieces with it)'],
-      ['⌘D', 'Duplicate selection (not cards)'],
+      ['⌘D', 'Duplicate selection (not cards); arrows between the copied objects are copied too'],
+      ['⌘C / ⌘V', 'Copy / paste the selection (not cards)'],
       ['Arrows (⇧ arrows)', 'Nudge 1px (10px)'],
     ],
   ],
@@ -64,7 +100,7 @@ const GROUPS: [string, [string, string][]][] = [
   [
     'Decks, groups, hands',
     [
-      ['', 'Three kinds of card collection. Deck: stacked, top card shows (the home deck from New table is one). Group: spread out (fan, row or grid), everyone sees it. Hand: a group that’s yours: others see its private cards face down.'],
+      ['', 'Three kinds of card collection. Deck: stacked, top card shows (the home deck of a Deck of cards from Add is one). Group: spread out (fan, row or grid), everyone sees it. Hand: a group that’s yours: others see its private cards face down.'],
       ['Drop a card right on top of a card', 'Makes a deck (the target shows “Stack”)'],
       ['Drop it partly over a card', 'Makes a group (the target shows “Fan”)'],
       ['G', 'Group the selection (into a selected deck or group, if there is one)'],
@@ -75,7 +111,7 @@ const GROUPS: [string, [string, string][]][] = [
       ['Right-click the table', 'Put all hands on table: showdown, every hand laid out face up'],
       ['Drag a card in a group', 'Take it out; drop it back to put it at that spot'],
       ['Drag the ⠿ tab', 'Move the whole thing'],
-      ['New hand (toolbar), right-click the table ▸ New hand for', 'A new empty hand for you or another player, in free space'],
+      ['Menu ▸ Game ▸ New hand, right-click the table ▸ New hand for', 'A new empty hand for you or another player, in free space'],
       ['Sort ▸ (groups, hands)', 'By suit then rank, by rank then suit, by rank only (keeps the order within a rank), Tiến Lên (3 lowest … A, 2 highest; ♠ ♣ ♦ ♥), or reverse; Ace high (default) or low. “Sort again” repeats the last one for that group or hand'],
       ['', 'A group of one card is just a card'],
     ],
@@ -117,13 +153,13 @@ const GROUPS: [string, [string, string][]][] = [
   [
     'Chess',
     [
-      ['Add… › Chess set', 'A board with 32 pieces in the starting position (free play: no rules)'],
+      ['+ › Chess set', 'A board with 32 pieces in the starting position (free play: no rules)'],
       ['Drag a piece', 'It snaps to the square under its center; the move is tinted on the board'],
       ['Drop on a piece', 'Capture: the piece there goes beside the board on the capturer’s side'],
       ['Drop beside the board', 'Stays with the board; further away it lies free on the table'],
       ['Drag the board’s ⠿ tab', 'Move the board with its pieces (the surface is locked: dragging it box-selects)'],
       ['Click the tab, right-click', 'Set up pieces, flip board (view from black), clear, lock/unlock'],
-      ['Pieces… (tab, right-click, Add…)', 'Piece palette: drag a piece onto a square or the table; click one to put it beside the selected board'],
+      ['Pieces… (tab, right-click, +)', 'Piece palette: drag a piece onto a square or the table; click one to put it beside the selected board'],
       ['⌘D', 'Duplicate the selected pieces (copies lie offset until you drop them on a square); with the board: a second set'],
       ['', 'Clear, Set up extras and clicked pieces are set aside on their owner’s side'],
     ],
@@ -132,7 +168,7 @@ const GROUPS: [string, [string, string][]][] = [
     'Mats',
     [
       ['', 'A mat is a surface for a game: whatever lies on it moves with it, and its zones are the places cards go (each zone is a deck, group or hand with its own layout).'],
-      ['Add… › Mat: …', 'Empty (add your own zones), Poker table (deck, community row of 5, muck, pot, six seats: yours is private), Player mat (deck, in play, discard, your private hand row), Solitaire (stock, waste, 4 foundations, 7 columns; mat tab ▸ Deal Klondike)'],
+      ['+ › Mat: …', 'Empty (add your own zones), Poker table (deck, community row of 5, muck, pot, six seats: yours is private), Player mat (deck, in play, discard, your private hand row), Solitaire (stock, waste, 4 foundations, 7 columns; mat tab ▸ Deal Klondike)'],
       ['', 'A preset with a deck takes the table’s deck (all 52, shuffled face down; Gather all and Reset bring them back there)'],
       ['Drop a card on a zone', 'It goes in with the zone’s layout, turned face up / down if the zone says so (from a hand: face up unless the zone says down or you hold ⌥); a full zone refuses more. The pointer over the zone is enough'],
       ['Drag the mat’s ⠿ tab', 'Move the mat with everything on it (the surface is locked: dragging it box-selects). Corner: resize'],
@@ -146,7 +182,7 @@ const GROUPS: [string, [string, string][]][] = [
   [
     'Battle Line',
     [
-      ['Add… › Battle Line', 'Reiner Knizia’s two-player card game on a mat, for free play (hints, never enforced): 9 flags, a formation per flag and side, the troop and tactics decks, a discard pile, a played tactics row per side, a tactics tally'],
+      ['+ › Battle Line', 'Reiner Knizia’s two-player card game on a mat, for free play (hints, never enforced): 9 flags, a formation per flag and side, the troop and tactics decks, a discard pile, a played tactics row per side, a tactics tally'],
       ['Right-click the table or a flag, or the Troops deck › Deal Battle Line', 'A new game: every card back and shuffled, flags unclaimed, 7 troops face down to each side’s hand. One hand per player: a hand you already have (New hand) becomes your side’s (solo: an ownerless hand for side B; Give to ▸ hands it over)'],
       ['Drop a troop, Leader or Morale on a formation', 'Next free slot, face up. On a flag: your formation there'],
       ['Drop Fog or Mud on a flag or its formations', 'Onto the flag (sideways, up to 2), face up, counted for the side that played it. Fog: the flag shows “total only”. Mud: both formations there get a 4th slot (4 cards stay if the Mud leaves, outlined)'],
@@ -155,13 +191,13 @@ const GROUPS: [string, [string, string][]][] = [
       ['', 'Hints (a note, still allowed): a tactic while ahead, a second Leader, cards at a claimed flag. The drop label shows where a card will land'],
       ['Drag a flag toward a side', 'Claims it for that side (it snaps there); drag it back to the line to unclaim'],
       ['Right-click a flag › Claim for ▸', 'Claim for the bottom (A) or top (B) player, or unclaim'],
-      ['Reset', 'Flags back on the line, every card back in its deck, shuffled (hands stay, empty)'],
+      ['Reset table', 'Flags back on the line, every card back in its deck, shuffled (hands stay, empty)'],
     ],
   ],
   [
     'Game clock',
     [
-      ['Add… › Game clock', 'A two-sided clock for any game (starts at 5+0)'],
+      ['+ › Game clock', 'A two-sided clock for any game (starts at 5+0)'],
       ['Tap your side', 'Ends your turn: your time stops (+ increment), the other side’s runs'],
       ['Space with the pointer on the clock', 'Tap for the side that is running (or start / resume); elsewhere Space pans'],
       ['▶ / ❚❚', 'Start (left side first) / pause / resume'],
@@ -173,7 +209,7 @@ const GROUPS: [string, [string, string][]][] = [
   [
     'Event storm',
     [
-      ['Add… › Event storm board', 'A board with a phase switch, sticky palette, votes left, a timebox and a Markdown export'],
+      ['+ › Event storm board', 'A board with a phase switch, sticky palette, votes left, a timebox and a Markdown export'],
       ['E (pointer on the board)', 'New domain event where the pointer is; type, Enter to finish, Tab for the next event to its right, Esc to drop it'],
       ['Q / C / A / P / R / X / G', 'Hotspot / command / actor / policy / read model / external system / aggregate (offered by phase). With an event selected it attaches to that event'],
       ['Phase buttons', 'Chaotic exploration (events anywhere) → Enforce the timeline (events snap into one sequence) → Commands & policies → Aggregates'],
@@ -194,20 +230,21 @@ const GROUPS: [string, [string, string][]][] = [
   [
     'Playing together',
     [
-      ['Share', 'Copy this table into a new room and copy its link'],
+      ['Share (top right)', 'Copy this table into a new room and copy its link (in a room: copy the invite link)'],
       ['Open the link', 'Join the room (your name is asked once)'],
       ['', 'You see the others’ cursors and selections in their color'],
       ['', 'A card someone is dragging can’t be grabbed until they let go'],
       ['Undo', 'Only undoes your own moves (the log says “undid: …”)'],
       ['', 'Everyone sees what the others do as notes near the objects and in the log (⇧L)'],
-      ['Leave', 'Back to your own table; the room stays on this device'],
+      ['Menu ▸ Room ▸ Leave room', 'Back to your own table; the room stays on this device'],
+      ['Your name (top right), Menu ▸ Room', 'Change your name and color'],
     ],
   ],
   [
     'Files',
     [
       ['⌘S / ⇧⌘S', 'Save / save as .canvas (JSON Canvas, opens in Obsidian)'],
-      ['⌘O, drop a file', 'Open a .canvas file'],
+      ['⌘O, drop a file, Menu ▸ File', 'Open a .canvas file (File also has New board, Save, Save as)'],
       ['', 'The table also saves itself in this browser'],
     ],
   ],

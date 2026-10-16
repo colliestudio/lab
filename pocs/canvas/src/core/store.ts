@@ -85,10 +85,35 @@ function toY(node: CanvasNode): YNode {
   return m;
 }
 
+/** Plain copy of an edge, whichever way the doc holds it. */
+const edgeJson = (v: YNode | CanvasEdge): CanvasEdge => (v instanceof Y.Map ? (v.toJSON() as CanvasEdge) : v);
+
+/** Set (or delete, for undefined) one field of a node or edge map; "ns.field" reaches into a plugin namespace map. */
+function setField(m: YNode, key: string, value: unknown) {
+  const dot = key.indexOf('.');
+  if (dot < 0) {
+    if (value === undefined) m.delete(key);
+    else m.set(key, value);
+    return;
+  }
+  const ns = key.slice(0, dot);
+  const field = key.slice(dot + 1);
+  let sub = m.get(ns);
+  if (!(sub instanceof Y.Map)) {
+    if (value === undefined) return;
+    sub = new Y.Map<unknown>();
+    m.set(ns, sub);
+  }
+  const sm = sub as Y.Map<unknown>;
+  if (value === undefined) sm.delete(field);
+  else sm.set(field, value);
+}
+
 export class Store {
   readonly ydoc: Y.Doc;
   readonly nodes: Y.Map<YNode>;
-  readonly edges: Y.Map<CanvasEdge>;
+  /** Each edge is a Y.Map (per-field merges); older docs hold plain objects, read both ways. */
+  readonly edges: Y.Map<YNode | CanvasEdge>;
   readonly meta: Y.Map<unknown>;
   /** The event log, synced like the doc (newest last, capped at LOG_CAP). */
   readonly log: Y.Array<LogEvent>;
@@ -125,6 +150,7 @@ export class Store {
   onUndoRefused?: (reason: string) => void;
   /** Commands that upgrade older docs in place; run (not undoable) after every load. Must be idempotent. */
   readonly migrations: Command[] = [];
+  /** Selected node ids, and edge ids (an edge can be picked; commands that take node ids ignore it). */
   selection: ReadonlySet<string> = new Set();
   private commands = new Map<string, Command>();
   private listeners = new Set<() => void>();
@@ -186,7 +212,7 @@ export class Store {
         if (!n) this.json.set(id, (n = m.toJSON() as CanvasNode));
         nodes.push(n);
       }
-      this.view = makeView({ nodes, edges: [...this.edges.values()], extra: this.meta.toJSON() }, this.parentRules, this.layouts, this.riderRules);
+      this.view = makeView({ nodes, edges: [...this.edges.values()].map(edgeJson), extra: this.meta.toJSON() }, this.parentRules, this.layouts, this.riderRules);
     }
     return this.view;
   }
@@ -340,14 +366,24 @@ export class Store {
         return;
       case 'del':
         this.nodes.delete(c.id);
-        for (const [id, e] of this.edges) if (e.fromNode === c.id || e.toNode === c.id) this.edges.delete(id);
+        for (const [id, v] of this.edges) {
+          const e = edgeJson(v);
+          if (e.fromNode === c.id || e.toNode === c.id) this.edges.delete(id);
+        }
         return;
       case 'edge': {
         const e = c.edge;
         if (!this.nodes.has(e.fromNode) || !this.nodes.has(e.toNode)) return;
         const clean: Record<string, unknown> = {};
         for (const [k, v] of Object.entries(e)) if (v !== undefined) clean[k] = v;
-        this.edges.set(e.id, clean as unknown as CanvasEdge);
+        this.edges.set(e.id, toY(clean as unknown as CanvasNode));
+        return;
+      }
+      case 'edgeset': {
+        let m = this.edges.get(c.id);
+        if (!m) return;
+        if (!(m instanceof Y.Map)) this.edges.set(c.id, (m = toY(m as unknown as CanvasNode)));
+        setField(m as YNode, c.key, c.value);
         return;
       }
       case 'unedge':
@@ -357,23 +393,7 @@ export class Store {
         // A node deleted (maybe concurrently) stays deleted: never resurrect it through a set.
         const node = this.nodes.get(c.id);
         if (!node) return;
-        const dot = c.key.indexOf('.');
-        if (dot < 0) {
-          if (c.value === undefined) node.delete(c.key);
-          else node.set(c.key, c.value);
-          return;
-        }
-        const ns = c.key.slice(0, dot);
-        const field = c.key.slice(dot + 1);
-        let sub = node.get(ns);
-        if (!(sub instanceof Y.Map)) {
-          if (c.value === undefined) return;
-          sub = new Y.Map<unknown>();
-          node.set(ns, sub);
-        }
-        const m = sub as Y.Map<unknown>;
-        if (c.value === undefined) m.delete(field);
-        else m.set(field, c.value);
+        setField(node, c.key, c.value);
         return;
       }
     }
@@ -388,7 +408,7 @@ export class Store {
       this.edges.clear();
       this.meta.clear();
       d.nodes.forEach((n, i) => this.nodes.set(n.id, toY({ ...n, z: n.z ?? i + 1 })));
-      for (const e of d.edges) this.edges.set(e.id, e);
+      for (const e of d.edges) this.edges.set(e.id, toY(e as unknown as CanvasNode));
       for (const [k, v] of Object.entries(d.extra ?? {})) this.meta.set(k, v);
       if (this.log.length) this.log.delete(0, this.log.length); // a new table starts a new log
     }, LOAD);
@@ -532,14 +552,14 @@ export class Store {
 
   select(ids: Iterable<string>) {
     const v = this.doc;
-    this.selection = new Set([...ids].filter((id) => v.isVisible(id)));
+    this.selection = new Set([...ids].filter((id) => v.isVisible(id) || !!v.edge(id)));
     this.emit();
   }
 
   private pruneSelection() {
     if (!this.selection.size) return;
     const v = this.doc;
-    const next = [...this.selection].filter((id) => v.isVisible(id));
+    const next = [...this.selection].filter((id) => v.isVisible(id) || !!v.edge(id));
     if (next.length !== this.selection.size) this.selection = new Set(next);
   }
 

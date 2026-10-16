@@ -2,7 +2,7 @@ import './prototype.css';
 import type { CanvasNode, MenuEntry, Plugin } from '../../core';
 import { PAGE_ESCAPE, fromFrame, pageFrame, readMessage } from './bridge';
 import { NOTE_H, autoLinkChanges } from './commands';
-import { mountEdges, type EdgeLayer } from './edges';
+import { mountEdges, ownsEdge, type EdgeLayer } from './edges';
 import { editNote, editPage } from './editor';
 import { History } from './history';
 import { logic } from './logic';
@@ -27,6 +27,7 @@ export const prototypePlugin: Plugin = {
     useLogic(app.store, logic);
     const player = new Player(app);
     let edges: EdgeLayer | undefined;
+    app.registerEdgeRenderer(ownsEdge);
     queueMicrotask(() => (edges = mountEdges(app)));
     (app as any).prototype = { player }; // console / agents
 
@@ -112,7 +113,7 @@ export const prototypePlugin: Plugin = {
 
     const play = (id?: string) => {
       const start = id ?? startPage(app.doc, [...app.store.selection]);
-      if (!start) return app.notify('No pages to play: Add… › Prototype: example flow');
+      if (!start) return app.notify('No pages to play: + › Prototype: example flow');
       player.start(start);
     };
 
@@ -165,6 +166,11 @@ export const prototypePlugin: Plugin = {
     const selPage = () => app.selected().find(isPage);
     app.registerKey({ key: 'i', label: 'Interact with the page', when: () => !!selPage(), run: () => setLive(selPage()!.id, !live.has(selPage()!.id)) });
     app.registerKey({ key: 'shift+enter', label: 'Play the prototype', run: () => play() });
+    app.registerMainMenuItem({
+      id: 'prototype.play',
+      group: 'Game',
+      entry: (a) => ({ label: 'Play prototype', hint: '⇧↵', disabled: !pages(a.doc).length && 'No pages yet', run: () => play() }),
+    });
     // Enter is shared (event storm edits a sticky with it): keep the binding registered before this one
     const prevEnter = app.keys.get('enter');
     app.registerKey({
