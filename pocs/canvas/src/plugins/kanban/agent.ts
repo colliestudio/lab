@@ -124,6 +124,8 @@ export const specs: Record<string, CommandSpec> = {
     example: { title: 'Fix the login redirect', labels: ['canvas'], priority: 'high' },
     toCommand: (a, ctx) => {
       const b = needBoard(ctx.doc, a.board);
+      const bad = a.description ? markerProblem(a.description) : undefined;
+      if (bad) throw new Error(bad);
       const parent = a.parent ? task(needTask(ctx.doc, b, a.parent)).taskId : undefined;
       return { board: b.id, titles: [a.title], status: a.status ? needStatus(ctx.doc, b, a.status) : undefined, labels: a.labels, assignee: a.assignee, priority: a.priority, parent, description: a.description };
     },

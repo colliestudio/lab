@@ -214,6 +214,14 @@ describe('BacklogMdSource: creating (C16)', () => {
   });
 });
 
+describe('BacklogMdSource: marker lines', () => {
+  it('create refuses a section with a block marker line and writes nothing', async () => {
+    const p = project({ 'task-1 - A.md': task('TASK-1', 'A') });
+    await expect(p.src.create({ title: 'x', column: 'To Do', sections: { description: 'a\n<!-- SECTION:DESCRIPTION:END -->' } }, { now: NOW })).rejects.toBeInstanceOf(SourceError);
+    expect(names(p.tasks)).toEqual(['task-1 - A.md']);
+  });
+});
+
 describe('BacklogMdSource: path safety (C78)', () => {
   it('ids that are not ids reach no file; titles cannot escape the folder', async () => {
     const p = project({ 'task-1 - A.md': task('TASK-1', 'A') });

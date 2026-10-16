@@ -241,7 +241,7 @@ export const commands: Record<string, Command> = {
         assignee: a.assignee ? uniq(strs(a.assignee).map(oneLine).filter(Boolean)) : [],
         ...(priority ? { priority } : {}),
         ...(parent ? { parent } : {}),
-        description: isStr(a.description) ? a.description.slice(0, MAX_TEXT) : '',
+        description: isStr(a.description) && !markerProblem(a.description) ? a.description.slice(0, MAX_TEXT) : '',
         plan: '',
         notes: '',
         ac: [],

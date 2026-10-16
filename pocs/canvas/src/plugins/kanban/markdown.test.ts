@@ -326,5 +326,6 @@ describe('marker lines quoted in a section', () => {
     expect(markerProblem('see <!-- AC:BEGIN --> inline')).toBeUndefined();
     expect(() => patchTask(CLI_TASK, { sections: { notes: 'x\n<!-- AC:END -->' } }, NOW)).toThrow(/block markers/);
     expect(() => patchTask(CLI_TASK, { comment: { text: '<!-- COMMENTS:END -->' } }, NOW)).toThrow(/block markers/);
+    expect(() => newTaskFile('TASK-9', { title: 'x', status: 'To Do', description: 'a\n<!-- SECTION:DESCRIPTION:END -->' }, NOW)).toThrow(/block markers/);
   });
 });

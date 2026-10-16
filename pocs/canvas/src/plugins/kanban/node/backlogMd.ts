@@ -318,6 +318,8 @@ export class BacklogMdSource implements TrackerSource {
       const tasks = await this.scan();
       if (!this.config.statuses.includes(n.column)) throw new SourceError('invalid', `no status "${n.column}" (statuses: ${this.config.statuses.join(', ')})`);
       if (!n.title?.trim()) throw new SourceError('invalid', 'a title can not be empty');
+      const bad = Object.values(n.sections ?? {}).map((t) => (t ? markerProblem(t) : undefined)).find(Boolean);
+      if (bad) throw new SourceError('invalid', bad);
       if (n.priority && !['high', 'medium', 'low'].includes(n.priority)) throw new SourceError('invalid', `priority must be high, medium or low, not "${n.priority}"`);
       const parent = n.parent?.toUpperCase();
       if (parent && (!ID_RE.test(parent) || !tasks.has(parent))) throw new SourceError('invalid', `no parent task "${String(n.parent).slice(0, 40)}"`);

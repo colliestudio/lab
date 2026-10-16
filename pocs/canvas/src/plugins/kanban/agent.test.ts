@@ -64,6 +64,9 @@ describe('marker lines in agent text', () => {
     const ctx = { doc: s.doc } as never;
     expect(() => s.spec('kanban.edit')!.toCommand!({ task: 'TASK-3.45', notes: 'x\n<!-- AC:END -->' } as never, ctx)).toThrow(/block markers/);
     expect(() => s.spec('kanban.comment')!.toCommand!({ task: 'TASK-3.45', text: '<!-- COMMENTS:END -->' } as never, ctx)).toThrow(/block markers/);
+    expect(() => s.spec('kanban.create')!.toCommand!({ title: 'x', description: '<!-- AC:BEGIN -->' } as never, ctx)).toThrow(/block markers/);
+    const made = s.dispatch('kanban.create', { board: 'b1', titles: ['y'], description: '<!-- AC:BEGIN -->' });
+    expect(s.doc.get(made.select![0])!['x-kanban']).toMatchObject({ description: '' });
     s.dispatch('kanban.edit', { id: 'a', patch: { notes: '<!-- SECTION:NOTES:END -->', title: 'ok' } });
     expect(s.doc.get('a')!['x-kanban']).toMatchObject({ title: 'ok', notes: '' });
   });

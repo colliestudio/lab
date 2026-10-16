@@ -672,6 +672,8 @@ export interface NewTask {
 
 /** A fresh task file in the layout `backlog task create` writes. */
 export function newTaskFile(taskId: string, f: NewTask, now: Date): string {
+  const bad = [f.description, f.plan, f.notes].map((t) => (t ? markerProblem(t) : undefined)).find(Boolean);
+  if (bad) throw new Error(bad);
   const lines = [
     `id: ${taskId}`,
     ...yamlLines('title', f.title),
