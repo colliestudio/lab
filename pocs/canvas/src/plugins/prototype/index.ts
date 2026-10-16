@@ -2,7 +2,7 @@ import './prototype.css';
 import type { CanvasNode, MenuEntry, Plugin } from '../../core';
 import { PAGE_ESCAPE, fromFrame, pageFrame, readMessage } from './bridge';
 import { NOTE_H, autoLinkChanges } from './commands';
-import { mountEdges, type EdgeLayer } from './edges';
+import { mountEdges, ownsEdge, type EdgeLayer } from './edges';
 import { editNote, editPage } from './editor';
 import { History } from './history';
 import { logic } from './logic';
@@ -26,6 +26,7 @@ export const prototypePlugin: Plugin = {
     useLogic(app.store, logic);
     const player = new Player(app);
     let edges: EdgeLayer | undefined;
+    app.registerEdgeRenderer(ownsEdge);
     queueMicrotask(() => (edges = mountEdges(app)));
     (app as any).prototype = { player }; // console / agents
 

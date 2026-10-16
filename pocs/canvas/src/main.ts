@@ -13,6 +13,7 @@ import { boardPlugin } from './plugins/board';
 import { stormPlugin } from './plugins/eventstorm';
 import { prototypePlugin } from './plugins/prototype';
 import { diagramPlugin } from './plugins/diagram';
+import { excalidrawPlugin } from './plugins/excalidraw';
 import { registerPluginLogic } from './plugins/logic';
 import { mountHelp, removeHelpNote } from './help';
 import { attachFollow, createFramesPlugin, portalsEnabled, enterUrl, mountBreadcrumb, trailFromUrl } from './plugins/frames';
@@ -44,6 +45,7 @@ app.use(boardPlugin);
 app.use(stormPlugin);
 app.use(prototypePlugin);
 app.use(diagramPlugin);
+app.use(excalidrawPlugin);
 // frames' logic is last in PLUGIN_LOGIC (src/plugins/logic.ts): its rider rule must come after the others, so it is registered there
 const TRAIL = trailFromUrl();
 const frames = createFramesPlugin({ room: ROOM, portals: portalsEnabled(), enter: (room) => (location.href = enterUrl(room, ROOM, TRAIL)) });
