@@ -45,6 +45,8 @@ const changed = (r: { changes: unknown[] }) => r.changes.length;
 const vwOf = (d: 'phone' | 'tablet' | 'desktop') => DEVICES.find((x) => x.id === d)!;
 const deviceOf = (n: CanvasNode) => DEVICES.find((d) => d.vw === page(n).vw)?.id ?? `${page(n).vw}px`;
 const linkRows = (doc: DocView, id: string) => pageFlow(doc, id).links.map((l) => ({ target: l.target, ...(l.toTitle ? { to: l.toTitle } : {}), ...(l.arrow ? { arrow: l.arrow } : {}) }));
+/** The CLI prints only the id of a result that has one; links and warnings must show. */
+const asJson = (v: unknown) => JSON.stringify(v, null, 2);
 const arrowBetween = (doc: DocView, from: string, to: string) => doc.edges.find((e) => e.fromNode === from && e.toNode === to);
 
 /** The title a rename started from, per call (the adapter and the result share the ctx). */
@@ -74,6 +76,7 @@ export const specs: Record<string, CommandSpec> = {
       start: z.optional(z.boolean().check(z.meta({ description: 'make it the start page (default: true when no page is start yet)' }))),
     }),
     example: { title: 'Sign in', html: '<h1>Sign in</h1><input placeholder="Email"><button data-goto="Home">Sign in</button>' },
+    text: asJson,
     toCommand: ({ device: d, start, title: t, ...a }, ctx) => {
       bothOrNeither(a);
       const name = t.trim();
@@ -94,6 +97,7 @@ export const specs: Record<string, CommandSpec> = {
     description: "Change a page's title and/or HTML (give at least one; html replaces the whole page, read it first with the view page.html). Renaming breaks data-goto links in other pages that used the old title: the result lists them.",
     args: z.strictObject({ id: ref, title: z.optional(title), html: z.optional(html) }),
     example: { id: 'Sign in', html: '<h1>Sign in</h1><input placeholder="Email"><button data-goto="Home">Go</button>' },
+    text: asJson,
     toCommand: ({ id, title: t, html: h }, ctx) => {
       const n = needPage(ctx.doc, id);
       if (t === undefined && h === undefined) throw new Error('give a title, html, or both');
