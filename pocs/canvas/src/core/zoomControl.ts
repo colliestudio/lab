@@ -13,7 +13,6 @@ export function mountZoomControl(app: App, parent: HTMLElement = document.body) 
   };
   btn('minus', 'Zoom out', '⌘−', () => app.view.zoomCenter('out'));
   const pct = chromeButton('', 'Reset to 100%', '⌘0');
-  pct.replaceChildren();
   pct.classList.add('cv-zoom-pct');
   pct.addEventListener('click', () => app.view.zoomCenter(1));
   box.append(pct);

@@ -19,7 +19,7 @@ export function chromeButton(iconName: string, label: string, shortcut?: string)
   b.className = 'cv-btn';
   b.setAttribute('aria-label', label);
   b.dataset.tip = shortcut ? `${label}  ${shortcut}` : label;
-  b.append(icon(iconName));
+  if (iconName) b.append(icon(iconName));
   // after a pointer click the button gives focus back, so Space / Enter on the table don't press it again
   b.addEventListener('click', (e) => {
     if (e.detail > 0) b.blur();
