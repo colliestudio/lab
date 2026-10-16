@@ -13,6 +13,7 @@ import { chessPlugin } from '../src/plugins/chess';
 import { clockPlugin } from '../src/plugins/clock';
 import { stormPlugin } from '../src/plugins/eventstorm';
 import { diagramPlugin } from '../src/plugins/diagram';
+import { kanbanPlugin } from '../src/plugins/kanban';
 import { createFramesPlugin } from '../src/plugins/frames';
 import { PLUGIN_LOGIC, registerPluginLogic, useLogic } from '../src/plugins/logic';
 import { matsPlugin } from '../src/plugins/mats';
@@ -36,7 +37,7 @@ const nodeCatalog: { ids: string[]; described: string[] } = JSON.parse(
 function browserCommands() {
   const app = new App(document.createElement('div'));
   registerPluginLogic(app.store);
-  for (const p of [cardsPlugin, chessPlugin, clockPlugin, battleLinePlugin, matsPlugin, boardPlugin, stormPlugin, prototypePlugin, diagramPlugin, createFramesPlugin({ room: null, enter() {}, connect: null })]) app.use(p);
+  for (const p of [cardsPlugin, chessPlugin, clockPlugin, battleLinePlugin, matsPlugin, boardPlugin, stormPlugin, prototypePlugin, diagramPlugin, kanbanPlugin, createFramesPlugin({ room: null, enter() {}, connect: null })]) app.use(p);
   return app.store.commandNames();
 }
 
