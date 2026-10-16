@@ -931,3 +931,36 @@
   border: 2px solid #4c8dff;
   background: rgba(76, 141, 255, 0.08);
 }
+
+/* Agent view (?agentView=): the page a headless browser keeps to take screenshots. No controls, no cues. */
+.agent-view .cv-chrome,
+.agent-view .cv-toast,
+.agent-view .cv-zoom,
+.agent-view .cv-log,
+.agent-view .cv-cues,
+.agent-view .cv-menu,
+.agent-view .help-overlay {
+  display: none !important;
+}
+.agent-view .cv-world * {
+  animation: none !important;
+}
+.cv-shot-labels {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1000000;
+  overflow: hidden;
+}
+.cv-shot-label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: #111;
+  color: #fff;
+  font: 600 11px/14px ui-monospace, Menlo, monospace;
+  box-shadow: 0 0 0 1px #fff;
+  white-space: nowrap;
+}

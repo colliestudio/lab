@@ -1,5 +1,5 @@
 import './style.css';
-import { App, type Room, chromeButton, joinBridge, joinRoom, loadPlayer, mountChat, mountChrome, mountLog, mountZoomControl, savePlayer, openFile, parse, serialize, persistLocally, persistViewport, resetFileHandle, roomDbName, saveFile, type CanvasDoc } from './core';
+import { App, type Room, chromeButton, joinBridge, mountAgentView, joinRoom, loadPlayer, mountChat, mountChrome, mountLog, mountZoomControl, savePlayer, openFile, parse, serialize, persistLocally, persistViewport, resetFileHandle, roomDbName, saveFile, type CanvasDoc } from './core';
 import { copyText, createRoomFrom, mountRoomStatus, roomFromUrl, roomLink } from './share';
 import { openBridgeDialog } from './bridgeDialog';
 import { bridgeFromLocation, bridgeHref, rememberBridge } from './bridges';
@@ -26,6 +26,8 @@ const BRIDGE_ADDR = bridgeFromLocation(location);
 const BRIDGE = BRIDGE_ADDR?.url ?? null;
 // on a canvas service, /b/<name> is a board it hosts (a ?bridge= address still wins; ?room= is ignored there)
 const SERVED = BRIDGE ? null : servedBoardName(location.pathname);
+// ?agentView=<actor id>: the page a screenshot provider keeps open (core/agentView.ts); only on a hosted board
+const AGENT_VIEW = BRIDGE || SERVED !== null ? new URLSearchParams(location.search).get('agentView') : null;
 const ROOM = BRIDGE || SERVED !== null ? null : roomFromUrl();
 const DB_NAME = ROOM ? roomDbName(ROOM) : 'canvas-poc';
 // per room: a room entered through a portal must not open at the camera of the table you came from
@@ -220,7 +222,7 @@ function openBridge() {
   });
 }
 
-const view = persistViewport(app, VIEW_KEY);
+const view = AGENT_VIEW ? null : persistViewport(app, VIEW_KEY);
 if (BRIDGE) startBridge(BRIDGE);
 else if (SERVED !== null) void probeBoard(SERVED).then((p) => (p.kind === 'ok' ? startBridge(boardWsUrl(location, SERVED), { name: p.name }) : p.kind === 'none' ? ((hosted = null), startLocal()) : showBoardScreen(p, SERVED)));
 else startLocal();
@@ -285,9 +287,10 @@ function startLocal() {
 function startBridge(url: string, served?: { name: string }) {
   hosted = served ? 'served' : 'bridge';
   const stored = loadPlayer();
-  const room = joinBridge(app, url, { id: stored.id, name: stored.name, color: stored.color }, BRIDGE_ADDR?.token);
+  const room = joinBridge(app, url, { id: stored.id, name: stored.name, color: stored.color }, BRIDGE_ADDR?.token, { observer: !!AGENT_VIEW });
   (window as any).room = room;
   bridgeRoom = room;
+  if (AGENT_VIEW) return startAgentView(room, AGENT_VIEW);
   // the token came in the link's fragment: keep it with the address (for next time) and take it out of the URL
   if (location.hash) history.replaceState(null, '', location.pathname + location.search);
   // pasting a link with a token into a tab already on this bridge only changes the #fragment: connect again with it
@@ -324,6 +327,17 @@ function startBridge(url: string, served?: { name: string }) {
     app.store.undoManager.clear();
     app.view.fit();
     flash(served ? `Opened ${served.name}` : 'Connected: this table is the bridge’s .canvas file');
+  });
+}
+
+/** The screenshot page: the seat's view of the board, read-only, no status pill, chat, toasts or remembered bridge. */
+function startAgentView(room: Room & { synced: Promise<void> }, seat: string) {
+  app.viewer = seat;
+  document.body.classList.add('agent-view');
+  mountAgentView(app);
+  (window as any).canvasSynced = room.synced.then(() => {
+    app.store.undoManager.clear();
+    app.view.fit();
   });
 }
 
