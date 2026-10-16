@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { boardApi, type ApiRequest } from './api';
+import { boardApi, serviceApi, type ApiRequest } from './api';
+import { BoardDirectory } from './directory';
 import { Board } from './board';
 import { stableSerialize } from './canonical';
 import { MemoryStorage } from './memory';
@@ -53,5 +54,47 @@ describe('boardApi', () => {
     await open();
     const bad: ApiRequest = { ...req('POST', '/cmd'), body: async () => JSON.parse('{') };
     expect((await boardApi(board, bad)).status).toBe(500);
+  });
+});
+
+describe('directoryApi and serviceApi', () => {
+  const svc = (files: Record<string, string> = {}) => {
+    st = new MemoryStorage(files);
+    dir = new BoardDirectory(st, { sweepMs: 0, log: () => {} });
+    return (method: string, path: string, body: unknown = {}) => serviceApi(dir, req(method, path, body));
+  };
+  const stamped = (id: string) => stableSerialize({ nodes: [{ id, type: 'text', text: id, x: 0, y: 0, width: 100, height: 50 }], edges: [], extra: { 'x-canvas-format': 1 } });
+  let st: MemoryStorage;
+  let dir: BoardDirectory;
+  afterEach(() => dir.closeAll());
+
+  it('info, list, create, rename, delete and their status codes', async () => {
+    const call = svc({ a: stamped('x') });
+    expect(await call('GET', '/api/info')).toMatchObject({ status: 200, json: { service: 'canvas-serve', format: 1 } });
+    expect((await call('GET', '/api/boards'))!.json).toEqual([expect.objectContaining({ name: 'a', loaded: false })]);
+    expect(await call('POST', '/api/boards', { name: 'b' })).toMatchObject({ status: 201, json: { name: 'b' } });
+    expect((await call('POST', '/api/boards', { name: 'b' }))!.status).toBe(409);
+    expect((await call('POST', '/api/boards', { name: '../x' }))!.status).toBe(400);
+    expect(await call('POST', '/api/boards/b/rename', { to: 'c d' })).toMatchObject({ status: 200, json: { name: 'c d' } });
+    expect((await call('POST', '/api/boards/b/rename', { to: 'z' }))!.status).toBe(404);
+    expect(await call('POST', '/api/boards/c%20d/delete')).toMatchObject({ status: 200, json: { ok: true } });
+    expect(((await call('GET', '/api/boards'))!.json as { name: string }[]).map((e) => e.name)).toEqual(['a']);
+  });
+
+  it("a board's own routes load it on first use; an unknown board is a 404", async () => {
+    const call = svc({ a: stamped('x') });
+    expect(await call('GET', '/api/boards/a/status')).toMatchObject({ status: 200, json: { name: 'a', nodes: 1 } });
+    expect(dir.loaded('a')).toBeDefined();
+    expect((await call('GET', '/api/boards/nope/status'))!.status).toBe(404);
+    expect((await call('GET', '/api/boards/a'))!.status).toBe(404);
+    expect(await call('GET', '/doc')).toBeUndefined();
+  });
+
+  it('a board in a newer format is a 409 with the message, and untouched', async () => {
+    const text = stableSerialize({ nodes: [], edges: [], extra: { 'x-canvas-format': 7 } });
+    const call = svc({ new: text });
+    const r = await call('GET', '/api/boards/new/status');
+    expect(r).toMatchObject({ status: 409, json: { error: expect.stringContaining('format 7') } });
+    expect(st.files.get('new')).toBe(text);
   });
 });

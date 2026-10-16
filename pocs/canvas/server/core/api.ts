@@ -1,6 +1,9 @@
 import { queryNodes } from '../../src/core/query';
+import { FORMAT_VERSION, FormatError } from '../../src/core/format';
 import { makeActor, type Actor } from './host';
+import { DirError } from './errors';
 import type { Board } from './board';
+import type { BoardDirectory } from './directory';
 
 // The HTTP API of a board, as plain functions from a request to a reply: agents and tools
 // (bridge/cli.ts, bridge/mcp.ts) call it, and a transport (server/node/http.ts) carries it.
@@ -129,4 +132,63 @@ export async function boardApi(board: Board, req: ApiRequest): Promise<ApiReply>
   } catch (e) {
     return fail(500, (e as Error).message);
   }
+}
+
+// ------------------------------------------------------------ the service: many boards
+
+const OPS = new Set(['rename', 'delete']);
+
+/**
+ * The directory's own routes: /api/info, /api/boards (list, create), /api/boards/<name>/rename and
+ * /delete. undefined = not ours (a board's own route is `serviceApi`'s job).
+ */
+export async function directoryApi(dir: BoardDirectory, req: ApiRequest): Promise<ApiReply | undefined> {
+  const { method, path } = req;
+  try {
+    if (method === 'GET' && path === '/api/info') return ok({ service: 'canvas-serve', format: FORMAT_VERSION, mutable: dir.mutable });
+    if (path === '/api/boards') {
+      if (method === 'GET') return ok(await dir.list());
+      if (method === 'POST') return ok({ name: await dir.create(String((await req.body()).name ?? '')) }, 201);
+      return undefined;
+    }
+    const m = /^\/api\/boards\/([^/]+)\/(rename|delete)$/.exec(path);
+    if (m && method === 'POST' && OPS.has(m[2])) {
+      const name = decodeName(m[1]);
+      if (m[2] === 'rename') return ok({ name: await dir.rename(name, String((await req.body()).to ?? '')) });
+      await dir.remove(name);
+      return ok({ ok: true });
+    }
+    return undefined;
+  } catch (e) {
+    return errorReply(e);
+  }
+}
+
+/** Everything under /api: the directory's routes, else a board's own (/api/boards/<name>/<route>, loaded on first use). undefined = not under /api. */
+export async function serviceApi(dir: BoardDirectory, req: ApiRequest): Promise<ApiReply | undefined> {
+  if (!req.path.startsWith('/api/')) return undefined;
+  const own = await directoryApi(dir, req);
+  if (own) return own;
+  const m = /^\/api\/boards\/([^/]+)(\/.*)$/.exec(req.path);
+  if (!m) return fail(404, 'GET /api/info /api/boards; POST /api/boards {name} /api/boards/<name>/rename {to} /api/boards/<name>/delete; a board: /api/boards/<name>/doc /status /agent/run …');
+  try {
+    return await dir.use(decodeName(m[1]), (b) => boardApi(b, { ...req, path: m[2] }));
+  } catch (e) {
+    return errorReply(e);
+  }
+}
+
+function decodeName(seg: string): string {
+  try {
+    return decodeURIComponent(seg);
+  } catch {
+    throw new DirError(400, 'the board name in the path is not valid URL encoding');
+  }
+}
+
+/** DirError carries its HTTP status; a board in a newer format is a conflict; anything else is a 500. */
+export function errorReply(e: unknown): ApiReply {
+  if (e instanceof DirError) return fail(e.status, e.message);
+  if (e instanceof FormatError) return fail(409, e.message);
+  return fail(500, (e as Error).message);
 }
