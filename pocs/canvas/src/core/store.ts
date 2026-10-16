@@ -424,8 +424,15 @@ export class Store {
     }
   }
 
-  /** Replace the whole document (file open, new table). Not undoable; clears undo history. */
+  /**
+   * Set when the document is a file someone else keeps (served board, bridge): `load` refuses with this
+   * message, since a replace would be written over the file and undo is per client.
+   */
+  refuseLoad?: string;
+
+  /** Replace the whole document (file open, new table). Not undoable; clears undo history. Throws when `refuseLoad` is set. */
   load(doc: CanvasDoc) {
+    if (this.refuseLoad) throw new Error(this.refuseLoad);
     let d = doc;
     for (const f of this.importFilters) d = f(d, this.ctx);
     this.ydoc.transact(() => {

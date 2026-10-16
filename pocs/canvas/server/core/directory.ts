@@ -1,4 +1,5 @@
-import { FORMAT_KEY, FORMAT_VERSION, FormatError } from '../../src/core/format';
+import { FORMAT_KEY, FORMAT_VERSION, FormatError, checkFormat } from '../../src/core/format';
+import { parse } from '../../src/core/io';
 import { Board } from './board';
 import { stableSerialize } from './canonical';
 import { BoardFileError, DirError } from './errors';
@@ -165,16 +166,27 @@ export class BoardDirectory {
 
   // ------------------------------------------------------------ changing the set of boards
 
-  /** A new empty board. DirError 400 (bad name), 405 (storage has one fixed board), 409 (exists, in any letter case). */
-  async create(name: string): Promise<string> {
+  /**
+   * A new board: empty, or holding `text` (a canvas file, written as given; older formats migrate on load).
+   * DirError 400 (bad name), 405 (storage has one fixed board), 409 (exists, in any letter case);
+   * FormatError (newer format) and BoardFileError (not a canvas file) for a bad `text`: nothing is written.
+   */
+  async create(name: string, text?: string): Promise<string> {
     name = name.trim();
     const bad = validName(name);
     if (bad) throw new DirError(400, bad);
     this.mustBeMutable();
+    if (text !== undefined) {
+      try {
+        checkFormat(parse(text));
+      } catch (e) {
+        throw e instanceof FormatError ? e : new BoardFileError(name, e as Error, false);
+      }
+    }
     return this.locked([fold(name)], async () => {
       await this.mustNotExist(name);
-      const empty = stableSerialize({ nodes: [], edges: [], extra: { [FORMAT_KEY]: FORMAT_VERSION } });
-      if (!(await this.storage.create(name, empty))) throw new DirError(409, `a board named "${name}" already exists`);
+      const content = text ?? stableSerialize({ nodes: [], edges: [], extra: { [FORMAT_KEY]: FORMAT_VERSION } });
+      if (!(await this.storage.create(name, content))) throw new DirError(409, `a board named "${name}" already exists`);
       return name;
     });
   }

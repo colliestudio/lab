@@ -251,6 +251,21 @@ describe('create', () => {
     expect((await dir.list()).map((e) => e.name)).toContain('new one');
   });
 
+  it('with text writes it byte-identical; a newer, invalid or clashing one writes nothing', async () => {
+    make();
+    const t = text([n('z')]);
+    expect(await dir.create('imp', t)).toBe('imp');
+    expect(st.files.get('imp')).toBe(t);
+    const newerText = text([n('z')], { [FORMAT_KEY]: 99 });
+    await expect(dir.create('nw', newerText)).rejects.toBeInstanceOf(FormatError);
+    await expect(dir.create('bad', '{not json')).rejects.toBeInstanceOf(BoardFileError);
+    expect(st.files.has('nw')).toBe(false);
+    expect(st.files.has('bad')).toBe(false);
+    const before = st.files.get('a');
+    expect(await status(dir.create('a', t))).toBe(409);
+    expect(st.files.get('a')).toBe(before);
+  });
+
   it('refuses a duplicate, in any letter case (409)', async () => {
     make();
     expect(await status(dir.create('a'))).toBe(409);

@@ -229,3 +229,14 @@ describe('icons and hooks', () => {
     expect(seen).toHaveBeenCalledWith(app);
   });
 });
+
+describe('zoom control', () => {
+  it('mounts without an icon warning', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { app } = setup();
+    const { mountZoomControl } = await import('./zoomControl');
+    mountZoomControl(app);
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+});

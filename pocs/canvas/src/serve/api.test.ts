@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createBoard, deleteBoard, listBoards, renameBoard, ServeError } from './api';
+import { createBoard, deleteBoard, importBoard, listBoards, renameBoard, ServeError } from './api';
 
 function fake(reply: () => Response) {
   const calls: { url: string; init?: RequestInit }[] = [];
@@ -51,5 +51,15 @@ describe('serve api', () => {
   it('an OK answer that is not JSON (not a service) is an error', async () => {
     const { f } = fake(() => new Response('<!doctype html>', { status: 200 }));
     await expect(listBoards(f)).rejects.toThrow(/not a canvas service|not JSON/);
+  });
+});
+
+describe('serve api import', () => {
+  it('posts name and text; a conflict carries its kind', async () => {
+    const { f, calls } = fake(json({ name: 'x' }));
+    await importBoard('x', '{"nodes":[]}', f);
+    expect(calls[0].init!.body).toBe('{"name":"x","text":"{\\"nodes\\":[]}"}');
+    const bad = fake(json({ error: 'newer', kind: 'newer' }, 409));
+    await expect(importBoard('x', 't', bad.f)).rejects.toMatchObject({ status: 409, kind: 'newer' });
   });
 });
