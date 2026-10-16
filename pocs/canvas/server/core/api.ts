@@ -186,7 +186,7 @@ function decodeName(seg: string): string {
   }
 }
 
-/** DirError carries its HTTP status; a board in a newer or invalid format is a conflict, an unreadable file a 422 (both with a `kind`); anything else is a 500. */
+/** DirError carries its HTTP status; a board in a newer or invalid format is a conflict, an unreadable file a 422 (each with a `kind`); anything else is a 500. */
 export function errorReply(e: unknown): ApiReply {
   if (e instanceof DirError) return fail(e.status, e.message);
   if (e instanceof FormatError) return { status: 409, json: { error: e.message, kind: e.newer ? 'newer' : 'invalid' } };

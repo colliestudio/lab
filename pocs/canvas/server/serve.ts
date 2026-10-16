@@ -61,7 +61,7 @@ try {
 }
 const boards = await directory.list();
 log(`canvas serve: ${storage.dir} on http://${host}:${port} (${boards.length} board${boards.length === 1 ? '' : 's'}; open http://${host}:${port}/; app origins allowed: ${guard.origins.join(', ')})`);
-log(`from another host name (http://mini.internal:${port}): start with --allow-origin http://<that name>:${port}`);
+if (!args.allowOrigins.length && !process.env.CANVAS_ALLOW_ORIGIN) log(`from another host name (http://mini.internal:${port}): start with --allow-origin http://<that name>:${port}`);
 
 let stopping = false;
 async function stop() {
