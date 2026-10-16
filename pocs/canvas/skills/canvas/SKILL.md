@@ -46,7 +46,7 @@ Each line is a new chat message from someone else, already read (don't `chat_rea
 
 ## Working on the board
 
-- Your cursor and selection stay on the last node you changed. If the board has a node titled `Agent lounge`, end each burst of edits by nudging it 1px (`core.move {ids: ["Agent lounge"], dx: 1}`, then `dx: -1` the next time) so your cursor waits there, off the content. Only a real change moves the cursor. Don't put content near the lounge.
+- Your cursor and selection stay on the last node you changed. If the board has a node titled `Agent lounge`, end each burst of edits by nudging it 1px by id (find the id once with `canvas_look {text: "Agent lounge"}`; the title alone can match notes that mention the lounge): `core.move {ids: [<id>], dx: 1}`, then `dx: -1` the next time, so your cursor waits there, off the content. Only a real change moves the cursor. Don't put content near the lounge.
 - Moving a frame moves every node whose center is inside it, other people's too. Before moving a frame, check what's in it (`canvas_look {view: "frames.outline"}`); to move only your own nodes, move them by id.
 
 ## /canvas leave [board]
