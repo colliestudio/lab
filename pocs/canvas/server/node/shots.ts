@@ -135,16 +135,21 @@ export class HeadlessShots implements ShotProvider {
       this.o.log(`screenshots: view ${key} ready`);
       const v: View = { key, board, context, page, size, lastUsed: Date.now(), chain: Promise.resolve() };
       this.ready.set(key, v);
+      // views still opening are not in `ready`, so parallel opens all passed the first check: trim again now
+      await this.evictOver(v);
       return v;
     } catch (e) {
       await context.close().catch(() => {});
+      // the page says when the board it was opened for is gone
+      const gone = /(board (?:not found|not available): .*)/.exec(String((e as Error).message));
+      if (gone) throw new ShotError(400, gone[1].split('\n')[0]);
       throw e;
     }
   }
 
-  private async evictOver() {
+  private async evictOver(keep?: View) {
     while (this.views.size > this.maxViews) {
-      const oldest = [...this.ready.values()].sort((a, b) => a.lastUsed - b.lastUsed)[0];
+      const oldest = [...this.ready.values()].filter((v) => v !== keep).sort((a, b) => a.lastUsed - b.lastUsed)[0];
       if (!oldest) return;
       await this.close1(oldest, 'too many views');
     }
@@ -162,6 +167,7 @@ export class HeadlessShots implements ShotProvider {
   async shoot(board: string, actor: Actor, r: ShotRequest): Promise<Shot> {
     const start = Date.now();
     const v = await this.view(board, actor, { width: r.width, height: r.height });
+    v.lastUsed = Date.now(); // before anything can interleave: an idle sweep must not close a view that has a shot queued
     const run = v.chain.then(() => this.take(v, r), () => this.take(v, r));
     v.chain = run.catch(() => {});
     const shot = await run;

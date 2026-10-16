@@ -171,4 +171,30 @@ describe('HeadlessShots', () => {
     expect(f.pages.map((p) => p.closed)).toEqual([true, false, false]);
     await s.close();
   });
+
+  it('the cap holds when many seats open at once', async () => {
+    const f = fake();
+    const s = make(f, { maxViews: 3 });
+    const seats = Array.from({ length: 10 }, (_, i) => makeActor(`Seat ${i}`));
+    await Promise.allSettled(seats.map((a) => s.shoot('demo', a, req())));
+    expect(f.pages.filter((p) => !p.closed).length).toBeLessThanOrEqual(3);
+    await s.close();
+  });
+
+  it('a board that is gone says so as a 400', async () => {
+    const f = fake();
+    const s = make(f, { launch: async () => {
+      const b = await f.launch();
+      const nc = b.newContext;
+      b.newContext = async (o) => {
+        const c = await nc(o);
+        const np = c.newPage;
+        c.newPage = async () => ({ ...(await np()), evaluate: async () => { throw new Error('page.evaluate: Error: board not found: no board "x"\n  at'); } });
+        return c;
+      };
+      return b;
+    } });
+    await expect(s.shoot('x', claude, req())).rejects.toMatchObject({ status: 400, message: 'board not found: no board "x"' });
+    await s.close();
+  });
 });
