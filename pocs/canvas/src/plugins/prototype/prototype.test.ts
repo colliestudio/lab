@@ -6,6 +6,7 @@ import { fromFrame, pageDocument } from '../../sandbox/page';
 import { registerPrototypeLogic } from './logic';
 import { FIELD, flowOrder, isNote, isPage, note, page, pages, resolveLink, startPage, titleOf } from './model';
 import { History } from './history';
+import { Interact, frameProps } from './interact';
 
 function ctx(): CommandCtx {
   let n = 0;
@@ -156,7 +157,7 @@ describe('prototype pages', () => {
 });
 
 describe('sandbox bridge', () => {
-  it('the page document is the bridge, then the page (no CSP meta: the frame host sends the header)', () => {
+  it('the origin-mode page document is the bridge, then the page (no CSP meta: the frame host sends the header)', () => {
     const d = pageDocument('<h1>Hi</h1>', { name: '</script><script>alert(1)</script>' });
     expect(d).not.toContain('Content-Security-Policy');
     expect(d.indexOf('<script>')).toBeLessThan(d.indexOf('<h1>Hi</h1>'));
@@ -209,5 +210,52 @@ describe('play history', () => {
     h.go('c');
     h.go('b');
     expect(h.path).toEqual(['a', 'b']);
+  });
+});
+
+describe('interact mode', () => {
+  // a box with an iframe in it; frames are numbered so a rebuild is visible
+  const setup = () => {
+    const state: Record<string, string> = { name: 'Ada' };
+    let n = 0;
+    const slot: { el: any } = { el: { tag: 'iframe', n: 0, props: frameProps(false, state), replaceWith(x: any) { slot.el = x; } } };
+    const classes: Record<string, boolean> = {};
+    const box = { classList: { toggle: (c: string, on: boolean) => void (classes[c] = on) }, querySelector: (sel: string) => (sel.startsWith('iframe') ? slot.el : null) };
+    const interact: Interact<any> = new Interact(() => box as any, (id): any => ({ tag: 'iframe', n: ++n, id, props: frameProps(interact.live.has(id), state), replaceWith(x: any) { slot.el = x; } }));
+    return { interact, slot, classes };
+  };
+  it('frames get state only while interacting', () => {
+    expect(frameProps(false, { a: '1' })).toEqual({});
+    expect(frameProps(true, { a: '1' })).toEqual({ live: true, state: { a: '1' } });
+  });
+  it('entering and leaving rebuild the frame, with and without state', () => {
+    const { interact, slot, classes } = setup();
+    interact.set('p', true);
+    expect(slot.el.n).toBe(1);
+    expect(slot.el.props).toEqual({ live: true, state: { name: 'Ada' } });
+    expect(classes['pg-live']).toBe(true);
+    interact.set('p', true); // no change, no rebuild
+    expect(slot.el.n).toBe(1);
+    interact.set('p', false);
+    expect(slot.el.n).toBe(2);
+    expect(slot.el.props).toEqual({});
+    expect(classes['pg-live']).toBe(false);
+  });
+  it('only an interacting page may act (set messages from idle frames are dropped)', () => {
+    const { interact } = setup();
+    expect(interact.accepts('p')).toBe(false);
+    expect(interact.accepts(undefined)).toBe(false);
+    interact.set('p', true);
+    expect(interact.accepts('p')).toBe(true);
+    interact.set('p', false);
+    expect(interact.accepts('p')).toBe(false);
+  });
+  it('reload replaces a placeholder left by a removed frame', () => {
+    const slot: { el: any } = { el: null };
+    slot.el = { tag: 'gone', replaceWith(x: any) { slot.el = x; } };
+    const box = { classList: { toggle() {} }, querySelector: (sel: string) => (sel.includes('.pg-gone') ? slot.el : null) };
+    const it2 = new Interact(() => box as any, () => ({ tag: 'iframe', replaceWith() {} }));
+    it2.reload('p');
+    expect(slot.el.tag).toBe('iframe');
   });
 });

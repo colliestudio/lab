@@ -1,10 +1,10 @@
-// The messages a page frame may send to the canvas. The frame itself (separate sandbox origin, CSP
-// headers, navigation guard, the bridge script inside it) lives in src/sandbox/page.ts; this
+// The messages a page frame may send to the canvas. The frame itself (srcdoc, or a separate sandbox
+// origin in strict mode; CSP, the bridge script inside it) lives in src/sandbox/; this
 // module validates what comes back. Anything that isn't one of these three messages is dropped.
 
 import { TAG } from '../../sandbox/page';
 
-export { pageFrame, fromFrame, PAGE_ESCAPE } from '../../sandbox/page';
+export { pageFrame, fromFrame, PAGE_ESCAPE, PAGE_GONE } from '../../sandbox/page';
 export { TAG };
 
 export type PageMessage =
