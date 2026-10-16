@@ -48,12 +48,17 @@ export function mountHome(root: HTMLElement, f: typeof fetch = fetch) {
     el.textContent = msg;
   };
 
+  let latest = 0; // replies come back in any order: only the newest request counts
   async function refresh() {
+    const seq = ++latest;
     try {
-      entries = await listBoards(f);
+      const got = await listBoards(f);
+      if (seq !== latest) return;
+      entries = got;
       loaded = true;
       banner.hidden = true;
     } catch (e) {
+      if (seq !== latest) return;
       banner.hidden = false;
       say(banner, `Can’t reach the canvas service: ${(e as Error).message}`);
       return;
@@ -125,7 +130,7 @@ export function mountHome(root: HTMLElement, f: typeof fetch = fetch) {
     const stop = () => {
       if (done) return;
       done = true;
-      editing = null;
+      if (editing === name) editing = null; // not another row's open rename
       if (field.isConnected) field.replaceWith(link);
     };
     let busy = false;
@@ -141,11 +146,12 @@ export function mountHome(root: HTMLElement, f: typeof fetch = fetch) {
         if (to === name) return stop();
         busy = true;
         try {
-          await renameBoard(name, to, f);
+          const renamed = await renameBoard(name, to, f);
           rowErrors.delete(name);
           done = true;
-          editing = null;
-          highlight = to;
+          if (editing === name) editing = null;
+          if (field.isConnected) field.replaceWith(link); // the list may hold off re-rendering for another row's field
+          highlight = renamed.name;
           await refresh();
         } catch (x) {
           rowMsg(name, err, (x as Error).message); // the row stays as it was, the field stays for another try

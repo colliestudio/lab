@@ -139,4 +139,44 @@ describe('board list page', () => {
     await home.refresh();
     expect([...root.querySelectorAll('td.name a')].map((a) => a.textContent)).toContain('added');
   });
+
+  it('a rename that succeeds while another row is being edited leaves that field alone', async () => {
+    const renameReply: { done?: () => void } = {};
+    const slow = (async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/rename')) {
+        await new Promise<void>((r) => (renameReply.done = r));
+        entries[0].name = 'renamed';
+        return new Response('{"name":"renamed"}', { headers: { 'content-type': 'application/json' } });
+      }
+      return fake(url, init);
+    }) as unknown as typeof fetch;
+    home.stop();
+    root = document.getElementById('home')!;
+    home = mountHome(root, slow);
+    await flush();
+    root.querySelector<HTMLButtonElement>('tr[data-name="alpha"] .home-btn')!.click();
+    const first = root.querySelector<HTMLInputElement>('.home-rename')!;
+    first.value = 'renamed';
+    first.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', cancelable: true }));
+    root.querySelector<HTMLButtonElement>('tr[data-name="my board"] .home-btn')!.click(); // while the first is in flight
+    renameReply.done!();
+    await flush();
+    expect(root.querySelectorAll('.home-rename')).toHaveLength(1);
+    expect(root.querySelector<HTMLInputElement>('.home-rename')!.getAttribute('aria-label')).toContain('my board');
+  });
+
+  it('an older list reply that arrives late is dropped', async () => {
+    const waits: ((v: Response) => void)[] = [];
+    const lagging = (async () => new Promise<Response>((r) => waits.push(r))) as unknown as typeof fetch;
+    home.stop();
+    root = document.getElementById('home')!;
+    home = mountHome(root, lagging); // request 1 pending
+    const second = home.refresh(); // request 2
+    const body = (list: Entry[]) => new Response(JSON.stringify(list), { headers: { 'content-type': 'application/json' } });
+    waits[1](body([{ name: 'new', loaded: false, browsers: 0 }]));
+    await second;
+    waits[0](body([{ name: 'old', loaded: false, browsers: 0 }]));
+    await flush();
+    expect([...root.querySelectorAll('td.name a')].map((a) => a.textContent)).toEqual(['new']);
+  });
 });
