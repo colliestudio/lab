@@ -117,4 +117,26 @@ describe('board list page', () => {
     await home.refresh();
     expect(root.querySelector<HTMLElement>('.home-banner')!.hidden).toBe(true);
   });
+
+  it('a row error survives the next refresh', async () => {
+    refuse['/api/boards/my%20board/delete'] = { status: 409, error: 'my board is open (2 browsers); close it first' };
+    vi.stubGlobal('confirm', () => true);
+    [...root.querySelectorAll<HTMLButtonElement>('tr[data-name="my board"] .home-btn')].find((b) => b.textContent === 'Delete')!.click();
+    await flush();
+    delete refuse['/api/boards/my%20board/delete'];
+    await home.refresh();
+    expect([...root.querySelectorAll('tr[data-name="my board"] .home-error')].map((e) => e.textContent).join(' ')).toContain('is open (2 browsers)');
+  });
+
+  it('leaving a rename field cancels it, and the list then takes New and Delete', async () => {
+    root.querySelector<HTMLButtonElement>('tr[data-name="alpha"] .home-btn')!.click();
+    expect(root.querySelectorAll('.home-rename')).toHaveLength(1);
+    root.querySelector<HTMLButtonElement>('tr[data-name="my board"] .home-btn')!.click(); // a second Rename: the first closes
+    expect(root.querySelectorAll('.home-rename')).toHaveLength(1);
+    root.querySelector<HTMLInputElement>('.home-rename')!.blur();
+    expect(root.querySelectorAll('.home-rename')).toHaveLength(0);
+    entries.push({ name: 'added', loaded: false, browsers: 0 });
+    await home.refresh();
+    expect([...root.querySelectorAll('td.name a')].map((a) => a.textContent)).toContain('added');
+  });
 });

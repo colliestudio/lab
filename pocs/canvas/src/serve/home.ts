@@ -20,7 +20,7 @@ export function mountHome(root: HTMLElement, f: typeof fetch = fetch) {
   let loaded = false;
   let editing: string | null = null; // the row being renamed: the list leaves it alone
   let highlight: string | null = null;
-  let stale = false; // a refresh arrived while editing
+  const rowErrors = new Map<string, string>(); // kept across re-renders until the next action on that row
 
   root.innerHTML = '';
   root.className = 'home';
@@ -58,17 +58,13 @@ export function mountHome(root: HTMLElement, f: typeof fetch = fetch) {
       say(banner, `Can’t reach the canvas service: ${(e as Error).message}`);
       return;
     }
-    if (editing !== null) {
-      stale = true;
-      return;
-    }
-    render();
+    if (editing === null) render();
   }
 
   function render() {
-    stale = false;
     tbody.textContent = '';
     const rows = toRows(entries);
+    for (const n of [...rowErrors.keys()]) if (!rows.some((r) => r.name === n)) rowErrors.delete(n);
     empty.hidden = !loaded || rows.length > 0;
     for (const r of rows) {
       const tr = h('tr', r.name === highlight ? 'fresh' : '');
@@ -88,7 +84,7 @@ export function mountHome(root: HTMLElement, f: typeof fetch = fetch) {
       const del = h('button', 'home-btn quiet', 'Delete');
       del.type = 'button';
       actions.append(ren, del);
-      const rowError = h('div', 'home-error');
+      const rowError = h('div', 'home-error', rowErrors.get(r.name) ?? '');
       nameCell.append(rowError);
       ren.addEventListener('click', () => startRename(nameCell, r.name, rowError));
       del.addEventListener('click', () => void remove(r.name, rowError));
@@ -106,26 +102,39 @@ export function mountHome(root: HTMLElement, f: typeof fetch = fetch) {
     }
   }
 
+  function rowMsg(name: string, el: HTMLElement, msg: string) {
+    if (msg) rowErrors.set(name, msg);
+    else rowErrors.delete(name);
+    say(el, msg);
+  }
+
   function startRename(cell: HTMLElement, name: string, err: HTMLElement) {
-    editing = name;
+    rowMsg(name, err, '');
     const field = h('input', 'home-rename');
     field.value = name;
     field.setAttribute('aria-label', `New name for ${name}`);
     field.spellcheck = false;
     const link = cell.querySelector('a')!;
     link.replaceWith(field);
+    editing = name;
     field.focus();
     field.select();
+    let done = false;
+    // leaving the field any way (Esc, a click elsewhere, another action) cancels; a blur must not
+    // rebuild the rows, or the click that caused it lands on a button that is gone
     const stop = () => {
+      if (done) return;
+      done = true;
       editing = null;
-      if (stale) render();
-      else field.replaceWith(link);
+      if (field.isConnected) field.replaceWith(link);
     };
     let busy = false;
+    field.addEventListener('blur', () => !busy && stop());
     field.addEventListener('keydown', async (e) => {
       if (e.key === 'Escape') {
         e.preventDefault();
         stop();
+        void refresh();
       } else if (e.key === 'Enter' && !busy) {
         e.preventDefault();
         const to = field.value.trim();
@@ -133,11 +142,13 @@ export function mountHome(root: HTMLElement, f: typeof fetch = fetch) {
         busy = true;
         try {
           await renameBoard(name, to, f);
+          rowErrors.delete(name);
+          done = true;
           editing = null;
           highlight = to;
           await refresh();
         } catch (x) {
-          say(err, (x as Error).message); // the row stays as it was, the field stays for another try
+          rowMsg(name, err, (x as Error).message); // the row stays as it was, the field stays for another try
         } finally {
           busy = false;
         }
@@ -146,13 +157,13 @@ export function mountHome(root: HTMLElement, f: typeof fetch = fetch) {
   }
 
   async function remove(name: string, err: HTMLElement) {
+    rowMsg(name, err, '');
     if (!confirm(`Move “${name}” to the trash? It goes to .canvas-bridge/trash in the boards folder.`)) return;
     try {
       await deleteBoard(name, f);
-      say(err, '');
       await refresh();
     } catch (x) {
-      say(err, (x as Error).message);
+      rowMsg(name, err, (x as Error).message);
     }
   }
 
