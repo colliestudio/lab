@@ -193,7 +193,7 @@ export class View {
       const o = off(id);
       return { x: n.x + (o?.dx ?? 0), y: n.y + (o?.dy ?? 0), w: n.width, h: n.height };
     };
-    const shown = doc.edges.filter((e) => alive.has(e.fromNode) && alive.has(e.toNode));
+    const shown = doc.edges.filter((e) => alive.has(e.fromNode) && alive.has(e.toNode) && !this.app.edgeOwned(e));
     this.edgeLayer.render(
       shown.map((e) => ({ e, a: boxOf(e.fromNode), b: boxOf(e.toNode) })),
       this.app.store.selection,
