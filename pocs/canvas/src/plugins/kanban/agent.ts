@@ -1,7 +1,7 @@
 import * as z from 'zod/mini';
 import { command, nodeRef, view, type CommandSpec, type ViewSpec } from '../../core/agent';
 import type { CanvasNode, DocView } from '../../core';
-import { commentProblem } from './markdown';
+import { commentProblem, markerProblem } from './markdown';
 import { SOURCE_NAME, type EditPatch } from './commands';
 import { DONE_DAYS, board, clock, columnsOf, isBoard, isTask, outboxOf, shownIn, task, tasksOf, type TaskField } from './model';
 
@@ -160,6 +160,8 @@ export const specs: Record<string, CommandSpec> = {
     toCommand: ({ task: ref, board: bref, ac, priority: pr, ...fields }, ctx) => {
       const b = needBoard(ctx.doc, bref);
       const t = needTask(ctx.doc, b, ref);
+      const bad = [fields.description, fields.plan, fields.notes].map((t) => (t === undefined ? undefined : markerProblem(t))).find(Boolean);
+      if (bad) throw new Error(bad);
       const patch: EditPatch = { ...fields };
       if (pr !== undefined) patch.priority = pr === 'none' ? null : pr;
       if (ac) patch.ac = applyAc(task(t), ac);
@@ -174,7 +176,7 @@ export const specs: Record<string, CommandSpec> = {
     args: z.strictObject({ task: taskRef(), text: z.string().check(z.minLength(1)), board: boardRef }),
     example: { task: 'TASK-12', text: 'Plan agreed, starting.' },
     toCommand: (a, ctx) => {
-      const bad = commentProblem(a.text);
+      const bad = commentProblem(a.text) ?? markerProblem(a.text);
       if (bad) throw new Error(bad);
       return { id: needTask(ctx.doc, needBoard(ctx.doc, a.board), a.task).id, text: a.text };
     },

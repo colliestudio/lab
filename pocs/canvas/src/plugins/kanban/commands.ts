@@ -2,7 +2,7 @@ import type { CanvasNode, Change, Command, DocView } from '../../core';
 import { isIds, isNum } from '../../core/commands';
 import { set } from '../../core/doc';
 import type { AcItem } from './markdown';
-import { commentProblem, nextTaskId } from './markdown';
+import { commentProblem, markerProblem, nextTaskId } from './markdown';
 import { CARD_H, CARD_W, COLUMN_LIMIT, FIELD, authorOf, board, byOrder, column, columnsOf, isBoard, isTask, shownIn, task, tasksOf, type BoardField, type TaskField } from './model';
 
 const isStr = (v: unknown): v is string => typeof v === 'string';
@@ -41,7 +41,7 @@ export function cleanEdit(p: unknown): EditPatch {
     if (a.priority === null || a.priority === '') out.priority = null;
     else if (isStr(a.priority) && (PRIORITIES as readonly string[]).includes(a.priority)) out.priority = a.priority;
   }
-  for (const k of ['description', 'plan', 'notes'] as const) if (isStr(a[k])) out[k] = a[k].slice(0, MAX_TEXT);
+  for (const k of ['description', 'plan', 'notes'] as const) if (isStr(a[k]) && !markerProblem(a[k])) out[k] = a[k].slice(0, MAX_TEXT);
   if (Array.isArray(a.ac)) {
     out.ac = a.ac
       .filter((x): x is { text: string; done?: unknown } => !!x && typeof x === 'object' && isStr((x as { text?: unknown }).text) && !!oneLine((x as { text: string }).text))
@@ -263,7 +263,7 @@ export const commands: Record<string, Command> = {
   comment(doc, a: { id: string; text: string }, ctx) {
     const n = taskNode(doc, a?.id);
     const text = isStr(a?.text) ? a.text.trim() : '';
-    if (!n || !text || commentProblem(text)) return [];
+    if (!n || !text || commentProblem(text) || markerProblem(text)) return [];
     const t = task(n);
     const entry = { key: ctx.newId(), at: ctx.now?.() ?? Date.now(), author: authorOf(ctx.actor?.name), text: text.slice(0, 20_000) };
     return {

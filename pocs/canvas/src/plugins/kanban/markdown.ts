@@ -284,16 +284,48 @@ interface Block {
   legacy?: true;
 }
 
+/**
+ * The marked blocks of a body, as the CLI reads them: scanning from the top, a BEGIN marker line opens the
+ * block of its kind, which runs to the first END marker of that kind; marker lines inside a block are its text.
+ */
+function scanBlocks(b: string): Map<SectionDef['key'], { bi: number; ei: number }> {
+  const found = new Map<SectionDef['key'], { bi: number; ei: number }>();
+  const lineStart = (i: number) => i === 0 || b[i - 1] === '\n';
+  let at = 0;
+  while (at < b.length) {
+    let next = -1;
+    let hit: SectionDef | undefined;
+    for (const d of DEFS) {
+      if (found.has(d.key)) continue;
+      for (let from = at; ; ) {
+        const i = b.indexOf(begin(d), from);
+        if (i < 0) break;
+        if (lineStart(i) && (next < 0 || i < next)) {
+          next = i;
+          hit = d;
+          break;
+        }
+        from = i + 1;
+      }
+    }
+    if (!hit) break;
+    const ei = b.indexOf(endMark(hit), next);
+    if (ei < 0) {
+      at = next + 1; // an unclosed marker: text
+      continue;
+    }
+    found.set(hit.key, { bi: next, ei });
+    at = ei + endMark(hit).length;
+  }
+  return found;
+}
+
 /** A section from before the markers: the heading and its text up to the next `## ` heading. */
 function legacyBlock(b: string, d: SectionDef): Block | undefined {
   if (d.key === 'comments' || d.key === 'dod') return;
   // headings inside a marked block are that block's text (a quoted doc), not sections
   let masked = b;
-  for (const x of DEFS) {
-    const bi = masked.indexOf(begin(x));
-    const ei = bi < 0 ? -1 : masked.indexOf(endMark(x), bi);
-    if (ei >= 0) masked = masked.slice(0, bi) + masked.slice(bi, ei).replace(/[^\n]/g, ' ') + masked.slice(ei);
-  }
+  for (const { bi, ei } of scanBlocks(b).values()) masked = masked.slice(0, bi) + masked.slice(bi, ei).replace(/[^\n]/g, ' ') + masked.slice(ei);
   const m = new RegExp(`^## ${d.title}[ \\t]*$`, 'm').exec(masked);
   if (!m) return;
   const next = /^## /m.exec(masked.slice(m.index + m[0].length + 1));
@@ -303,20 +335,10 @@ function legacyBlock(b: string, d: SectionDef): Block | undefined {
 }
 
 function findBlock(b: string, d: SectionDef): Block | undefined {
-  const bm = begin(d);
-  let bi = -1;
-  for (let from = 0; ; ) {
-    const i = b.indexOf(bm, from);
-    if (i < 0) return legacyBlock(b, d);
-    if (i === 0 || b[i - 1] === '\n') {
-      bi = i;
-      break;
-    }
-    from = i + 1;
-  }
+  const hit = scanBlocks(b).get(d.key);
+  if (!hit) return legacyBlock(b, d);
+  const { bi, ei } = hit;
   const em = endMark(d);
-  const ei = b.indexOf(em, bi);
-  if (ei < 0) return legacyBlock(b, d);
   const inStart = Math.min(b.length, b.indexOf('\n', bi) + 1 || b.length);
   const inEnd = ei;
   let end = ei + em.length;
@@ -407,6 +429,11 @@ function parseComments(inner: string): CommentItem[] {
 /** Why a comment text can not be written (the CLI refuses it too): a standalone `---` line would end the entry. */
 export function commentProblem(text: string): string | undefined {
   return /^---[ \t]*$/m.test(text.replace(/\r\n/g, '\n')) ? "a comment can not contain a line that is only '---' (it would end the entry); use '***' for a rule" : undefined;
+}
+
+/** Why a section, comment or similar text can not be written: a line that is one of the block markers would end or open a block. */
+export function markerProblem(text: string): string | undefined {
+  return /^<!-- (?:SECTION:[A-Z]+|AC|DOD|COMMENTS):(?:BEGIN|END) -->[ \t]*$/m.test(text.replace(/\r\n/g, '\n')) ? 'the text has a line that is one of the task file\'s block markers (<!-- …:BEGIN/END -->); it would break the file' : undefined;
 }
 
 export function parseSections(text: string): { sections: Record<SectionKey, string>; ac: AcItem[]; comments: CommentItem[] } {
@@ -510,6 +537,8 @@ export function patchTask(text: string, patch: TaskPatch, now?: Date): string {
   for (const k of SECTION_KEYS) {
     const want = patch.sections?.[k];
     if (want === undefined || tidy(want) === cur[k]) continue;
+    const bad = markerProblem(want);
+    if (bad) throw new Error(bad);
     const d = def(k);
     const blk = findBlock(body, d);
     const v = tidy(want);
@@ -565,7 +594,7 @@ export function patchTask(text: string, patch: TaskPatch, now?: Date): string {
   }
 
   if (patch.comment && tidy(patch.comment.text)) {
-    const bad = commentProblem(patch.comment.text);
+    const bad = commentProblem(patch.comment.text) ?? markerProblem(patch.comment.text);
     if (bad) throw new Error(bad);
     const d = def('comments');
     const entry = `${patch.comment.author ? `author: ${patch.comment.author}\n` : ''}created: ${stamp(now ?? new Date())}\n---\n${tidy(patch.comment.text)}\n---`;

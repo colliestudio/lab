@@ -361,11 +361,11 @@ export class Host {
 
   /**
    * A serve extra (a plugin that keeps the doc in step with something outside) changes the doc: one
-   * transaction, not undoable by any seat or browser, its events logged under `actor`.
+   * transaction, not undoable by any seat or browser. Events that name no `actor` are logged with none (not as whoever ran the last command).
    */
   applySystem(changes: Change[], events: EventSpec[] = []) {
     if (changes.length) this.store.apply(changes, SYSTEM);
-    if (events.length) this.store.appendLog(events);
+    if (events.length) this.store.appendLog(events.map((e) => ({ actor: null, ...e })));
   }
 
   /** Did this transaction come from `applySystem`? */

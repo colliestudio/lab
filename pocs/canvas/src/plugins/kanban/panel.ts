@@ -1,7 +1,7 @@
 import type { App } from '../../core';
 import { derivedLinks, outboxOf, board, columnsOf, isTask, seatOf, task, type Seat, type TaskField } from './model';
 import { PRIORITIES } from './commands';
-import { commentProblem } from './markdown';
+import { commentProblem, markerProblem } from './markdown';
 import { esc, labelColor } from './render';
 
 // A task as a document: a side panel next to the canvas. Each part (title, status, labels, assignee,
@@ -156,6 +156,9 @@ export function openTask(app: App, nodeId: string, env: PanelEnv) {
   const send = (name: string, patch: Record<string, unknown>) => {
     pending.delete(name);
     if (!cur()) return;
+    const text = patch[name];
+    const bad = typeof text === 'string' ? markerProblem(text) : undefined;
+    if (bad) return app.notify(bad);
     app.dispatch('kanban.edit', { id, patch });
   };
   const later = (name: string, patch: () => Record<string, unknown>) => {
@@ -331,7 +334,7 @@ export function openTask(app: App, nodeId: string, env: PanelEnv) {
     e.preventDefault();
     const text = comment.value.trim();
     if (!text) return;
-    const bad = commentProblem(text);
+    const bad = commentProblem(text) ?? markerProblem(text);
     if (bad) return app.notify(bad);
     comment.value = '';
     app.dispatch('kanban.comment', { id, text });

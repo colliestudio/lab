@@ -58,6 +58,17 @@ describe('a node that is not live', () => {
   });
 });
 
+describe('marker lines in agent text', () => {
+  it('kanban.edit and kanban.comment refuse a line that is a block marker; the UI command drops the field', () => {
+    const s = seeded();
+    const ctx = { doc: s.doc } as never;
+    expect(() => s.spec('kanban.edit')!.toCommand!({ task: 'TASK-3.45', notes: 'x\n<!-- AC:END -->' } as never, ctx)).toThrow(/block markers/);
+    expect(() => s.spec('kanban.comment')!.toCommand!({ task: 'TASK-3.45', text: '<!-- COMMENTS:END -->' } as never, ctx)).toThrow(/block markers/);
+    s.dispatch('kanban.edit', { id: 'a', patch: { notes: '<!-- SECTION:NOTES:END -->', title: 'ok' } });
+    expect(s.doc.get('a')!['x-kanban']).toMatchObject({ title: 'ok', notes: '' });
+  });
+});
+
 describe('acceptance list ops (1-based, like --check-ac)', () => {
   const t = (ac: { text: string; done: boolean }[]) => ({ ac }) as never;
   const list = [{ text: 'a', done: false }, { text: 'b', done: true }];

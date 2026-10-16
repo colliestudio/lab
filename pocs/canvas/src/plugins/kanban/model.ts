@@ -74,7 +74,6 @@ export interface TaskField {
   created?: string;
   updated?: string;
   comments: CommentItem[];
-  /** Comments typed on the board that the serve has not written yet. */
   /** Pending comments, one `outbox:<key>` field each (so two viewers' comments merge instead of replacing one another): see `outboxOf`. */
   [pending: `outbox:${string}`]: PendingComment | undefined;
   /** Made on the board, not written to the source yet (so its id is a guess). */
@@ -162,7 +161,6 @@ export function isRecent(t: TaskField, days: number, now: number): boolean {
   return at !== undefined && now - at <= days * DAY;
 }
 
-/** A task with a board edit the serve has not written yet (or one made on the board): it stays in view until the file has it. */
 /** The comments typed on the board that the serve has not written yet, oldest first. */
 export const outboxOf = (t: TaskField): PendingComment[] =>
   Object.entries(t)
@@ -170,6 +168,7 @@ export const outboxOf = (t: TaskField): PendingComment[] =>
     .map(([, v]) => v as PendingComment)
     .sort((a, b) => a.at - b.at || (a.key < b.key ? -1 : 1));
 
+/** A task with a board edit the serve has not written yet (or one made on the board): it stays in view until the file has it. */
 const inFlight = (t: TaskField) => !!t.pending || outboxOf(t).length > 0 || dirtyFields(t).length > 0;
 
 /**

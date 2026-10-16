@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { CLI_CHILD, CLI_CONFIG, CLI_PLAIN, CLI_TASK } from '../fixtures';
-import { newTaskFile, patchTask, taskFileName, type TaskPatch } from '../markdown';
+import { newTaskFile, parseTask, patchTask, taskFileName, type TaskPatch } from '../markdown';
 
 // The oracle: what `backlog task edit` / `task create` write, compared with the patcher on a copy of
 // the same files. Skipped (with the reason printed) when `backlog` is not installed. Only temp dirs.
@@ -163,6 +163,14 @@ old plan
   run('replacing an old-style plan', 'task-6 - Old.md', LEGACY, ['--plan', 'new plan'], { sections: { plan: 'new plan' } }, '6');
   run('a heading quoted inside a marked description', 'task-1 - First-task.md', CLI_TASK.replace('Does the thing', 'Does the thing\n\n## Implementation Notes\nQuoted from the old doc.'), ['--check-ac', '1'], { ac: [{ text: 'one', done: true }, { text: 'two', done: false }] }, '1');
   run('removing an AC item that has a continuation line', 'task-5 - Hand.md', HAND, ['--remove-ac', '2'], { ac: [{ text: 'first thing', done: false }, { text: 'third', done: true }] }, '5');
+  const QUOTE = CLI_TASK.replace(/\n## Acceptance Criteria[\s\S]*?AC:END -->\n/, '').replace('n1', 'format:\n<!-- AC:BEGIN -->\n- [ ] #1 example item\n<!-- AC:END -->');
+  run('adding an AC to a file whose notes quote AC markers', 'task-1 - First-task.md', QUOTE, ['--ac', 'real item'], { ac: [{ text: 'real item', done: false }] }, '1');
+  it('the CLI reads no AC in the quoting file, as we do', () => {
+    const b = project();
+    writeFileSync(join(b.root, 'backlog', 'tasks', 'task-1 - First-task.md'), QUOTE);
+    expect(cli(b.root, ['task', '1', '--plain'])).toMatch(/No acceptance criteria/i);
+    expect(parseTask(QUOTE)!.ac).toEqual([]);
+  });
   it('the CLI refuses a comment with a --- line, as we do', () => {
     const b = project();
     expect(() => cli(b.root, ['task', 'edit', '1', '--comment', 'a\n---\nb', '--comment-author', '@x'])).toThrow();

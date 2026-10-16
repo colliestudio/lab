@@ -42,7 +42,7 @@ let args: ReturnType<typeof parseServeArgs>;
 try {
   args = parseServeArgs(process.argv.slice(2), PLUGIN_SERVE.flatMap((x) => x.flags.map((f) => f.name)));
 } catch (e) {
-  fail(`${(e as Error).message}\nusage: tsx server/serve.ts <dir> [--port N] [--host H] [--allow-origin URL]… [--host-name NAME]… [--idle-ms N] [--mcp-idle-ms N] [--app DIR]`);
+  fail(`${(e as Error).message}\nusage: tsx server/serve.ts <dir> [--port N] [--host H] [--allow-origin URL]… [--host-name NAME]… [--idle-ms N] [--mcp-idle-ms N] [--app DIR]${PLUGIN_SERVE.flatMap((x) => x.flags.map((f) => ` [--${f.name} …]`)).join('')}`);
 }
 const dir = resolve(args.dir);
 try {

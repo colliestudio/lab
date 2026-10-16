@@ -11,7 +11,7 @@ export interface ServeBoard {
   name: string;
   /** The live doc, current at each call. */
   doc(): DocView;
-  /** Change the doc as the extra, not as a player: one transaction, not undoable by anyone, the events go to the log. */
+  /** Change the doc as the extra, not as a player: one transaction, not undoable by anyone, the events go to the log (under their own `actor`, else none). */
   apply(changes: Change[], events: EventSpec[]): void;
   newId(): string;
   /** Runs after every doc change that `apply` did not make. Returns the stop function. */

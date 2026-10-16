@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ID_RE, commentProblem, newTaskFile, nextTaskId, parseConfig, parseTask, patchTask, stamp, stampTime, taskFileName, yamlScalar } from './markdown';
+import { ID_RE, commentProblem, markerProblem, newTaskFile, nextTaskId, parseConfig, parseTask, patchTask, stamp, stampTime, taskFileName, yamlScalar } from './markdown';
 import { CLI_CHILD, CLI_PLAIN, CLI_TASK } from './fixtures';
 
 // Fixtures are files written by `backlog` 1.53.0 (fixtures.ts); src/plugins/kanban/node/markdown.cli.test.ts
@@ -306,5 +306,25 @@ describe('headings inside a marked block', () => {
     const out = patchTask(QUOTED, { ac: [{ text: 'one', done: true }, { text: 'two', done: false }] }, NOW);
     expect(out.match(/NOTES:BEGIN/g)).toHaveLength(1);
     expect(out.replace(/updated_date: .*\n/, '').replace('- [x] #1 one', '- [ ] #1 one')).toBe(QUOTED);
+  });
+});
+
+describe('marker lines quoted in a section', () => {
+  const NOTES_QUOTE = CLI_TASK.replace(/\n## Acceptance Criteria[\s\S]*?AC:END -->\n/, '').replace('n1', 'format:\n<!-- AC:BEGIN -->\n- [ ] #1 example item\n<!-- AC:END -->');
+  it('are text of the block they sit in: the quoted AC is not the AC list', () => {
+    const t = parseTask(NOTES_QUOTE)!;
+    expect(t.ac).toEqual([]);
+    expect(t.notes).toContain('example item');
+    const out = patchTask(NOTES_QUOTE, { ac: [{ text: 'real item', done: false }] }, NOW);
+    expect(parseTask(out)!.ac).toEqual([{ text: 'real item', done: false }]);
+    expect(parseTask(out)!.notes).toContain('- [ ] #1 example item');
+    expect(out.indexOf('real item')).toBeLessThan(out.indexOf('SECTION:NOTES:BEGIN'));
+  });
+  it('a block\'s own text is refused if it is a marker line', () => {
+    expect(markerProblem('a\n<!-- SECTION:DESCRIPTION:END -->\nb')).toBeTruthy();
+    expect(markerProblem('<!-- AC:BEGIN -->')).toBeTruthy();
+    expect(markerProblem('see <!-- AC:BEGIN --> inline')).toBeUndefined();
+    expect(() => patchTask(CLI_TASK, { sections: { notes: 'x\n<!-- AC:END -->' } }, NOW)).toThrow(/block markers/);
+    expect(() => patchTask(CLI_TASK, { comment: { text: '<!-- COMMENTS:END -->' } }, NOW)).toThrow(/block markers/);
   });
 });

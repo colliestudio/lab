@@ -170,18 +170,12 @@ export function registerCoreCommands(store: Store) {
       for (const c of doc.children(id)) walk(c.id);
       for (const r of doc.riders(id)) walk(r.id);
     };
-    const kept: string[] = [];
-    for (const n of pick(doc, a?.ids)) {
-      const why = store.deleteGuards.map((g) => g(n, doc)).find(Boolean);
-      if (why) kept.push(why);
-      else walk(n.id);
-    }
+    for (const n of pick(doc, a?.ids)) if (!store.deleteGuards.some((g) => g(n, doc))) walk(n.id);
     // a guarded node that goes with its container (a board deleted with its cards) was not kept
     const events = keptEvents(doc, a?.ids, store, out);
     // edge ids (a picked arrow) go too
     const edges = isIds(a?.ids) ? a.ids.filter((id) => doc.edge(id)) : [];
     const changes = [...[...out].map((id): Change => ({ op: 'del', id })), ...edges.map((id): Change => ({ op: 'unedge', id }))];
-    void kept;
     return events.length ? { changes, events } : changes;
   }, spec('delete'));
   /** Deletes arrows only (ids that are not arrows are refused). */
