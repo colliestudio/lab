@@ -28,8 +28,8 @@ const call = async (name: string, args: Record<string, unknown> = {}) => {
 describe('canvas MCP server', () => {
   it('lists the tools agents had plus the generic ones', async () => {
     const names = (await mcp.listTools()).tools.map((t) => t.name);
-    expect(names).toEqual(expect.arrayContaining(['canvas_look', 'canvas_do', 'canvas_help', 'canvas_wait', 'canvas_add_node', 'chess_move', 'chess_wait_for_turn', 'chat_send', 'canvas_remove_arrow']));
-    expect(names).toHaveLength(26);
+    expect(names).toEqual(expect.arrayContaining(['canvas_look', 'canvas_do', 'canvas_help', 'canvas_wait', 'canvas_add_node', 'chess_move', 'chess_wait_for_turn', 'chat_send', 'canvas_remove_arrow', 'canvas_draw_add']));
+    expect(names).toHaveLength(31);
   });
 
   it('adds a note; the board file holds it', async () => {

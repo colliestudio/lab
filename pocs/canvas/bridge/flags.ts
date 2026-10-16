@@ -38,7 +38,7 @@ export function coerce(name: string, raw: string, prop: Json, keepNone = false):
       if (raw === 'true' || raw === 'false') return raw === 'true';
       throw new Error(`--${kebab(name)}: "${raw}" is not true or false`);
     case 'array':
-      return raw.split(',');
+      return /^\s*\[/.test(raw) ? JSON.parse(raw) : raw.split(',');
     case 'object':
       try {
         return JSON.parse(raw);
@@ -60,7 +60,8 @@ function propFor(props: Json, flag: string): string | undefined {
  * `rest` for the remaining words), then flags. Unknown flags and leftover words are errors that
  * list what is accepted.
  */
-export function cliArgs(schema: Json, form: Pick<CliForm, 'verb' | 'pos' | 'rest' | 'set' | 'keepNone'>, words: string[], flags: Record<string, string>): Record<string, unknown> {
+export function cliArgs(schema: Json, form: Pick<CliForm, 'verb' | 'pos' | 'rest' | 'set' | 'keepNone' | 'alias' | 'compose'>, words: string[], flags: Record<string, string>): Record<string, unknown> {
+  if (form.compose) return form.compose(words, Object.fromEntries(Object.entries(flags).filter(([k]) => !GLOBAL_FLAGS.has(k))));
   const props: Json = schema.properties ?? {};
   const out: Record<string, unknown> = { ...form.set };
   const keep = new Set(form.keepNone ?? []);
@@ -72,12 +73,13 @@ export function cliArgs(schema: Json, form: Pick<CliForm, 'verb' | 'pos' | 'rest
   const extra = words.slice(pos.length);
   if (form.rest) {
     const type = leaf(props[form.rest] ?? {}).schema.type;
-    if (type === 'array') out[form.rest] = extra;
+    const joined = extra.join(' ');
+    if (type === 'array') out[form.rest] = /^\s*[[{]/.test(joined) ? [].concat(JSON.parse(joined)) : extra; // JSON, or the words
     else if (extra.length || !(form.rest in out)) out[form.rest] = extra.join(' ').replace(/\\n/g, '\n');
   } else if (extra.length) throw new Error(`${form.verb}: unexpected argument${extra.length > 1 ? 's' : ''} ${extra.join(' ')}`);
   for (const [flag, raw] of Object.entries(flags)) {
     if (GLOBAL_FLAGS.has(flag)) continue;
-    const k = propFor(props, flag);
+    const k = form.alias?.[flag] ?? propFor(props, flag);
     if (!k) throw new Error(`${form.verb}: unknown flag --${flag} (flags: ${Object.keys(props).filter((p) => !pos.includes(p) && p !== form.rest).map((p) => `--${kebab(p)}`).join(' ') || 'none'})`);
     put(k, raw);
   }

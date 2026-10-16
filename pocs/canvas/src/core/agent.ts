@@ -27,6 +27,10 @@ export interface CliForm {
   set?: Record<string, unknown>;
   /** Args that keep the word `none` as text (a fill of "none" means see-through) instead of becoming null. */
   keepNone?: string[];
+  /** Flag name to arg name when they differ (`--in` for `drawing`). */
+  alias?: Record<string, string>;
+  /** Builds the args itself from the words and flags (for verbs that wrap their input, like `draw box`). */
+  compose?(words: string[], flags: Record<string, string>): Record<string, unknown>;
 }
 
 export interface CommandSpec<S extends ArgSchema = ArgSchema> {

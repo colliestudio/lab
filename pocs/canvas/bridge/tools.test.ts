@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { catalog } from './catalog';
 import { toolList } from './tools';
 
-// The 22 tools agents had before commands described themselves, and the size of the tool list then.
-const TODAYS = ['canvas_list', 'canvas_add_node', 'canvas_update_node', 'canvas_connect', 'canvas_remove', 'canvas_undo', 'canvas_log', 'canvas_add_shape', 'canvas_style_shape', 'canvas_arrow', 'canvas_edit_arrow', 'canvas_remove_arrow', 'chess_state', 'chess_sit', 'chess_new_game', 'chess_move', 'chess_wait_for_turn', 'chess_takeback', 'chess_resign', 'chat_send', 'chat_read', 'chat_wait'];
+// The 27 tools agents had before commands described themselves, and the size of the tool list then.
+const TODAYS = ['canvas_list', 'canvas_add_node', 'canvas_update_node', 'canvas_connect', 'canvas_remove', 'canvas_undo', 'canvas_log', 'canvas_add_shape', 'canvas_style_shape', 'canvas_arrow', 'canvas_edit_arrow', 'canvas_remove_arrow', 'chess_state', 'chess_sit', 'chess_new_game', 'chess_move', 'chess_wait_for_turn', 'chess_takeback', 'chess_resign', 'chat_send', 'chat_read', 'chat_wait', 'canvas_draw_new', 'canvas_draw_shapes', 'canvas_draw_add', 'canvas_draw_remove', 'canvas_draw_frame'];
 const GENERIC = ['canvas_look', 'canvas_do', 'canvas_help', 'canvas_wait'];
-const WAS_BYTES = 13017; // JSON of tools/list with the old hand-written tools
+const WAS_BYTES = 17493; // JSON of tools/list with the old hand-written tools (poc bff2717)
 const tools = toolList(catalog());
 
 describe('generated tools', () => {

@@ -151,3 +151,19 @@ describe('flag coercion', () => {
     expect(parseArgv(['--y', '-5']).flags.y).toBe('-5');
   });
 });
+
+describe('draw verbs', () => {
+  it('reach the excalidraw commands with the same args as before', () => {
+    const { h, seen } = setup();
+    expect(line(h, seen, 'draw new --title T --x 10 --y 20')).toMatchObject({ name: 'excalidraw.create', args: { title: 'T', x: 10, y: 20 } });
+    expect(line(h, seen, 'draw box Start --ref a')).toMatchObject({ name: 'excalidraw.add', args: { shapes: [expect.objectContaining({ type: 'rectangle', label: 'Start', ref: 'a' })] } });
+    expect(line(h, seen, 'draw box End --type ellipse --ref b')).toMatchObject({ name: 'excalidraw.add' });
+    expect(line(h, seen, 'draw arrow a b --label go')).toMatchObject({ name: 'excalidraw.add' });
+    expect(line(h, seen, 'draw add [{"type":"text","text":"hi"}]')).toMatchObject({ name: 'excalidraw.add' });
+    expect(line(h, seen, 'draw rm a')).toMatchObject({ name: 'excalidraw.remove', args: { ids: ['a'] } });
+    expect(line(h, seen, 'draw lock')).toMatchObject({ name: 'excalidraw.frame', args: { locked: true } });
+    expect(line(h, seen, 'draw fit')).toMatchObject({ name: 'excalidraw.frame', args: { view: null } });
+    expect(line(h, seen, 'draw title New name')).toMatchObject({ name: 'excalidraw.frame', args: { title: 'New name' } });
+    expect(line(h, seen, 'draw shapes')).toEqual({ view: 'excalidraw.shapes', args: {} });
+  });
+});
