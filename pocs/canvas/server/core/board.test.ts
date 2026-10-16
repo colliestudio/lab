@@ -59,6 +59,14 @@ describe('Board: stored text', () => {
     expect(st.states.size).toBe(0);
   });
 
+  it('the load is logged as a load, not as an edit of the file', async () => {
+    const log = vi.fn();
+    const b = await Board.load('a', new MemoryStorage({ a: text([n('x')]) }), { log });
+    expect(log).toHaveBeenCalledWith('loaded the file: 1 added');
+    expect(log).not.toHaveBeenCalledWith(expect.stringContaining('edited the file'));
+    await b.close();
+  });
+
   it('create: true makes a missing board; otherwise 404', async () => {
     const st = new MemoryStorage();
     await expect(Board.load('a', st, quiet)).rejects.toMatchObject({ status: 404 });
