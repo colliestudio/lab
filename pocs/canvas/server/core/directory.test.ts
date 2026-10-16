@@ -53,6 +53,35 @@ describe('listing and lazy loading', () => {
     expect(await dir.open('A')).toBe(a);
   });
 
+  it('a request spelled differently loads the board under its stored name', async () => {
+    make({ case: text([n('x')]) });
+    const board = await dir.open('CASE');
+    expect(board.name).toBe('case');
+    expect(st.watching).toBe(1);
+    expect(st.reads.has('CASE')).toBe(false);
+    expect(await dir.open('Case')).toBe(board);
+  });
+
+  it('NFC and NFD spellings of a name are one board', async () => {
+    const nfd = 'cafe\u0301';
+    const nfc = 'caf\u00e9';
+    make({ [nfd]: text([n('x')]) });
+    const a = await dir.open(nfc);
+    const b = await dir.open(nfd);
+    expect(a).toBe(b);
+    expect(a.name).toBe(nfd);
+    expect(await status(dir.create(nfc))).toBe(409);
+  });
+
+  it('with fixed-board storage only the pinned board exists', async () => {
+    make({ main: text([n('x')]), other: text([]) }, { pinned: ['main'] });
+    (st as { mutable: boolean }).mutable = false;
+    await dir.open('main');
+    expect(await status(dir.open('phantom'))).toBe(404);
+    expect(await status(dir.open('other'))).toBe(404);
+    expect(dir.all().map((b) => b.name)).toEqual(['main']);
+  });
+
   it('an unknown board is a 404, a bad name a 400', async () => {
     make();
     expect(await status(dir.open('nope'))).toBe(404);
@@ -128,6 +157,61 @@ describe('idle unload', () => {
     expect(a.host.seated()).toHaveLength(1);
     await dir.sweep(Date.now() + 501);
     expect(a.host.seated()).toHaveLength(0);
+  });
+});
+
+describe('concurrency', () => {
+  const gate = () => {
+    let open!: () => void;
+    const p = new Promise<void>((r) => (open = r));
+    return { p, open };
+  };
+
+  it('an open during an unload waits for it, then loads a fresh board', async () => {
+    make();
+    const old = await dir.open('a');
+    const g = gate();
+    const read = st.read.bind(st);
+    st.read = async (name) => {
+      if (name === 'a' && gateOn) await g.p; // the close's flush reads first
+      return read(name);
+    };
+    let gateOn = true;
+    const sweeping = dir.sweep(later());
+    await vi.advanceTimersByTimeAsync(0);
+    let opened = false;
+    const op = dir.open('a').then((b) => ((opened = true), b));
+    await vi.advanceTimersByTimeAsync(10);
+    expect(opened).toBe(false); // waits for the close
+    gateOn = false;
+    g.open();
+    await sweeping;
+    const fresh = await op;
+    expect(fresh).not.toBe(old);
+    expect(dir.loaded('a')).toBe(fresh);
+    expect(fresh.host.store.doc.get('x')!.text).toBe('x');
+  });
+
+  it('an acquire that races a rename gets a 404, never a closed board', async () => {
+    make();
+    await dir.open('a');
+    const g = gate();
+    const rename = st.rename.bind(st);
+    st.rename = async (f, t) => {
+      await g.p;
+      return rename(f, t);
+    };
+    const renaming = dir.rename('a', 'c');
+    await vi.advanceTimersByTimeAsync(0);
+    const racing = dir.acquire('a').then(
+      (r) => r.board.name,
+      (e: DirError) => e.status,
+    );
+    await vi.advanceTimersByTimeAsync(10);
+    g.open();
+    await renaming;
+    expect(await racing).toBe(404);
+    expect((await dir.open('c')).name).toBe('c');
   });
 });
 

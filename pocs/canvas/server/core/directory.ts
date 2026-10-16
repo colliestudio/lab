@@ -33,7 +33,8 @@ export interface BoardEntry {
   error?: string;
 }
 
-const fold = (name: string) => name.toLowerCase();
+/** Board identity: letter case and Unicode normalization (Finder/iCloud store names decomposed) don't tell boards apart. */
+const fold = (name: string) => name.normalize('NFC').toLowerCase();
 
 /** Why `name` can't be a board name, or undefined when it can. Names are file stems, never paths. */
 export function validName(name: string): string | undefined {
@@ -129,11 +130,18 @@ export class BoardDirectory {
     const key = fold(name);
     const bad = this.pinned.has(key) ? undefined : validName(name); // a pinned name is a file the operator chose
     if (bad) throw new DirError(400, bad);
+    // fixed-board storage (bridge mode): only the pinned board exists
+    if (!this.storage.mutable && !this.pinned.has(key)) throw new DirError(404, `no board "${name}"`);
     const hit = this.boards.get(key);
     if (hit) return { board: hit, release: hit.hold() };
     return this.locked([key], async () => {
       const again = this.boards.get(key);
       if (again) return { board: again, release: again.hold() };
+      // the board goes by the name storage knows it by, however the request spelled it: its watcher,
+      // sidecars and file all use that one
+      const stored = (await this.storage.list()).find((i) => fold(i.name) === key)?.name;
+      if (stored === undefined && !o.create) throw new DirError(404, `no board "${name}"`);
+      name = stored ?? name;
       let board: Board;
       try {
         board = await Board.load(name, this.storage, { create: o.create, log: this.prefixed(name), seatIdleMs: this.opts.seatIdleMs });
