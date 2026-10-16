@@ -10,8 +10,9 @@
 // So the page is only ever given the cross-page state while the user is in Play or interacting
 // with it, and a frame that tries to navigate is removed: the runtime reports every attempt
 // (`beforeunload`, which also fires for navigations that never load a document), with the
-// iframe's `load` count and a handshake timeout as backstops. The page gets the one burst of
-// requests the first attempt makes, carrying the data it already had, and nothing after it.
+// iframe's `load` count and a handshake timeout as backstops. That is best effort: removal runs on
+// the app's main thread, so a page in Play or interact can still leak what was typed, possibly in
+// several requests. Idle pages carry no state. Real isolation is strict mode (sandbox origin).
 
 export const TAG = 'canvas-page/1';
 
@@ -64,14 +65,13 @@ export function pageRuntime(key: string, state: Record<string, string>): string 
   addEventListener('load', (ev) => { if (ev.isTrusted) up.postMessage({ tag: TAG, auth: KEY, kind: 'loaded' }, '*'); });
   addEventListener('keydown', (ev) => { if (ev.isTrusted && apply(keyOf, ev, []) === 'Escape') up.postMessage({ tag: TAG, auth: KEY, kind: 'escape' }, '*'); }, true);
   document.addEventListener('click', (e) => {
-    // a link to a place in this document would navigate the frame (and be removed as leaving): scroll instead
-    const hash = e.target.closest && e.target.closest('a[href^="#"]');
+    // a link to a place in this document would navigate the frame (and count as leaving): set the hash from script instead (hashchange and :target work, the frame stays)
+    const link = e.target.closest && e.target.closest('a[href], area[href]');
     const el = e.target.closest && e.target.closest('[data-goto], [data-back]');
-    if (hash && !el) {
+    const href = link && !el ? String(link.getAttribute('href')).trim() : '';
+    if (href[0] === '#') {
       e.preventDefault();
-      const id = decodeURIComponent(hash.getAttribute('href').slice(1));
-      const to = id && (document.getElementById(id) || document.getElementsByName(id)[0]);
-      if (to) to.scrollIntoView(); else scrollTo(0, 0);
+      location.hash = href;
       return;
     }
     if (!el) return;
@@ -157,19 +157,5 @@ export function loadWatch(scripts: boolean, foreign: () => void, ms = 2000) {
       done = true;
       clearTimeout(timer);
     },
-  };
-}
-
-/**
- * Message flood guard: `hit()` is true once more than `limit` messages arrived within `ms`. A flood
- * from the page's own frame would keep the app's main thread too busy to handle `leaving` in time.
- */
-export function rateCap(limit = 200, ms = 1000, now: () => number = Date.now) {
-  const times: number[] = [];
-  return () => {
-    const t = now();
-    times.push(t);
-    while (times.length && times[0] <= t - ms) times.shift();
-    return times.length > limit;
   };
 }

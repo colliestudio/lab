@@ -1,5 +1,5 @@
 import { openFrame, pageMode } from './client';
-import { IDLE_THUMBNAIL_SCRIPTS, TAG, frameAttrs, frameKey, hasKey, loadWatch, rateCap, runtimeMessage, srcdocDocument } from './srcdoc';
+import { IDLE_THUMBNAIL_SCRIPTS, TAG, frameAttrs, frameKey, hasKey, loadWatch, runtimeMessage, srcdocDocument } from './srcdoc';
 
 export { TAG };
 
@@ -138,9 +138,8 @@ function srcdocFrame(html: string, scripts: boolean, state: Record<string, strin
   keys.set(frame, key);
   frame.srcdoc = srcdocDocument(html, { scripts, state, key });
   let attached = false;
-  const flood = rateCap();
   const watch = loadWatch(scripts, () => {
-    // the frame left its document: remove it (the page keeps the one burst of requests the first attempt made, carrying data it already had)
+    // the frame left its document: remove it (best effort: the page keeps what its first attempt sent, and can send more until this runs)
     const gone = document.createElement('div');
     gone.className = 'pg-gone';
     gone.style.cssText = frame.style.cssText;
@@ -159,8 +158,6 @@ function srcdocFrame(html: string, scripts: boolean, state: Record<string, strin
       return entry.off();
     }
     if (e.source !== frame.contentWindow || e.origin !== 'null') return;
-    // a page that floods the app with messages is removed (legit pages send a few per keystroke)
-    if (flood()) return watch.onLeaving();
     const m = runtimeMessage(e.data, key);
     if (m === 'loaded') watch.onLoaded();
     else if (m === 'leaving') watch.onLeaving();
