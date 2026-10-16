@@ -80,6 +80,23 @@ describe('filters and Done collapse', () => {
     expect(shownIn(s.doc, s.doc.get('b1')!, 'In Progress').shown).toHaveLength(8);
   });
 
+  it('a task whose edit is still being written stays in view: a new one past the cut, an old one just dragged to Done', () => {
+    const s = kanbanStore();
+    addBoard(s);
+    for (let i = 0; i < 9; i++) addTask(s, 'b1', { title: `t${i}`, ordinal: i + 1 });
+    const b = () => s.doc.get('b1')!;
+    expect(shownIn(s.doc, b(), 'To Do')).toMatchObject({ hidden: 1 });
+    const fresh = s.dispatch('kanban.create', { board: 'b1', titles: ['just added'] }).select![0];
+    expect(shownIn(s.doc, b(), 'To Do').shown.map((t) => t.id)).toContain(fresh);
+    expect(shownIn(s.doc, b(), 'To Do').hidden).toBe(1);
+    // an old task dragged into Done is dirty until the file has it: it shows meanwhile
+    const fields = { title: 'x', status: 'To Do', labels: [], assignee: [], description: '', plan: '', notes: '', ac: [] };
+    addTask(s, 'b1', { ...fields, title: 'ancient', status: 'Done', updated: stampDaysAgo(90), base: { ...hashFields({ ...fields, title: 'ancient' }), status: 'stale' } }, 'anc');
+    expect(shownIn(s.doc, b(), 'Done').shown.map((t) => t.id)).toContain('anc');
+    s.apply([{ op: 'set', id: 'anc', key: 'x-kanban.base', value: hashFields({ ...fields, title: 'ancient', status: 'Done' }) }]);
+    expect(shownIn(s.doc, b(), 'Done').shown.map((t) => t.id)).not.toContain('anc');
+  });
+
   it('the filter is saved on the node: it survives a reload through the board file, and a second viewer sees it', () => {
     const s = build();
     s.dispatch('kanban.filter', { board: 'b1', labels: ['canvas'], parent: 'TASK-3' });

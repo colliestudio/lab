@@ -85,6 +85,21 @@ describe('move (C15)', () => {
     expect(order(s, 'To Do').at(-1)).toBe('doing');
   });
 
+  it('a card dropped past the cut of a long column opens the column so it stays', () => {
+    const s = kanbanStore();
+    addBoard(s);
+    for (let i = 0; i < 10; i++) addTask(s, 'b1', { title: `t${i}`, ordinal: i + 1, status: 'In Progress' }, `p${i}`);
+    addTask(s, 'b1', { title: 'mover', ordinal: 50 }, 'mover');
+    s.undoManager.clear();
+    s.dispatch('kanban.move', { board: 'b1', ids: ['mover'], status: 'In Progress', index: 8 });
+    expect(board(s.doc.get('b1')!).expanded).toEqual(['In Progress']);
+    expect(s.doc.isVisible('mover')).toBe(true);
+    // one undo step puts both back
+    s.undo();
+    expect(board(s.doc.get('b1')!).expanded).toBeUndefined();
+    expect(taskField(s, 'mover').status).toBe('To Do');
+  });
+
   it('a move that changes the status logs it; undo puts status and ordinal back', () => {
     const s = seeded();
     s.dispatch('kanban.move', { board: 'b1', ids: ['three'], status: 'In Progress', index: 0 });

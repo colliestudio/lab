@@ -159,20 +159,28 @@ export function isRecent(t: TaskField, days: number, now: number): boolean {
   return at !== undefined && now - at <= days * DAY;
 }
 
+/** A task with a board edit the serve has not written yet (or one made on the board): it stays in view until the file has it. */
+const inFlight = (t: TaskField) => !!t.pending || !!t.outbox?.length || dirtyFields(t).length > 0;
+
 /**
  * The tasks of a column that show: the filter applies to every column; the Done column also hides
- * its older tasks unless the column is expanded. `hidden` = how many older ones sit behind "+N".
+ * its older tasks unless the column is expanded, the others cut after COLUMN_LIMIT. A task whose edit is
+ * still being written always shows (a card dropped far down must not vanish into "+N" for a moment).
+ * `hidden` = how many sit behind "+N".
  */
 export function shownIn(doc: DocView, b: CanvasNode, status: string, now = clock.now()): { shown: CanvasNode[]; filtered: CanvasNode[]; hidden: number } {
   const bf = board(b);
   const filtered = column(doc, b.id, status).filter((t) => passesFilter(task(t), bf.filter));
+  const keep = (t: CanvasNode) => inFlight(task(t));
   if (status !== bf.doneColumn) {
     const all = !!bf.expanded?.includes(status);
-    return { shown: all ? filtered : filtered.slice(0, COLUMN_LIMIT), filtered, hidden: all ? 0 : Math.max(0, filtered.length - COLUMN_LIMIT) };
+    if (all) return { shown: filtered, filtered, hidden: 0 };
+    const shown = filtered.filter((t, i) => i < COLUMN_LIMIT || keep(t));
+    return { shown, filtered, hidden: filtered.length - shown.length };
   }
   if (bf.expanded?.includes(status)) return { shown: filtered, filtered, hidden: 0 };
   const days = bf.doneDays ?? DONE_DAYS;
-  const shown = filtered.filter((t) => isRecent(task(t), days, now));
+  const shown = filtered.filter((t) => isRecent(task(t), days, now) || keep(t));
   return { shown, filtered, hidden: filtered.length - shown.length };
 }
 

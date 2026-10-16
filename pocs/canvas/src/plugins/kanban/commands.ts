@@ -3,7 +3,7 @@ import { isIds, isNum } from '../../core/commands';
 import { set } from '../../core/doc';
 import type { AcItem } from './markdown';
 import { nextTaskId } from './markdown';
-import { CARD_H, CARD_W, FIELD, authorOf, board, byOrder, column, columnsOf, isBoard, isTask, shownIn, task, tasksOf, type BoardField, type TaskField } from './model';
+import { CARD_H, CARD_W, COLUMN_LIMIT, FIELD, authorOf, board, byOrder, column, columnsOf, isBoard, isTask, shownIn, task, tasksOf, type BoardField, type TaskField } from './model';
 
 const isStr = (v: unknown): v is string => typeof v === 'string';
 const strs = (v: unknown): string[] => (Array.isArray(v) ? v.filter(isStr) : []);
@@ -180,6 +180,9 @@ export const commands: Record<string, Command> = {
     // before the task that shows at `index`; at the end of what shows (hidden older Done tasks stay where they were)
     const before = i < visible.length ? visible[i].id : null;
     const changes = placeInColumn(doc, b.id, a.status, moving, before, new Set(visible.map((t) => t.id)));
+    // a card dropped past the cut of a long column opens the column, so it stays where the user put it
+    const cur = board(b).expanded ?? [];
+    if (a.status !== board(b).doneColumn && i >= COLUMN_LIMIT && !cur.includes(a.status)) changes.push(ns(b.id, 'expanded', [...cur, a.status]));
     const noted = moving.filter((id) => task(doc.get(id)!).note).map((id) => ns(id, 'note', undefined));
     const titles = moving.map((id) => task(doc.get(id)!).taskId ?? task(doc.get(id)!).title);
     const moved = changes.some((c) => c.op === 'set' && c.key.endsWith('.status'));
