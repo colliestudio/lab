@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -167,5 +167,61 @@ describe('canvas serve', () => {
     const code = await Promise.race([exited, new Promise((res) => setTimeout(() => res('timeout'), 3000))]);
     expect(code).toBe(0);
     expect(onDisk('b')).toContain('just before the end');
+  });
+});
+
+describe('canvas serve: the web app', () => {
+  let tmp: string;
+  const procs: ChildProcess[] = [];
+  const start = async (args: string[]) => {
+    const p = await freePort();
+    procs.push(spawn(process.execPath, ['--import', 'tsx', 'server/serve.ts', join(tmp, 'boards'), '--port', String(p), ...args], { cwd: root, stdio: 'ignore' }));
+    const u = `http://127.0.0.1:${p}`;
+    await until(async () => !!(await fetch(u + '/api/info').catch(() => null))?.ok);
+    return u;
+  };
+
+  beforeAll(() => {
+    tmp = mkdtempSync(join(tmpdir(), 'canvas-serve-app-'));
+    mkdirSync(join(tmp, 'boards'));
+    mkdirSync(join(tmp, 'dist'));
+    writeFileSync(join(tmp, 'boards', 'a.canvas'), board(node('x', 'in a')));
+    writeFileSync(join(tmp, 'boards', 'broken.canvas'), '{nope');
+    writeFileSync(join(tmp, 'dist', 'index.html'), '<title>board</title>');
+    writeFileSync(join(tmp, 'dist', 'home.html'), '<title>home</title>');
+  });
+  afterAll(() => {
+    for (const p of procs) p.kill('SIGKILL');
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('serves the list page on / and the board page on /b/<name>, next to the API', { timeout: 30000 }, async () => {
+    const u = await start(['--app', join(tmp, 'dist')]);
+    expect(await (await fetch(u + '/')).text()).toBe('<title>home</title>');
+    const b = await fetch(u + '/b/a');
+    expect(b.status).toBe(200);
+    expect(await b.text()).toBe('<title>board</title>');
+    expect(await (await fetch(u + '/b/nope')).text()).toBe('<title>board</title>'); // the page decides
+    expect((await (await fetch(u + '/api/boards')).json()).map((e: { name: string }) => e.name)).toEqual(['a', 'broken']);
+  });
+
+  it('a file that is not a canvas is a 422 and stays as it is', { timeout: 30000 }, async () => {
+    const u = await start(['--app', join(tmp, 'dist')]);
+    const r = await fetch(u + '/api/boards/broken/status');
+    expect(r.status).toBe(422);
+    expect(await r.json()).toMatchObject({ kind: 'invalid', error: expect.stringContaining('not a canvas file') });
+    expect(readFileSync(join(tmp, 'boards', 'broken.canvas'), 'utf8')).toBe('{nope');
+    const e = ((await (await fetch(u + '/api/boards')).json()) as { name: string; error?: string }[]).find((x) => x.name === 'broken');
+    expect(e!.error).toMatch(/not a canvas file/);
+  });
+
+  it('without a build the pages say so and the API still works', { timeout: 30000 }, async () => {
+    const u = await start(['--app', join(tmp, 'nonexistent')]);
+    for (const p of ['/', '/b/a']) {
+      const r = await fetch(u + p);
+      expect(r.status).toBe(503);
+      expect(await r.text()).toContain('pnpm build');
+    }
+    expect((await fetch(u + '/api/boards')).status).toBe(200);
   });
 });

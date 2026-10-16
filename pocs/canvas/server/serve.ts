@@ -1,15 +1,18 @@
-import { statSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { existsSync, statSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { BoardDirectory } from './core/directory';
 import { parseServeArgs } from './serve-args';
 import { FolderStorage } from './node/folder';
 import { makeGuard } from './node/guard';
 import { createNodeServer } from './node/http';
+import { createStaticApp } from './node/static';
 import { mcpHandler } from './node/mcp';
 import { McpService } from './mcp/session';
 
 // canvas serve: one process that serves every .canvas file in a folder.
-//  - Browsers: ws://HOST:PORT/ws/<board> (the app: ?bridge=ws://HOST:PORT/ws/<board>)
+//  - Browsers: http://HOST:PORT/ lists the boards, /b/<board> opens one (the built app, from --app, default the
+//    repo's dist: run `pnpm build`); the live document is ws://HOST:PORT/ws/<board>
 //  - Agents and tools: http://HOST:PORT/api/boards/<board>/... (CANVAS_BRIDGE=that URL works for the CLI and MCP)
 //  - GET /api/boards lists the folder; POST /api/boards {name}, /api/boards/<name>/rename {to} and
 //    /delete (to the trash folder) change it
@@ -18,8 +21,9 @@ import { McpService } from './mcp/session';
 //  - A board loads when first used and unloads when nobody has it open (--idle-ms). Each board's file
 //    stays the durable record, as with the bridge.
 //
-// Usage: tsx server/serve.ts <dir> [--port 5231] [--host 127.0.0.1] [--allow-origin URL]… [--idle-ms N] [--mcp-idle-ms N]
-//  Binds 127.0.0.1 by default. A browser app on another origin must be listed: --allow-origin http://mini.internal:5215
+// Usage: tsx server/serve.ts <dir> [--port 5231] [--host 127.0.0.1] [--allow-origin URL]… [--idle-ms N] [--mcp-idle-ms N] [--app DIR]
+//  Binds 127.0.0.1 by default. Reached by another host name (http://mini.internal:5231) or serving a browser
+//  app from another origin, it must be listed: --allow-origin http://mini.internal:5231
 //  (or $CANVAS_ALLOW_ORIGIN, comma separated); see node/guard.ts.
 
 const DEFAULT_PORT = 5231;
@@ -33,7 +37,7 @@ let args: ReturnType<typeof parseServeArgs>;
 try {
   args = parseServeArgs(process.argv.slice(2));
 } catch (e) {
-  fail(`${(e as Error).message}\nusage: tsx server/serve.ts <dir> [--port N] [--host H] [--allow-origin URL]… [--idle-ms N] [--mcp-idle-ms N]`);
+  fail(`${(e as Error).message}\nusage: tsx server/serve.ts <dir> [--port N] [--host H] [--allow-origin URL]… [--idle-ms N] [--mcp-idle-ms N] [--app DIR]`);
 }
 const dir = resolve(args.dir);
 try {
@@ -48,10 +52,14 @@ const log = (...m: unknown[]) => console.log(new Date().toISOString().slice(11, 
 const guard = makeGuard({ port, allowOrigins: [...args.allowOrigins, ...(process.env.CANVAS_ALLOW_ORIGIN?.split(',') ?? [])] });
 const storage = new FolderStorage(dir);
 const directory = new BoardDirectory(storage, { idleMs: args.idleMs, sweepMs: Math.min(10_000, Math.max(50, (args.idleMs ?? 600_000) / 2)), log });
+const appDir = resolve(args.app ?? fileURLToPath(new URL('../dist', import.meta.url)));
+for (const f of ['index.html', 'home.html']) {
+  if (!existsSync(join(appDir, f))) console.warn(`canvas serve: ${join(appDir, f)} is missing; the web app won't open until \`pnpm build\` has run (the API works)`);
+}
 const mcpService = new McpService(directory, { idleMs: args.mcpIdleMs });
 mcpService.start();
 const mcp = mcpHandler(mcpService, log);
-const server = createNodeServer({ directory, guard, log, mcp });
+const server = createNodeServer({ directory, guard, log, mcp, app: createStaticApp(appDir, guard) });
 
 try {
   await server.listen(port, host);
@@ -59,7 +67,8 @@ try {
   fail(`cannot listen on ${host}:${port}: ${(e as Error).message}`, 1);
 }
 const boards = await directory.list();
-log(`canvas serve: ${storage.dir} on http://${host}:${port} (${boards.length} board${boards.length === 1 ? '' : 's'}; browsers: ?bridge=ws://${host}:${port}/ws/<board>; app origins allowed: ${guard.origins.join(', ')})`);
+log(`canvas serve: ${storage.dir} on http://${host}:${port} (${boards.length} board${boards.length === 1 ? '' : 's'}; open http://${host}:${port}/; app origins allowed: ${guard.origins.join(', ')})`);
+if (!args.allowOrigins.length && !process.env.CANVAS_ALLOW_ORIGIN) log(`from another host name (http://<host name>:${port}): start with --allow-origin http://<that name>:${port}`);
 log(`agents: claude mcp add --transport http canvas http://${host}:${port}/mcp`);
 
 let stopping = false;

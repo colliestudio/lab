@@ -4,6 +4,9 @@ import { copyText, createRoomFrom, mountRoomStatus, roomFromUrl, roomLink } from
 import { openBridgeDialog } from './bridgeDialog';
 import { bridgeFromLocation, bridgeHref, rememberBridge } from './bridges';
 import { askName } from './nameDialog';
+import { probeBoard } from './serve/probe';
+import { boardWsUrl, servedBoardName } from './serve/route';
+import { showBoardScreen } from './serve/boardScreen';
 import { cardsPlugin } from './plugins/cards';
 import { chessPlugin } from './plugins/chess';
 import { clockPlugin } from './plugins/clock';
@@ -20,7 +23,9 @@ import { attachFollow, createFramesPlugin, portalsEnabled, enterUrl, mountBreadc
 
 const BRIDGE_ADDR = bridgeFromLocation(location);
 const BRIDGE = BRIDGE_ADDR?.url ?? null;
-const ROOM = BRIDGE ? null : roomFromUrl();
+// on a canvas service, /b/<name> is a board it hosts (a ?bridge= address still wins; ?room= is ignored there)
+const SERVED = BRIDGE ? null : servedBoardName(location.pathname);
+const ROOM = BRIDGE || SERVED !== null ? null : roomFromUrl();
 const DB_NAME = ROOM ? roomDbName(ROOM) : 'canvas-poc';
 // per room: a room entered through a portal must not open at the camera of the table you came from
 const VIEW_KEY = ROOM ? `canvas-poc:view:${ROOM}` : 'canvas-poc:view';
@@ -118,7 +123,7 @@ app.registerMainMenuItem({
 app.registerMainMenuItem({ id: 'app.bridge', order: 0, entry: () => ({ label: 'Bridge…', run: () => openBridge() }) });
 app.registerMainMenuItem({ id: 'app.help', order: 1, entry: () => ({ label: 'Help and shortcuts', hint: '?', run: () => helpBtn.click() }) });
 
-if (!ROOM && !BRIDGE) {
+if (!ROOM && !BRIDGE && SERVED === null) {
   const share = document.createElement('button');
   share.type = 'button';
   share.textContent = 'Share';
@@ -176,7 +181,12 @@ function openBridge() {
 
 const view = persistViewport(app, VIEW_KEY);
 if (BRIDGE) startBridge(BRIDGE);
-else persistLocally(app, DB_NAME).then(({ empty }) => {
+else if (SERVED !== null) void probeBoard(SERVED).then((p) => (p.kind === 'ok' ? startBridge(boardWsUrl(location, SERVED), { name: p.name }) : p.kind === 'none' ? startLocal() : showBoardScreen(p, SERVED)));
+else startLocal();
+
+/** No service: the board of this browser (IndexedDB), or a room. */
+function startLocal() {
+  persistLocally(app, DB_NAME).then(({ empty }) => {
   if (!ROOM) {
     if (empty) newBoard();
     else if (view) app.viewport.set(view.x, view.y, view.zoom);
@@ -227,10 +237,11 @@ else persistLocally(app, DB_NAME).then(({ empty }) => {
     app.view.fit();
     flash('Joined the table');
   });
-});
+  });
+}
 
-/** Bridge mode (?bridge=ws://host:5222): the table is a .canvas file a bridge process hosts; agents join it. */
-function startBridge(url: string) {
+/** Bridge mode (?bridge=ws://host:5222): the table is a .canvas file a bridge process hosts; agents join it. A board of a canvas service (`served`) is the same, on this origin. */
+function startBridge(url: string, served?: { name: string }) {
   const stored = loadPlayer();
   const room = joinBridge(app, url, { id: stored.id, name: stored.name, color: stored.color }, BRIDGE_ADDR?.token);
   (window as any).room = room;
@@ -245,7 +256,7 @@ function startBridge(url: string) {
     chrome.topRight,
     () => {
       room.leave();
-      location.href = location.pathname;
+      location.href = served ? '/' : location.pathname;
     },
     async () => {
       const choice = await askName(room.presence.me, { title: 'Your name and color', action: 'Save' });
@@ -256,12 +267,21 @@ function startBridge(url: string) {
     },
   );
   mountChat(app, chrome.topRight, url);
-  flash(`Connecting to the bridge at ${url}…`);
+  if (served) {
+    document.title = `${served.name} · Canvas`;
+    const back = document.createElement('a');
+    back.href = '/';
+    back.className = 'share-btn';
+    back.textContent = 'All boards';
+    chrome.topLeft.prepend(back);
+  }
+  flash(served ? `Opening ${served.name}…` : `Connecting to the bridge at ${url}…`);
   room.synced.then(() => {
-    rememberBridge({ url, token: BRIDGE_ADDR?.token });
+    // a served board is on this very origin: remembering it would fill the saved bridges
+    if (!served) rememberBridge({ url, token: BRIDGE_ADDR?.token });
     app.store.undoManager.clear();
     app.view.fit();
-    flash('Connected: this table is the bridge’s .canvas file');
+    flash(served ? `Opened ${served.name}` : 'Connected: this table is the bridge’s .canvas file');
   });
 }
 

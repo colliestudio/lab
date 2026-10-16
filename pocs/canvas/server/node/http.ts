@@ -11,6 +11,7 @@ import { wsConn } from './ws';
 // The HTTP and WebSocket front of a BoardDirectory on node:http.
 //  /api/...                  the service API (core/api.ts)
 //  WS /ws/<board>[/...]      a board's live document (y-websocket)
+//  /, /b/<board>, files      the built web app (`app`, serve only), answered before the guard (node/static.ts)
 // With `defaultBoard` (bridge mode) the old single-board routes work too: /doc, /status, ... and a
 // WebSocket on any other path go to that board.
 
@@ -19,6 +20,8 @@ export interface NodeServerOptions {
   guard: Guard;
   log: Log;
   defaultBoard?: string;
+  /** Serve only: the web app's files and pages. Answers before the guard and returns false for /api, /ws, /mcp. */
+  app?: { handle(req: IncomingMessage, res: ServerResponse): Promise<boolean> };
   /** Bridge mode: more fields on the default board's /status (port, room). */
   statusExtra?: () => Record<string, unknown>;
   /** Mounted at /mcp (after the guard). */
@@ -49,6 +52,12 @@ export function createNodeServer(o: NodeServerOptions): NodeServer {
   }
 
   async function handle(req: IncomingMessage, res: ServerResponse) {
+    try {
+      if (o.app && (await o.app.handle(req, res))) return;
+    } catch (e) {
+      if (res.headersSent) return void res.destroy();
+      return send(res, errorReply(e));
+    }
     const why = guard.check(req.headers, req.method, info(req));
     if (why) {
       refuse(req.method ?? 'request', req, why);
@@ -105,7 +114,7 @@ export function createNodeServer(o: NodeServerOptions): NodeServer {
     } catch (e) {
       const r = errorReply(e);
       refuse('WebSocket', req, (r.json as { error: string }).error);
-      return deny(r.status, r.status === 404 ? 'Not Found' : r.status === 409 ? 'Conflict' : r.status === 400 ? 'Bad Request' : 'Internal Server Error');
+      return deny(r.status, r.status === 404 ? 'Not Found' : r.status === 409 ? 'Conflict' : r.status === 400 ? 'Bad Request' : r.status === 422 ? 'Unprocessable Entity' : 'Internal Server Error');
     }
     if (socket.destroyed) return lease.release();
     // a handshake ws rejects (bad headers) never calls back: the lease must not outlive the socket

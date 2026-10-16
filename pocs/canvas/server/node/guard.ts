@@ -32,6 +32,8 @@ export interface RequestInfo {
 export interface Guard {
   /** Reason to refuse, or undefined to let the request through. */
   check(headers: IncomingHttpHeaders, method?: string, info?: RequestInfo): string | undefined;
+  /** Whether the Host header names a loopback name or an allowed origin's host (DNS rebinding). */
+  hostAllowed(headers: IncomingHttpHeaders): boolean;
   /** The origins that may talk to the bridge from a browser. */
   origins: string[];
 }
@@ -58,8 +60,10 @@ export function makeGuard(opts: { port: number; allowOrigins?: string[]; token?:
   const origins = [...new Set([...own, ...extra.map((u) => u.origin)])];
   const hosts = new Set(LOOPBACK);
   for (const u of extra) hosts.add(u.hostname.toLowerCase());
+  const hostAllowed = (headers: IncomingHttpHeaders) => !!headers.host && hosts.has(hostname(headers.host));
   return {
     origins,
+    hostAllowed,
     check(headers, method = 'GET', info = {}) {
       if (opts.token && !(isLoopback(info.remote) && !PROXY_HEADERS.some((h) => headers[h] !== undefined))) {
         const auth = /^Bearer (.+)$/i.exec(String(headers.authorization ?? ''))?.[1];
@@ -71,8 +75,7 @@ export function makeGuard(opts: { port: number; allowOrigins?: string[]; token?:
         }
         if (!given || !same(given, opts.token)) return 'this bridge needs its pairing token (use the link the bridge printed)';
       }
-      const host = headers.host;
-      if (!host || !hosts.has(hostname(host))) return `Host ${host ?? '(none)'} is not allowed`;
+      if (!hostAllowed(headers)) return `Host ${headers.host ?? '(none)'} is not allowed`;
       const origin = headers.origin;
       if (origin !== undefined && !origins.includes(origin)) return `Origin ${origin} is not allowed${origin.startsWith('http') ? ` (start the bridge with --allow-origin ${origin})` : ''}`;
       const site = headers['sec-fetch-site'];

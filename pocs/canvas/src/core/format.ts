@@ -8,17 +8,25 @@ import type { CanvasDoc } from './doc';
 export const FORMAT_KEY = 'x-canvas-format';
 export const FORMAT_VERSION = 1;
 
+/** A valid version above what is supported (as opposed to a malformed field). */
+const isNewer = (found: unknown, supported: number): boolean => typeof found === 'number' && Number.isInteger(found) && found > supported;
+
 export class FormatError extends Error {
   constructor(
     readonly found: unknown,
     readonly supported = FORMAT_VERSION,
   ) {
     super(
-      typeof found === 'number' && Number.isInteger(found) && found > supported
+      isNewer(found, supported)
         ? `this board is format ${found}; this server supports up to ${supported}. Update the server to open it (the file is untouched).`
         : `${FORMAT_KEY} must be a positive integer (found ${JSON.stringify(found) ?? 'nothing'})`,
     );
     this.name = 'FormatError';
+  }
+
+  /** A valid version this code is too old for (as opposed to a malformed field). */
+  get newer(): boolean {
+    return isNewer(this.found, this.supported);
   }
 }
 

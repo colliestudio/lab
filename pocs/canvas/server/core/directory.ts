@@ -1,7 +1,7 @@
 import { FORMAT_KEY, FORMAT_VERSION, FormatError } from '../../src/core/format';
 import { Board } from './board';
 import { stableSerialize } from './canonical';
-import { DirError } from './errors';
+import { BoardFileError, DirError } from './errors';
 import type { BoardStorage } from './storage';
 import type { Log } from './transport';
 
@@ -29,7 +29,7 @@ export interface BoardEntry {
   loaded: boolean;
   browsers: number;
   modified?: number;
-  /** Why the board can't be opened (a newer format), once an open has failed. */
+  /** Why the board can't be opened (a newer format, or a file that is not a canvas), once an open has failed. */
   error?: string;
 }
 
@@ -149,7 +149,7 @@ export class BoardDirectory {
       try {
         board = await Board.load(name, this.storage, { create: o.create, log: this.prefixed(name), seatIdleMs: this.opts.seatIdleMs });
       } catch (e) {
-        if (e instanceof FormatError) this.errors.set(key, { error: e.message, at: Date.now() });
+        if (e instanceof FormatError || e instanceof BoardFileError) this.errors.set(key, { error: e.message, at: Date.now() });
         throw e;
       }
       this.errors.delete(key);

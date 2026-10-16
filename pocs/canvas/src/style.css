@@ -223,3 +223,46 @@ body {
 .bridge-list[hidden] {
   display: none;
 }
+
+/* a served board that can't open (src/serve/boardScreen.ts); covers the table and its chrome */
+.serve-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: grid;
+  place-items: center;
+  background: #123;
+}
+.serve-card {
+  width: min(420px, 90vw);
+  padding: 18px 20px;
+  border-radius: 12px;
+  background: #fbfaf6;
+  color: #222;
+  font: 14px system-ui, sans-serif;
+}
+.serve-card h2 {
+  margin: 0 0 8px;
+  font-size: 17px;
+}
+.serve-card p {
+  margin: 0 0 14px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.serve-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.serve-actions button {
+  padding: 5px 12px;
+  border: 1px solid #ccc;
+  border-radius: 7px;
+  background: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+.cv-chrome a.share-btn {
+  text-decoration: none;
+}

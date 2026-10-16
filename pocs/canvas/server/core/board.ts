@@ -4,10 +4,10 @@ import * as awarenessProtocol from 'y-protocols/awareness';
 import * as encoding from 'lib0/encoding';
 import * as decoding from 'lib0/decoding';
 import { parse } from '../../src/core/io';
-import { FORMAT_KEY, FORMAT_VERSION, checkFormat, migrateFormat } from '../../src/core/format';
+import { FORMAT_KEY, FORMAT_VERSION, FormatError, checkFormat, migrateFormat } from '../../src/core/format';
 import { Host, type Actor } from './host';
 import { stableSerialize } from './canonical';
-import { DirError } from './errors';
+import { BoardFileError, DirError } from './errors';
 import type { BoardStorage } from './storage';
 import type { Conn, Log } from './transport';
 
@@ -78,12 +78,17 @@ export class Board {
   /**
    * Load a board from storage: its history sidecar first, then the stored text merged over it.
    * Throws FormatError (newer or invalid format: nothing is loaded, watched or written), DirError 404
-   * (missing, unless `create`) or the parse error of a text that is not a canvas at all.
+   * (missing, unless `create`) or BoardFileError (a text that is not a canvas at all).
    */
   static async load(name: string, storage: BoardStorage, opts: BoardOptions & { create?: boolean } = {}): Promise<Board> {
     const text = await storage.read(name);
     if (text === undefined && !opts.create) throw new DirError(404, `no board "${name}"`);
-    const apply = text === undefined ? undefined : prepare(text); // refuses before any state is touched
+    let apply: string | undefined; // refuses before any state is touched
+    try {
+      apply = text === undefined ? undefined : prepare(text);
+    } catch (e) {
+      throw e instanceof FormatError ? e : new BoardFileError(name, e as Error);
+    }
     const state = await storage.readState(name);
     const b = new Board(name, storage, opts);
     try {
