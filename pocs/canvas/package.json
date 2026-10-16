@@ -32,8 +32,7 @@
     "typescript": "^7.0.2",
     "vite": "^8.3.4",
     "vitest": "^5.0.3",
-    "wrangler": "^4.149.0",
-    "zod": "^4.6.5"
+    "wrangler": "^4.149.0"
   },
   "dependencies": {
     "@excalidraw/excalidraw": "^0.18.1",
@@ -46,6 +45,7 @@
     "y-protocols": "^1.0.7",
     "y-webrtc": "^10.3.0",
     "y-websocket": "^3.1.0",
-    "yjs": "^13.6.33"
+    "yjs": "^13.6.33",
+    "zod": "^4.6.5"
   }
 }

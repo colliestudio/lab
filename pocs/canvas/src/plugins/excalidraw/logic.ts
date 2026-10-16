@@ -1,6 +1,9 @@
 import { generateKeyBetween } from 'fractional-indexing';
 import type { Command, CommandCtx } from '../../core/store';
 import { set, type CanvasDoc, type CanvasNode, type Change } from '../../core/doc';
+import * as z from 'zod/mini';
+import { command, view, type CommandSpec, type ViewSpec } from '../../core/agent';
+import { resolveNode } from '../../core/query';
 import type { PluginLogic } from '../logic';
 
 // Excalidraw frames: the real Excalidraw editor embedded in a frame on the table. A frame is a
@@ -272,13 +275,12 @@ const remove: Command<RemoveArgs> = (doc, a, ctx) => {
 
 export const commands = { create, put, add, remove, frame };
 
-export function registerExcalidrawLogic(store: { register(name: string, cmd: Command): void; exportFilters: ((d: CanvasDoc, c: CommandCtx) => CanvasDoc)[] }) {
-  for (const [name, cmd] of Object.entries(commands)) store.register(`excalidraw.${name}`, cmd as Command);
+export function registerExcalidrawLogic(store: { register(name: string, cmd: Command, spec?: CommandSpec): void; registerView?(name: string, spec: ViewSpec): void; exportFilters: ((d: CanvasDoc, c: CommandCtx) => CanvasDoc)[] }) {
+  for (const [name, cmd] of Object.entries(commands)) store.register(`excalidraw.${name}`, cmd as Command, specs[name]);
+  store.registerView?.('excalidraw.shapes', shapesView);
   // a file reader without Canvas sees the drawing's text (JSON Canvas text nodes need `text`)
   store.exportFilters.push((d) => ({ ...d, nodes: d.nodes.map((n) => (isDrawing(n) ? { ...n, text: fallbackText(n) } : n)) }));
 }
-
-export const logic: PluginLogic = { id: 'excalidraw', register: registerExcalidrawLogic };
 
 // ------------------------------------------------------------ agent shapes → Excalidraw elements
 
@@ -471,3 +473,109 @@ export function describe(n: CanvasNode): { id: string; type: string; label?: str
     }));
 }
 
+// ------------------------------------------------------------ agent descriptions (see core/agent.ts)
+
+/** The drawing an agent means: a frame by id or title, else the only one on the canvas. */
+function drawingId(doc: { nodes: CanvasNode[] }, ref?: string): string {
+  const ds = doc.nodes.filter(isDrawing);
+  if (ref) return pickFrame(ds, ref) ?? resolveNode(doc, ref).id;
+  if (ds.length === 1) return ds[0].id;
+  throw new Error(ds.length ? `${ds.length} drawings: pass drawing (${ds.map((d) => d.id).join(', ')})` : 'no drawing on the canvas: draw one first (excalidraw.create)');
+}
+
+const shapeArg = z.looseObject({
+  type: z.enum(['rectangle', 'ellipse', 'diamond', 'text', 'arrow']),
+  ref: z.optional(z.string().check(z.meta({ description: 'your name for it (becomes its id when free): arrows point at refs or shape ids' }))),
+  label: z.optional(z.string().check(z.meta({ description: 'text inside a shape, or on an arrow' }))),
+  text: z.optional(z.string().check(z.meta({ description: 'for type text' }))),
+  x: z.optional(z.number()),
+  y: z.optional(z.number()),
+  width: z.optional(z.number()),
+  height: z.optional(z.number()),
+  size: z.optional(z.number().check(z.meta({ description: 'font size for type text (default 20)' }))),
+  from: z.optional(z.string().check(z.meta({ description: 'arrow start: ref or shape id' }))),
+  to: z.optional(z.string().check(z.meta({ description: 'arrow end: ref or shape id' }))),
+  stroke: z.optional(z.string().check(z.meta({ description: '#hex' }))),
+  fill: z.optional(z.string().check(z.meta({ description: '#hex' }))),
+  dashed: z.optional(z.boolean()),
+  ends: z.optional(z.enum(['none', 'end', 'both'])),
+});
+const drawing = z.optional(z.string().check(z.meta({ description: 'frame node id or title (default: the only Excalidraw frame on the canvas)' })));
+const IN = { in: 'drawing' };
+const pickFlag = (flags: Record<string, string>) => (flags.in ? { drawing: flags.in } : {});
+
+const specs: Record<string, CommandSpec> = {
+  create: command({
+    description:
+      'Put a new Excalidraw frame on the canvas: a titled frame people draw in with the real Excalidraw (it scrolls/zooms inside; the frame keeps its size), optionally with shapes. x/y = center (640x440), or top-left with width/height. Returns its id.',
+    args: z.strictObject({ title: z.optional(z.string()), x: z.optional(z.number()), y: z.optional(z.number()), width: z.optional(z.number()), height: z.optional(z.number()), shapes: z.optional(z.array(shapeArg)) }),
+    example: { title: 'Flow', shapes: [{ type: 'rectangle', ref: 'a', label: 'Start' }] },
+    tool: 'canvas_draw_new',
+    cli: [{ verb: 'draw new' }],
+    toCommand: (a) => ({ ...a, x: a.x ?? 0, y: a.y ?? 0 }),
+  }),
+  add: command({
+    description:
+      'Add shapes to an Excalidraw drawing: boxes (rectangle/ellipse/diamond with a label), text, arrows between shapes (from/to = a ref from this call or an existing shape id, optional label). x/y are the drawing’s own coordinates (see canvas_draw_shapes; boxes ~140x70); without x/y shapes go in a row right of the drawing. The frame shows new shapes (it re-fits if they fall outside its view).',
+    args: z.strictObject({ drawing, shapes: z.array(shapeArg) }),
+    example: { shapes: [{ type: 'rectangle', ref: 'a', label: 'Start' }, { type: 'ellipse', ref: 'b', label: 'End' }, { type: 'arrow', from: 'a', to: 'b', label: 'go' }] },
+    tool: 'canvas_draw_add',
+    cli: [
+      { verb: 'draw add', rest: 'shapes', alias: IN },
+      { verb: 'draw box', alias: IN, accepts: ['in', 'type', 'ref'], usage: 'draw box LABEL [--type rectangle|ellipse|diamond] [--ref R] [--in N]', compose: (w, f) => ({ ...pickFlag(f), shapes: [{ type: f.type ?? 'rectangle', label: w.join(' '), ref: f.ref }] }) },
+      { verb: 'draw arrow', alias: IN, accepts: ['in', 'label'], usage: 'draw arrow FROM TO [--label L] [--in N]', compose: (w, f) => ({ ...pickFlag(f), shapes: [{ type: 'arrow', from: w[0], to: w[1], label: f.label }] }) },
+    ],
+    toCommand: (a, ctx) => ({ id: drawingId(ctx.doc, a.drawing), shapes: a.shapes }),
+    result: (_r, a, ctx) => describe(ctx.doc.get(drawingId(ctx.doc, a.drawing))!),
+  }),
+  remove: command({
+    description: 'Delete shapes from an Excalidraw drawing by id (their labels go too).',
+    args: z.strictObject({ drawing, ids: z.array(z.string()) }),
+    example: { ids: ['a'] },
+    tool: 'canvas_draw_remove',
+    cli: [{ verb: 'draw rm', rest: 'ids', alias: IN }],
+    toCommand: (a, ctx) => ({ id: drawingId(ctx.doc, a.drawing), ids: a.ids }),
+  }),
+  frame: command({
+    description: 'Change an Excalidraw frame: title, locked (a static picture people cannot draw in until unlocked), fit (show the whole drawing again).',
+    args: z.strictObject({ drawing, title: z.optional(z.string()), locked: z.optional(z.boolean()), fit: z.optional(z.boolean()) }),
+    example: { title: 'Checkout flow' },
+    tool: 'canvas_draw_frame',
+    cli: [
+      { verb: 'draw title', rest: 'title', alias: IN },
+      { verb: 'draw lock', set: { locked: true }, alias: IN },
+      { verb: 'draw unlock', set: { locked: false }, alias: IN },
+      { verb: 'draw fit', set: { fit: true }, alias: IN },
+    ],
+    toCommand: (a, ctx) => ({ id: drawingId(ctx.doc, a.drawing), title: a.title, locked: a.locked, view: a.fit ? null : undefined }),
+  }),
+};
+
+const shapesView: ViewSpec = view({
+  description: "List an Excalidraw drawing's shapes: id, type, label, position, arrows (from → to ids).",
+  args: z.strictObject({ drawing }),
+  example: {},
+  tool: 'canvas_draw_shapes',
+  cli: [{ verb: 'draw shapes', alias: IN }],
+  read: (doc, a) => describe(doc.get(drawingId(doc, a.drawing))!),
+  text: (v) =>
+    (v as ReturnType<typeof describe>)
+      .map((s) => `${s.id.padEnd(22)} ${s.type.padEnd(9)} ${String(s.x).padStart(6)},${String(s.y).padEnd(6)} ${s.label ?? ''}${s.from ? `  ${s.from} → ${s.to}` : ''}`)
+      .join('\n'),
+});
+
+const GUIDE = `Drawings live in Excalidraw frames; people draw in them with the real Excalidraw.
+1. excalidraw.create makes a frame (optionally with shapes) and returns its id.
+2. excalidraw.add puts shapes in: boxes (rectangle, ellipse, diamond) with a label, text, and arrows between them.
+   Give a box a ref; arrows point at refs from the same call or at existing shape ids.
+3. Coordinates are the drawing's own (excalidraw.shapes lists them); boxes are about 140x70. Without x/y, shapes go in a row right of the drawing.
+4. excalidraw.remove deletes shapes by id; excalidraw.frame renames the frame, locks it (a static picture) or fits the view.
+With several drawings pass drawing (frame id or title) on every call.`;
+
+export const logic: PluginLogic = {
+  id: 'excalidraw',
+  title: 'Excalidraw',
+  summary: 'Drawings in Excalidraw frames: add boxes, text and arrows by name, list shapes, rename, lock or fit the frame.',
+  guide: GUIDE,
+  register: registerExcalidrawLogic,
+};

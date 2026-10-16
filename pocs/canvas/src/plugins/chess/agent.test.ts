@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { GameView } from '../src/plugins/chess/game';
-import { gameText } from './chess';
-import { Host, makeActor } from './host';
+import { Host, makeActor } from '../../../bridge/host';
+import type { GameView } from './game';
+import { gameText } from './text';
 
 describe('chess through the bridge', () => {
   const claude = makeActor('Claude');
@@ -62,5 +62,50 @@ describe('chess through the bridge', () => {
     const h2 = new Host();
     h2.applyFile(text);
     expect((h2.view(claude, 'chess.state', {}) as GameView).fen).toBe((h.view(claude, 'chess.state', {}) as GameView).fen);
+  });
+
+  it('agent calls: described commands are checked, run as the seat, and answer with the game', () => {
+    const h = new Host();
+    const g = h.run(claude, 'chess.newgame', {});
+    expect(g).toMatchObject({ ok: true });
+    expect(h.run(claude, 'chess.sit', { color: 'white' })).toMatchObject({ ok: true });
+    const m = h.run(claude, 'chess.move', { move: 'e4' });
+    expect(m).toMatchObject({ ok: true, result: { you: 'white', lastMove: 'e4' } });
+    expect((m as { text: string }).text).toContain('1. e4');
+    expect(h.run(claude, 'chess.move', { move: 'e5' })).toMatchObject({ ok: false, error: expect.stringMatching(/Black to move/) });
+  });
+
+  it('bad args name the field and give the example', () => {
+    const h = new Host();
+    h.run(claude, 'chess.newgame', {});
+    const r = h.run(claude, 'chess.move', {});
+    expect(r.ok).toBe(false);
+    expect((r as { error: string }).error).toContain('chess.move: args.move: expected string, received undefined');
+    expect((r as { error: string }).error).toContain('Example: {"move":"Nf3"}');
+    expect((r as { error: string }).error).toContain('canvas_help {"plugin":"chess","command":"chess.move"}');
+  });
+
+  it('views check their args; unknown views list the known ones', () => {
+    const h = new Host();
+    h.run(claude, 'chess.newgame', {});
+    expect(() => h.view(claude, 'chess.state', { board: 3 })).toThrow(/args\.board: expected string/);
+    expect(() => h.view(claude, 'chess.nope', {})).toThrow(/chess has: chess\.state, chess\.turn/);
+  });
+
+  it('a command without a spec runs unchecked, marked undescribed, and help lists it', () => {
+    const h = new Host();
+    h.run(claude, 'chess.newgame', {});
+    expect(h.run(claude, 'chess.repair', {})).toMatchObject({ ok: true, undescribed: true });
+    expect(h.catalog.plugin('chess')!.undescribed).toContain('chess.repair');
+    expect(h.catalog.helpText('chess')).toContain('Not described yet');
+  });
+
+  it('chess.turn is empty until it is your move', () => {
+    const h = new Host();
+    h.run(claude, 'chess.newgame', {});
+    h.run(claude, 'chess.sit', { color: 'white' });
+    h.run(bot, 'chess.sit', { color: 'black' });
+    expect(h.view(bot, 'chess.turn', {})).toBeUndefined();
+    expect(h.view(claude, 'chess.turn', {})).toMatchObject({ yourTurn: true });
   });
 });

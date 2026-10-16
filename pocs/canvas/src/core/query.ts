@@ -1,4 +1,4 @@
-import type { CanvasNode, DocView } from '../src/core/doc';
+import type { CanvasNode, DocView } from './doc';
 
 // Reading the board for agents: compact node summaries and filters, plus "which node does this
 // name mean" so agents can say `connect "Order placed" "Payment taken"` instead of ids.
@@ -16,18 +16,18 @@ export interface NodeSummary {
   column?: string;
   /** Plugin namespaces on it (x-cards, x-sync…). */
   ext?: string[];
-  /** Diagram shape look (x-shape): kind, colors, dashed, size. */
-  shape?: Record<string, unknown>;
+  /** The plugin fields a plugin marked as worth listing (`Store.summaryExt`), by namespace. */
+  data?: Record<string, unknown>;
   links?: { id: string; to: string; label?: string }[];
 }
 
 export const titleOf = (n: CanvasNode) => (n.label ?? n.text ?? n.url ?? n.file ?? '').split('\n')[0].replace(/^#+\s*/, '').trim();
 
-export function summarize(doc: DocView, n: CanvasNode): NodeSummary {
+export function summarize(doc: DocView, n: CanvasNode, keep: ReadonlySet<string> = new Set()): NodeSummary {
   const carrier = doc.carrierOf(n.id);
   const ext = Object.keys(n).filter((k) => k.startsWith('x-'));
   const links = doc.edges.filter((e) => e.fromNode === n.id).map((e) => ({ id: e.id, to: e.toNode, ...(e.label ? { label: e.label } : {}) }));
-  const shape = n['x-shape'] as Record<string, unknown> | undefined;
+  const data = Object.fromEntries(ext.filter((k) => keep.has(k)).map((k) => [k, n[k as keyof CanvasNode]]));
   const text = n.text ?? n.label ?? n.url ?? n.file;
   return {
     id: n.id,
@@ -40,17 +40,17 @@ export function summarize(doc: DocView, n: CanvasNode): NodeSummary {
     ...(n.color ? { color: n.color } : {}),
     ...(carrier ? { column: titleOf(doc.get(carrier)!) } : {}),
     ...(ext.length ? { ext } : {}),
-    ...(shape ? { shape } : {}),
+    ...(Object.keys(data).length ? { data } : {}),
     ...(links.length ? { links } : {}),
   };
 }
 
 /** Filters: type, text (substring, case-insensitive), column (label), ext (namespace, e.g. x-sync). */
-export function queryNodes(doc: DocView, q: { type?: string; text?: string; column?: string; ext?: string }): NodeSummary[] {
+export function queryNodes(doc: DocView, q: { type?: string; text?: string; column?: string; ext?: string }, keep?: ReadonlySet<string>): NodeSummary[] {
   const text = q.text?.toLowerCase();
   const column = q.column?.toLowerCase();
   return doc.nodes
-    .map((n) => summarize(doc, n))
+    .map((n) => summarize(doc, n, keep))
     .filter((s) => !q.type || s.type === q.type)
     .filter((s) => !text || (s.text ?? '').toLowerCase().includes(text))
     .filter((s) => !column || (s.column ?? '').toLowerCase() === column)

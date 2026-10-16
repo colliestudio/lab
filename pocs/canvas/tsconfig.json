@@ -13,5 +13,6 @@
     "noEmit": true,
     "types": ["vite/client"]
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": ["src/plugins/cli.ts", "src/plugins/*/cli.ts", "src/plugins/*/bot.ts"]
 }

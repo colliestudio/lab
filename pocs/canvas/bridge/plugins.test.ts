@@ -27,6 +27,11 @@ const bridgeCommands: string[] = JSON.parse(
   execFileSync(join(root, 'node_modules/.bin/tsx'), ['-e', "import('./bridge/host.ts').then(m => console.log(JSON.stringify(new m.Host().store.commandNames())))"], { cwd: root, encoding: 'utf8', timeout: 30000 }).trim().split('\n').pop()!,
 );
 
+// the catalog (zod/mini, plugin specs) loads in plain Node too, and describes the same commands
+const nodeCatalog: { ids: string[]; described: string[] } = JSON.parse(
+  execFileSync(join(root, 'node_modules/.bin/tsx'), ['-e', "import('./bridge/catalog.ts').then(m => { const c = m.buildCatalog(); console.log(JSON.stringify({ ids: c.plugins().map(p => p.id), described: c.commandNames().filter(n => c.spec(n)) })) })"], { cwd: root, encoding: 'utf8', timeout: 30000 }).trim().split('\n').pop()!,
+);
+
 // the browser's plugins in main.ts order
 function browserCommands() {
   const app = new App(document.createElement('div'));
@@ -44,6 +49,12 @@ describe('bridge plugin logic', () => {
     for (const prefix of ['core.', 'cards.', 'chess.', 'clock.', 'battleline.', 'mats.', 'board.', 'diagram.', 'storm.', 'page.', 'frames.']) {
       expect(bridgeCommands.some((c) => c.startsWith(prefix)), prefix).toBe(true);
     }
+  });
+
+  it('the catalog loads in Node and its described commands are real commands', () => {
+    expect(nodeCatalog.ids).toEqual(['core', ...PLUGIN_LOGIC.map((e) => e.id)]);
+    expect(nodeCatalog.described.length).toBeGreaterThan(15);
+    for (const n of nodeCatalog.described) expect(bridgeCommands, n).toContain(n);
   });
 
   it('registers frames last (its rider rule must follow the others)', () => {

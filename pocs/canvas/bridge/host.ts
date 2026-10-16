@@ -1,13 +1,15 @@
 import * as Y from 'yjs';
 import { Awareness } from 'y-protocols/awareness';
 import { parse } from '../src/core/io';
+import { resolveNode } from '../src/core/query';
 import { Store, type DispatchResult } from '../src/core/store';
 import { registerCoreCommands } from '../src/core/commands';
 import type { CanvasDoc, CanvasNode, Change } from '../src/core/doc';
 import type { LogActor } from '../src/core/log';
 import { registerPluginLogic } from '../src/plugins/logic';
 import { after, chatArray, chatMessages, sendChat, type ChatMessage } from '../src/core/chat';
-import { views, type View } from './views';
+import { Redirect, type AgentCtx } from '../src/core/agent';
+import { catalog, type Catalog } from './catalog';
 import { describeDiff, diffFile, stableSerialize } from './canonical';
 
 // The bridge's document side, without network or disk (server.ts adds those): one Y.Doc that
@@ -21,6 +23,9 @@ export interface Actor extends LogActor {
 
 /** The file itself as an actor: edits made in an editor, by git (checkout, pull) or a script. */
 export const FILE_ACTOR: Actor = { id: 'file', name: 'File', color: '#8a8a8a', kind: 'file' };
+
+/** What `Host.run` gives back: the command's result for the caller, or why it was refused. */
+export type RunResult = { ok: true; result: unknown; text?: string; undescribed?: true; changed: number; touched: string[] } | { ok: false; error: string };
 
 const FILE = Symbol('file');
 const AGENT_COLORS = ['#d97757', '#6a5acd', '#2e8b57', '#c71585', '#1e90ff'];
@@ -50,6 +55,7 @@ export class Host {
   private chatSeen = new Map<string, string>();
   /** The file as last written or read: a file edit = its diff from this (3-way merge with the live doc). */
   private base: CanvasDoc | null = null;
+  readonly catalog: Catalog = catalog();
 
   constructor() {
     this.store = this.newStore();
@@ -119,21 +125,70 @@ export class Host {
   }
 
   /**
-   * A plugin's view of the doc for this actor (see views.ts): `chess.state` = the game as text. Reading
-   * seats the actor (keeps it at the table while it thinks or waits). Throws on bad args.
+   * An agent's call of a command by name: args checked against the plugin's spec (errors name the
+   * field and give an example), node titles resolved to ids, the plugin's adapter turns them into the
+   * command's own args, and the plugin shapes the answer. A command without a spec runs unchecked.
    */
-  view(actor: Actor, name: string, args: Record<string, string | undefined>): unknown {
-    const v: View | undefined = views[name];
-    if (!v) throw new Error(`unknown view: ${name} (${Object.keys(views).join(', ')})`);
+  run(actor: Actor, name: string, args: unknown): RunResult {
+    const spec = this.catalog.spec(name);
+    if (!spec) {
+      if (!this.store.has(name)) return { ok: false, error: this.catalog.unknownError(name, 'command') };
+      const r = this.dispatch(actor, name, args ?? {});
+      if (!r.ok) return { ok: false, error: r.error ?? 'failed' };
+      return { ok: true, undescribed: true, result: { ...(r.select?.[0] ? { id: r.select[0] } : {}), changed: r.changes.length }, changed: r.changes.length, touched: r.touched };
+    }
+    const checked = this.catalog.validate(name, args);
+    if (!checked.ok) return checked;
     this.seat(actor);
-    return v(this.store.doc, args, actor);
+    const host = this;
+    const ctx: AgentCtx = {
+      get doc() {
+        return host.store.doc;
+      },
+      actor,
+    };
+    let resolved: Record<string, unknown>;
+    let target = name;
+    let cmdArgs: unknown;
+    try {
+      resolved = this.catalog.resolveRefs(spec.args, checked.value, this.store.doc);
+      const adapted = spec.toCommand ? spec.toCommand(resolved, ctx) : resolved;
+      if (adapted instanceof Redirect) {
+        target = adapted.command;
+        cmdArgs = adapted.args;
+      } else cmdArgs = adapted;
+    } catch (e) {
+      return { ok: false, error: `${name}: ${(e as Error).message}` };
+    }
+    const r = this.dispatch(actor, target, cmdArgs);
+    if (!r.ok) return { ok: false, error: r.error ?? 'failed' };
+    try {
+      const result = spec.result ? spec.result(r, resolved, ctx) : { ...(r.select?.[0] ? { id: r.select[0] } : {}), changed: r.changes.length };
+      return { ok: true, result, text: spec.text?.(result), changed: r.changes.length, touched: r.touched };
+    } catch (e) {
+      return { ok: false, error: `${name}: done, but reading the result failed: ${(e as Error).message}` };
+    }
+  }
+
+  /**
+   * A plugin's view of the doc for this actor (registered with `store.registerView`): `chess.state`
+   * = the game. Reading seats the actor (keeps it at the table while it thinks or waits). Throws on
+   * an unknown view or bad args.
+   */
+  view(actor: Actor, name: string, args: Record<string, unknown> = {}): unknown {
+    const spec = this.store.viewSpec(name);
+    if (!spec) throw new Error(this.catalog.unknownError(name, 'view'));
+    const checked = this.catalog.validate(name, args, 'view');
+    if (!checked.ok) throw new Error(checked.error);
+    this.seat(actor);
+    return spec.read(this.store.doc, this.catalog.resolveRefs(spec.args, checked.value, this.store.doc), actor);
   }
 
   /**
    * Resolve when `view` gives a value (a "ready" view returns undefined until then: `chess.turn` until
    * it's the actor's move), or with undefined after `ms`. Re-checked after every doc change.
    */
-  wait(actor: Actor, name: string, args: Record<string, string | undefined>, ms: number): Promise<unknown> {
+  wait(actor: Actor, name: string, args: Record<string, unknown>, ms: number): Promise<unknown> {
     const first = this.view(actor, name, args);
     if (first !== undefined) return Promise.resolve(first);
     return new Promise((resolve, reject) => {
@@ -163,7 +218,13 @@ export class Host {
   /** Say something at the table as `actor` (seats it); `node` = a node this is about (the cursor goes there). */
   say(actor: Actor, text: string, node?: string): ChatMessage {
     const seat = this.seat(actor);
-    if (node && !this.store.doc.get(node)) throw new Error(`no such node: ${node}`);
+    if (node) {
+      try {
+        node = resolveNode(this.store.doc, node).id; // an id, or a title
+      } catch (e) {
+        throw new Error((e as Error).message.includes('matches') ? (e as Error).message : `no such node: ${node}`);
+      }
+    }
     this.chatCursor(actor); // first contact: what was said before isn't "new" to it
     const msg = sendChat(this.ydoc, { id: actor.id, name: actor.name, color: actor.color, kind: actor.kind === 'tool' ? 'tool' : 'agent' }, text, { node });
     if (!msg) throw new Error('nothing to say: the message is empty');

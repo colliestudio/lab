@@ -1,3 +1,5 @@
+import * as z from 'zod/mini';
+import { command, nodeRef, type CommandSpec } from './agent';
 import { set, type CanvasEdge, type CanvasNode, type Change, type DocView } from './doc';
 import { isSide, type EdgeStyle } from './edges';
 import type { Store } from './store';
@@ -58,13 +60,86 @@ export function raise(store: Store, ids: string[]) {
   return store.dispatch('core.front', { ids }, { undoable: false });
 }
 
+// Agent side: how the generic commands describe themselves (see agent.ts).
+const side = z.enum(['top', 'right', 'bottom', 'left']);
+const end = z.enum(['none', 'arrow']);
+const arrowLook = {
+  label: z.nullable(z.optional(z.string().check(z.meta({ description: 'text on the arrow; null/"" removes it' })))),
+  from_side: z.nullable(z.optional(side.check(z.meta({ description: 'side of the first shape the arrow leaves; default: the side facing the other shape' })))),
+  to_side: z.nullable(z.optional(side)),
+  start: z.optional(end.check(z.meta({ description: 'arrowhead at the start (default none)' }))),
+  end: z.optional(end.check(z.meta({ description: 'arrowhead at the end (default arrow)' }))),
+  dashed: z.optional(z.boolean()),
+  curve: z.optional(z.boolean().check(z.meta({ description: 'curved instead of straight' }))),
+  color: z.nullable(z.optional(z.string().check(z.meta({ description: '#hex or a JSON Canvas preset 1-6; null clears' })))),
+};
+/** Agent arrow args to core.connect / core.edge args. */
+const arrowArgs = (a: { label?: string | null; from_side?: string | null; to_side?: string | null; start?: string; end?: string; dashed?: boolean; curve?: boolean; color?: string | null }) => ({
+  label: a.label,
+  fromSide: a.from_side,
+  toSide: a.to_side,
+  fromEnd: a.start,
+  toEnd: a.end,
+  dashed: a.dashed,
+  curve: a.curve,
+  color: a.color,
+});
+const changed = (r: { changes: unknown[] }) => ({ changed: r.changes.length });
+
+export const coreSpecs: Record<string, CommandSpec> = {
+  move: command({
+    description: 'Move nodes by (dx, dy); what rides on them (a board\'s pieces) goes along.',
+    args: z.strictObject({ ids: z.array(nodeRef()), dx: z.number(), dy: z.number() }),
+    example: { ids: ['Deck'], dx: 100, dy: 0 },
+    result: changed,
+  }),
+  duplicate: command({
+    description: 'Copy nodes (and the arrows between them), offset by (dx, dy) (default 24, 24). Returns the first copy\'s id.',
+    args: z.strictObject({ ids: z.array(nodeRef()), dx: z.optional(z.number()), dy: z.optional(z.number()) }),
+    example: { ids: ['Deck'] },
+  }),
+  delete: command({
+    description: 'Remove nodes or arrows by id; a node takes what it contains, what rides on it and its arrows with it.',
+    args: z.strictObject({ ids: z.array(z.string()) }),
+    example: { ids: ['a1b2c3'] },
+    result: changed,
+  }),
+  unedge: command({
+    description: 'Remove arrows by id (shapes stay). Nodes are removed with their own delete or remove command.',
+    args: z.strictObject({ arrows: z.array(z.string()) }),
+    example: { arrows: ['e1f2a3'] },
+    tool: 'canvas_remove_arrow',
+    cli: [{ verb: 'arrow-rm', rest: 'arrows' }],
+    toCommand: (a) => ({ ids: a.arrows }),
+    result: changed,
+  }),
+  connect: command({
+    description: 'Draw an arrow from one shape to another, optionally labelled and styled. Returns the arrow id (for canvas_edit_arrow / canvas_remove_arrow; canvas_list shows each node’s outgoing arrows).',
+    args: z.strictObject({ from: nodeRef(), to: nodeRef(), ...arrowLook }),
+    example: { from: 'Order placed', to: 'Payment taken', label: 'then', dashed: true },
+    tool: 'canvas_arrow',
+    cli: [{ verb: 'arrow', pos: ['from', 'to'] }],
+    toCommand: (a) => ({ from: a.from, to: a.to, ...arrowArgs(a) }),
+  }),
+  edge: command({
+    description: 'Change an arrow: label, sides, arrowheads, dashed, curve, color.',
+    args: z.strictObject({ arrow: z.string().check(z.meta({ description: 'arrow id' })), ...arrowLook }),
+    example: { arrow: 'e1f2a3', label: 'no' },
+    tool: 'canvas_edit_arrow',
+    cli: [{ verb: 'arrow-edit', pos: ['arrow'] }],
+    toCommand: (a) => ({ id: a.arrow, ...arrowArgs(a) }),
+    result: (r, a) => ({ id: a.arrow, changed: r.changes.length }),
+  }),
+};
+
 export function registerCoreCommands(store: Store) {
+  const spec = (name: string) => coreSpecs[name];
   store.register('core.move', (doc, a: { ids: string[]; dx: number; dy: number }) => {
     if (!isNum(a?.dx) || !isNum(a?.dy)) return [];
     // contained nodes go where their container's layout puts them; riders (a board's pieces) move with their carrier
     const nodes = pick(doc, a.ids).filter((n) => !doc.parentOf(n.id));
     return withRiders(doc, nodes).flatMap((n) => [set(n.id, 'x', Math.round(n.x + a.dx)), set(n.id, 'y', Math.round(n.y + a.dy))]);
-  });
+  }, spec('move'));
   store.register('core.front', (doc, a: { ids: string[] }) => toFront(doc, pick(doc, a?.ids)));
   /** Deletes nodes, everything they contain and everything riding on them (a board's pieces). */
   store.register('core.delete', (doc, a: { ids: string[] }) => {
@@ -79,7 +154,14 @@ export function registerCoreCommands(store: Store) {
     // edge ids (a picked arrow) go too
     const edges = isIds(a?.ids) ? a.ids.filter((id) => doc.edge(id)) : [];
     return [...[...out].map((id): Change => ({ op: 'del', id })), ...edges.map((id): Change => ({ op: 'unedge', id }))];
-  });
+  }, spec('delete'));
+  /** Deletes arrows only (ids that are not arrows are refused). */
+  store.register('core.unedge', (doc, a: { ids: string[] }) => {
+    const ids = isIds(a?.ids) ? a.ids : [];
+    const bad = ids.filter((id) => !doc.edge(id));
+    if (bad.length) throw new Error(`no arrow ${bad.join(', ')}`);
+    return ids.map((id): Change => ({ op: 'unedge', id }));
+  }, spec('unedge'));
   /** Copy nodes offset by (dx, dy) (default 24, 24) on top; plugins shape or refuse copies. Selects the copies. */
   store.register('core.duplicate', (doc, a: { ids: string[]; dx?: number; dy?: number }, ctx) => {
     const dx = isNum(a?.dx) ? a.dx : 24;
@@ -113,7 +195,7 @@ export function registerCoreCommands(store: Store) {
       if (f && t) changes.push({ op: 'edge', edge: { ...structuredClone(e), id: ctx.newId(), fromNode: f, toNode: t } });
     }
     return { changes, select: ids.length ? ids : undefined };
-  });
+  }, spec('duplicate'));
   /** Every plugin puts its objects back in their starting state (kits stay; what they hold resets). A reset's `untracked` part stays when it is undone. */
   store.register('core.reset', (doc, _a, ctx) => {
     const changes: Change[] = [];
@@ -164,7 +246,7 @@ export function registerCoreCommands(store: Store) {
       else edge[k] = v;
     }
     return { changes: [{ op: 'edge', edge: edge as unknown as CanvasEdge }], select: [id] };
-  });
+  }, spec('connect'));
   /** Restyle, relabel or re-aim an arrow. `null` or "" clears a field. */
   store.register('core.edge', (doc, a: EdgeArgs) => {
     const e = typeof a?.id === 'string' ? doc.edge(a.id) : undefined;
@@ -172,7 +254,7 @@ export function registerCoreCommands(store: Store) {
     const fields = edgeFields(a);
     // per field, so two people changing one arrow (label, color) both keep their change
     return fields ? fields.map(([key, value]): Change => ({ op: 'edgeset', id: e.id, key, value })) : [];
-  });
+  }, spec('edge'));
   store.register('core.add', (doc, a: { nodes: CanvasNode[] }) => {
     if (!Array.isArray(a?.nodes)) return [];
     return a.nodes

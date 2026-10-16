@@ -1,4 +1,4 @@
-import type { SyncArgs, SyncItem } from '../src/plugins/board/logic';
+import type { SyncArgs, SyncItem } from './logic';
 
 // Backlog.md → board: parse `backlog task list --plain` (read only) into a board.sync input.
 // Status sections become columns, tasks become notes; re-running refreshes them.
