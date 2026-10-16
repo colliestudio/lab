@@ -150,7 +150,11 @@ export async function directoryApi(dir: BoardDirectory, req: ApiRequest): Promis
     if (method === 'GET' && path === '/api/info') return ok({ service: 'canvas-serve', format: FORMAT_VERSION, mutable: dir.mutable });
     if (path === '/api/boards') {
       if (method === 'GET') return ok(await dir.list());
-      if (method === 'POST') return ok({ name: await dir.create(String((await req.body()).name ?? '')) }, 201);
+      if (method === 'POST') {
+        const body = await req.body();
+        if (body.text !== undefined && typeof body.text !== 'string') return fail(400, '"text" must be the board file as a string');
+        return ok({ name: await dir.create(String(body.name ?? ''), body.text) }, 201);
+      }
       return undefined;
     }
     const m = /^\/api\/boards\/([^/]+)\/(rename|delete)$/.exec(path);
@@ -172,7 +176,7 @@ export async function serviceApi(dir: BoardDirectory, req: ApiRequest): Promise<
   const own = await directoryApi(dir, req);
   if (own) return own;
   const m = /^\/api\/boards\/([^/]+)(\/.*)$/.exec(req.path);
-  if (!m) return fail(404, 'GET /api/info /api/boards; POST /api/boards {name} /api/boards/<name>/rename {to} /api/boards/<name>/delete; a board: /api/boards/<name>/doc /status /agent/run …');
+  if (!m) return fail(404, 'GET /api/info /api/boards; POST /api/boards {name, text?} /api/boards/<name>/rename {to} /api/boards/<name>/delete; a board: /api/boards/<name>/doc /status /agent/run …');
   try {
     return await dir.use(decodeName(m[1]), (b) => boardApi(b, { ...req, path: m[2] }));
   } catch (e) {
