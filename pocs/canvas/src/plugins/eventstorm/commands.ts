@@ -219,6 +219,9 @@ export const add: Command<{ board: string; kind: StickyKind; x?: number; y?: num
   }
   const pack = packBoard(doc, b, { add: node });
   const changes: Change[] = [{ op: 'add', node: placed(node, pack) }, ...pack.filter((c) => c.op !== 'set' || c.id !== node.id)];
+  // a position we chose (not the caller's) must stay on the board: widen it, or the sticky falls off its right edge
+  const right = placed(node, pack).x + node.width + PAD - b.x;
+  if (!isNum(a.x) && !on && right > b.width && !pack.some((c) => c.op === 'set' && c.id === b.id && c.key === 'width')) changes.push(set(b.id, 'width', Math.ceil(right)));
   const events: EventSpec[] = node.text ? [{ type: 'storm.add', text: `added ${kindName(a.kind)} ${quote(node)}`, targets: [node.id], actor: logActor(node) }] : [];
   return { changes, select: [node.id], events };
 };

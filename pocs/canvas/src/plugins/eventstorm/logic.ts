@@ -60,6 +60,11 @@ function sameBoard(doc: DocView, b: CanvasNode, id: string, field: string) {
   const o = boardOf(doc, doc.get(id));
   if (o && o.id !== b.id) throw new Error(`${field}: ${nameOf(doc.get(id)!)} is on board ${boardName(o)}, not ${boardName(b)}`);
 }
+function boardFor(doc: DocView, n: CanvasNode, field: string): CanvasNode {
+  const b = boardOf(doc, n);
+  if (!b) throw new Error(`${field}: ${nameOf(n)} is not on an event storm board (it sits outside every board; delete it and add it again)`);
+  return b;
+}
 function laneIndex(b: CanvasNode, name: string): number {
   const lanes = lanesOf(b);
   const i = lanes.findIndex((l) => l.toLowerCase() === name.trim().toLowerCase());
@@ -175,7 +180,7 @@ export const specs: Record<string, CommandSpec> = {
       const n = mustSticky(doc, a.id, 'id');
       if (!isEvent(n)) throw new Error(`id: storm.move moves domain events; ${nameOf(n)} is a ${KINDS[kindOf(n)].name.toLowerCase()}. Put it on an event with storm.attach`);
       if (!a.after && !a.before && !a.first && a.lane === undefined) throw new Error('give one of after, before, first or lane');
-      const b = boardOf(doc, n)!;
+      const b = boardFor(doc, n, 'id');
       for (const [f, id] of [['after', a.after], ['before', a.before]] as const) {
         if (!id) continue;
         mustEvent(doc, id, f);
@@ -198,7 +203,7 @@ export const specs: Record<string, CommandSpec> = {
       const n = mustSticky(doc, a.id, 'id');
       if (isEvent(n)) throw new Error(`id: ${nameOf(n)} is a domain event; events go on the timeline (storm.move), only other stickies attach`);
       mustEvent(doc, a.on, 'on');
-      const b = boardOf(doc, doc.get(a.on))!;
+      const b = boardFor(doc, doc.get(a.on)!, 'on');
       sameBoard(doc, b, a.id, 'id');
       return a;
     },
@@ -257,7 +262,7 @@ export const specs: Record<string, CommandSpec> = {
     example: { id: 'Payment received' },
     toCommand: (a, ctx) => {
       const n = mustSticky(ctx.doc, a.id, 'id');
-      const b = boardOf(ctx.doc, n)!;
+      const b = boardFor(ctx.doc, n, 'id');
       const me = ctx.actor.id;
       if (a.back) {
         if (!votesOf(n)[me]) throw new Error(`id: you have no vote on ${nameOf(n)} to take back`);

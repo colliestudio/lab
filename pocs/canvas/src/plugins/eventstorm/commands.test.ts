@@ -319,6 +319,14 @@ describe('event storm: agent placement, move, attach', () => {
     }
   });
 
+  it('default placement in explore widens the board instead of dropping events off its right edge', () => {
+    const { s, b } = withBoard();
+    for (let i = 0; i < 12; i++) add(s, b, 'event', { text: `E${i}` });
+    expect(eventsOn(s.doc, b)).toHaveLength(12);
+    s.dispatch('storm.phase', { board: b, phase: 'timeline' });
+    expect(order(s, b)).toEqual(Array.from({ length: 12 }, (_, i) => `E${i}`));
+  });
+
   it('lane picks the swimlane; after + lane keeps the order and changes the lane', () => {
     const { s, b } = withBoard(['Customer', 'Shop', 'Warehouse']);
     s.dispatch('storm.phase', { board: b, phase: 'timeline' });
