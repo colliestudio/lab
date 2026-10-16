@@ -20,6 +20,9 @@ function pluginSources(dirPath = join(dir, '../src/plugins')): string[] {
   return readdirSync(dirPath, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? pluginSources(join(dirPath, e.name)) : /\.ts$/.test(e.name) && !/\.test\.ts$/.test(e.name) ? [join(dirPath, e.name)] : []));
 }
 
+// Exact words that are argument names of the service's own tools (canvas_join takes a `board`), not the plugin of that id.
+const SCHEMA_ARGS: Record<string, string[]> = { 'server/mcp/tools.ts': ['board'] };
+
 describe('bridge/ and server/ stay generic', () => {
   it('imports no plugin but the list and the CLI extras', () => {
     const allowed = [join(root, 'src/plugins/logic'), join(root, 'src/plugins/cli')];
@@ -60,6 +63,7 @@ describe('bridge/ and server/ stay generic', () => {
     for (const f of files) {
       for (const m of code(f).matchAll(/'((?:[^'\\\n]|\\.)*)'|"((?:[^"\\\n]|\\.)*)"|`((?:[^`\\]|\\.)*)`/g)) {
         const s = m[1] ?? m[2] ?? m[3];
+        if (SCHEMA_ARGS[f]?.includes(s)) continue;
         for (const w of whole) expect(new RegExp(`(^|[^A-Za-z0-9.])${w.replace('.', '\\.')}($|[^A-Za-z0-9])`).test(s), `${f}: "${s}" mentions the command ${w}`).toBe(false);
         for (const n of names) expect(new RegExp(`(^|[^A-Za-z0-9-])${n}_`).test(s) || s === n || (s !== 'board.canvas' && new RegExp(`(^|[^A-Za-z0-9.-])${n}\\.([a-z]|$)`).test(s)), `${f}: "${s}" names the ${n} plugin`).toBe(false);
         for (const x of xfields) expect(s.includes(x), `${f}: "${s}" names the plugin field ${x}`).toBe(false);

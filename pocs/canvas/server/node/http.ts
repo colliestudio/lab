@@ -5,6 +5,7 @@ import { boardApi, errorReply, serviceApi, type ApiReply, type ApiRequest } from
 import type { BoardDirectory } from '../core/directory';
 import type { Log } from '../core/transport';
 import type { Guard } from './guard';
+import { droppedSignal } from './dropped';
 import { wsConn } from './ws';
 
 // The HTTP and WebSocket front of a BoardDirectory on node:http.
@@ -20,6 +21,8 @@ export interface NodeServerOptions {
   defaultBoard?: string;
   /** Bridge mode: more fields on the default board's /status (port, room). */
   statusExtra?: () => Record<string, unknown>;
+  /** Mounted at /mcp (after the guard). */
+  mcp?: { handle(req: IncomingMessage, res: ServerResponse): Promise<void> };
 }
 
 export interface NodeServer {
@@ -51,11 +54,12 @@ export function createNodeServer(o: NodeServerOptions): NodeServer {
       refuse(req.method ?? 'request', req, why);
       return send(res, { status: 403, json: { error: why } });
     }
+    if (o.mcp && /^\/mcp(\?|$)/.test(req.url ?? '')) return o.mcp.handle(req, res);
     try {
       const url = new URL(req.url ?? '/', 'http://service');
       const headers: ApiRequest['headers'] = {};
       for (const [k, v] of Object.entries(req.headers)) headers[k] = Array.isArray(v) ? v.join(', ') : v;
-      const api: ApiRequest = { method: req.method ?? 'GET', path: url.pathname, query: url.searchParams, headers, body: () => readJson(req) };
+      const api: ApiRequest = { method: req.method ?? 'GET', path: url.pathname, query: url.searchParams, headers, body: () => readJson(req), signal: droppedSignal(res) };
       let reply = await serviceApi(directory, api);
       if (!reply && o.defaultBoard) {
         reply = await directory.use(o.defaultBoard, (b) => boardApi(b, api));
