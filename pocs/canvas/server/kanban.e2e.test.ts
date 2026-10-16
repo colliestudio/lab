@@ -227,7 +227,7 @@ describe('a kanban node on a served board', () => {
     }, 3000);
   });
 
-  it('a conflict: the file wins, one notice, nothing written back (C36)', async () => {
+  it('a board edit racing a file edit: board and file end up agreeing (the unit tests carry who wins)', async () => {
     const t = a.tasks().find((x) => task(x).taskId === 'TASK-3')!;
     // block the serve's write window: an edit and a file change in the same breath
     const f = join(dir, readdirSync(dir).find((n) => n.startsWith('task-3 -'))!);

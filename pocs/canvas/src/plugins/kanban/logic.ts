@@ -14,8 +14,8 @@ export const shapeExport: DocFilter = (doc) => ({
   ...doc,
   nodes: doc.nodes.map((n): CanvasNode => {
     if (isTask(n)) {
-      const { base: _b, description: _d, plan: _p, notes: _n, ac: _a, comments: _c, outbox: _o, note: _note, ...f } = n[FIELD];
-      return { ...n, [FIELD]: f };
+      const { base: _b, description: _d, plan: _p, notes: _n, ac: _a, comments: _c, note: _note, ...f } = n[FIELD];
+      return { ...n, [FIELD]: Object.fromEntries(Object.entries(f).filter(([k]) => !k.startsWith('outbox:'))) as typeof f };
     }
     if (isBoard(n)) {
       const { state: _s, caps: _caps, nextId: _next, ...f } = n[FIELD];

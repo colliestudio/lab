@@ -123,11 +123,12 @@ describe('export', () => {
   it('the board file keeps the card face and the filter; not hashes, sections, comments, outbox, the sync state or a path', () => {
     const s = kanbanStore();
     addBoard(s);
-    addTask(s, 'b1', { title: 'T', description: 'D', plan: 'P', notes: 'N', ac: [{ text: 'a', done: false }], comments: [{ text: 'c' }], outbox: [{ key: 'k', author: '@a', text: 'x' }], base: { title: 'zz' }, note: 'n' }, 't1');
+    addTask(s, 'b1', { title: 'T', description: 'D', plan: 'P', notes: 'N', ac: [{ text: 'a', done: false }], comments: [{ text: 'c' }], 'outbox:k': { key: 'k', at: 1, author: '@a', text: 'x' }, base: { title: 'zz' }, note: 'n' }, 't1');
     const exported = s.exportDoc();
     const t = exported.nodes.find((n) => n.id === 't1')!;
     expect(t[FIELD]).toMatchObject({ kind: 'task', title: 'T', taskId: 'TASK-1' });
     for (const k of ['base', 'description', 'plan', 'notes', 'ac', 'comments', 'outbox', 'note']) expect(t[FIELD], k).not.toHaveProperty(k);
+    expect(Object.keys(t[FIELD] as object).some((k) => k.startsWith('outbox'))).toBe(false);
     expect(t.file).toBe('TASK-1');
     const b = exported.nodes.find((n) => n.id === 'b1')!;
     expect(b[FIELD]).not.toHaveProperty('state');

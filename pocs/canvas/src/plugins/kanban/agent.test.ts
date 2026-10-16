@@ -43,6 +43,21 @@ describe('naming a task and a node', () => {
   });
 });
 
+describe('a node that is not live', () => {
+  it('commands refuse with the reason and the view still reads', () => {
+    const s = seeded();
+    s.apply([{ op: 'set', id: 'b1', key: 'x-kanban.state', value: { error: 'this serve has no kanban folder named "x"' } }]);
+    expect(() => needBoard(s.doc)).toThrow(/is not live: this serve has no kanban folder named "x"; nothing was changed/);
+    expect(needBoard(s.doc, undefined, false).id).toBe('b1');
+    for (const [name, args] of [['kanban.move', { task: 'TASK-1', status: 'Done' }], ['kanban.create', { title: 'x' }], ['kanban.edit', { task: 'TASK-1', title: 'y' }], ['kanban.comment', { task: 'TASK-1', text: 'c' }]] as const) {
+      expect(() => s.spec(name)!.toCommand!(args as never, { doc: s.doc } as never), name).toThrow(/not live/);
+    }
+    s.apply([{ op: 'set', id: 'b1', key: 'x-kanban.state', value: undefined }]);
+    expect(() => needBoard(s.doc)).toThrow(/no canvas serve is syncing it/);
+    expect(String(s.viewSpec('kanban.board')!.read(s.doc, {}, { id: 'x', name: 'x', color: '#000' }))).toContain('not synced yet');
+  });
+});
+
 describe('acceptance list ops (1-based, like --check-ac)', () => {
   const t = (ac: { text: string; done: boolean }[]) => ({ ac }) as never;
   const list = [{ text: 'a', done: false }, { text: 'b', done: true }];

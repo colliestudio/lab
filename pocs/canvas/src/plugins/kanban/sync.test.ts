@@ -2,12 +2,18 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 import type { Store } from '../../core';
 import { FIELDS } from './markdown';
-import { board, clock, column, dirtyFields, tasksOf, task } from './model';
+import { board, clock, outboxOf, column, dirtyFields, tasksOf, task } from './model';
 import { MemSource, SourceError, type Card, type CardPatch } from './source';
 import { KanbanSync, TRACKER_ACTOR, patchFor, type SyncHost } from './sync';
 import { NOW, addBoard, kanbanStore, resetCounter, stampDaysAgo, taskField } from './testkit';
 import { BOARD } from './testkit';
 import { FIELD } from './model';
+
+const until = async (cond: () => boolean, ms = 2000) => {
+  const end = Date.now() + ms;
+  while (!cond() && Date.now() < end) await new Promise((r) => setTimeout(r, 10));
+  expect(cond()).toBe(true);
+};
 
 beforeEach(() => {
   resetCounter();
@@ -323,13 +329,30 @@ describe('comments', () => {
     s.dispatch('kanban.comment', { id, text: 'second' });
     await sync.cycle();
     expect((await source.read('TASK-1'))!.comments.map((c) => c.text)).toEqual(['first', 'second']);
-    expect(taskField(s, id).outbox).toBeUndefined();
+    expect(outboxOf(taskField(s, id))).toEqual([]);
     expect(taskField(s, id).comments.map((c) => c.text)).toEqual(['first', 'second']);
     s.dispatch('kanban.comment', { id, text: 'third' });
     source.failNext = 'cannot write';
     await sync.cycle();
-    expect(taskField(s, id).outbox).toBeUndefined();
+    expect(outboxOf(taskField(s, id))).toEqual([]);
     expect(events().some((e) => e.type === 'kanban.error' && /comment/.test(e.text))).toBe(true);
+  });
+});
+
+describe('a deleted card (Delete key, core.delete)', () => {
+  it('comes back from the file on the next cycle; the task itself is untouched', async () => {
+    const s = kanbanStore();
+    addBoard(s, { state: undefined });
+    const source = new MemSource(MemSource.info(), cards());
+    const sync = new KanbanSync(hostOf(s), 'b1', source, { pushDelayMs: 5 }).start();
+    await sync.idle();
+    const t = tasksOf(s.doc, 'b1').find((x) => task(x).taskId === 'TASK-2')!;
+    s.dispatch('core.delete', { ids: [t.id] });
+    expect(tasksOf(s.doc, 'b1').some((x) => task(x).taskId === 'TASK-2')).toBe(false);
+    await until(() => tasksOf(s.doc, 'b1').some((x) => task(x).taskId === 'TASK-2'));
+    expect(await source.read('TASK-2')).toBeTruthy();
+    expect(source.writes).toBe(0);
+    sync.stop();
   });
 });
 

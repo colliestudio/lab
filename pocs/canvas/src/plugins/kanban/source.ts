@@ -1,5 +1,5 @@
 // The tracker behind a kanban board, as the board sees it. The sync, the commands and the panel know
-// only this interface; the serve supplies the adapter (server/kanban/backlogMd.ts for Backlog.md).
+// only this interface; the serve supplies the adapter (src/plugins/kanban/node/backlogMd.ts for Backlog.md).
 // A Trello, Linear, GitHub Projects or ClickUp adapter would implement the same six calls: tokens and
 // webhook receivers stay inside the adapter's constructor and `watch`; what a tracker can't do is off
 // in `caps`. Types and an in-memory adapter for tests: Node- and browser-safe, no I/O.

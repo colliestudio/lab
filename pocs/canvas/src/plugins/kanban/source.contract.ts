@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { Card, TrackerSource } from './source';
 import { SourceError } from './source';
 
-// One contract, run against every adapter (MemSource here, BacklogMdSource in server/kanban): what the
+// One contract, run against every adapter (MemSource here, BacklogMdSource in kanban/node): what the
 // sync, the commands and the panel may rely on. A new adapter (Trello, Linear, ...) passes it too.
 
 export interface Harness {

@@ -1,5 +1,5 @@
 import type { App } from '../../core';
-import { derivedLinks, board, columnsOf, isTask, seatOf, task, type Seat, type TaskField } from './model';
+import { derivedLinks, outboxOf, board, columnsOf, isTask, seatOf, task, type Seat, type TaskField } from './model';
 import { PRIORITIES } from './commands';
 import { commentProblem } from './markdown';
 import { esc, labelColor } from './render';
@@ -71,7 +71,7 @@ export function panelModel(t: TaskField, statuses: string[], knownLabels: string
     notes: t.notes ?? '',
     comments: [
       ...(t.comments ?? []).map((c) => ({ author: c.author ?? 'someone', created: c.created ?? '', text: c.text })),
-      ...(t.outbox ?? []).map((c) => ({ author: c.author, created: '', text: c.text, sending: true })),
+      ...outboxOf(t).map((c) => ({ author: c.author, created: '', text: c.text, sending: true })),
     ],
     links: derivedLinks(t.taskId),
     note: t.note,

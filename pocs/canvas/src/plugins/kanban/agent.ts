@@ -3,7 +3,7 @@ import { command, nodeRef, view, type CommandSpec, type ViewSpec } from '../../c
 import type { CanvasNode, DocView } from '../../core';
 import { commentProblem } from './markdown';
 import { SOURCE_NAME, type EditPatch } from './commands';
-import { DONE_DAYS, board, clock, columnsOf, isBoard, isTask, shownIn, task, tasksOf, type TaskField } from './model';
+import { DONE_DAYS, board, clock, columnsOf, isBoard, isTask, outboxOf, shownIn, task, tasksOf, type TaskField } from './model';
 
 // Agent side: a spec per command, the kanban.board view, the guide. Refusals with a reason are thrown in
 // the adapters (`toCommand`); the commands keep the store contract (bad args do nothing), so the UI,
@@ -19,7 +19,14 @@ const priority = z.enum(['high', 'medium', 'low']);
 const quote = (n: CanvasNode) => `“${n.label ?? n.id}” (${n.id})`;
 
 /** The kanban node a command means: `ref` (already resolved to an id), or the only one on the board. */
-export function needBoard(doc: DocView, ref?: string): CanvasNode {
+export function needBoard(doc: DocView, ref?: string, live = true): CanvasNode {
+  const b = pickBoard(doc, ref);
+  const st = board(b).state;
+  if (live && !(st?.live && !st.error)) throw new Error(`the kanban node ${quote(b)} is not live: ${st?.error ?? 'no canvas serve is syncing it (a board of a serve with the folder is needed)'}; nothing was changed`);
+  return b;
+}
+
+function pickBoard(doc: DocView, ref?: string): CanvasNode {
   if (ref) {
     const n = doc.get(ref);
     if (isBoard(n)) return n;
@@ -225,7 +232,8 @@ function oneTask(t: TaskField, b: CanvasNode): string {
   sec('Plan', t.plan);
   sec('Notes', t.notes);
   if (t.comments?.length) rows.push('', 'Comments:', ...t.comments.map((c) => `- ${c.author ?? 'someone'} ${c.created ?? ''}: ${c.text.replace(/\n/g, ' / ')}`));
-  if (t.outbox?.length) rows.push('', `Not written yet: ${t.outbox.length} comment${t.outbox.length === 1 ? '' : 's'}`);
+  const waiting = outboxOf(t).length;
+  if (waiting) rows.push('', `Not written yet: ${waiting} comment${waiting === 1 ? '' : 's'}`);
   return rows.join('\n');
 }
 
@@ -251,7 +259,7 @@ export const views: Record<string, ViewSpec> = {
     args: z.strictObject({ board: boardRef, task: z.optional(taskRef()), all: z.optional(z.boolean()) }),
     example: {},
     read: (doc, a) => {
-      const b = needBoard(doc, a.board);
+      const b = needBoard(doc, a.board, false);
       if (a.task) return oneTask(task(needTask(doc, b, a.task)), b);
       return boardText(doc, b, !!a.all);
     },

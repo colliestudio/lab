@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ID_RE, commentProblem, newTaskFile, nextTaskId, parseConfig, parseTask, patchTask, stamp, stampTime, taskFileName, yamlScalar } from './markdown';
 import { CLI_CHILD, CLI_PLAIN, CLI_TASK } from './fixtures';
 
-// Fixtures are files written by `backlog` 1.53.0 (fixtures.ts); server/kanban/markdown.cli.test.ts
+// Fixtures are files written by `backlog` 1.53.0 (fixtures.ts); src/plugins/kanban/node/markdown.cli.test.ts
 // compares the patcher with the CLI itself when it is installed.
 const NOW = new Date(Date.UTC(2026, 9, 16, 15, 30, 59));
 const lines = (s: string) => s.split('\n');

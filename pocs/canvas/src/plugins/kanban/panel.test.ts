@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../../core';
 import { kanbanPlugin } from './index';
 import { PANEL_Z, closeTask, openTask, panelModel, panelOpen } from './panel';
-import { clock, task } from './model';
+import { clock, outboxOf, task } from './model';
 import { NOW, addBoard, addTask, resetCounter, taskField } from './testkit';
 
 const env = (live = true) => ({ live: () => live, seats: () => [{ id: 'a', name: 'Claude', color: '#d97757' }], me: () => 'Alex' });
@@ -48,7 +48,7 @@ describe('panel model (C45)', () => {
     expect(m.comments).toEqual([{ author: '@lead', created: '2026-10-16 11:05', text: 'hi' }]);
     expect(m.links.map((l) => l.label)).toEqual(['Worktree', 'Branch', 'Notes']);
     // a status the config lacks still shows; pending comments show as sending
-    const odd = panelModel({ ...taskField(app.store, 't'), status: 'Blocked', outbox: [{ key: 'k', author: '@alex', text: 'x' }] }, ['To Do'], []);
+    const odd = panelModel({ ...taskField(app.store, 't'), status: 'Blocked', 'outbox:k': { key: 'k', at: 1, author: '@alex', text: 'x' } }, ['To Do'], []);
     expect(odd.statuses).toEqual(['To Do', 'Blocked']);
     expect(odd.comments.at(-1)).toMatchObject({ sending: true, text: 'x' });
   });
@@ -135,9 +135,9 @@ describe('editing in the panel', () => {
     box.value = 'ship it';
     const ev = new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true, cancelable: true });
     box.dispatchEvent(ev);
-    expect(taskField(app.store, 't').outbox).toBeUndefined();
+    expect(outboxOf(taskField(app.store, 't'))).toEqual([]);
     box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
-    expect(taskField(app.store, 't').outbox?.[0]).toMatchObject({ text: 'ship it' });
+    expect(outboxOf(taskField(app.store, 't'))[0]).toMatchObject({ text: 'ship it' });
     expect(q('.kb-p-comments').textContent).toContain('sending');
   });
 

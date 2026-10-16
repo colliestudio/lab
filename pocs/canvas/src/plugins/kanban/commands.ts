@@ -46,7 +46,7 @@ export function cleanEdit(p: unknown): EditPatch {
     out.ac = a.ac
       .filter((x): x is { text: string; done?: unknown } => !!x && typeof x === 'object' && isStr((x as { text?: unknown }).text) && !!oneLine((x as { text: string }).text))
       .slice(0, MAX_AC)
-      .map((x) => ({ text: oneLine(x.text).slice(0, 1000), done: x.done === true }));
+      .map((x) => ({ text: x.text.replace(/[\r\n]+/g, ' ').trim().slice(0, 1000), done: x.done === true })); // inner spacing stays: ticking one item must not rewrite another
   }
   return out;
 }
@@ -265,10 +265,10 @@ export const commands: Record<string, Command> = {
     const text = isStr(a?.text) ? a.text.trim() : '';
     if (!n || !text || commentProblem(text)) return [];
     const t = task(n);
-    const entry = { key: ctx.newId(), author: authorOf(ctx.actor?.name), text: text.slice(0, 20_000) };
+    const entry = { key: ctx.newId(), at: ctx.now?.() ?? Date.now(), author: authorOf(ctx.actor?.name), text: text.slice(0, 20_000) };
     return {
       changes: [],
-      untracked: [ns(n.id, 'outbox', [...(t.outbox ?? []), entry])],
+      untracked: [ns(n.id, `outbox:${entry.key}`, entry)],
       events: [{ type: 'kanban.comment', text: `commented on ${t.taskId ?? t.title}`, targets: [n.id] }],
     };
   },

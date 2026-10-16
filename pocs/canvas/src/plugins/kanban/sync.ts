@@ -2,11 +2,11 @@ import type { CanvasNode, Change, DocView } from '../../core';
 import { set } from '../../core/doc';
 import type { EventSpec, LogActor } from '../../core/log';
 import { FIELDS, hashOf, type FieldName } from './markdown';
-import { CARD_H, CARD_W, FIELD, board, dirtyFields, isBoard, isTask, syncValues, task, tasksOf, type BoardField, type TaskField } from './model';
+import { CARD_H, CARD_W, FIELD, board, dirtyFields, isBoard, isTask, outboxOf, syncValues, task, tasksOf, type BoardField, type TaskField } from './model';
 import { SourceError, type Card, type CardPatch, type SourceInfo, type TrackerSource } from './source';
 
 // KanbanSync keeps one board node in step with its tracker. It runs where the files are (the canvas
-// serve, server/kanban/attach.ts); a browser never has a source. Both directions are field-level:
+// serve, src/plugins/kanban/node/attach.ts); a browser never has a source. Both directions are field-level:
 //
 //   base[f]  = hash of what the source held for field f at the last sync
 //   doc[f]   = what the board shows (viewers and agents edit this)
@@ -228,6 +228,8 @@ export class KanbanSync {
   cycles = 0;
   /** Last error told to the board (so it is told once). */
   private told: string | undefined;
+  /** Task nodes as of the last cycle: one that vanishes without the sync removing it (a viewer's Delete) is brought back by a pull. */
+  private known = new Set<string>();
 
   constructor(
     private host: SyncHost,
@@ -265,7 +267,8 @@ export class KanbanSync {
     if (this.stopped || !this.firstDone) return;
     const doc = this.host.doc();
     const nodes = tasksOf(doc, this.boardId);
-    if (!nodes.some((n) => task(n).pending || task(n).outbox?.length || dirtyFields(task(n)).length)) return;
+    const lost = [...this.known].some((id) => !doc.get(id));
+    if (!lost && !nodes.some((n) => task(n).pending || outboxOf(task(n)).length || dirtyFields(task(n)).length)) return;
     clearTimeout(this.pushTimer);
     // pull first: an outside edit of the same field since the last read wins (a full cycle)
     this.pushTimer = setTimeout(() => void this.cycle(), this.opts.pushDelayMs ?? 150);
@@ -278,6 +281,7 @@ export class KanbanSync {
       try {
         await this.pull();
         await this.push();
+        this.remember();
         this.cycles++;
       } catch (e) {
         this.fail(e);
@@ -285,6 +289,10 @@ export class KanbanSync {
     });
     this.queue = run;
     return run;
+  }
+
+  private remember() {
+    this.known = new Set(tasksOf(this.host.doc(), this.boardId).map((n) => n.id));
   }
 
   private now() {
@@ -333,12 +341,12 @@ export class KanbanSync {
         await this.create(fresh);
         continue;
       }
-      const dirty = nodes.find((n) => dirtyFields(task(n)).length > 0);
+      const dirty = nodes.find((n) => task(n).taskId && dirtyFields(task(n)).length > 0);
       if (dirty) {
         await this.writeFields(dirty);
         continue;
       }
-      const mailed = nodes.find((n) => task(n).outbox?.length);
+      const mailed = nodes.find((n) => outboxOf(task(n)).length);
       if (mailed) {
         await this.sendComment(mailed);
         continue;
@@ -354,8 +362,6 @@ export class KanbanSync {
   /** A task made on the board: write its file; the id may change if it was taken meanwhile. */
   private async create(n: CanvasNode) {
     const t = task(n);
-    const doc = this.host.doc();
-    const b = doc.get(this.boardId)!;
     try {
       const card = cleanCard(
         await this.source.create(
@@ -393,7 +399,6 @@ export class KanbanSync {
       // the task never existed: its card goes, and everyone is told
       this.host.apply([{ op: 'del', id: n.id }], [this.error(n, `could not add "${t.title}": ${msg}`)]);
     }
-    void b;
   }
 
   /** The dirty fields of one task, as one write. */
@@ -452,7 +457,7 @@ export class KanbanSync {
 
   private async sendComment(n: CanvasNode) {
     const t = task(n);
-    const next = t.outbox?.[0];
+    const next = outboxOf(t)[0];
     if (!next || !t.taskId) return;
     let failed: string | undefined;
     let card: Card | undefined;
@@ -465,8 +470,7 @@ export class KanbanSync {
     }
     const cur = this.host.doc().get(n.id);
     if (!isTask(cur)) return;
-    const rest = (task(cur).outbox ?? []).filter((m) => m.key !== next.key);
-    const changes: Change[] = [ns(n.id, 'outbox', rest.length ? rest : undefined)];
+    const changes: Change[] = [ns(n.id, `outbox:${next.key}`, undefined)]; // only the entry written: a comment typed meanwhile is another key
     if (card) {
       if (!same(task(cur).comments ?? [], card.comments)) changes.push(ns(n.id, 'comments', card.comments));
       if (card.updated && task(cur).updated !== card.updated) changes.push(ns(n.id, 'updated', card.updated));

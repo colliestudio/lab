@@ -10,7 +10,7 @@ import type { SourceInfo } from './source';
 //          Holds the task's fields (synced through Yjs like any node) and `base`: hashes of what the
 //          source said at the last sync. Field != base = an edit the serve still has to write;
 //          source != base = an outside edit (agent, CLI, git pull).
-// The browser never reaches files: it changes the doc, and the serve (server/kanban/attach.ts) syncs.
+// The browser never reaches files: it changes the doc, and the serve (src/plugins/kanban/node/attach.ts) syncs.
 
 export const FIELD = 'x-kanban';
 
@@ -47,6 +47,8 @@ export interface BoardField {
 
 export interface PendingComment {
   key: string;
+  /** When it was typed (ms): the order they are written in. */
+  at: number;
   author: string;
   text: string;
 }
@@ -73,7 +75,8 @@ export interface TaskField {
   updated?: string;
   comments: CommentItem[];
   /** Comments typed on the board that the serve has not written yet. */
-  outbox?: PendingComment[];
+  /** Pending comments, one `outbox:<key>` field each (so two viewers' comments merge instead of replacing one another): see `outboxOf`. */
+  [pending: `outbox:${string}`]: PendingComment | undefined;
   /** Made on the board, not written to the source yet (so its id is a guess). */
   pending?: boolean;
   /** Hashes of what the source held at the last sync, per synced field. */
@@ -160,7 +163,14 @@ export function isRecent(t: TaskField, days: number, now: number): boolean {
 }
 
 /** A task with a board edit the serve has not written yet (or one made on the board): it stays in view until the file has it. */
-const inFlight = (t: TaskField) => !!t.pending || !!t.outbox?.length || dirtyFields(t).length > 0;
+/** The comments typed on the board that the serve has not written yet, oldest first. */
+export const outboxOf = (t: TaskField): PendingComment[] =>
+  Object.entries(t)
+    .filter(([k, v]) => k.startsWith('outbox:') && v && typeof v === 'object')
+    .map(([, v]) => v as PendingComment)
+    .sort((a, b) => a.at - b.at || (a.key < b.key ? -1 : 1));
+
+const inFlight = (t: TaskField) => !!t.pending || outboxOf(t).length > 0 || dirtyFields(t).length > 0;
 
 /**
  * The tasks of a column that show: the filter applies to every column; the Done column also hides

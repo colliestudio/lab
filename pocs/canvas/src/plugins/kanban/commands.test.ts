@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
-import { board, clock, column, task, tasksOf } from './model';
+import { board, clock, outboxOf, column, task, tasksOf } from './model';
 import { cleanEdit } from './commands';
 import { NOW, addBoard, addTask, kanbanStore, resetCounter, taskField } from './testkit';
 
@@ -143,6 +143,15 @@ describe('edit (C45)', () => {
   });
 });
 
+describe('edit keeps other AC lines as they were', () => {
+  it('ticking one criterion does not normalise the spacing of the others', () => {
+    const s = seeded();
+    s.dispatch('kanban.edit', { id: 'one', patch: { ac: [{ text: 'a  double  space', done: false }, { text: 'b', done: false }] } });
+    s.dispatch('kanban.edit', { id: 'one', patch: { ac: [{ text: 'a  double  space', done: false }, { text: 'b', done: true }] } });
+    expect(taskField(s, 'one').ac[0].text).toBe('a  double  space');
+  });
+});
+
 describe('create: quick add and paste (C16, C17)', () => {
   it('one title makes one task at the end of the column, with the next id and an ordinal past every task', () => {
     const s = seeded();
@@ -213,12 +222,37 @@ describe('comment', () => {
     addTask(s, 'b1', { title: 'T' }, 't1');
     s.undoManager.clear();
     s.dispatch('kanban.comment', { id: 't1', text: '  hello\nthere ' });
-    expect(taskField(s, 't1').outbox).toEqual([{ key: 'id1', author: '@alex', text: 'hello\nthere' }]);
+    expect(outboxOf(taskField(s, 't1'))).toMatchObject([{ key: 'id1', author: '@alex', text: 'hello\nthere' }]);
     expect(s.undoManager.undoStack).toHaveLength(0);
     s.dispatch('kanban.comment', { id: 't1', text: 'again' });
-    expect(taskField(s, 't1').outbox).toHaveLength(2);
+    expect(outboxOf(taskField(s, 't1'))).toHaveLength(2);
     expect(s.dispatch('kanban.comment', { id: 't1', text: '   ' }).changes).toEqual([]);
     expect(s.dispatch('kanban.comment', { id: 'b1', text: 'x' }).changes).toEqual([]);
+    s.dispatch('kanban.comment', { id: 't1', text: 'a\n---\nb' });
+    expect(outboxOf(taskField(s, 't1'))).toHaveLength(2); // refused: not queued
+    expect(() => s.spec('kanban.comment')!.toCommand!({ task: 't1', text: 'a\n---\nb' } as never, { doc: s.doc } as never)).toThrow(/only '---'/);
+  });
+});
+
+describe('comments from two viewers at once', () => {
+  it('both are kept after the merge, in the order typed; the serve removes only the one it wrote', () => {
+    const a = kanbanStore({ prefix: 'a', actor: { id: 'a', name: 'Ann', color: '#000' } });
+    addBoard(a);
+    addTask(a, 'b1', { title: 'T' }, 't1');
+    const b = kanbanStore({ prefix: 'b', actor: { id: 'b', name: 'Bob', color: '#000' } });
+    Y.applyUpdate(b.ydoc, Y.encodeStateAsUpdate(a.ydoc));
+    a.dispatch('kanban.comment', { id: 't1', text: 'from A' }); // neither has seen the other's yet
+    b.dispatch('kanban.comment', { id: 't1', text: 'from B' });
+    Y.applyUpdate(a.ydoc, Y.encodeStateAsUpdate(b.ydoc));
+    Y.applyUpdate(b.ydoc, Y.encodeStateAsUpdate(a.ydoc));
+    for (const s of [a, b]) expect(outboxOf(taskField(s, 't1')).map((c) => c.text).sort()).toEqual(['from A', 'from B']);
+    const [first, second] = outboxOf(taskField(a, 't1'));
+    a.apply([{ op: 'set', id: 't1', key: `x-kanban.outbox:${first.key}`, value: undefined }]); // the serve wrote `first`
+    b.dispatch('kanban.comment', { id: 't1', text: 'from B again' });
+    Y.applyUpdate(a.ydoc, Y.encodeStateAsUpdate(b.ydoc));
+    expect(outboxOf(taskField(a, 't1')).map((c) => c.text)).toContain(second.text);
+    expect(outboxOf(taskField(a, 't1')).map((c) => c.text)).toContain('from B again');
+    expect(outboxOf(taskField(a, 't1')).map((c) => c.key)).not.toContain(first.key);
   });
 });
 
