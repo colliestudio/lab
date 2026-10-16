@@ -1,3 +1,5 @@
+import * as z from 'zod/mini';
+import { command, nodeRef, type CommandSpec } from '../../core/agent';
 import type { CanvasEdge, CanvasNode, Change, Command, CommandResult, DocView, EventSpec, Store } from '../../core';
 import type { PluginLogic } from '../logic';
 
@@ -336,10 +338,105 @@ export const sync: Command<SyncArgs> = (doc, a) => {
 
 export const commands = { add, update, remove, connect, disconnect, sync };
 
+// Agent side: how each command describes itself (see core/agent.ts).
+const COLOR = '1 red, 2 orange, 3 yellow, 4 green, 5 cyan, 6 purple, or #hex';
+const idResult = (r: { select?: string[]; changes: unknown[] }) => ({ ...(r.select?.[0] ? { id: r.select[0] } : {}), changed: r.changes.length });
+
+export const specs: Record<string, CommandSpec> = {
+  add: command({
+    description: 'Add a note (or a link/column). Without x/y it goes in `column`, below `near`, or right of everything. Returns the new id.',
+    args: z.strictObject({
+      text: z.string().check(z.meta({ description: 'markdown; first line is the title (a column\'s label)' })),
+      type: z.optional(z.enum(['text', 'group', 'link'])),
+      url: z.optional(z.string()),
+      column: z.optional(nodeRef('column to put it in (id or label)')),
+      near: z.optional(nodeRef('put it below this node')),
+      x: z.optional(z.number()),
+      y: z.optional(z.number()),
+      color: z.optional(z.string().check(z.meta({ description: COLOR }))),
+    }),
+    example: { text: 'Write the intro', column: 'Doing' },
+    tool: 'canvas_add_node',
+    cli: [
+      { verb: 'add-node', rest: 'text' },
+      { verb: 'add-column', rest: 'text', set: { type: 'group' } },
+    ],
+    toCommand: (a) => ({ ...a, label: a.type === 'group' ? a.text : undefined }),
+    result: (r) => idResult(r),
+  }),
+  update: command({
+    description: 'Edit or move a node: new text/label/color, absolute x/y, relative dx/dy, or into a column.',
+    args: z.strictObject({
+      node: nodeRef(),
+      text: z.optional(z.string()),
+      label: z.optional(z.string()),
+      color: z.nullable(z.optional(z.string().check(z.meta({ description: `${COLOR}; null clears` })))),
+      x: z.optional(z.number()),
+      y: z.optional(z.number()),
+      dx: z.optional(z.number()),
+      dy: z.optional(z.number()),
+      column: z.optional(nodeRef('move it to the bottom of this column')),
+    }),
+    example: { node: 'Write the intro', column: 'Done' },
+    tool: 'canvas_update_node',
+    cli: [
+      { verb: 'update', pos: ['node'] },
+      { verb: 'move', pos: ['node'] },
+    ],
+    toCommand: ({ node, ...a }) => ({ id: node, ...a }),
+    result: (r, a) => ({ id: a.node, changed: r.changes.length }),
+    text: (v) => (v as { id: string }).id,
+  }),
+  connect: command({
+    description: 'Draw an arrow from one node to another (optional label). Re-linking updates the label.',
+    args: z.strictObject({ from: nodeRef(), to: nodeRef(), label: z.optional(z.string()) }),
+    example: { from: 'Order placed', to: 'Payment taken', label: 'then' },
+    tool: 'canvas_connect',
+    cli: [{ verb: 'connect', pos: ['from', 'to'] }],
+    result: (r, a) => ({ from: a.from, to: a.to, changed: r.changes.length }),
+    text: (v) => `${(v as { from: string }).from} → ${(v as { to: string }).to}`,
+  }),
+  disconnect: command({
+    description: 'Remove the arrow between two nodes.',
+    args: z.strictObject({ from: nodeRef(), to: nodeRef() }),
+    example: { from: 'Order placed', to: 'Payment taken' },
+    cli: [{ verb: 'disconnect', pos: ['from', 'to'] }],
+    result: (r) => ({ changed: r.changes.length }),
+  }),
+  remove: command({
+    description: 'Remove nodes (their links go too).',
+    args: z.strictObject({ nodes: z.array(nodeRef()) }),
+    example: { nodes: ['Write the intro'] },
+    tool: 'canvas_remove',
+    cli: [{ verb: 'rm', rest: 'nodes' }],
+    toCommand: (a) => ({ ids: a.nodes }),
+    result: (r) => ({ changed: r.changes.length }),
+  }),
+  sync: command({
+    description: 'Mirror an outside list (tasks, issues) into columns: new items go to the bottom of their column, changed ones update, gone ones are removed. Items keep stable ids, so running it again with the same input changes nothing.',
+    args: z.strictObject({
+      source: z.string().check(z.meta({ description: 'name of the list; ids are <source>:<key>' })),
+      columns: z.array(z.strictObject({ key: z.string(), label: z.string() })),
+      items: z.array(z.strictObject({ key: z.string(), column: z.string().check(z.meta({ description: 'a column key' })), text: z.string(), color: z.optional(z.string()), data: z.optional(z.record(z.string(), z.unknown())) })),
+      at: z.optional(z.strictObject({ x: z.number(), y: z.number() })),
+    }),
+    example: { source: 'tasks', columns: [{ key: 'todo', label: 'To Do' }], items: [{ key: '1', column: 'todo', text: 'First task' }] },
+    result: (r) => ({ changed: r.changes.length }),
+  }),
+};
+
+const GUIDE = `Notes and columns on a plain JSON Canvas.
+- A column is a group node (board.add with type group). A note rides on the column its center sits in and moves with it.
+- Without x/y a note goes to the bottom of "column", below "near", or right of everything.
+- Name nodes by id or by title; a unique prefix or substring of the title is enough ("Doing", "Order placed").
+- board.update edits text or color, moves a node (x/y, dx/dy) or puts it into a column.
+- board.connect draws a plain link with an optional label; re-linking updates the label. Styled arrows are core.connect.
+- board.sync mirrors an outside list (Backlog.md tasks, issues) into columns and is safe to re-run; the CLI form is "canvas sync-backlog".`;
+
 /** The data side of the plugin. No DOM: used by the app, the bridge and tests. */
 export function registerBoardLogic(store: Store) {
-  for (const [name, cmd] of Object.entries(commands)) store.register(`board.${name}`, cmd as Command);
+  for (const [name, cmd] of Object.entries(commands)) store.register(`board.${name}`, cmd as Command, specs[name]);
   store.addRiderRule(columnOf);
 }
 
-export const logic: PluginLogic = { id: 'board', register: registerBoardLogic };
+export const logic: PluginLogic = { id: 'board', title: 'Board', summary: 'Notes, columns and links: add, move, connect and remove, by id or by title.', guide: GUIDE, register: registerBoardLogic };

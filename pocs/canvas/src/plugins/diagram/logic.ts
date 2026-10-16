@@ -1,4 +1,6 @@
 // runtime imports come from the DOM-free core modules: the Node bridge loads this file too
+import * as z from 'zod/mini';
+import { command, nodeRef, redirect, type CommandSpec } from '../../core/agent';
 import type { CanvasNode, Change, DocView } from '../../core/doc';
 import { anchor, isSide, NORMAL, sideToward, type Side } from '../../core/edges';
 import type { Command, Store } from '../../core/store';
@@ -174,11 +176,81 @@ const addConnected: Command<AddConnectedArgs> = (doc, a, ctx) => {
   };
 };
 
-export function registerDiagramLogic(store: Store) {
-  store.register('diagram.add', add);
-  store.register('diagram.update', update);
-  store.register('diagram.resize', resize);
-  store.register('diagram.addConnected', addConnected);
+// Agent side: how the commands describe themselves (see core/agent.ts). A straight port of the
+// tools agents had before commands described themselves; arrows are core.connect / core.edge.
+const kind = z.enum(['rect', 'ellipse', 'diamond', 'text', 'sticky']);
+const side = z.enum(['top', 'right', 'bottom', 'left']);
+const look = {
+  stroke: z.nullable(z.optional(z.string().check(z.meta({ description: 'outline and text color, a CSS color or a JSON Canvas preset 1-6; null = default' })))),
+  fill: z.nullable(z.optional(z.string().check(z.meta({ description: 'fill color, #hex, or "none" for see-through; null = the kind\'s default' })))),
+  dashed: z.optional(z.boolean()),
+  size: z.nullable(z.optional(z.number().check(z.meta({ description: 'text size in px (default 18); null = default' })))),
+};
+const geometry = { x: z.optional(z.number()), y: z.optional(z.number()), width: z.optional(z.number()), height: z.optional(z.number()) };
+
+/** A spot beside `n` (default: below it) for a shape of the given size. */
+function besideSpot(n: CanvasNode, side: string, w: number, h: number) {
+  const gap = 90;
+  const at: Record<string, { x: number; y: number }> = {
+    bottom: { x: n.x + n.width / 2 - w / 2, y: n.y + n.height + gap },
+    top: { x: n.x + n.width / 2 - w / 2, y: n.y - gap - h },
+    right: { x: n.x + n.width + gap, y: n.y + n.height / 2 - h / 2 },
+    left: { x: n.x - gap - w, y: n.y + n.height / 2 - h / 2 },
+  };
+  return at[side];
 }
 
-export const logic: PluginLogic = { id: 'diagram', register: registerDiagramLogic };
+export const specs: Record<string, CommandSpec> = {
+  add: command({
+    description:
+      'Add a diagram shape (rect, ellipse, diamond, text, sticky). Place it with x/y (top-left), cx/cy (center), beside `near` (on `side`), or right of everything. With `from` it is a new shape connected by an arrow from that shape (the fast flowchart step; `side` = which side of `from` the arrow leaves, `at` = where the new center goes). Returns the new id.',
+    args: z.strictObject({
+      kind: z.optional(kind.check(z.meta({ description: 'default rect' }))),
+      text: z.optional(z.string()),
+      ...geometry,
+      cx: z.optional(z.number()),
+      cy: z.optional(z.number()),
+      from: z.optional(nodeRef('connect from this shape')),
+      near: z.optional(nodeRef('place the shape beside this one')),
+      side: z.optional(side),
+      at: z.optional(z.strictObject({ x: z.number(), y: z.number() })),
+      label: z.optional(z.string().check(z.meta({ description: 'label for the arrow (with `from`)' }))),
+      ...look,
+    }),
+    example: { kind: 'rect', text: 'Start' },
+    tool: 'canvas_add_shape',
+    cli: [{ verb: 'shape', pos: ['kind'], rest: 'text', keepNone: ['fill'] }],
+    toCommand: ({ from, near, ...a }, ctx) => {
+      if (from) return redirect('diagram.addConnected', { ...a, from, at: a.at ?? (a.x !== undefined && a.y !== undefined ? { x: a.x, y: a.y } : undefined) });
+      if (!near) return a;
+      const n = ctx.doc.get(near);
+      const p = n && besideSpot(n, a.side ?? 'bottom', a.width ?? 160, a.height ?? 90);
+      if (!p) throw new Error(`no node ${near}`);
+      return { ...a, ...p };
+    },
+  }),
+  update: command({
+    description: 'Change a diagram shape: text, kind, colors, dashed, text size, and its place or size (x/y absolute, dx/dy relative, width/height). null clears a color or size.',
+    args: z.strictObject({ node: nodeRef(), text: z.optional(z.string()), kind: z.optional(kind), ...geometry, dx: z.optional(z.number()), dy: z.optional(z.number()), ...look }),
+    example: { node: 'Start', fill: '#ffe08a', dashed: true },
+    tool: 'canvas_style_shape',
+    cli: [{ verb: 'style', pos: ['node'], keepNone: ['fill'] }],
+    toCommand: ({ node, ...a }) => ({ id: node, ...a }),
+    result: (r, a) => ({ id: a.node, changed: r.changes.length }),
+    text: (v) => (v as { id: string }).id,
+  }),
+  addConnected: command({
+    description: 'Add a new shape with an arrow to it from `from` (the flowchart step). `side` = which side of `from` the arrow leaves; `at` = where the new center goes. Same as diagram.add with `from`.',
+    args: z.strictObject({ from: nodeRef(), kind: z.optional(kind), text: z.optional(z.string()), side: z.optional(side), at: z.optional(z.strictObject({ x: z.number(), y: z.number() })), label: z.optional(z.string()), width: z.optional(z.number()), height: z.optional(z.number()), ...look }),
+    example: { from: 'Start', text: 'Next', side: 'right' },
+  }),
+};
+
+export function registerDiagramLogic(store: Store) {
+  store.register('diagram.add', add, specs.add);
+  store.register('diagram.update', update, specs.update);
+  store.register('diagram.resize', resize);
+  store.register('diagram.addConnected', addConnected, specs.addConnected);
+}
+
+export const logic: PluginLogic = { id: 'diagram', title: 'Diagram', summary: 'Shapes (boxes, ellipses, diamonds, text, stickies) joined by arrows.', register: registerDiagramLogic };

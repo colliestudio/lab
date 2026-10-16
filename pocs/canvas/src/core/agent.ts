@@ -25,6 +25,8 @@ export interface CliForm {
   pos?: string[];
   rest?: string;
   set?: Record<string, unknown>;
+  /** Args that keep the word `none` as text (a fill of "none" means see-through) instead of becoming null. */
+  keepNone?: string[];
 }
 
 export interface CommandSpec<S extends ArgSchema = ArgSchema> {
