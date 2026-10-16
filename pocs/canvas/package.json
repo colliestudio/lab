@@ -20,11 +20,12 @@
     "serve": "tsx server/serve.ts",
     "canvas": "tsx bridge/cli.ts",
     "canvas-mcp": "tsx bridge/mcp.ts",
-    "agent:eval": "tsx agent-eval/run.ts"
+    "agent:eval": "tsx agent-eval/run.ts",
+    "serve:release": "bash scripts/serve-service.sh release",
+    "serve:service": "bash scripts/serve-service.sh"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261009.1",
-    "@modelcontextprotocol/sdk": "^1.32.1",
     "@types/node": "^26.6.5",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
@@ -32,7 +33,6 @@
     "concurrently": "^10.0.6",
     "happy-dom": "^20.14.6",
     "playwright-core": "^1.64.0",
-    "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite": "^8.3.4",
     "vitest": "^5.0.3",
@@ -40,10 +40,12 @@
   },
   "dependencies": {
     "@excalidraw/excalidraw": "^0.18.1",
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "fractional-indexing": "3.2.0",
     "lib0": "^0.2.119",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "tsx": "^4.23.15",
     "ws": "^8.22.0",
     "y-indexeddb": "^9.0.12",
     "y-protocols": "^1.0.7",
