@@ -8,7 +8,10 @@
 // What the CSP cannot stop: an opaque-origin frame can navigate itself (`location = …`, meta
 // refresh, a clicked link), and there is no navigation guard here as there is on a sandbox origin.
 // So the page is only ever given the cross-page state while the user is in Play or interacting
-// with it, and a frame that loads a second document is removed (one request at most).
+// with it, and a frame that tries to navigate is removed: the runtime reports every attempt
+// (`beforeunload`, which also fires for navigations that never load a document), with the
+// iframe's `load` count and a handshake timeout as backstops. The page gets the one burst of
+// requests the first attempt makes, carrying the data it already had, and nothing after it.
 
 export const TAG = 'canvas-page/1';
 
@@ -61,7 +64,16 @@ export function pageRuntime(key: string, state: Record<string, string>): string 
   addEventListener('load', (ev) => { if (ev.isTrusted) up.postMessage({ tag: TAG, auth: KEY, kind: 'loaded' }, '*'); });
   addEventListener('keydown', (ev) => { if (ev.isTrusted && apply(keyOf, ev, []) === 'Escape') up.postMessage({ tag: TAG, auth: KEY, kind: 'escape' }, '*'); }, true);
   document.addEventListener('click', (e) => {
+    // a link to a place in this document would navigate the frame (and be removed as leaving): scroll instead
+    const hash = e.target.closest && e.target.closest('a[href^="#"]');
     const el = e.target.closest && e.target.closest('[data-goto], [data-back]');
+    if (hash && !el) {
+      e.preventDefault();
+      const id = decodeURIComponent(hash.getAttribute('href').slice(1));
+      const to = id && (document.getElementById(id) || document.getElementsByName(id)[0]);
+      if (to) to.scrollIntoView(); else scrollTo(0, 0);
+      return;
+    }
     if (!el) return;
     e.preventDefault();
     if (el.hasAttribute('data-back')) return back();
@@ -145,5 +157,19 @@ export function loadWatch(scripts: boolean, foreign: () => void, ms = 2000) {
       done = true;
       clearTimeout(timer);
     },
+  };
+}
+
+/**
+ * Message flood guard: `hit()` is true once more than `limit` messages arrived within `ms`. A flood
+ * from the page's own frame would keep the app's main thread too busy to handle `leaving` in time.
+ */
+export function rateCap(limit = 200, ms = 1000, now: () => number = Date.now) {
+  const times: number[] = [];
+  return () => {
+    const t = now();
+    times.push(t);
+    while (times.length && times[0] <= t - ms) times.shift();
+    return times.length > limit;
   };
 }

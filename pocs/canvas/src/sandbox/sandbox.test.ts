@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { sha256Base64, sha256Hex } from './sha256.js';
 import { DEV_APP_ORIGINS, frameHost, originRegex, parseConnect } from './framehost.js';
 import { frameOrigin, pageMode, sandboxTemplate } from './client';
-import { IDLE_THUMBNAIL_SCRIPTS, PAGE_CSP, TAG, frameAttrs, loadWatch, pageRuntime, runtimeMessage, srcdocDocument } from './srcdoc';
+import { IDLE_THUMBNAIL_SCRIPTS, PAGE_CSP, TAG, frameAttrs, loadWatch, pageRuntime, rateCap, runtimeMessage, srcdocDocument } from './srcdoc';
 import { readMessage } from '../plugins/prototype/bridge';
 import { PAGE_ESCAPE, PAGE_GONE, fromFrame, pageFrame } from './page';
 
@@ -156,6 +156,10 @@ describe('srcdoc page frames', () => {
     expect(rt).toContain("apply(keyOf, ev, []) === 'Escape'");
     expect(rt).toContain('Reflect.apply');
     expect(rt).toContain('document.currentScript.remove()');
+    // in-page anchors scroll instead of navigating the frame (a navigation would remove it)
+    expect(rt).toContain("closest('a[href^=\"#\"]')");
+    expect(rt).toContain('scrollIntoView()');
+    expect(rt).toContain('scrollTo(0, 0)');
     // a navigation that commits no document (204, download, stop) still fires a trusted beforeunload first
     expect(rt).toMatch(/addEventListener\('beforeunload', \(ev\) => \{ if \(ev\.isTrusted\) up\.postMessage\(\{[^}]*kind: 'leaving'/);
     expect(rt.indexOf('beforeunload')).toBeLessThan(rt.indexOf('window.canvas = '));
@@ -178,6 +182,21 @@ describe('srcdoc page frames', () => {
     expect(runtimeMessage({ tag: TAG, auth: 'guess', kind: 'escape' }, key)).toBeUndefined();
     expect(runtimeMessage({ tag: TAG, auth: key, kind: 'goto' }, key)).toBeUndefined();
     expect(runtimeMessage('escape', key)).toBeUndefined();
+  });
+});
+
+describe('message rate cap', () => {
+  it('trips above the limit within the window, not for a steady trickle', () => {
+    let t = 0;
+    const hit = rateCap(200, 1000, () => t);
+    for (let i = 0; i < 200; i++) expect(hit()).toBe(false);
+    expect(hit()).toBe(true);
+    t = 5000;
+    const slow = rateCap(200, 1000, () => t);
+    for (let i = 0; i < 2000; i++) {
+      t += 10; // 100 / s: typing fast
+      expect(slow()).toBe(false);
+    }
   });
 });
 
@@ -295,6 +314,14 @@ describe('srcdoc frame in the page', () => {
     send({ tag: TAG, kind: 'leaving' });
     expect(f.replacedBy).toBeNull();
     send({ tag: TAG, auth: keyOf(f), kind: 'leaving' });
+    expect(f.replacedBy?.className).toBe('pg-gone');
+  });
+  it('a frame flooding the app with messages is replaced', () => {
+    const f = make({ live: true });
+    const send = (data: unknown) => listeners.forEach((l) => l(msg(f.contentWindow, 'null', data)));
+    for (let i = 0; i < 200; i++) send({ tag: TAG, auth: keyOf(f), kind: 'set', key: 'a', value: String(i) });
+    expect(f.replacedBy).toBeNull();
+    send({ tag: TAG, kind: 'noise' });
     expect(f.replacedBy?.className).toBe('pg-gone');
   });
   it('a frame that loads a second document is replaced by a placeholder', () => {
