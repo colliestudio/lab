@@ -12,7 +12,7 @@ import { Redirect, type AgentCtx } from '../../src/core/agent';
 import { catalog, type Catalog } from './catalog';
 import { describeDiff, diffFile, stableSerialize } from './canonical';
 
-// The server's document side, without network or disk (server.ts adds those): one Y.Doc that
+// The server's document side, without network or disk (board.ts adds those): one Y.Doc that
 // browsers sync with, a Store per actor on that doc (each agent its own undo history and log name),
 // and the two-way mapping to the .canvas file text.
 

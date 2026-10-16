@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, symlinkSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -25,6 +25,21 @@ describe('FolderStorage (a folder of boards)', () => {
     expect(list[1].size).toBe(12);
     expect(list[0].modified).toBeGreaterThan(0);
     expect(st.mutable).toBe(true);
+  });
+
+  it('does not list a symlinked board (a write would replace the link, not its target)', async () => {
+    mkdirSync(join(dir, 'ext'));
+    writeFileSync(join(dir, 'ext', 'linked.canvas'), '{}');
+    symlinkSync(join(dir, 'ext', 'linked.canvas'), join(dir, 'linked.canvas'));
+    writeFileSync(join(dir, 'real.canvas'), '{}');
+    expect((await new FolderStorage(dir).list()).map((i) => i.name)).toEqual(['real']);
+  });
+
+  it('renames a decomposed name to its composed spelling without refusing itself', async () => {
+    const st = new FolderStorage(dir);
+    await st.write('cafe\u0301', 'x');
+    await st.rename('cafe\u0301', 'caf\u00e9');
+    expect(await st.read('caf\u00e9')).toBe('x');
   });
 
   it('read is undefined for a missing board; write replaces atomically (no .tmp left)', async () => {
@@ -105,7 +120,7 @@ describe('FolderStorage (a folder of boards)', () => {
 });
 
 describe('FolderStorage (one fixed file)', () => {
-  it('serves that file under any name; nothing can be created, renamed or deleted', async () => {
+  it('serves that file (any filename); nothing can be created, renamed or deleted', async () => {
     writeFileSync(join(dir, 'notes.txt'), 'x');
     writeFileSync(join(dir, 'other.canvas'), '{}');
     const st = new FolderStorage(dir, { file: join(dir, 'notes.txt') });

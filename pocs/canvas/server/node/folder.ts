@@ -14,6 +14,7 @@ import type { BoardInfo, BoardStorage } from '../core/storage';
 const EXT = '.canvas';
 const SIDECARS = ['.ystate', '.room'];
 
+const fold = (n: string) => n.normalize('NFC').toLowerCase();
 const missing = (e: unknown) => (e as NodeJS.ErrnoException).code === 'ENOENT';
 
 export class FolderStorage implements BoardStorage {
@@ -49,7 +50,7 @@ export class FolderStorage implements BoardStorage {
   }
 
   async list(): Promise<BoardInfo[]> {
-    const names = this.single ? [this.single] : (await readdir(this.dir, { withFileTypes: true })).filter((e) => e.name.endsWith(EXT) && !e.name.startsWith('.') && (e.isFile() || e.isSymbolicLink())).map((e) => e.name);
+    const names = this.single ? [this.single] : (await readdir(this.dir, { withFileTypes: true })).filter((e) => e.name.endsWith(EXT) && !e.name.startsWith('.') && e.isFile()).map((e) => e.name);
     const out: BoardInfo[] = [];
     for (const f of names) {
       try {
@@ -78,12 +79,17 @@ export class FolderStorage implements BoardStorage {
     const tmp = `${path}.tmp`;
     await writeFile(tmp, text);
     // an editor may have replaced the file while the temp file was written: look again right before the replace
-    if (expect && (await this.read(name)) !== expect.from) {
+    try {
+      if (expect && (await this.read(name)) !== expect.from) {
+        await unlink(tmp).catch(() => {});
+        return false;
+      }
+      await rename(tmp, path);
+      return true;
+    } catch (e) {
       await unlink(tmp).catch(() => {});
-      return false;
+      throw e;
     }
-    await rename(tmp, path);
-    return true;
   }
 
   /** Fixed-file mode: the one file is the only board there is. */
@@ -108,7 +114,7 @@ export class FolderStorage implements BoardStorage {
   }
 
   async rename(from: string, to: string) {
-    if (from.toLowerCase() !== to.toLowerCase() && (await exists(this.path(to)))) throw new Error(`${to} exists`);
+    if (fold(from) !== fold(to) && (await exists(this.path(to)))) throw new Error(`${to} exists`);
     await rename(this.path(from), this.path(to));
     for (const ext of SIDECARS) {
       try {
