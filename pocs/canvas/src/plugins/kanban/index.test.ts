@@ -121,7 +121,16 @@ describe('a drag the file overtook (C41)', () => {
     const two = app.node('two')!;
     type(app, 'b1').onDrop!(app.node('b1')!, ['one'], app, { x: two.x + 20, y: two.y + 2 });
     expect(taskField(app.store, 'one').status).toBe('To Do');
-    expect(told).toEqual(["TASK-1 status: changed in the file meanwhile; kept the file's"]);
+    expect(told).toEqual(["TASK-1 status: changed in the file meanwhile; kept the file's (nothing moved)"]);
+    // order only, on a second dragged card: the whole drop is dropped and the field is named
+    told.length = 0;
+    app.store.apply([{ op: 'set', id: 'two', key: 'x-kanban.base', value: { status: 'a', ordinal: 'o1' } }, { op: 'set', id: 'one', key: 'x-kanban.base', value: { status: 'b', ordinal: 'o' } }]);
+    app.store.select(['one', 'two']);
+    type(app, 'one').onLocalDrag!(app.node('one')!, 'start', app);
+    app.store.apply([{ op: 'set', id: 'two', key: 'x-kanban.base', value: { status: 'a', ordinal: 'o2' } }]);
+    type(app, 'b1').onDrop!(app.node('b1')!, ['one', 'two'], app, { x: two.x + 20, y: two.y + 2 });
+    expect(told).toEqual(["TASK-2 order: changed in the file meanwhile; kept the file's (nothing moved)"]);
+    expect(taskField(app.store, 'one').status).toBe('To Do');
   });
 });
 

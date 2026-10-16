@@ -284,14 +284,18 @@ export const kanbanPlugin: Plugin = {
         const moving = tasksIn(t, nodes);
         if (!moving) return;
         const { status, index } = slotAt(a, t, at, moving);
-        // a status or order the file changed since the drag started: the file wins
+        // a status or order the file changed since the drag started (on any dragged card): the file wins, the whole drop is dropped
+        const what = new Set<string>();
         const changed = moving.filter((id) => {
           const seen = dragSeen.get(id);
           const b = task(a.node(id)!).base;
-          return seen && (seen[0] !== b?.status || seen[1] !== b?.ordinal);
+          if (!seen) return false;
+          if (seen[0] !== b?.status) what.add('status');
+          if (seen[1] !== b?.ordinal) what.add('order');
+          return seen[0] !== b?.status || seen[1] !== b?.ordinal;
         });
         if (changed.length) {
-          a.notify(`${changed.map((id) => task(a.node(id)!).taskId).join(', ')} status: changed in the file meanwhile; kept the file's`);
+          a.notify(`${changed.map((id) => task(a.node(id)!).taskId).join(', ')} ${[...what].join(' and ')}: changed in the file meanwhile; kept the file's (nothing moved)`);
           return;
         }
         const f = board(t);
@@ -322,9 +326,12 @@ export const kanbanPlugin: Plugin = {
       movable: (node, a) => !a.doc.parentOf(node.id) || (!!a.node(task(node).board) && liveBoard(app, a.node(task(node).board)!)),
       dropProxy: (node) => task(node).board,
       onLocalDrop: () => {},
-      onLocalDrag(node, phase) {
-        if (phase === 'start') dragSeen.set(node.id, [task(node).base?.status, task(node).base?.ordinal]);
-        else setTimeout(() => dragSeen.delete(node.id), 0);
+      onLocalDrag(node, phase, a) {
+        // every card the drag takes along (the grabbed one and the selected ones)
+        for (const n of [node, ...a.selected().filter(isTask)]) {
+          if (phase === 'start') dragSeen.set(n.id, [task(n).base?.status, task(n).base?.ordinal]);
+          else setTimeout(() => dragSeen.delete(n.id), 0);
+        }
       },
       onClick(node, down, a) {
         if (down.shiftKey || down.metaKey || down.ctrlKey) return;
