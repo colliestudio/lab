@@ -79,6 +79,27 @@ describe('Board: stored text', () => {
   });
 });
 
+describe('Board: writes never overwrite an edit from outside', () => {
+  it('an edit that lands between the read and the write is merged, not lost', async () => {
+    const st = new MemoryStorage({ a: text([n('x', { text: 'one' })], { [FORMAT_KEY]: 1 }) });
+    const b = await Board.load('a', st, quiet);
+    b.host.dispatch(claude, 'board.add', { id: 'y', text: 'mine' });
+    const write = st.write.bind(st);
+    let raced = false;
+    st.write = async (name, t, expect) => {
+      if (!raced) {
+        raced = true;
+        st.files.set(name, text([n('x', { text: 'theirs' })], { [FORMAT_KEY]: 1 })); // the editor wins the race
+      }
+      return write(name, t, expect);
+    };
+    await b.flush();
+    const saved = JSON.parse(st.files.get('a')!).nodes;
+    expect(saved.map((x: { id: string; text: string }) => [x.id, x.text])).toEqual([['x', 'theirs'], ['y', 'mine']]);
+    await b.close();
+  });
+});
+
 describe('Board: format version', () => {
   const newer = text([n('x')], { [FORMAT_KEY]: 99 });
 

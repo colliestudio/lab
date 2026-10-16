@@ -98,7 +98,7 @@ export class Board {
     const host = this.host;
     if (state) {
       Y.applyUpdate(host.ydoc, state);
-      this.log(`restored live state of ${this.name}`);
+      this.log(`restored live state of ${this.location()}`);
     }
     if (text !== undefined) {
       if (host.store.nodes.size) host.written(host.fileText()); // base = what the state says; the file's edits since merge in
@@ -228,16 +228,21 @@ export class Board {
     try {
       // The text changed in storage since we last wrote or read it (an edit the watcher hasn't applied
       // yet): merge it in first, never write over it. If it can't be applied (invalid JSON, a newer
-      // format), leave it.
-      const disk = await this.storage.read(this.name).catch(() => undefined);
-      if (disk !== undefined && disk !== this.lastText && !this.ingest(disk)) return;
-      this.stamp();
-      const text = this.host.fileText();
-      if (text !== this.lastText) {
-        await this.storage.write(this.name, text);
-        this.lastText = text;
-        this.host.written(text);
+      // format), leave it. The write itself only goes through if the stored text is still what we
+      // merged; an edit that lands meanwhile is merged on the next round.
+      for (let round = 0; round < 5; round++) {
+        const disk = await this.storage.read(this.name).catch(() => undefined);
+        if (disk !== undefined && disk !== this.lastText && !this.ingest(disk)) return;
+        this.stamp();
+        const text = this.host.fileText();
+        if (text === this.lastText) return;
+        if (await this.storage.write(this.name, text, { from: disk })) {
+          this.lastText = text;
+          this.host.written(text);
+          return;
+        }
       }
+      this.log(`could not save ${this.name}: it keeps changing underneath; will retry on the next edit`);
     } finally {
       await this.saveState();
     }

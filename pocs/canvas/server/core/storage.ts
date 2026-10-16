@@ -15,8 +15,13 @@ export interface BoardStorage {
   list(): Promise<BoardInfo[]>;
   /** undefined = missing. */
   read(name: string): Promise<string | undefined>;
-  /** Atomic replace. */
-  write(name: string, text: string): Promise<void>;
+  /**
+   * Atomic replace. With `expect`, only if the stored text is still `expect.from` (undefined = no
+   * board yet): false means it changed since it was read (an edit from outside), and nothing is
+   * written. A cloud driver maps this to a conditional put. The check is as close to the replace as
+   * the driver can make it.
+   */
+  write(name: string, text: string, expect?: { from: string | undefined }): Promise<boolean>;
   /** Exclusive: false when the board exists. */
   create(name: string, text: string): Promise<boolean>;
   /** Moves the sidecars too. Throws when `to` exists. */

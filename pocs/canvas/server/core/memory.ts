@@ -28,8 +28,10 @@ export class MemoryStorage implements BoardStorage {
     this.reads.set(name, (this.reads.get(name) ?? 0) + 1);
     return this.files.get(name);
   }
-  async write(name: string, text: string) {
+  async write(name: string, text: string, expect?: { from: string | undefined }) {
+    if (expect && this.files.get(name) !== expect.from) return false;
     this.put(name, text);
+    return true;
   }
   async create(name: string, text: string) {
     if (this.files.has(name)) return false;
