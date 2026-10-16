@@ -215,6 +215,23 @@ describe('canvas serve /mcp', () => {
     expect((await raw('DELETE', { host: 'evil.example' })).status).toBe(403);
   });
 
+  it('A15: the CLI follows a board of the service and prints messages as they come', async () => {
+    const cli = spawn(process.execPath, ['--import', 'tsx', 'bridge/cli.ts', 'chat', 'wait', '--board', 'alpha', '--as', 'Monitor', '--follow'], { cwd: root, env: { ...process.env, CANVAS_SERVE: url }, stdio: ['ignore', 'pipe', 'ignore'] });
+    let out = '';
+    cli.stdout!.on('data', (d) => (out += d));
+    try {
+      await until(async () => (await seated('alpha')).some((a) => a.name === 'Monitor'));
+      await post('/api/boards/alpha/chat/say', { as: 'Zoe', text: 'first @Monitor' });
+      await until(() => out.includes('first @Monitor'), 5000);
+      await new Promise((r) => setTimeout(r, 500));
+      await post('/api/boards/alpha/chat/say', { as: 'Zoe', text: 'second' });
+      await until(() => out.includes('second'), 5000);
+      expect(out.indexOf('first')).toBeLessThan(out.indexOf('second'));
+    } finally {
+      cli.kill('SIGKILL');
+    }
+  });
+
   it('A16: SIGTERM with a joined session exits 0 and leaves an unedited board file alone', async () => {
     const before = readFileSync(join(dir, 'beta.canvas'), 'utf8');
     expect((await one.call('canvas_look', { canvas: 'beta' })).isError).toBe(false);

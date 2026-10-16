@@ -107,8 +107,10 @@ describe('aborting waits', () => {
 
   it('an aborted view wait resolves undefined and stops listening', async () => {
     const h = new Host();
+    h.dispatch(eve, 'chess.newgame', { x: 0, y: 0 });
+    h.dispatch(bot, 'chess.sit', { id: (h.view(eve, 'chess.state', {}) as { board: string }).board, color: 'b' });
     const ac = new AbortController();
-    const p = h.wait(bot, 'chess.turn', {}, 5000, ac.signal); // no game: not ready
+    const p = h.wait(bot, 'chess.turn', {}, 5000, ac.signal); // white to move: not ready
     ac.abort();
     expect(await p).toBeUndefined();
     expect(await h.wait(bot, 'chess.turn', {}, 5000, ac.signal)).toBeUndefined();
