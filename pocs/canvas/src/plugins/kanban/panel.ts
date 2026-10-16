@@ -17,6 +17,7 @@ export const PANEL_Z = 9;
 
 let panel: HTMLElement | null = null;
 let offStore: (() => void) | null = null;
+let offKeys: (() => void) | null = null;
 let timers: ReturnType<typeof setTimeout>[] = [];
 
 export interface PanelEnv {
@@ -79,6 +80,8 @@ export function panelModel(t: TaskField, statuses: string[], knownLabels: string
 export function closeTask() {
   offStore?.();
   offStore = null;
+  offKeys?.();
+  offKeys = null;
   for (const t of timers) clearTimeout(t);
   timers = [];
   panel?.remove();
@@ -270,6 +273,11 @@ export function openTask(app: App, nodeId: string, env: PanelEnv) {
   };
   const drawAc = (m: PanelModel, ro: boolean) => {
     const box = q('.kb-p-ac');
+    // keep the focus on the same control of the same row across the redraw
+    const at = document.activeElement;
+    const rows = [...box.children];
+    const row0 = at && box.contains(at) ? rows.findIndex((r) => r.contains(at)) : -1;
+    const col0 = row0 >= 0 ? [...rows[row0].querySelectorAll('input')].indexOf(at as HTMLInputElement) : -1;
     box.replaceChildren();
     m.ac.forEach((a, i) => {
       const row = html(`<div class="kb-p-ac-row"><input type="checkbox" ${a.done ? 'checked' : ''} ${ro ? 'disabled' : ''} aria-label="Done" /><input class="ac-text" value="${esc(a.text)}" ${ro ? 'disabled' : ''} spellcheck="false" aria-label="Criterion ${i + 1}" />${ro ? '' : '<button type="button" aria-label="Remove criterion">×</button>'}</div>`);
@@ -279,6 +287,7 @@ export function openTask(app: App, nodeId: string, env: PanelEnv) {
       row.querySelector('button')?.addEventListener('click', () => acPatch((l) => void l.splice(i, 1)));
       box.append(row);
     });
+    if (row0 >= 0 && col0 >= 0) (box.children[row0]?.querySelectorAll('input')[col0] as HTMLElement | undefined)?.focus({ preventScroll: true });
   };
 
   const drawComments = (m: PanelModel) => {
@@ -343,6 +352,13 @@ export function openTask(app: App, nodeId: string, env: PanelEnv) {
   el.addEventListener('pointerdown', (e) => e.stopPropagation());
   el.addEventListener('wheel', (e) => e.stopPropagation(), { passive: true });
 
+  // Esc closes the panel wherever the focus is (a redraw of a list can drop it onto the page)
+  const onEsc = (e: KeyboardEvent) => {
+    if (e.key !== 'Escape' || e.defaultPrevented || document.querySelector('.name-overlay')) return;
+    closeTask();
+  };
+  window.addEventListener('keydown', onEsc);
+  offKeys = () => window.removeEventListener('keydown', onEsc);
   fill();
   offStore = app.store.subscribe(fill);
   field('title').focus({ preventScroll: true });

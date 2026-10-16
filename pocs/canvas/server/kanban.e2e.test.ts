@@ -157,6 +157,11 @@ describe('a kanban node on a served board', () => {
     expect(a.store.doc.isVisible(a.tasks().find((t) => task(t).taskId === 'TASK-5')!.id)).toBe(false);
   });
 
+  it('the node listing for agents has the board and none of its task nodes', async () => {
+    const nodes = (await s.get('/api/boards/kb/query')).json as { id: string; ext?: string[] }[];
+    expect(nodes.filter((n) => n.ext?.includes('x-kanban')).map((n) => n.id)).toEqual([a.board()!.id]);
+  });
+
   it('a drag by A reaches B; only the serve writes the file, with status and updated_date changed (C19)', async () => {
     const before = read(dir, 'TASK-2');
     const t2 = a.tasks().find((t) => task(t).taskId === 'TASK-2')!;

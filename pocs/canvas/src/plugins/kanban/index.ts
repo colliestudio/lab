@@ -18,8 +18,13 @@ interface Quick {
   board: string;
   col: number;
   text: string;
+  /** When it opened (ms): the press that opened it ends by focusing the table again, which must not close it. */
+  at: number;
 }
 const quicks = new WeakMap<App, Quick | null>();
+const pressGuarded = new WeakSet<HTMLElement>();
+/** The press that is going on started on a control of the board (its pointerdown ran `onAction`); its mousedown must not move the focus. */
+let pressedAction = false;
 const quickOf = (app: App) => quicks.get(app) ?? null;
 
 const served = (app: App) => app.hosted === 'served';
@@ -127,7 +132,7 @@ function taskMenu(app: App, n: CanvasNode, env: PanelEnv): MenuEntry[] {
 
 function openQuick(app: App, b: CanvasNode, col: number) {
   if (!liveBoard(app, b) || col < 0) return;
-  quicks.set(app, { board: b.id, col, text: '' });
+  quicks.set(app, { board: b.id, col, text: '', at: Date.now() });
   app.view.render();
 }
 
@@ -145,11 +150,14 @@ function wireQuick(app: App, b: CanvasNode, el: HTMLElement) {
   input.value = state.text;
   const rows = () => (input.rows = Math.min(4, Math.max(1, input.value.split('\n').length)));
   rows();
-  queueMicrotask(() => {
-    if (quickOf(app) !== state) return;
+  const focus = () => {
+    if (quickOf(app) !== state || !input.isConnected || document.activeElement === input) return;
     input.focus({ preventScroll: true });
     input.setSelectionRange(input.value.length, input.value.length);
-  });
+  };
+  // the press that opened the field still has its default focus change to make: focus after it
+  queueMicrotask(focus);
+  setTimeout(focus, 40);
   const submit = (open: boolean) => {
     const titles = input.value.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
     const status = columnsOf(app.doc, b)[state.col];
@@ -175,6 +183,8 @@ function wireQuick(app: App, b: CanvasNode, el: HTMLElement) {
     }
   });
   input.addEventListener('blur', () => {
+    // the press that opened it hands the focus back to the table: take it again
+    if (Date.now() - state.at < 500 && quickOf(app) === state && input.isConnected) return void setTimeout(focus, 0);
     // a redraw replaces the field (blur first): only a real leave closes it
     setTimeout(() => {
       if (quickOf(app) === state && !input.isConnected) return;
@@ -224,6 +234,15 @@ export const kanbanPlugin: Plugin = {
       id: 'kanban.board',
       match: isBoard,
       render(node, el, ctx) {
+        // a press on a control must not move the focus (the quick-add field takes it): no default focus change
+        if (!pressGuarded.has(el)) {
+          pressGuarded.add(el);
+          el.addEventListener('mousedown', (e) => {
+            if (!pressedAction) return;
+            pressedAction = false;
+            e.preventDefault();
+          });
+        }
         el.innerHTML = boardHtml(node, ctx.doc, { served: served(app), quick: quickOf(app)?.board === node.id ? { col: quickOf(app)!.col, text: quickOf(app)!.text } : undefined, seats: [] }, clock.now());
         wireQuick(app, node, el);
       },
@@ -239,6 +258,8 @@ export const kanbanPlugin: Plugin = {
       grabbable: (_n, down) => !!(down.target as Element | null)?.closest?.('.kb-head') && !(down.target as Element).closest('[data-action]'),
       boxSelectable: () => false,
       onAction(node, action, a) {
+        pressedAction = true;
+        setTimeout(() => (pressedAction = false), 150);
         const [name, arg] = action.split(':');
         const status = arg !== undefined ? columnsOf(a.doc, node)[Number(arg)] : undefined;
         if (name === 'add') openQuick(a, node, Number(arg));

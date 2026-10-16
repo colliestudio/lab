@@ -128,6 +128,11 @@ export class Store {
   readonly exportFilters: DocFilter[] = [];
   /** `x-` fields whose (small) value agents see in node listings; others only show as names in `ext`. */
   readonly summaryExt = new Set<string>();
+  /**
+   * Nodes a plugin keeps out of agents' node listings because a view of its own tells more (a kanban
+   * node's hundred task nodes: `kanban.board` lists them as text). They still exist and can be addressed.
+   */
+  readonly unlisted: ((n: CanvasNode, doc: DocView) => boolean)[] = [];
   /** How `core.duplicate` copies plugin objects (see DuplicateRule). */
   readonly duplicateRules: DuplicateRule[] = [];
   /** Per-plugin "back to the starting state" commands, run together by `core.reset` (one undo step). */

@@ -33,6 +33,7 @@ export function registerKanbanLogic(store: Store) {
   store.addLayout(layoutRule);
   store.duplicateRules.push(duplicateRule);
   store.exportFilters.push(shapeExport);
+  store.unlisted.push((n) => isTask(n)); // the task nodes are many: the kanban.board view lists them
 }
 
 export const logic: PluginLogic = {

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { serialize, parse } from '../../core';
+import { queryNodes } from '../../core/query';
 import { layoutRule } from './layout';
 import { FIELD, assigneeSeated, board, byOrder, clock, columnsOf, derivedLinks, dirtyFields, isRecent, seatOf, shownIn, task, tasksOf, visibleTasks } from './model';
 import { hashFields } from './markdown';
@@ -155,6 +156,17 @@ describe('who is on it (C50) and links (C51)', () => {
     expect(derivedLinks('TASK-3.48')[0].text).toBe('wt/<repo>/task-3.48');
     expect(derivedLinks(undefined)).toEqual([]);
     expect(derivedLinks('../x')).toEqual([]);
+  });
+});
+
+describe('listings for agents', () => {
+  it('canvas_list shows the board node, not its many task nodes (the kanban.board view lists those)', () => {
+    const s = kanbanStore();
+    addBoard(s);
+    for (let i = 0; i < 20; i++) addTask(s, 'b1', { title: `t${i}` });
+    const listed = queryNodes(s.doc, {}, s.summaryExt, s.unlisted);
+    expect(listed.map((n) => n.id)).toEqual(['b1']);
+    expect(queryNodes(s.doc, {})).toHaveLength(21);
   });
 });
 

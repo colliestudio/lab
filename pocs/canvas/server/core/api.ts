@@ -45,7 +45,7 @@ export async function boardApi(board: Board, req: ApiRequest): Promise<ApiReply>
   const log = board.log;
   try {
     if (method === 'GET' && path === '/doc') return { status: 200, raw: host.fileText() };
-    if (method === 'GET' && path === '/query') return ok(queryNodes(host.store.doc, q, host.store.summaryExt));
+    if (method === 'GET' && path === '/query') return ok(queryNodes(host.store.doc, q, host.store.summaryExt, host.store.unlisted));
     if (method === 'GET' && path === '/log') {
       const n = Number(query.get('limit')) || 20;
       return ok(host.store.log.toArray().slice(-n).map((e) => ({ time: new Date(e.time).toISOString(), actor: e.actor?.name ?? null, actorId: e.actor?.id ?? null, text: e.text, targets: e.targets })));

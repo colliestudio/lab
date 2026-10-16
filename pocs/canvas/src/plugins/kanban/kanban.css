@@ -287,7 +287,7 @@
 /* the task as a document */
 .kb-panel {
   position: fixed;
-  top: 52px;
+  top: 64px;
   right: 12px;
   bottom: 64px;
   width: min(480px, 46vw);
