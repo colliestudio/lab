@@ -74,6 +74,7 @@ async function main() {
   };
   process.on('SIGINT', onSig);
   process.on('SIGTERM', onSig);
+  process.on('SIGHUP', onSig);
   let code = 0;
   for (const j of a.jobs) {
     if (interrupted) break;

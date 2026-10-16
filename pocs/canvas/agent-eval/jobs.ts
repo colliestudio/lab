@@ -46,11 +46,12 @@ function gradeNotes(doc: DocView): Check[] {
 
 // ---- storm: event storm board, events in order, commands attached
 
+// Outcome wording, so "Shipping address entered" or "Payment details entered" are not the shipped / paid stage.
 const STAGES: [string, RegExp][] = [
   ['cart', /cart|basket/i],
-  ['placed', /checkout|order\s+(placed|created|submitted|confirmed)|placed/i],
-  ['paid', /pa(id|yment)/i],
-  ['shipped', /ship|dispatch/i],
+  ['placed', /order\s+(placed|created|submitted|confirmed)|\bplaced\b|checkout\s+(completed|submitted|finished)/i],
+  ['paid', /\bpaid\b|payment\s+(received|captured|authori[sz]ed|succeeded|completed|confirmed|taken|accepted)|\bcharged\b/i],
+  ['shipped', /\b(shipped|dispatched)\b|handed\s+(over\s+)?to\s+(the\s+)?carrier/i],
 ];
 
 function gradeStorm(doc: DocView): Check[] {
@@ -111,12 +112,15 @@ function gradeProto(doc: DocView): Check[] {
   const blank = ps.filter((p) => !page(p).html.trim() || page(p).html.trim() === BLANK_HTML.trim());
   const signIn = a ? ps[a[0]] : ps.find((p) => TITLES[0][1].test(titleOf(p)));
   out.push(check('html', 'every page has its own HTML; sign-in has an input', ps.length > 0 && blank.length === 0 && !!signIn && /<input\b/i.test(page(signIn).html), `${blank.length} blank pages; sign-in input: ${signIn ? /<input\b/i.test(page(signIn).html) : 'no sign-in page'}`));
-  // Play only reacts to clicks on [data-goto] elements (src/sandbox/page.ts); an edge alone is an arrow on the canvas.
+  // What a person can click in Play: the page's outgoing arrows (chips under the device) and data-goto
+  // elements in the page HTML that resolve. Not covered: unquoted data-goto or inline canvas.goto() calls.
   const clicks = new Set<string>();
+  const inPage = new Set<string>();
   for (const p of ps) {
+    for (const e of outgoing(doc, p.id)) clicks.add(`${p.id}>${e.toNode}`);
     for (const target of gotoTargets(page(p).html)) {
       const r = resolveLink(doc, p.id, target);
-      if (r) clicks.add(`${p.id}>${r.to}`);
+      if (r) clicks.add(`${p.id}>${r.to}`), inPage.add(`${p.id}>${r.to}`);
     }
   }
   const start = startPage(doc);
@@ -128,9 +132,9 @@ function gradeProto(doc: DocView): Check[] {
       if (seen.has(f) && !seen.has(t)) seen.add(t), (grew = true);
     }
   }
-  out.push(check('navigation', 'clicking through reaches all pages from the start page (at least 3 working data-goto links)', ps.length > 0 && seen.size === ps.length && clicks.size >= 3, `${clicks.size} resolving data-goto links, ${ps.reduce((n, p) => n + gotoTargets(page(p).html).length, 0)} in the HTML, start “${start ? titleOf(doc.get(start)) : '-'}”, reachable ${seen.size}/${ps.length}`));
-  const edges = new Set(ps.flatMap((p) => outgoing(doc, p.id).map((e) => `${e.fromNode}>${e.toNode}`)));
-  out.push(check('edges', 'pages linked on the canvas too (at least 3 page-to-page arrows)', edges.size >= 3, `${edges.size} page-to-page edges`));
+  const arrows = new Set(ps.flatMap((p) => outgoing(doc, p.id).map((e) => `${e.fromNode}>${e.toNode}`)));
+  out.push(check('navigation', 'clicking through in Play (arrows or data-goto) reaches all pages from the start page', ps.length > 0 && seen.size === ps.length, `${arrows.size} arrows, ${inPage.size} resolving data-goto links, start “${start ? titleOf(doc.get(start)) : '-'}”, reachable ${seen.size}/${ps.length}`));
+  out.push(check('in-page-links', 'links inside the pages work (at least 3 resolving data-goto)', inPage.size >= 3, `${inPage.size} resolving data-goto links of ${ps.reduce((n, p) => n + gotoTargets(page(p).html).length, 0)} in the HTML`, true));
   return out;
 }
 

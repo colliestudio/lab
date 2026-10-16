@@ -10,9 +10,11 @@ export interface Check {
   pass: boolean;
   /** What the grader saw: makes a false fail visible. */
   detail: string;
+  /** Shown, but not counted toward pass or x/y. */
+  info?: boolean;
 }
 
-export const check = (id: string, label: string, pass: boolean, detail: string): Check => ({ id, label, pass, detail });
+export const check = (id: string, label: string, pass: boolean, detail: string, info = false): Check => ({ id, label, pass, detail, ...(info ? { info } : {}) });
 
 /** The doc as the plugins see it (same setup as the bridge host). */
 export function loadDoc(text: string): DocView {

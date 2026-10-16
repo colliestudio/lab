@@ -52,6 +52,8 @@ describe('session with a fake claude', () => {
     await new Promise((r) => setTimeout(r, 300));
     expect(alive(pids.claude)).toBe(false);
     expect(alive(pids.child)).toBe(false);
+    const cmd = JSON.parse(readFileSync(join(results, s.run, 'cmd.json'), 'utf8'));
+    await expect(fetch(`http://127.0.0.1:${cmd.port}/status`)).rejects.toThrow();
   }, 60000);
 
   it('a foreign tool in init is a harness error: claude killed, nothing graded', async () => {
@@ -63,6 +65,14 @@ describe('session with a fake claude', () => {
     const pids = JSON.parse(readFileSync(pidfile, 'utf8'));
     await new Promise((r) => setTimeout(r, 300));
     expect(alive(pids.claude)).toBe(false);
+  }, 60000);
+
+  it('a bridge that fails to start is a harness error, nothing left', async () => {
+    const before = scratchDirs();
+    const s = await runJob('smoke', opts({ bridgeArgs: ['--bogus-flag'] }));
+    expect(s.endReason).toBe('harness-error');
+    expect(s.note).toMatch(/bridge/);
+    expect(scratchDirs()).toEqual(before);
   }, 60000);
 
   it('a missing claude binary is a harness error and leaves nothing', async () => {
@@ -78,8 +88,9 @@ describe('session with a fake claude', () => {
 
 describe('Ctrl-C', () => {
   it('SIGINT mid-run stops claude, its children and the bridge, and exits 130', async () => {
-    const pidfile = join(results, 'pids3.json');
-    const cli = spawn(process.execPath, ['--import', 'tsx', 'agent-eval/run.ts', 'smoke'], { cwd: root, env: { ...process.env, AGENT_EVAL_RESULTS: results, FAKE_HANG: '1', FAKE_PIDFILE: pidfile }, stdio: 'ignore' });
+    const own = mkdtempSync(join(tmpdir(), 'ae-sigint-'));
+    const pidfile = join(own, 'pids3.json');
+    const cli = spawn(process.execPath, ['--import', 'tsx', 'agent-eval/run.ts', 'smoke'], { cwd: root, env: { ...process.env, AGENT_EVAL_RESULTS: own, FAKE_HANG: '1', FAKE_PIDFILE: pidfile }, stdio: 'ignore' });
     const code = new Promise<number | null>((r) => cli.on('exit', (c) => r(c)));
     for (let i = 0; i < 200 && !existsSync(pidfile); i++) await new Promise((r) => setTimeout(r, 100));
     await new Promise((r) => setTimeout(r, 500));
@@ -88,9 +99,56 @@ describe('Ctrl-C', () => {
     const pids = JSON.parse(readFileSync(pidfile, 'utf8'));
     expect(alive(pids.claude)).toBe(false);
     expect(alive(pids.child)).toBe(false);
-    const runs = readdirSync(results).filter((d) => d.endsWith('-smoke'));
-    const last = JSON.parse(readFileSync(join(results, runs[runs.length - 1], 'summary.json'), 'utf8'));
+    const runs = readdirSync(own).filter((d) => d.endsWith('-smoke'));
+    const last = JSON.parse(readFileSync(join(own, runs[runs.length - 1], 'summary.json'), 'utf8'));
     expect(last.endReason).toBe('interrupted');
+    rmSync(own, { recursive: true, force: true });
+  }, 60000);
+});
+
+describe('terminal Ctrl-C', () => {
+  it('SIGINT to the whole process group still saves the board (the bridge is not in the group)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ae-group-'));
+    const pidfile = join(dir, 'pids.json');
+    const cli = spawn(process.execPath, ['--import', 'tsx', 'agent-eval/run.ts', 'smoke'], { cwd: root, detached: true, env: { ...process.env, AGENT_EVAL_RESULTS: dir, FAKE_HANG: '1', FAKE_PIDFILE: pidfile }, stdio: 'ignore' });
+    const code = new Promise<number | null>((r) => cli.on('exit', (c) => r(c)));
+    for (let i = 0; i < 200 && !existsSync(pidfile); i++) await new Promise((r) => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 500));
+    process.kill(-cli.pid!, 'SIGINT');
+    expect(await code).toBe(130);
+    const run = readdirSync(dir).find((d) => d.endsWith('-smoke'))!;
+    expect(readFileSync(join(dir, run, 'board.canvas'), 'utf8')).toContain('"nodes"');
+    expect(JSON.parse(readFileSync(join(dir, run, 'summary.json'), 'utf8')).endReason).toBe('interrupted');
+    expect(alive(JSON.parse(readFileSync(pidfile, 'utf8')).claude)).toBe(false);
+    rmSync(dir, { recursive: true, force: true });
+  }, 60000);
+
+  it('SIGHUP stops the run like SIGINT', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ae-hup-'));
+    const pidfile = join(dir, 'pids.json');
+    const cli = spawn(process.execPath, ['--import', 'tsx', 'agent-eval/run.ts', 'smoke'], { cwd: root, env: { ...process.env, AGENT_EVAL_RESULTS: dir, FAKE_HANG: '1', FAKE_PIDFILE: pidfile }, stdio: 'ignore' });
+    const code = new Promise<number | null>((r) => cli.on('exit', (c) => r(c)));
+    for (let i = 0; i < 200 && !existsSync(pidfile); i++) await new Promise((r) => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 500));
+    cli.kill('SIGHUP');
+    expect(await code).toBe(130);
+    expect(alive(JSON.parse(readFileSync(pidfile, 'utf8')).claude)).toBe(false);
+    rmSync(dir, { recursive: true, force: true });
+  }, 60000);
+
+  it('Ctrl-C before claude starts: claude is never spawned, run ends interrupted', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ae-early-'));
+    const pidfile = join(dir, 'pids.json');
+    const cli = spawn(process.execPath, ['--import', 'tsx', 'agent-eval/run.ts', 'smoke'], { cwd: root, env: { ...process.env, AGENT_EVAL_RESULTS: dir, FAKE_HANG: '1', FAKE_PIDFILE: pidfile }, stdio: 'ignore' });
+    const code = new Promise<number | null>((r) => cli.on('exit', (c) => r(c)));
+    // the run folder appears first, then the bridge starts (about a second)
+    for (let i = 0; i < 200 && !existsSync(dir) || !readdirSync(dir).length; i++) await new Promise((r) => setTimeout(r, 20));
+    cli.kill('SIGINT');
+    expect(await code).toBe(130);
+    expect(existsSync(pidfile)).toBe(false);
+    const run = readdirSync(dir).find((d) => d.endsWith('-smoke'))!;
+    expect(JSON.parse(readFileSync(join(dir, run, 'summary.json'), 'utf8')).endReason).toBe('interrupted');
+    rmSync(dir, { recursive: true, force: true });
   }, 60000);
 });
 

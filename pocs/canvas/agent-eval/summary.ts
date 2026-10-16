@@ -35,6 +35,8 @@ export interface Summary {
   denied: number;
   undescribed: number;
   noops: number;
+  /** Calls with no result (the run was cut off). */
+  cutOff: number;
   perTool: Record<string, number>;
   tokens: Usage;
   costUsd?: number;
@@ -51,7 +53,8 @@ export function summarize(t: Transcript, checks: Check[], meta: Meta): Summary {
     const cmd = key === 'canvas_do' && c.input && typeof (c.input as any).command === 'string' ? `canvas_do ${(c.input as any).command}` : key;
     perTool[cmd] = (perTool[cmd] ?? 0) + 1;
   }
-  const passed = checks.filter((c) => c.pass).length;
+  const counted = checks.filter((c) => !c.info);
+  const passed = counted.filter((c) => c.pass).length;
   const sub = t.result?.subtype ?? '';
   const endReason: EndReason = meta.stoppedBy ?? (sub === 'error_max_budget_usd' ? 'budget' : 'done');
   return {
@@ -62,14 +65,15 @@ export function summarize(t: Transcript, checks: Check[], meta: Meta): Summary {
     model: t.init?.model ?? meta.model,
     startedAt: meta.startedAt,
     passed,
-    total: checks.length,
-    pass: checks.length > 0 && passed === checks.length,
+    total: counted.length,
+    pass: counted.length > 0 && passed === counted.length,
     checks,
     toolCalls: t.calls.length,
     errors: t.calls.filter((c) => c.error).length + t.permissionDenials.length,
     denied: t.permissionDenials.length,
     undescribed: t.calls.filter((c) => c.undescribed).length,
     noops: t.calls.filter((c) => c.noop).length,
+    cutOff: t.calls.filter((c) => !c.done).length,
     perTool,
     tokens: t.usage,
     costUsd: t.result?.costUsd,
@@ -97,9 +101,9 @@ export function summaryMarkdown(s: Summary): string {
     '',
     `${s.pass ? 'PASS' : 'FAIL'} ${s.passed}/${s.total} | ${s.model} | head ${s.head}${s.dirty ? '+dirty' : ''} | ${s.endReason}`,
     '',
-    ...s.checks.map((c) => `- ${c.pass ? '[x]' : '[ ]'} ${c.label} (${c.detail})`),
+    ...s.checks.map((c) => `- ${c.info ? '[i]' : c.pass ? '[x]' : '[ ]'} ${c.label}${c.info ? (c.pass ? ' (info: yes)' : ' (info: no)') : ''} (${c.detail})`),
     '',
-    `Tool calls ${s.toolCalls}, errors ${s.errors} (denied ${s.denied}), undescribed ${s.undescribed}, no-ops ${s.noops}`,
+    `Tool calls ${s.toolCalls}, errors ${s.errors} (denied ${s.denied}), undescribed ${s.undescribed}, no-ops ${s.noops}, cut off ${s.cutOff ?? 0}`,
     `Tokens ${tok(s.tokens)}${s.costUsd !== undefined ? `, $${s.costUsd.toFixed(2)}` : ''}, ${Math.round(s.durationMs / 1000)}s${s.turns ? `, ${s.turns} turns` : ''}`,
     `Tools: ${tools || 'none'}`,
     ...(s.note ? ['', s.note] : []),

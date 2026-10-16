@@ -24,6 +24,8 @@ export interface Options {
   resultsDir?: string;
   /** Isolation flag set, see ISOLATION. */
   isolation?: string;
+  /** Extra args for the scratch bridge (tests). */
+  bridgeArgs?: string[];
   /** Extra env for the claude child (e.g. ENABLE_TOOL_SEARCH). */
   env?: Record<string, string>;
 }
@@ -82,6 +84,8 @@ const userSkills = () => {
   }
 };
 
+class Stopped extends Error {}
+
 const claudeBin = () => process.env.CLAUDE_BIN ?? 'claude';
 
 /** Child env: auth passes through; nested-session variables of a Claude session running us do not. */
@@ -120,7 +124,12 @@ export function claudeArgs(prompt: string, mcpFile: string, o: Pick<Options, 'mo
   ];
 }
 
-const stamp = () => new Date().toISOString().replace(/[-:]/g, '').replace(/\..*/, '').replace('T', '-');
+/** Local time, so a run folder name matches the clock. */
+const stamp = () => {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+};
 
 const gitInfo = () => {
   const git = (...a: string[]) => execFileSync('git', a, { cwd: root, encoding: 'utf8' }).trim();
@@ -165,7 +174,9 @@ function waitExit(p: ChildProcess, ms: number): Promise<boolean> {
 export async function runJob(jobId: string, o: Options): Promise<Summary> {
   const job = JOBS[jobId];
   if (!job) throw new Error(`unknown job ${jobId}; known: ${Object.keys(JOBS).join(', ')}`);
-  const run = `${stamp()}-${job.id}`;
+  const base = `${stamp()}-${job.id}`;
+  let run = base;
+  for (let n = 2; existsSync(join(o.resultsDir ?? RESULTS, run)); n++) run = `${base}-${n}`;
   const out = join(o.resultsDir ?? RESULTS, run);
   mkdirSync(out, { recursive: true });
   const scratch = mkdtempSync(join(tmpdir(), `canvas-eval-${job.id}-`));
@@ -198,16 +209,22 @@ export async function runJob(jobId: string, o: Options): Promise<Summary> {
     const port = await freePort();
     const url = `http://127.0.0.1:${port}`;
     const bridgeLog = openSync(join(out, 'bridge.log'), 'w');
-    l.bridge = spawn(process.execPath, ['--import', 'tsx', 'bridge/server.ts', board, '--port', String(port)], { cwd: root, stdio: ['ignore', bridgeLog, bridgeLog] });
+    l.bridge = spawn(process.execPath, ['--import', 'tsx', 'bridge/server.ts', board, '--port', String(port), ...(o.bridgeArgs ?? [])], { cwd: root, stdio: ['ignore', bridgeLog, bridgeLog], detached: true }); // own group: a terminal Ctrl-C reaches only us, the bridge stays up until the board is read
+    const bridge = l.bridge;
     closeSync(bridgeLog); // the child has its own copy
-    await until(async () => !!(await fetch(url + '/status').catch(() => null))?.ok, 20000, 'the bridge');
+    await until(async () => {
+      if (bridge.exitCode !== null) throw new Error(`the bridge exited at start (code ${bridge.exitCode}); see bridge.log`);
+      return !!(await fetch(url + '/status', { signal: AbortSignal.timeout(2000) }).catch(() => null))?.ok;
+    }, 20000, 'the bridge');
 
+    if (l.stopRequested) throw new Stopped(); // Ctrl-C while the bridge started: never spawn claude
     const mcpFile = join(scratch, 'mcp.json');
     writeFileSync(mcpFile, JSON.stringify(mcpConfig(url), null, 2));
     const args = claudeArgs(job.prompt, mcpFile, o);
     const { env, dropped } = childEnv(o.env);
     let version = '';
-    try { version = execFileSync(claudeBin(), ['--version'], { encoding: 'utf8', env }).trim(); } catch {}
+    try { version = execFileSync(claudeBin(), ['--version'], { encoding: 'utf8', env, timeout: 15000 }).trim(); } catch {}
+    if (l.stopRequested) throw new Stopped();
     Object.assign(cmd, { bin: claudeBin(), version, args, isolation: o.isolation ?? DEFAULT_ISOLATION, droppedEnv: dropped, extraEnv: o.env ?? {}, model: o.model ?? 'default', budgetUsd: o.budget, timeoutS: o.timeoutS, port, cwd: scratch });
 
     const streamFile = join(out, 'stream.jsonl');
@@ -242,16 +259,18 @@ export async function runJob(jobId: string, o: Options): Promise<Summary> {
     clearTimeout(timer);
     // reap the rest of the claude group (its MCP server), then read the board before the bridge goes
     try { process.kill(-claude.pid!, 'SIGKILL'); } catch {}
-    const get = (p: string) => fetch(url + p).then((r) => r.text());
-    boardText = await get('/doc').catch(() => '');
+    const get = (p: string) => fetch(url + p, { signal: AbortSignal.timeout(5000) }).then((r) => r.text());
+    // the bridge flushes its file when it stops, so the file is the fallback if it is already gone
+    boardText = await get('/doc').catch(() => (existsSync(board) ? readFileSync(board, 'utf8') : ''));
     writeFileSync(join(out, 'board.canvas'), boardText);
     writeFileSync(join(out, 'activity.json'), await get('/log?limit=500').catch(() => '[]'));
     if (guardProblems.length) note = `isolation guard: ${guardProblems.join('; ')}`;
     else if (!guarded && !note) note = 'claude produced no init event; see claude.stderr';
     if (!guarded && !l.stopRequested) l.stopRequested = 'harness-error';
   } catch (e) {
-    note = `harness error: ${(e as Error).message}`;
-    l.stopRequested ??= 'harness-error';
+    if (e instanceof Stopped) note = 'stopped before claude started';
+    else note = `harness error: ${(e as Error).message}`;
+    if (!(e instanceof Stopped)) l.stopRequested ??= 'harness-error';
   } finally {
     clearTimeout(timer);
     l.killClaude(); // a still-running claude after an exception

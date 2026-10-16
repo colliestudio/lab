@@ -15,7 +15,7 @@ describe('baseline boards', () => {
   it('storm: stickies from the diagram plugin are not an event storm board', () => {
     expect(verdict('storm')).toMatchObject({ board: false, events: false, commands: false });
   });
-  it('proto: pages and arrows exist, but nothing is clickable (href, no data-goto)', () => {
-    expect(verdict('proto')).toEqual({ pages: true, titles: true, html: true, navigation: false, edges: true });
+  it('proto: Play can click through the arrows; the in-page links are dead (href, no data-goto)', () => {
+    expect(verdict('proto')).toEqual({ pages: true, titles: true, html: true, navigation: true, 'in-page-links': false });
   });
 });
