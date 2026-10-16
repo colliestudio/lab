@@ -31,16 +31,32 @@ describe('Board: stored text', () => {
     await b.close();
   });
 
-  it('a file from before the field gets it on the next write, otherwise unchanged', async () => {
-    const old = JSON.stringify({ nodes: [n('x', { text: 'hi' })], edges: [] }, null, '\t') + '\n';
+  it('a file from before the field gets it with its first real write, and not before', async () => {
+    const old = JSON.stringify({ nodes: [n('x', { text: 'hi' })], edges: [] }, null, '  ') + '\n'; // hand-made: not canonical
     const st = new MemoryStorage({ a: old });
     const b = await Board.load('a', st, quiet);
-    expect(st.files.get('a')).toBe(old); // loading alone writes nothing
+    await tick(2000);
+    expect(st.files.get('a')).toBe(old);
+    b.host.dispatch(claude, 'board.add', { id: 'y', text: 'edit' });
     await tick();
     const after = JSON.parse(st.files.get('a')!);
     expect(after[FORMAT_KEY]).toBe(1);
-    expect(after.nodes).toEqual(JSON.parse(old).nodes);
+    expect(after.nodes.map((x: { id: string }) => x.id)).toEqual(['x', 'y']);
     await b.close();
+  });
+
+  it('looking is not writing: connecting, reading, flushing and closing leave the text and the history alone', async () => {
+    const old = JSON.stringify({ nodes: [n('x', { text: 'hi' })], edges: [] }, null, '  ') + '\n';
+    const st = new MemoryStorage({ a: old });
+    const b = await Board.load('a', st, quiet);
+    const c = fakeClient(b);
+    expect(c.store.doc.get('x')!.text).toBe('hi');
+    await tick(2000);
+    await b.flush();
+    c.disconnect();
+    await b.close();
+    expect(st.files.get('a')).toBe(old);
+    expect(st.states.size).toBe(0);
   });
 
   it('create: true makes a missing board; otherwise 404', async () => {
@@ -55,6 +71,7 @@ describe('Board: stored text', () => {
     const st = new MemoryStorage({ a: text([n('x')]) });
     const b1 = await Board.load('a', st, quiet);
     b1.host.dispatch(claude, 'board.add', { id: 'y', text: 'new' });
+    await b1.flush();
     const before = Y.encodeStateVector(b1.host.ydoc);
     await b1.close();
     expect(st.states.has('a')).toBe(true);

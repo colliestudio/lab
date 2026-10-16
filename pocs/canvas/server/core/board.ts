@@ -52,6 +52,8 @@ export class Board {
   /** The stored text as last written or read. */
   private lastText = '';
   private stateDirty = false;
+  /** The doc changed since the stored text was written or read. Loading and looking never write. */
+  private docDirty = false;
   private writeTimer: ReturnType<typeof setTimeout> | undefined;
   private readTimer: ReturnType<typeof setTimeout> | undefined;
   private normTimer: ReturnType<typeof setTimeout> | undefined;
@@ -87,6 +89,9 @@ export class Board {
     try {
       await b.start(text, apply, state);
     } catch (e) {
+      b.closed = true;
+      clearTimeout(b.writeTimer);
+      b.unwatch?.();
       b.awareness.destroy();
       b.host.ydoc.destroy();
       throw e;
@@ -109,8 +114,10 @@ export class Board {
     }
     host.store.undoManager.clear();
     this.wire();
-    this.stamp();
-    if (text === undefined) await this.flush();
+    if (text === undefined) {
+      this.docDirty = true; // a new board: write it now
+      await this.flush();
+    }
     this.unwatch = this.storage.watch(this.name, () => this.onExternal());
   }
 
@@ -164,6 +171,7 @@ export class Board {
       if (this.closed || (!tr.changed.size && !tr.deleteSet.clients.size)) return;
       this.lastActive = Date.now();
       this.stateDirty = true;
+      this.docDirty = true;
       clearTimeout(this.writeTimer);
       this.writeTimer = setTimeout(() => {
         this.writeTimer = undefined;
@@ -233,10 +241,22 @@ export class Board {
       for (let round = 0; round < 5; round++) {
         const disk = await this.storage.read(this.name).catch(() => undefined);
         if (disk !== undefined && disk !== this.lastText && !this.ingest(disk)) return;
+        if (!this.docDirty) return;
+        // a board from before the format field gets it with its first real write
         this.stamp();
         const text = this.host.fileText();
-        if (text === this.lastText) return;
-        if (await this.storage.write(this.name, text, { from: disk })) {
+        if (text === this.lastText) {
+          this.docDirty = false;
+          return;
+        }
+        this.docDirty = false;
+        let written = false;
+        try {
+          written = await this.storage.write(this.name, text, { from: disk });
+        } finally {
+          if (!written) this.docDirty = true;
+        }
+        if (written) {
           this.lastText = text;
           this.host.written(text);
           return;
@@ -259,7 +279,7 @@ export class Board {
     try {
       const line = this.host.applyFile(prepare(text));
       this.lastText = text;
-      this.stamp();
+      this.docDirty = true; // the stored text gets normalized to canonical form after an edit from outside
       if (line) this.log(`file: ${line}`);
       return true;
     } catch (e) {
