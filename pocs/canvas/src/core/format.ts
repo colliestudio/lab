@@ -20,6 +20,11 @@ export class FormatError extends Error {
     );
     this.name = 'FormatError';
   }
+
+  /** A valid version this code is too old for (as opposed to a malformed field). */
+  get newer(): boolean {
+    return typeof this.found === 'number' && Number.isInteger(this.found) && this.found > this.supported;
+  }
 }
 
 /** The file's format version; a missing field means 1. Throws FormatError for anything but a positive integer. */

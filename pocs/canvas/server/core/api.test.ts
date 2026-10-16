@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { boardApi, serviceApi, type ApiRequest } from './api';
+import { boardApi, errorReply, serviceApi, type ApiRequest } from './api';
+import { BoardFileError, DirError } from './errors';
+import { FormatError } from '../../src/core/format';
 import { BoardDirectory } from './directory';
 import { Board } from './board';
 import { stableSerialize } from './canonical';
@@ -88,6 +90,20 @@ describe('directoryApi and serviceApi', () => {
     expect((await call('GET', '/api/boards/nope/status'))!.status).toBe(404);
     expect((await call('GET', '/api/boards/a'))!.status).toBe(404);
     expect(await call('GET', '/doc')).toBeUndefined();
+  });
+
+  it('errorReply: status and kind per error', () => {
+    expect(errorReply(new FormatError(7))).toMatchObject({ status: 409, json: { kind: 'newer' } });
+    expect(errorReply(new FormatError('x'))).toMatchObject({ status: 409, json: { kind: 'invalid' } });
+    expect(errorReply(new BoardFileError('a', new Error('bad json')))).toMatchObject({ status: 422, json: { kind: 'invalid', error: expect.stringContaining('bad json') } });
+    expect(errorReply(new DirError(404, 'no'))).toEqual({ status: 404, json: { error: 'no' } });
+    expect(errorReply(new Error('boom'))).toEqual({ status: 500, json: { error: 'boom' } });
+  });
+
+  it('a broken file is a 422 invalid and untouched', async () => {
+    const call = svc({ bad: '{nope' });
+    expect(await call('GET', '/api/boards/bad/status')).toMatchObject({ status: 422, json: { kind: 'invalid' } });
+    expect(st.files.get('bad')).toBe('{nope');
   });
 
   it('a board in a newer format is a 409 with the message, and untouched', async () => {

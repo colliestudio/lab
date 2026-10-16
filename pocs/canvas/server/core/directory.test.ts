@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FORMAT_KEY, FormatError } from '../../src/core/format';
 import { BoardDirectory, DirError, validName } from './directory';
+import { BoardFileError } from './errors';
 import { stableSerialize } from './canonical';
 import { fakeClient } from './conn.test-util';
 import { makeActor } from './host';
@@ -334,6 +335,16 @@ describe('format', () => {
     const list = await dir.list();
     expect(list.find((e) => e.name === 'a')!.error).toMatch(/format 99/);
     expect(list.find((e) => e.name === 'b')!.error).toBeUndefined();
+  });
+
+  it('a file that is not a canvas throws BoardFileError, stays byte-identical, shows in the list; other boards open', async () => {
+    make({ a: '{nope', b: text([]) });
+    await expect(dir.open('a')).rejects.toBeInstanceOf(BoardFileError);
+    expect(st.files.get('a')).toBe('{nope');
+    expect(dir.loaded('a')).toBeUndefined();
+    const list = await dir.list();
+    expect(list.find((e) => e.name === 'a')!.error).toMatch(/not a canvas file/);
+    await expect(dir.open('b')).resolves.toBeDefined();
   });
 
   it('the error is forgotten when the file is edited since', async () => {
