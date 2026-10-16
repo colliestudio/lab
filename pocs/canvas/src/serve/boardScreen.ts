@@ -18,7 +18,7 @@ export function showBoardScreen(probe: Exclude<Probe, { kind: 'ok' } | { kind: '
     body.textContent = 'It may have been renamed or deleted.';
   } else if (probe.kind === 'newer') {
     title.textContent = 'Made by a newer canvas';
-    body.textContent = `${probe.error} Upgrade canvas serve to open it. The file is untouched.`;
+    body.textContent = probe.error; // the service says to upgrade and that the file is untouched
   } else title.textContent = `Can’t open “${name}”`;
   const actions = document.createElement('div');
   actions.className = 'serve-actions';
