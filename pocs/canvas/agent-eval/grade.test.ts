@@ -100,6 +100,15 @@ describe('storm grader', () => {
     const events = ['Item added to cart', 'Shipping address entered', 'Payment details entered', 'Order placed', 'Payment captured', 'Order shipped'];
     expect(failed('storm', storm({ events }))).toEqual([]);
   });
+  it('accepts placed and paid in either order, still checks cart first and shipped last', () => {
+    expect(failed('storm', storm({ events: ['Item added to cart', 'Checkout started', 'Payment authorized', 'Order confirmed', 'Order packed', 'Order shipped'] }))).toEqual([]);
+    expect(failed('storm', storm({ events: ['Order shipped', 'Order placed', 'Payment received', 'Item added to cart', 'Checkout started', 'Order packed'] }))).toContain('order');
+    expect(failed('storm', storm({ events: ['Item added to cart', 'Order shipped', 'Order placed', 'Payment received', 'Checkout started'] }))).toContain('order');
+    expect(failed('storm', storm({ events: ['Payment received', 'Item added to cart', 'Order placed', 'Checkout started', 'Order shipped'] }))).toContain('order');
+  });
+  it('five events are enough, four are not', () => {
+    expect(failed('storm', storm({ events: ['Item added to cart', 'Checkout started', 'Order placed', 'Payment received', 'Order shipped'] }))).toEqual([]);
+  });
   it('fails too few events and commands that are not attached', () => {
     expect(failed('storm', storm({ events: EVENTS.slice(0, 4) }))).toContain('events');
     const f = failed('storm', storm({ commands: 'loose', phase: 'process' }));

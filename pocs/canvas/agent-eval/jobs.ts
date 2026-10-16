@@ -59,16 +59,19 @@ function gradeStorm(doc: DocView): Check[] {
   const withEvents = boards.map((b) => ({ b, events: eventsOn(doc, b.id) })).sort((x, y) => y.events.length - x.events.length)[0];
   const out: Check[] = [check('board', 'an event storm board exists', boards.length > 0, `${boards.length} boards`)];
   if (!withEvents) {
-    for (const [id, label] of [['events', 'at least 6 domain events on it, all with text'], ['timeline', 'timeline phase set'], ['order', 'events in plausible order'], ['commands', 'at least 3 commands, 2 attached to an event']]) out.push(check(id, label, false, 'no board'));
+    for (const [id, label] of [['events', 'at least 5 domain events on it, all with text'], ['timeline', 'timeline phase set'], ['order', 'events in plausible order'], ['commands', 'at least 3 commands, 2 attached to an event']]) out.push(check(id, label, false, 'no board'));
     return out;
   }
   const { b, events } = withEvents;
   const texts = events.map((e) => e.text?.trim() ?? '');
-  out.push(check('events', 'at least 6 domain events on it, all with text', events.length >= 6 && texts.every(Boolean), `${events.length} events: ${quoteList(texts)}`));
+  out.push(check('events', 'at least 5 domain events on it, all with text', events.length >= 5 && texts.every(Boolean), `${events.length} events: ${quoteList(texts)}`));
   out.push(check('timeline', 'timeline phase set (not explore)', phaseOf(b) !== 'explore', `phase ${phaseOf(b)} (raw ${String(boardField(b).phase)})`));
   const found = STAGES.map(([stage, re]) => ({ stage, at: texts.findIndex((t) => re.test(t)) })).filter((s) => s.at >= 0);
-  const ordered = found.every((s, i) => i === 0 || s.at >= found[i - 1].at);
-  out.push(check('order', 'cart, placed, paid, shipped appear in order (3 of 4 found)', found.length >= 3 && ordered, `stages at: ${STAGES.map(([s]) => `${s}=${found.find((f) => f.stage === s)?.at ?? '-'}`).join(' ')}`));
+  const at = (stage: string) => found.find((f) => f.stage === stage)?.at;
+  // Placed and paid in either order: "Order confirmed" is often logged after "Payment authorized".
+  const before = (a: string, b: string) => at(a) === undefined || at(b) === undefined || at(a)! < at(b)!;
+  const ordered = before('cart', 'placed') && before('cart', 'paid') && before('placed', 'shipped') && before('paid', 'shipped');
+  out.push(check('order', 'cart first, shipped last, placed and paid between in either order (3 of 4 found)', found.length >= 3 && ordered, `stages at: ${STAGES.map(([s]) => `${s}=${found.find((f) => f.stage === s)?.at ?? '-'}`).join(' ')}`));
   const commands = stickiesOn(doc, b.id).filter((n) => kindOf(n) === 'command');
   const attached = commands.filter((n) => isEvent(doc.get(sticky(n).on ?? '')));
   out.push(check('commands', 'at least 3 commands, 2 attached to an event', commands.length >= 3 && attached.length >= 2, `${commands.length} commands, ${attached.length} attached: ${quoteList(commands.map((c) => c.text ?? ''))}`));

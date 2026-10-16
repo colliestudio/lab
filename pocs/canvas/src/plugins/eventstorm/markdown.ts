@@ -16,7 +16,7 @@ const extras = (n: CanvasNode, withAuthor: boolean) => {
   return out.length ? ` _(${out.join(', ')})_` : '';
 };
 /** Above the event first, in the order a reader follows the flow: actor → command → aggregate → event → policy / read model / external. */
-const FLOW: StickyKind[] = ['actor', 'command', 'aggregate', 'external', 'read', 'policy', 'hotspot'];
+export const FLOW: StickyKind[] = ['actor', 'command', 'aggregate', 'external', 'read', 'policy', 'hotspot'];
 
 export function toMarkdown(doc: DocView, b: CanvasNode, o: { authors?: boolean } = {}): string {
   const authors = o.authors ?? true;
