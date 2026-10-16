@@ -1,10 +1,11 @@
 // runtime imports come from the DOM-free core modules: the Node bridge loads this file too
 import * as z from 'zod/mini';
-import { command, nodeRef, redirect, type CommandSpec } from '../../core/agent';
+import { command, nodeRef, redirect, view, type CommandSpec } from '../../core/agent';
 import type { CanvasNode, Change, DocView } from '../../core/doc';
 import { anchor, isSide, NORMAL, sideToward, type Side } from '../../core/edges';
-import type { Command, Store } from '../../core/store';
+import type { Command, DispatchResult, Store } from '../../core/store';
 import type { PluginLogic } from '../logic';
+import { graphOf, graphText } from './graph';
 import { DEFAULT_SIZE, DEFAULT_TEXT_SIZE, MIN_SIZE, isKind, isShape, shapeOf, textBox, type ShapeKind, type ShapeStyle } from './model';
 
 // Diagram commands. No DOM: the browser plugin and the Node bridge both register them, so an
@@ -200,10 +201,26 @@ function besideSpot(n: CanvasNode, side: string, w: number, h: number) {
   return at[side];
 }
 
+/** What adding returns: the new shape's id, and the arrow's when it came with one. */
+const created = (r: DispatchResult) => {
+  const arrow = r.changes.find((c) => c.op === 'edge');
+  return { id: r.select?.[0], ...(arrow?.op === 'edge' ? { arrow: arrow.edge.id } : {}), changed: r.changes.length };
+};
+
+const GUIDE = `Diagrams: shapes (rect, ellipse, diamond, text, sticky) with words, joined by arrows.
+- diagram.add {kind, text} adds a shape and returns its id. Place it with near: <shape> + side, x/y (top-left) or cx/cy (center); with none it goes right of everything.
+- diagram.add {from: <shape>, text, label} adds a shape with a labelled arrow from <shape>: the fast way to grow a flowchart. Returns the shape id and the arrow id.
+- core.connect {from, to, label} joins two existing shapes. core.edge {arrow, label, dashed, curve, color, start, end} changes an arrow; core.unedge removes arrows.
+- diagram.update {node, ...} changes text, kind, stroke, fill, dashed, text size, place (x/y, dx/dy) or size. diagram.resize sets the whole box.
+- Shapes are referred to by id or by their text.
+- Check with the view diagram.graph (canvas_look with view "diagram.graph"): shapes with ids, kinds, boxes and frame, arrows with labels, overlapping shapes.
+- To put a diagram in a frame: draw it, then frames.create {around: [shape ids], label}.
+- core.move moves shapes, core.delete removes them (and their arrows).`;
+
 export const specs: Record<string, CommandSpec> = {
   add: command({
     description:
-      'Add a diagram shape (rect, ellipse, diamond, text, sticky). Place it with x/y (top-left), cx/cy (center), beside `near` (on `side`), or right of everything. With `from` it is a new shape connected by an arrow from that shape (the fast flowchart step; `side` = which side of `from` the arrow leaves, `at` = where the new center goes). Returns the new id.',
+      'Add a diagram shape (rect, ellipse, diamond, text, sticky). Place it with x/y (top-left), cx/cy (center), beside `near` (on `side`), or right of everything. With `from` it is a new shape connected by an arrow from that shape (the fast flowchart step; `side` = which side of `from` the arrow leaves, `at` = where the new center goes). Returns the new id (and the arrow id with `from`).',
     args: z.strictObject({
       kind: z.optional(kind.check(z.meta({ description: 'default rect' }))),
       text: z.optional(z.string()),
@@ -228,6 +245,7 @@ export const specs: Record<string, CommandSpec> = {
       if (!p) throw new Error(`no node ${near}`);
       return { ...a, ...p };
     },
+    result: created,
   }),
   update: command({
     description: 'Change a diagram shape: text, kind, colors, dashed, text size, and its place or size (x/y absolute, dx/dy relative, width/height). null clears a color or size.',
@@ -242,6 +260,14 @@ export const specs: Record<string, CommandSpec> = {
     description: 'Add a new shape with an arrow to it from `from` (the flowchart step). `side` = which side of `from` the arrow leaves; `at` = where the new center goes. Same as diagram.add with `from`.',
     args: z.strictObject({ from: nodeRef(), kind: z.optional(kind), text: z.optional(z.string()), side: z.optional(side), at: z.optional(z.strictObject({ x: z.number(), y: z.number() })), label: z.optional(z.string()), width: z.optional(z.number()), height: z.optional(z.number()), ...look }),
     example: { from: 'Start', text: 'Next', side: 'right' },
+    result: created,
+  }),
+  resize: command({
+    description: "Set a shape's whole box at once: top-left x/y and width/height (what the resize handles do). For just one of them use diagram.update.",
+    args: z.strictObject({ node: nodeRef(), x: z.number(), y: z.number(), width: z.number(), height: z.number() }),
+    example: { node: 'Start', x: 0, y: 0, width: 200, height: 100 },
+    toCommand: ({ node, ...a }) => ({ id: node, ...a }),
+    result: (r, a) => ({ id: a.node, changed: r.changes.length }),
   }),
 };
 
@@ -249,8 +275,18 @@ export function registerDiagramLogic(store: Store) {
   store.summaryExt.add('x-shape'); // a shape's kind and colors show in listings
   store.register('diagram.add', add, specs.add);
   store.register('diagram.update', update, specs.update);
-  store.register('diagram.resize', resize);
+  store.register('diagram.resize', resize, specs.resize);
   store.register('diagram.addConnected', addConnected, specs.addConnected);
+  store.registerView(
+    'diagram.graph',
+    view({
+      description: 'The diagram as text: every shape (kind, text, id, box, which frame it is in, non-default style) and every arrow (from → to, label, id, style), plus shapes that overlap.',
+      args: z.strictObject({ in: z.optional(nodeRef('only shapes inside this frame (id or title)')) }),
+      example: {},
+      read: (doc, a) => graphOf(doc, a.in),
+      text: (v) => graphText(v as ReturnType<typeof graphOf>),
+    }),
+  );
 }
 
-export const logic: PluginLogic = { id: 'diagram', title: 'Diagram', summary: 'Shapes (boxes, ellipses, diamonds, text, stickies) joined by arrows.', register: registerDiagramLogic };
+export const logic: PluginLogic = { id: 'diagram', title: 'Diagram', summary: 'Shapes (boxes, ellipses, diamonds, text, stickies) joined by arrows.', guide: GUIDE, register: registerDiagramLogic };
