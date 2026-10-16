@@ -38,7 +38,8 @@ export async function startBridge(): Promise<TestBridge> {
   const dir = mkdtempSync(join(tmpdir(), 'canvas-test-'));
   const file = join(dir, 'board.canvas');
   const port = await freePort();
-  const proc: ChildProcess = spawn(join(root, 'node_modules/.bin/tsx'), ['bridge/server.ts', file, '--port', String(port)], { cwd: root, stdio: 'ignore' });
+  // node with tsx as a loader, not the tsx wrapper: killing the wrapper would leave the bridge running
+  const proc: ChildProcess = spawn(process.execPath, ['--import', 'tsx', 'bridge/server.ts', file, '--port', String(port)], { cwd: root, stdio: 'ignore' });
   const url = `http://127.0.0.1:${port}`;
   const get = (path: string) => fetch(url + path).then((r) => r.json());
   const post = (path: string, body: unknown) => fetch(url + path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }).then(async (r) => ({ status: r.status, ...(await r.json()) }));
