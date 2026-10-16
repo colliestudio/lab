@@ -16,7 +16,7 @@ function store() {
 }
 const text = (s: Store) => serialize(s.exportDoc());
 const grade = (job: string, s: Store | string) => JOBS[job].grade(loadDoc(typeof s === 'string' ? s : text(s)));
-const failed = (job: string, s: Store | string) => grade(job, s).filter((c) => !c.pass).map((c) => c.id);
+const failed = (job: string, s: Store | string) => grade(job, s).filter((c) => !c.pass && !c.info).map((c) => c.id);
 
 // ---- notes
 
@@ -128,51 +128,139 @@ const PAGES = [
   ['Home', '<h1>Welcome</h1>'],
 ];
 
-function proto(o: { pages?: string[][]; edges?: [number, number][]; blank?: boolean } = {}) {
+function proto(o: { pages?: string[][]; edges?: [number, number][]; blank?: boolean; start?: number | false } = {}) {
   const s = store();
   const ids = (o.pages ?? PAGES).map(([title, html], i) => s.dispatch('page.create', { x: i * 400, y: 0, title, ...(o.blank && i === 3 ? {} : { html }) }).select![0]);
   for (const [a, b] of o.edges ?? []) s.dispatch('page.link', { from: ids[a], to: ids[b] });
+  if (o.start !== false) s.dispatch('page.start', { id: ids[o.start ?? 0] });
   return s;
 }
 
 const EDGES: [number, number][] = [[0, 1], [1, 2], [0, 3]];
+const ALL_EDGES: [number, number][] = [...EDGES, [2, 0]];
 const bare = PAGES.map(([t]) => [t, `<h1>${t}</h1><input><a href="#x">go</a>`]);
-const info = (job: string, s: Store | string) => Object.fromEntries(grade(job, s).map((c) => [c.id, c.pass]));
+const info = (job: string, s: Store | string) => Object.fromEntries(grade(job, s).filter((c) => c.info).map((c) => [c.id, c.pass]));
+const detail = (job: string, s: Store | string, id: string) => grade(job, s).find((c) => c.id === id)!.detail;
 
 describe('proto grader', () => {
-  it('passes data-goto links plus arrows', () => {
-    expect(failed('proto', proto({ edges: EDGES }))).toEqual([]);
+  it('an in-page #id anchor with a target is not dead; one without a target, or a bare #, is', () => {
+    const withAnchor = (a: string) => PAGES.map(([t, h], i) => [t, i === 3 ? `${h}${a}` : h]);
+    expect(failed('proto', proto({ pages: withAnchor('<a href="#faq">FAQ</a><section id="faq"></section>') }))).toEqual([]);
+    expect(failed('proto', proto({ pages: withAnchor('<a href="#faq">FAQ</a>') }))).toEqual(['no-broken-links']);
+    expect(failed('proto', proto({ pages: withAnchor('<a href="#faq">FAQ</a><input name="faq"><i data-id="faq"></i>') }))).toEqual(['no-broken-links']);
+    expect(failed('proto', proto({ pages: withAnchor('<a href="#faq">FAQ</a><a name="faq"></a>') }))).toEqual([]);
+    expect(failed('proto', proto({ pages: withAnchor('<a href="#">x</a>') }))).toEqual(['no-broken-links']);
   });
-  it('data-goto alone is enough: resolveLink needs no arrow', () => {
-    expect(failed('proto', proto())).toEqual([]);
+  it('passes links in the pages, a start page and arrows: 6 required, both info pass', () => {
+    const s = proto({ edges: ALL_EDGES });
+    expect(failed('proto', s)).toEqual([]);
+    expect(grade('proto', s).filter((c) => !c.info)).toHaveLength(6);
+    expect(info('proto', s)).toEqual({ navigation: true, arrows: true });
   });
-  it('arrows alone are enough: Play shows them as chips; in-page links are only info', () => {
+  it('data-goto alone is enough: resolveLink needs no arrow (the arrows info says so)', () => {
+    const s = proto();
+    expect(failed('proto', s)).toEqual([]);
+    expect(info('proto', s)).toEqual({ navigation: true, arrows: false });
+    expect(detail('proto', s, 'arrows')).toBe('0/4 have an arrow');
+  });
+  it('arrows alone no longer pass: the pages must link (href="#" does nothing); navigation (info) still passes', () => {
     const s = proto({ pages: bare, edges: EDGES });
-    expect(failed('proto', s)).toEqual(['in-page-links']);
-    expect(info('proto', s)).toMatchObject({ navigation: true, 'in-page-links': false });
+    expect(failed('proto', s)).toEqual(['in-page-links', 'no-broken-links']);
+    expect(info('proto', s)).toMatchObject({ navigation: true });
+    expect(detail('proto', s, 'no-broken-links')).toContain('“Sign in”: 1 <a href="#"> without data-goto');
   });
   it('info checks do not count toward pass or x/y', async () => {
     const { summarize } = await import('./summary');
     const { parseStream } = await import('./stream');
     const s = summarize(parseStream([]), grade('proto', proto({ pages: bare, edges: EDGES })), { run: 'r', job: 'proto', head: 'h', dirty: false, model: 'm', startedAt: 's', durationMs: 1 });
-    expect([s.passed, s.total, s.pass]).toEqual([4, 4, true]);
+    expect([s.passed, s.total, s.pass]).toEqual([4, 6, false]);
+    const ok = summarize(parseStream([]), grade('proto', proto()), { run: 'r', job: 'proto', head: 'h', dirty: false, model: 'm', startedAt: 's', durationMs: 1 });
+    expect([ok.passed, ok.total, ok.pass]).toEqual([6, 6, true]);
   });
   it('fails 3 pages, blank HTML, no links at all', () => {
     expect(failed('proto', proto({ pages: PAGES.slice(0, 3) }))).toContain('pages');
     expect(failed('proto', proto({ blank: true }))).toContain('html');
-    expect(failed('proto', proto({ pages: bare }))).toEqual(['navigation', 'in-page-links']);
+    expect(failed('proto', proto({ pages: bare }))).toEqual(['in-page-links', 'no-broken-links']);
   });
-  it('fails a disconnected 4th page', () => {
-    const p = PAGES.map(([t, h]) => [t, h.replace(/data-goto="Home"/, 'data-goto="Forgot password"')]);
-    expect(failed('proto', proto({ pages: p }))).toEqual(['navigation']);
+  it('a data-goto that finds no page is a broken link, named', () => {
+    const p = PAGES.map(([t, h]) => [t, h.replace('data-goto="Home"', 'data-goto="Hoem"')]);
+    const s = proto({ pages: p });
+    expect(failed('proto', s)).toEqual(['in-page-links', 'no-broken-links']);
+    expect(detail('proto', s, 'no-broken-links')).toBe('“Sign in” → “Hoem”');
   });
-  it('an empty data-goto follows the only outgoing arrow', () => {
+  it('start: unset names the fallback; another page names it', () => {
+    expect(failed('proto', proto({ start: false }))).toEqual(['start']);
+    expect(detail('proto', proto({ start: false }), 'start')).toBe('no start page set (Play would start at “Sign in”)');
+    expect(failed('proto', proto({ start: 3 }))).toContain('start');
+    expect(detail('proto', proto({ start: 3 }), 'start')).toBe('start “Home” (want “Sign in”)');
+  });
+  it('an empty data-goto follows the only outgoing arrow; with two arrows it is broken', () => {
     const p = [['Sign in', '<input><button data-goto="">Go</button>'], ['Forgot password', '<input><button data-goto="">Go</button>'], ['Check your email', '<button data-goto="">Go</button>'], ['Home', '<h1>Welcome</h1>']];
     expect(failed('proto', proto({ pages: p, edges: [[0, 1], [1, 2], [2, 3]] }))).toEqual([]);
+    expect(failed('proto', proto({ pages: p, edges: [[0, 1], [0, 2], [1, 2], [2, 3]] }))).toContain('no-broken-links');
+  });
+  it('a 4th page only an arrow reaches fails in-page-links; navigation (info) passes', () => {
+    const p = PAGES.map(([t, h]) => [t, h.replace(/data-goto="Home"/, 'data-goto="Forgot password"')]);
+    const s = proto({ pages: p, edges: [[0, 3]] });
+    expect(failed('proto', s)).toEqual(['in-page-links']);
+    expect(detail('proto', s, 'in-page-links')).toContain('unreachable “Home”');
+    expect(info('proto', s).navigation).toBe(true);
   });
   it('fails a missing sign-in input', () => {
     const p = PAGES.map(([t, h], i) => [t, i === 0 ? h.replace('<input name="email">', '') : h]);
     expect(failed('proto', proto({ pages: p, edges: EDGES }))).toEqual(['html']);
+  });
+});
+
+// ---- checkout
+
+const CART = ['Cart', '<h1>Cart</h1><button data-goto="Shipping">Checkout</button>'];
+const SHIP = ['Shipping', '<h1>Shipping</h1><input data-store="name"><input data-store="address"><button data-back>Back</button><button data-goto="Payment">Next</button>'];
+const PAY = ['Payment', '<h1>Payment</h1><input><button data-back>Back</button><button data-goto="Confirmation">Pay</button>'];
+const CONF = ['Confirmation', '<h1>Thanks <span data-show="name"></span></h1>'];
+
+function checkout(pages: string[][] = [CART, SHIP, PAY, CONF], start = 0) {
+  const s = store();
+  const ids = pages.map(([title, html], i) => s.dispatch('page.create', { x: i * 400, y: 0, title, html }).select![0]);
+  s.dispatch('page.start', { id: ids[start] });
+  return s;
+}
+const swap = (p: string[], from: string | RegExp, to: string) => [p[0], p[1].replace(from, to)];
+
+describe('checkout grader', () => {
+  it('a CSS [data-back] selector is not a back button', () => {
+    const css = swap(PAY, '<button data-back>Back</button>', '<style>[data-back]{color:red}</style>');
+    expect(failed('checkout', checkout([CART, SHIP, css, CONF]))).toEqual(['back']);
+  });
+  it('passes the good flow: forward links, back, shared name; no-broken-links is info', () => {
+    const s = checkout();
+    expect(failed('checkout', s)).toEqual([]);
+    expect(grade('checkout', s).filter((c) => !c.info)).toHaveLength(6);
+    expect(grade('checkout', s).find((c) => c.id === 'no-broken-links')).toMatchObject({ pass: true, info: true });
+    expect(detail('checkout', s, 'state')).toBe('shipping writes name, address; confirmation shows name');
+  });
+  it('back counts via data-goto to the previous page or canvas.back(); a missing one names the page', () => {
+    expect(failed('checkout', checkout([CART, swap(SHIP, '<button data-back>Back</button>', '<button data-goto="Cart">Back</button>'), swap(PAY, '<button data-back>Back</button>', '<script>canvas.back()</script>'), CONF]))).toEqual([]);
+    const s = checkout([CART, SHIP, swap(PAY, '<button data-back>Back</button>', ''), CONF]);
+    expect(failed('checkout', s)).toEqual(['back']);
+    expect(detail('checkout', s, 'back')).toBe('no back on “Payment”');
+  });
+  it('state: a different key fails, listing both; canvas.set and canvas.state pass', () => {
+    const s = checkout([CART, SHIP, PAY, swap(CONF, 'data-show="name"', 'data-show="fullName"')]);
+    expect(failed('checkout', s)).toEqual(['state']);
+    expect(detail('checkout', s, 'state')).toBe('shipping writes name, address; confirmation shows fullName');
+    const js = checkout([CART, swap(SHIP, /<input data-store="name">/, `<script>canvas.set('name', 'Ada')</script>`), PAY, swap(CONF, '<span data-show="name"></span>', '<script>document.title = canvas.state.name</script>')]);
+    expect(failed('checkout', js)).toEqual([]);
+  });
+  it('forward needs links in the pages, start must be the cart, titles must match', () => {
+    expect(failed('checkout', checkout([CART, SHIP, swap(PAY, 'data-goto="Confirmation"', 'data-goto="Cart"'), CONF]))).toEqual(['forward']);
+    expect(failed('checkout', checkout(undefined, 1))).toEqual(['start']);
+    expect(failed('checkout', checkout([CART, SHIP, PAY, ['Welcome', '<h1>Hi</h1>']]))).toContain('titles');
+  });
+  it('a broken link is only info here', () => {
+    const s = checkout([CART, swap(SHIP, '<button data-back>Back</button>', '<button data-back>Back</button><a data-goto="Help">?</a>'), PAY, CONF]);
+    expect(grade('checkout', s).find((c) => c.id === 'no-broken-links')).toMatchObject({ pass: false, info: true });
+    expect(JOBS.checkout.grade(loadDoc(text(s))).filter((c) => !c.info && !c.pass)).toEqual([]);
   });
 });
 

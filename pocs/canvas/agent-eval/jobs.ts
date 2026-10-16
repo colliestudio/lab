@@ -1,4 +1,4 @@
-import type { DocView } from '../src/core/doc';
+import type { CanvasNode, DocView } from '../src/core';
 import { columnOf, isColumn, isNote as isBoardNote } from '../src/plugins/board/logic';
 import { eventsOn, stickiesOn } from '../src/plugins/eventstorm/commands';
 import { board as boardField, isBoard, isEvent, kindOf, phaseOf, sticky } from '../src/plugins/eventstorm/model';
@@ -108,6 +108,79 @@ function assign(titles: string[], wanted: [string, RegExp][] = TITLES): number[]
 /** The `data-goto` values in a page's HTML, any element. */
 const gotoTargets = (html: string) => [...html.matchAll(/\bdata-goto\s*=\s*(?:"([^"]*)"|'([^']*)')/gi)].map((m) => (m[1] ?? m[2]).trim());
 
+/**
+ * Dead anchors: `<a href="#">` or `href="#x"` with no id/name "x" in the page, and no data-goto, data-back
+ * or onclick on the anchor itself (clicking sets location.hash and nothing happens). Not covered: an anchor
+ * inside a data-goto container (the container navigates) still counts, like a listener added by a script.
+ */
+function deadAnchors(html: string): number {
+  const esc = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return [...html.matchAll(/<a\b[^>]*>/gi)].filter((m) => {
+    const h = /\bhref\s*=\s*["']#([^"']*)["']/i.exec(m[0]);
+    if (!h || /\b(data-goto|data-back|onclick)\b/i.test(m[0])) return false;
+    const target = h[1];
+    return !target || !new RegExp(`(?<![\\w-])id\\s*=\\s*["']${esc(target)}["']|<a\\b[^>]*\\bname\\s*=\\s*["']${esc(target)}["']`, 'i').test(html);
+  }).length;
+}
+
+/** Links inside the pages: `p>to` for every data-goto that resolves, and those that don't. */
+function inPageLinks(doc: DocView) {
+  const edges = new Set<string>();
+  const broken: { page: string; target: string }[] = [];
+  for (const p of pages(doc)) {
+    for (const target of gotoTargets(page(p).html)) {
+      const r = resolveLink(doc, p.id, target);
+      if (r) edges.add(`${p.id}>${r.to}`);
+      else broken.push({ page: titleOf(p), target });
+    }
+  }
+  return { edges, broken };
+}
+
+/** Pages reachable from `start` over `p>to` links. */
+function reach(start: string | undefined, edges: Iterable<string>): Set<string> {
+  const seen = new Set<string>(start ? [start] : []);
+  const list = [...edges].map((l) => l.split('>'));
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const [f, t] of list) if (seen.has(f) && !seen.has(t)) seen.add(t), (grew = true);
+  }
+  return seen;
+}
+
+/** Page P can go back: a data-back element, a data-goto to `prev`, or canvas.back() in a script. */
+function backOk(doc: DocView, p: CanvasNode, prev: CanvasNode): boolean {
+  const html = page(p).html.replace(/<style\b[\s\S]*?<\/style>/gi, '');
+  if (/<[a-z][^>]*\bdata-back\b/i.test(html) || /\bcanvas\s*\.\s*back\s*\(/.test(html)) return true;
+  return gotoTargets(html).some((t) => resolveLink(doc, p.id, t)?.to === prev.id);
+}
+
+/** State keys a page writes (data-store, canvas.set) and shows (data-show, canvas.state). */
+function stateKeys(html: string) {
+  const writes = new Set<string>();
+  const shows = new Set<string>();
+  for (const m of html.matchAll(/\bdata-store\s*=\s*(?:"([^"]*)"|'([^']*)')/gi)) writes.add((m[1] ?? m[2]).trim());
+  for (const m of html.matchAll(/\bcanvas\s*\.\s*set\s*\(\s*(?:"([^"]*)"|'([^']*)')/g)) writes.add(m[1] ?? m[2]);
+  for (const m of html.matchAll(/\bdata-show\s*=\s*(?:"([^"]*)"|'([^']*)')/gi)) shows.add((m[1] ?? m[2]).trim());
+  for (const m of html.matchAll(/\bcanvas\s*\.\s*state\s*(?:\.\s*([A-Za-z_$][\w$]*)|\[\s*(?:"([^"]*)"|'([^']*)')\s*\])/g)) shows.add(m[1] ?? m[2] ?? m[3]);
+  writes.delete('');
+  shows.delete('');
+  return { writes: [...writes], shows: [...shows] };
+}
+
+const startCheck = (doc: DocView, want: CanvasNode | undefined, wantLabel: string): Check => {
+  const flagged = pages(doc).find((p) => page(p).start);
+  const fallback = startPage(doc);
+  return check('start', `the start page is ${wantLabel}`, !!flagged && !!want && flagged.id === want.id, flagged ? `start “${titleOf(flagged)}”${want && flagged.id !== want.id ? ` (want “${titleOf(want)}”)` : ''}` : `no start page set (Play would start at “${fallback ? titleOf(doc.get(fallback)) : '-'}”)`);
+};
+
+function brokenCheck(doc: DocView, info: boolean): Check {
+  const { broken } = inPageLinks(doc);
+  const dead = pages(doc).map((p) => ({ t: titleOf(p), n: deadAnchors(page(p).html) })).filter((d) => d.n);
+  const parts = [...broken.map((b) => `“${b.page}” → “${b.target}”`), ...dead.map((d) => `“${d.t}”: ${d.n} <a href="#"> without data-goto`)];
+  return check('no-broken-links', 'no data-goto that finds no page, no <a href="#"> that does nothing', pages(doc).length > 0 && !parts.length, parts.length ? parts.join('; ') : 'none', info);
+}
+
 function gradeProto(doc: DocView): Check[] {
   const ps = pages(doc);
   const titles = ps.map(titleOf);
@@ -117,29 +190,56 @@ function gradeProto(doc: DocView): Check[] {
   const blank = ps.filter((p) => !page(p).html.trim() || page(p).html.trim() === BLANK_HTML.trim());
   const signIn = a ? ps[a[0]] : ps.find((p) => TITLES[0][1].test(titleOf(p)));
   out.push(check('html', 'every page has its own HTML; sign-in has an input', ps.length > 0 && blank.length === 0 && !!signIn && /<input\b/i.test(page(signIn).html), `${blank.length} blank pages; sign-in input: ${signIn ? /<input\b/i.test(page(signIn).html) : 'no sign-in page'}`));
-  // What a person can click in Play: the page's outgoing arrows (chips under the device) and data-goto
-  // elements in the page HTML that resolve. Not covered: unquoted data-goto or inline canvas.goto() calls.
-  const clicks = new Set<string>();
-  const inPage = new Set<string>();
-  for (const p of ps) {
-    for (const e of outgoing(doc, p.id)) clicks.add(`${p.id}>${e.toNode}`);
-    for (const target of gotoTargets(page(p).html)) {
-      const r = resolveLink(doc, p.id, target);
-      if (r) clicks.add(`${p.id}>${r.to}`), inPage.add(`${p.id}>${r.to}`);
-    }
-  }
+  out.push(startCheck(doc, signIn, 'the sign-in page'));
+  // Not covered: unquoted data-goto or inline canvas.goto() calls.
+  const { edges: inPage } = inPageLinks(doc);
   const start = startPage(doc);
-  const seen = new Set<string>(start ? [start] : []);
-  for (let grew = true; grew; ) {
-    grew = false;
-    for (const l of clicks) {
-      const [f, t] = l.split('>');
-      if (seen.has(f) && !seen.has(t)) seen.add(t), (grew = true);
-    }
-  }
+  const byLinks = reach(start, inPage);
+  const unreachable = ps.filter((p) => !byLinks.has(p.id)).map(titleOf);
+  out.push(check('in-page-links', 'every page is reachable from the start page by clicking links inside the pages (data-goto)', ps.length > 0 && !unreachable.length, `${inPage.size} resolving data-goto links; reachable ${byLinks.size}/${ps.length}${unreachable.length ? `; unreachable ${quoteList(unreachable)}` : ''}`));
+  out.push(brokenCheck(doc, false));
+  // What Play's chips add: the page's outgoing arrows.
   const arrows = new Set(ps.flatMap((p) => outgoing(doc, p.id).map((e) => `${e.fromNode}>${e.toNode}`)));
-  out.push(check('navigation', 'clicking through in Play (arrows or data-goto) reaches all pages from the start page', ps.length > 0 && seen.size === ps.length, `${arrows.size} arrows, ${inPage.size} resolving data-goto links, start “${start ? titleOf(doc.get(start)) : '-'}”, reachable ${seen.size}/${ps.length}`));
-  out.push(check('in-page-links', 'links inside the pages work (at least 3 resolving data-goto)', inPage.size >= 3, `${inPage.size} resolving data-goto links of ${ps.reduce((n, p) => n + gotoTargets(page(p).html).length, 0)} in the HTML`, true));
+  const byPlay = reach(start, [...inPage, ...arrows]);
+  out.push(check('navigation', 'clicking through in Play (arrows or data-goto) reaches all pages from the start page', ps.length > 0 && byPlay.size === ps.length, `${arrows.size} arrows, ${inPage.size} resolving data-goto links, start “${start ? titleOf(doc.get(start)) : '-'}”, reachable ${byPlay.size}/${ps.length}`, true));
+  const withEdge = ps.flatMap((p) => gotoTargets(page(p).html).map((t) => resolveLink(doc, p.id, t))).filter((r) => r);
+  out.push(check('arrows', 'every resolving data-goto has an arrow on the canvas', withEdge.every((r) => r!.edge), `${withEdge.filter((r) => r!.edge).length}/${withEdge.length} have an arrow`, true));
+  return out;
+}
+
+// ---- checkout: 4 pages, forward and back links, a form whose value shows on the last page
+
+const CHECKOUT: [string, RegExp][] = [
+  ['cart', /cart|basket|bag/i],
+  ['shipping', /ship|address|deliver/i],
+  ['payment', /pay|card|billing/i],
+  ['confirmation', /confirm|thank|success|order|done/i],
+];
+
+function gradeCheckout(doc: DocView): Check[] {
+  const ps = pages(doc);
+  const titles = ps.map(titleOf);
+  const out: Check[] = [check('pages', 'exactly 4 pages', ps.length === 4, `${ps.length} pages: ${quoteList(titles)}`)];
+  const a = assign(titles, CHECKOUT);
+  out.push(check('titles', 'pages cover cart, shipping, payment, confirmation', !!a, a ? `matched ${CHECKOUT.map(([t], i) => `${t}=“${titles[a[i]]}”`).join(', ')}` : `titles: ${quoteList(titles)}`));
+  if (!a) {
+    for (const [id, label] of [['start', 'the start page is the cart'], ['forward', 'shipping, payment and confirmation reachable from the start by clicking links in the pages'], ['back', 'shipping and payment each have a working back'], ['state', 'a value entered on shipping is shown on confirmation']]) out.push(check(id, label, false, 'pages not matched'));
+    out.push(brokenCheck(doc, true));
+    return out;
+  }
+  const [cart, ship, pay, conf] = a.map((i) => ps[i]);
+  out.push(startCheck(doc, cart, 'the cart'));
+  const { edges } = inPageLinks(doc);
+  const seen = reach(cart.id, edges);
+  const missing = [ship, pay, conf].filter((p) => !seen.has(p.id)).map(titleOf);
+  out.push(check('forward', 'shipping, payment and confirmation reachable from the cart by clicking links in the pages (data-goto)', !missing.length, missing.length ? `not reachable: ${quoteList(missing)}` : `reachable ${seen.size}/4`));
+  const noBack = [[ship, cart], [pay, ship]].filter(([p, prev]) => !backOk(doc, p, prev)).map(([p]) => titleOf(p));
+  out.push(check('back', 'shipping and payment each have a working back (data-back, data-goto to the previous step, or canvas.back())', !noBack.length, noBack.length ? `no back on ${quoteList(noBack)}` : 'both have one'));
+  const w = stateKeys(page(ship).html).writes;
+  const sh = stateKeys(page(conf).html).shows;
+  const common = w.filter((k) => sh.includes(k));
+  out.push(check('state', 'a value entered on shipping is shown on confirmation (data-store / data-show, or canvas.set / canvas.state)', common.length > 0, `shipping writes ${w.join(', ') || '-'}; confirmation shows ${sh.join(', ') || '-'}`));
+  out.push(brokenCheck(doc, true));
   return out;
 }
 
@@ -223,6 +323,11 @@ export const JOBS: Record<string, Job> = {
     prompt: 'Build a 4-page sign-in prototype: sign in, forgot password, check your email, and a home page after signing in. Link the pages so I can click through it.',
     grade: gradeProto,
   },
+  checkout: {
+    id: 'checkout',
+    prompt: "Build a clickable checkout prototype: a cart page, a shipping page with a form for the customer's name and address, a payment page, and an order confirmation page that greets the customer by the name they entered. Every step after the cart has a back button.",
+    grade: gradeCheckout,
+  },
   arch: {
     id: 'arch',
     prompt: 'Draw a small architecture diagram of a web app inside a frame titled "Architecture": a browser client, an API server, a database and a cache. Connect them with arrows, each labeled with what flows along it.',
@@ -247,4 +352,4 @@ export const JOBS: Record<string, Job> = {
 };
 
 /** Jobs `all` runs (smoke is a probe). */
-export const ALL_JOBS = ['notes', 'storm', 'proto', 'arch'];
+export const ALL_JOBS = ['notes', 'storm', 'proto', 'checkout', 'arch'];

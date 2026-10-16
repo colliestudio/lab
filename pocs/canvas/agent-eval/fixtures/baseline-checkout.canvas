@@ -1,0 +1,118 @@
+{
+	"x-canvas-format": 1,
+	"nodes": [
+		{
+			"id": "732af8a042caf03e",
+			"type": "text",
+			"text": "### Cart\n*Prototype page (HTML in `x-page.html`)*",
+			"x": 400,
+			"y": 0,
+			"width": 195,
+			"height": 416,
+			"x-page": {
+				"html": "<style>body{font-family:system-ui,sans-serif;margin:0;padding:20px;color:#222}h1{font-size:22px}.item{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #eee}.total{font-weight:700;display:flex;justify-content:space-between;margin:16px 0}button{width:100%;padding:12px;border:0;border-radius:8px;background:#2563eb;color:#fff;font-size:16px;cursor:pointer}</style><p style=\"color:#888;font-size:13px\">Step 1 of 4</p><h1>Your cart</h1><div class=\"item\"><span>Canvas sneakers ×1</span><span>$59.00</span></div><div class=\"item\"><span>Cotton socks ×2</span><span>$12.00</span></div><div class=\"item\"><span>Shipping</span><span>$5.00</span></div><div class=\"total\"><span>Total</span><span>$76.00</span></div><button data-link=\"Shipping\">Checkout</button>",
+				"start": true,
+				"title": "Cart",
+				"vw": 390
+			}
+		},
+		{
+			"id": "4dcd3a7e40e8a80a",
+			"type": "text",
+			"text": "### Shipping\n*Prototype page (HTML in `x-page.html`)*",
+			"x": 700,
+			"y": 0,
+			"width": 195,
+			"height": 416,
+			"x-page": {
+				"html": "<style>body{font-family:system-ui,sans-serif;margin:0;padding:20px;color:#222}h1{font-size:22px}label{display:block;font-size:13px;margin:10px 0 4px}input{width:100%;box-sizing:border-box;padding:10px;border:1px solid #ccc;border-radius:6px;font-size:15px}.row{display:flex;gap:8px}.row>div{flex:1}button{width:100%;padding:12px;border:0;border-radius:8px;background:#2563eb;color:#fff;font-size:16px;cursor:pointer;margin-top:16px}button.back{background:#fff;color:#2563eb;border:1px solid #2563eb;margin-top:8px}</style><p style=\"color:#888;font-size:13px\">Step 2 of 4</p><h1>Shipping</h1><form onsubmit=\"return false\"><label for=\"name\">Full name</label><input id=\"name\" name=\"name\" autocomplete=\"name\" placeholder=\"Jane Doe\" oninput=\"try{localStorage.setItem('checkout.name',this.value);sessionStorage.setItem('checkout.name',this.value)}catch(e){}\"><label for=\"street\">Street address</label><input id=\"street\" name=\"street\" placeholder=\"123 Main St\"><div class=\"row\"><div><label for=\"city\">City</label><input id=\"city\" name=\"city\"></div><div><label for=\"zip\">ZIP</label><input id=\"zip\" name=\"zip\"></div></div><label for=\"country\">Country</label><input id=\"country\" name=\"country\" value=\"United States\"></form><button data-link=\"Payment\">Continue to payment</button><button class=\"back\" data-link=\"Cart\">Back</button><script>try{var n=localStorage.getItem('checkout.name');if(n)document.getElementById('name').value=n}catch(e){}</script>",
+				"title": "Shipping",
+				"vw": 390
+			}
+		},
+		{
+			"id": "55a2b876824f72e5",
+			"type": "text",
+			"text": "### Payment\n*Prototype page (HTML in `x-page.html`)*",
+			"x": 1000,
+			"y": 0,
+			"width": 195,
+			"height": 416,
+			"x-page": {
+				"html": "<style>body{font-family:system-ui,sans-serif;margin:0;padding:20px;color:#222}h1{font-size:22px}label{display:block;font-size:13px;margin:10px 0 4px}input{width:100%;box-sizing:border-box;padding:10px;border:1px solid #ccc;border-radius:6px;font-size:15px}.row{display:flex;gap:8px}.row>div{flex:1}button{width:100%;padding:12px;border:0;border-radius:8px;background:#2563eb;color:#fff;font-size:16px;cursor:pointer;margin-top:16px}button.back{background:#fff;color:#2563eb;border:1px solid #2563eb;margin-top:8px}</style><p style=\"color:#888;font-size:13px\">Step 3 of 4</p><h1>Payment</h1><form onsubmit=\"return false\"><label for=\"card\">Card number</label><input id=\"card\" name=\"card\" placeholder=\"4242 4242 4242 4242\"><div class=\"row\"><div><label for=\"exp\">Expiry</label><input id=\"exp\" name=\"exp\" placeholder=\"MM/YY\"></div><div><label for=\"cvc\">CVC</label><input id=\"cvc\" name=\"cvc\" placeholder=\"123\"></div></div></form><p style=\"display:flex;justify-content:space-between;font-weight:700;margin-top:16px\"><span>Total</span><span>$76.00</span></p><button data-link=\"Confirmation\">Place order</button><button class=\"back\" data-link=\"Shipping\">Back</button>",
+				"title": "Payment",
+				"vw": 390
+			}
+		},
+		{
+			"id": "a22f69c718b4ae89",
+			"type": "text",
+			"text": "### Confirmation\n*Prototype page (HTML in `x-page.html`)*",
+			"x": 1300,
+			"y": 0,
+			"width": 195,
+			"height": 416,
+			"x-page": {
+				"html": "<style>body{font-family:system-ui,sans-serif;margin:0;padding:20px;color:#222;text-align:center}h1{font-size:22px}.check{font-size:48px;color:#16a34a;margin-top:20px}button{width:100%;padding:12px;border-radius:8px;font-size:16px;cursor:pointer;margin-top:16px;background:#fff;color:#2563eb;border:1px solid #2563eb}</style><p style=\"color:#888;font-size:13px;text-align:left\">Step 4 of 4</p><div class=\"check\">✓</div><h1>Thank you, <span id=\"customer-name\" data-bind=\"name\">there</span>!</h1><p>Your order <b>#10482</b> has been placed. A confirmation email is on its way.</p><p style=\"color:#666\">Total charged: $76.00</p><button class=\"back\" data-link=\"Payment\">Back</button><script>try{var n=localStorage.getItem('checkout.name')||sessionStorage.getItem('checkout.name');if(n&&n.trim())document.getElementById('customer-name').textContent=n.trim()}catch(e){}</script>",
+				"title": "Confirmation",
+				"vw": 390
+			}
+		}
+	],
+	"edges": [
+		{
+			"id": "0f9401e02691e008",
+			"fromNode": "4dcd3a7e40e8a80a",
+			"fromSide": "right",
+			"toNode": "55a2b876824f72e5",
+			"toSide": "left",
+			"toEnd": "arrow",
+			"label": "Continue to payment"
+		},
+		{
+			"id": "161f16c046d8138a",
+			"fromNode": "a22f69c718b4ae89",
+			"fromSide": "right",
+			"toNode": "55a2b876824f72e5",
+			"toSide": "left",
+			"toEnd": "arrow",
+			"label": "Back"
+		},
+		{
+			"id": "5218144152c9d67a",
+			"fromNode": "55a2b876824f72e5",
+			"fromSide": "right",
+			"toNode": "a22f69c718b4ae89",
+			"toSide": "left",
+			"toEnd": "arrow",
+			"label": "Place order"
+		},
+		{
+			"id": "a4ca86f0c5da8338",
+			"fromNode": "4dcd3a7e40e8a80a",
+			"fromSide": "right",
+			"toNode": "732af8a042caf03e",
+			"toSide": "left",
+			"toEnd": "arrow",
+			"label": "Back"
+		},
+		{
+			"id": "b51a64efa0ab4be0",
+			"fromNode": "55a2b876824f72e5",
+			"fromSide": "right",
+			"toNode": "4dcd3a7e40e8a80a",
+			"toSide": "left",
+			"toEnd": "arrow",
+			"label": "Back"
+		},
+		{
+			"id": "e0acc5821de41e66",
+			"fromNode": "732af8a042caf03e",
+			"fromSide": "right",
+			"toNode": "4dcd3a7e40e8a80a",
+			"toSide": "left",
+			"toEnd": "arrow",
+			"label": "Checkout"
+		}
+	]
+}

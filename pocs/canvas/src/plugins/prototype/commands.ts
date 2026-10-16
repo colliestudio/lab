@@ -1,6 +1,7 @@
 import { isNum, pick } from '../../core/commands';
 import { set } from '../../core/doc';
 import type { CanvasEdge, CanvasNode, Change, Command, CommandResult, DocView } from '../../core';
+import { gotoElements } from './flow';
 import { BLANK_HTML, SEED_PAGES } from './seed';
 import { DEVICES, FIELD, HEADER, flowOrder, isNote, isPage, linksIn, note, outgoing, page, pageSize, pages, resolveLink, standIn, titleOf, type NoteField, type PageField } from './model';
 
@@ -30,6 +31,13 @@ export const edge = (id: string, from: string, to: string, label?: string): Canv
   toEnd: 'arrow',
   ...(label ? { label } : {}),
 });
+
+/** Space right of everything visible (top-aligned with it), or centred on the origin on an empty canvas. */
+export function freeSpot(doc: DocView, w: number, h: number): { x: number; y: number } {
+  const all = doc.visible;
+  if (!all.length) return { x: Math.round(-w / 2), y: Math.round(-h / 2) };
+  return { x: Math.round(Math.max(...all.map((n) => n.x + n.width)) + 80), y: Math.round(Math.min(...all.map((n) => n.y))) };
+}
 
 /** Move a page and the notes riding on it. */
 function movePage(doc: DocView, n: CanvasNode, x: number, y: number): Change[] {
@@ -69,7 +77,10 @@ export function autoLinkChanges(doc: DocView, ids: string[] | undefined, newId: 
   const src = ids ? pick(doc, ids).filter(isPage) : pages(doc);
   for (const p of src) {
     const made = new Set<string>();
-    for (const l of linksIn(page(p).html)) {
+    // linksIn needs a closing tag; links on void elements (<input type=submit data-goto>) come from the flow scan
+    const found = linksIn(page(p).html);
+    const extra = gotoElements(page(p).html).filter((e) => e.target && !found.some((l) => l.target === e.target)).map((e) => ({ target: e.target, text: e.text || e.target }));
+    for (const l of [...found, ...extra]) {
       const r = resolveLink(doc, p.id, l.target);
       if (!r) {
         missing.push(`${titleOf(p)} → ${l.target}`);
@@ -84,13 +95,15 @@ export function autoLinkChanges(doc: DocView, ids: string[] | undefined, newId: 
 }
 
 export const commands: Record<string, Command> = {
-  /** A new page at (x, y). `html` default: a blank page. */
-  create: (doc, a: { x: number; y: number; title?: string; html?: string; vw?: number }, ctx): CommandResult => {
+  /** A new page at (x, y). `html` default: a blank page. `start` makes it the flow's start page. */
+  create: (doc, a: { x: number; y: number; title?: string; html?: string; vw?: number; start?: boolean }, ctx): CommandResult => {
     if (!isNum(a?.x) || !isNum(a?.y)) return { changes: [] };
     const vw = DEVICES.some((d) => d.vw === a.vw) ? a.vw! : DEVICES[0].vw;
     const id = ctx.newId();
-    const n = pageNode(id, Math.round(a.x), Math.round(a.y), doc.topZ + 1, { title: str(a.title, 80) ?? 'New page', html: str(a.html) ?? BLANK_HTML, vw });
-    return { changes: [{ op: 'add', node: n }], select: [id], events: [{ type: 'page.create', text: `added page ${titleOf(n)}`, targets: [id] }] };
+    const start = a.start === true;
+    const n = pageNode(id, Math.round(a.x), Math.round(a.y), doc.topZ + 1, { title: str(a.title, 80) ?? 'New page', html: str(a.html) ?? BLANK_HTML, vw, ...(start ? { start: true as const } : {}) });
+    const unflag = start ? pages(doc).filter((p) => page(p).start).map((p) => set(p.id, `${FIELD}.start`, undefined)) : [];
+    return { changes: [...unflag, { op: 'add', node: n }], select: [id], events: [{ type: 'page.create', text: `added page ${titleOf(n)}`, targets: [id] }] };
   },
   /** Change a page's title and/or HTML. */
   edit: (doc, a: { id: string; title?: string; html?: string }): CommandResult => {
@@ -174,6 +187,7 @@ export const commands: Record<string, Command> = {
   seed: (doc, a: { x: number; y: number }, ctx): CommandResult => {
     if (!isNum(a?.x) || !isNum(a?.y)) return { changes: [] };
     let z = doc.topZ;
+    const hasStart = pages(doc).some((p) => page(p).start);
     const ids = new Map<string, string>();
     const changes: Change[] = [];
     const vw = DEVICES[0].vw;
@@ -182,7 +196,7 @@ export const commands: Record<string, Command> = {
       const id = ctx.newId();
       ids.set(p.title, id);
       const x = a.x + i * (size.width + GAP_X);
-      changes.push({ op: 'add', node: pageNode(id, x, a.y, ++z, { title: p.title, html: p.html, vw, ...(i === 0 ? { start: true as const } : {}) }) });
+      changes.push({ op: 'add', node: pageNode(id, x, a.y, ++z, { title: p.title, html: p.html, vw, ...(i === 0 && !hasStart ? { start: true as const } : {}) }) });
       if (p.note) changes.push({ op: 'add', node: noteNode(ctx.newId(), x + 16, a.y + size.height + 24, ++z, p.note, id) });
     });
     const links: [string, string, string][] = [
