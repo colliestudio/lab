@@ -1,0 +1,137 @@
+/* The board list page (home.html). Its own file: style.css locks the page for the table. */
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background: #123;
+  color: #222;
+  font: 14px system-ui, sans-serif;
+}
+.home {
+  box-sizing: border-box;
+  width: min(760px, 100%);
+  margin: 0 auto;
+  padding: 32px 16px 48px;
+}
+.home h1 {
+  margin: 0 0 16px;
+  color: #fbfaf6;
+  font-size: 22px;
+}
+.home-new {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.home-new input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 16px;
+}
+.home-btn {
+  padding: 5px 12px;
+  border: 1px solid #ccc;
+  border-radius: 7px;
+  background: #fff;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.home-btn.primary {
+  padding: 8px 14px;
+  border-color: transparent;
+  background: #3a7bd5;
+  color: #fff;
+}
+.home-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.home-btn.quiet {
+  border-color: transparent;
+  background: transparent;
+  color: #777;
+}
+.home-btn.quiet:hover {
+  color: #222;
+}
+.home-error {
+  min-height: 0;
+  margin: 4px 0 0;
+  color: #f0917c;
+  font-size: 12.5px;
+}
+.home-list .home-error {
+  color: #b04632;
+}
+.home-banner {
+  margin: 8px 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #fbfaf6;
+  color: #b04632;
+}
+.home-banner[hidden],
+.home-empty[hidden] {
+  display: none;
+}
+.home-list {
+  width: 100%;
+  margin-top: 12px;
+  border-collapse: collapse;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fbfaf6;
+}
+.home-list:has(tbody:empty) {
+  display: none;
+}
+.home-list td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #e7e3d8;
+  vertical-align: top;
+}
+.home-list tr:last-child td {
+  border-bottom: 0;
+}
+.home-list .name {
+  width: 100%;
+  overflow-wrap: anywhere;
+}
+.home-list .name a {
+  color: #123;
+  font-weight: 600;
+  text-decoration: none;
+}
+.home-list .name a:hover {
+  text-decoration: underline;
+}
+.home-list .mod,
+.home-list .state {
+  color: #777;
+  white-space: nowrap;
+}
+.home-list .actions {
+  white-space: nowrap;
+  text-align: right;
+}
+.home-list tr.fresh td {
+  background: #fff6c9;
+}
+.home-rename {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 4px 8px;
+  border: 1px solid #aaa;
+  border-radius: 6px;
+  font: inherit;
+}
+.home-empty {
+  margin-top: 24px;
+  color: #cfd6dd;
+  text-align: center;
+}

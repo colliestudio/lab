@@ -23,6 +23,8 @@ export default defineConfig({
   plugins: [excalidrawFonts()],
   // Excalidraw reads this at module load (it also ships a Preact build)
   define: { 'process.env.IS_PREACT': JSON.stringify('false') },
+  // index.html is the board app; home.html is the board list that `canvas serve` shows on /
+  build: { rollupOptions: { input: { main: 'index.html', home: 'home.html' } } },
   server: {
     // Alex opens the dev server through a proxy at http://mini.internal:5190.
     allowedHosts: ['.internal'],
