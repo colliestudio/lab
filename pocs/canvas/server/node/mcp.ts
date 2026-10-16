@@ -5,6 +5,7 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { CallToolRequestSchema, isInitializeRequest, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { catalog, type Catalog } from '../../bridge/catalog';
+import { toContent } from '../../bridge/tools';
 import { sessionTools } from '../mcp/tools';
 import type { McpService, McpSession } from '../mcp/session';
 import type { Log } from '../core/transport';
@@ -47,7 +48,7 @@ export function mcpHandler(service: McpService, log: Log = () => {}, cat: Catalo
       const tool = tools.find((t) => t.name === req.params.name);
       if (!tool) return { isError: true, content: [{ type: 'text' as const, text: `unknown tool ${req.params.name}; canvas_help lists what can be done` }] };
       try {
-        return { content: [{ type: 'text' as const, text: await tool.call((req.params.arguments ?? {}) as Record<string, any>, { signal: AbortSignal.any([extra.signal, ...(dropped.getStore() ? [dropped.getStore()!] : [])]) }) }] };
+        return { content: toContent(await tool.call((req.params.arguments ?? {}) as Record<string, any>, { signal: AbortSignal.any([extra.signal, ...(dropped.getStore() ? [dropped.getStore()!] : [])]) })) };
       } catch (e) {
         return { isError: true, content: [{ type: 'text' as const, text: (e as Error).message }] };
       }

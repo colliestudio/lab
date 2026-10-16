@@ -9,13 +9,21 @@ import type { Client } from './client';
 
 type Json = Record<string, any>;
 
+/** What a tool answers with: text, or blocks (an image and its caption). */
+export type ToolContent = { type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string };
+export type ToolResult = string | ToolContent[];
+
+/** MCP content blocks for a tool result (a string is one text block). */
+export const toContent = (r: ToolResult): ToolContent[] => (typeof r === 'string' ? [{ type: 'text', text: r }] : r);
+
 export interface ToolSpec {
   name: string;
   description: string;
   inputSchema: Json;
-  call(c: Client, args: Record<string, any>): Promise<string>;
+  call(c: Client, args: Record<string, any>): Promise<ToolResult>;
 }
 
+const IN_VIEW_MAX = 60;
 const json = (v: unknown) => (typeof v === 'string' ? v : JSON.stringify(v, null, 2));
 const obj = (properties: Json = {}, required: string[] = []): Json => ({ type: 'object', properties, ...(required.length ? { required } : {}) });
 const str = (description: string): Json => ({ type: 'string', description });
@@ -34,7 +42,7 @@ export function toolList(cat: Catalog): ToolSpec[] {
   const generic: ToolSpec[] = [
     {
       name: 'canvas_look',
-      description: 'Look at the canvas. Without `view`: the nodes (id, type, text, position, column, outgoing links), filtered by type/text/column/ext. With `view` (a name from canvas_help, e.g. a game plugin\'s state): that view as text.',
+      description: 'Look at the canvas. Without `view`: the nodes (id, type, text, position, column, outgoing links), filtered by type/text/column/ext. With `view` (a name from canvas_help, e.g. a game plugin\'s state): that view as text. For how it looks (layout, overlaps, drawings), see canvas_screenshot.',
       inputSchema: obj({ view: str('view name, e.g. one listed by canvas_help'), args: { type: 'object', description: 'the view\'s arguments' }, type: str('text | group | link | file | …'), text: str('substring'), column: str('column (group) label'), ext: str('plugin namespace on the node (x-…)') }),
       call: async (c, a) => (a.view ? show(a.view, await c.view(a.view, a.args ?? {})) : json(await c.query({ type: a.type, text: a.text, column: a.column, ext: a.ext }))),
     },
@@ -65,6 +73,29 @@ export function toolList(cat: Catalog): ToolSpec[] {
       description: 'List nodes on the canvas (id, type, text, position, column, outgoing links). Filters are optional.',
       inputSchema: obj({ type: str('text | group | link | file | …'), text: { type: 'string' }, column: str('column (group) label'), ext: str('plugin namespace on the node (x-…)') }),
       call: async (c, a) => json(await c.query(a)),
+    },
+    {
+      name: 'canvas_screenshot',
+      description:
+        'See the board as a person sees it, as an image: layout, overlaps, how drawings, pages and game boards look. The whole board, one node or frame (`node`), or a world `region`. `labels: true` tags each node with its id so you can act on it with canvas_do. For facts, text and ids use canvas_look (exact, cheaper). Loop: canvas_look, canvas_do, canvas_screenshot, fix. About 1k tokens per image; you see only what your seat may see.',
+      inputSchema: obj({
+        node: str('a node or frame (id or title) to fill the picture; default the whole board'),
+        region: { type: 'object', description: 'a box in board coordinates to show instead: {x, y, width, height}', properties: { x: num('left'), y: num('top'), width: num('width'), height: num('height') }, required: ['x', 'y', 'width', 'height'] },
+        labels: { type: 'boolean', description: 'tag every node in view with its id (default false)' },
+        width: num('picture width in px, 200 to 2000 (default 1000)'),
+        height: num('picture height in px, 200 to 2000 (default 750)'),
+        padding: num('empty margin around the target in px (default 40)'),
+      }),
+      call: async (c, a) => {
+        const s = await c.shot({ node: a.node, region: a.region, labels: a.labels, width: a.width, height: a.height, padding: a.padding });
+        const shown = s.nodes.slice(0, IN_VIEW_MAX).map((n) => `${n.id} ${n.type} [${n.box.join(',')}]`);
+        const more = s.nodes.length - shown.length;
+        const text = [`${s.target} as ${s.seat}: ${s.width}x${s.height}, ${s.ms} ms`, s.nodes.length ? `in view (id type [x,y,w,h] in the picture):` : 'nothing in view', ...shown, ...(more > 0 ? [`… and ${more} more`] : [])].join('\n');
+        return [
+          { type: 'image', data: s.png, mimeType: s.mime },
+          { type: 'text', text },
+        ];
+      },
     },
     {
       name: 'canvas_undo',

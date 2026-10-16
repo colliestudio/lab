@@ -3,6 +3,7 @@ import type { CanvasDoc } from '../src/core/doc';
 import type { ChatMessage } from '../src/core/chat';
 import type { AgentApi } from '../src/core/agent';
 import type { NodeSummary } from '../src/core/query';
+import type { InView } from '../src/core/agentView';
 
 // Thin client for the bridge's HTTP API (used by the CLI and the MCP server). Agents never touch
 // Yjs: they send named commands; the bridge runs them as a seated player.
@@ -12,6 +13,29 @@ export interface RunReply {
   text?: string;
   changed?: number;
   undescribed?: boolean;
+}
+
+export interface ShotArgs {
+  /** A node (id or title); the picture frames it. */
+  node?: string;
+  /** A world box to frame. */
+  region?: { x: number; y: number; width: number; height: number };
+  labels?: boolean;
+  width?: number;
+  height?: number;
+  padding?: number;
+}
+
+export interface ShotReply {
+  /** base64 */
+  png: string;
+  mime: 'image/png';
+  seat: string;
+  target: string;
+  width: number;
+  height: number;
+  ms: number;
+  nodes: InView[];
 }
 
 export interface Client extends AgentApi {
@@ -24,6 +48,8 @@ export interface Client extends AgentApi {
   undo(redo?: boolean): Promise<{ ok: boolean; error?: string }>;
   log(limit?: number): Promise<{ time: string; actor: string | null; text: string }[]>;
   status(): Promise<unknown>;
+  /** A picture of the board as this actor sees it (throws why not: no browser, node not shown, bad region). */
+  shot(args?: ShotArgs): Promise<ShotReply>;
   /** A plugin view as this actor (e.g. chess.state); throws its error. */
   view<T = any>(name: string, args?: object): Promise<T>;
   /** Long-poll a view until it's ready (e.g. chess.turn); undefined after `timeoutS` (≤ 290). */
@@ -74,6 +100,11 @@ export function client(opts: { url?: string; as?: string; kind?: 'agent' | 'tool
     undo: (redo = false) => json(redo ? '/redo' : '/undo', { body: { as, kind } }),
     log: (limit = 20) => json(`/log?limit=${limit}`),
     status: () => json('/status'),
+    shot: async (args = {}) => {
+      const r = await json(`/shot?${qs({ args: JSON.stringify(args), as, kind })}`);
+      if (r?.error) throw new Error(r.error);
+      return r;
+    },
     view: async (name, args = {}) => {
       const r = await json(viewPath('view', name, args));
       if (r?.error) throw new Error(r.error);
