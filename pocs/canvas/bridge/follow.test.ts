@@ -15,6 +15,7 @@ describe('apiBase', () => {
     expect(apiBase({ board: 'b' }, { CANVAS_SERVE: 'http://localhost:5252/' })).toBe('http://localhost:5252/api/boards/b');
     expect(apiBase({ board: 'b/c', bridge: 'http://h:9' }, { CANVAS_SERVE: 'http://s' })).toBe('http://h:9/api/boards/b%2Fc');
     expect(() => apiBase({ board: '' }, {})).toThrow('needs a board name');
+    expect(() => apiBase({ board: 'true' }, {})).toThrow('needs a board name'); // `--canvas` with nothing after it
   });
 });
 

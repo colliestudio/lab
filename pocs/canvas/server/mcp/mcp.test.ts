@@ -199,3 +199,32 @@ describe('chat_wait over several boards', () => {
     expect(await p).toContain('nothing new');
   });
 });
+
+describe('cancelling and racing', () => {
+  it('a wait cancelled through the call signal marks nothing seen on any board', async () => {
+    const s = svc.create('s');
+    const ja = await s.join('alpha', 'Ann');
+    const jb = await s.join('beta', 'Ann');
+    const wait = sessionTools(catalog(), s).find((t) => t.name === 'chat_wait')!;
+    const ac = new AbortController();
+    const p = wait.call({ timeout_s: 30 }, { signal: ac.signal });
+    await new Promise((r) => setTimeout(r, 20));
+    ac.abort();
+    expect(await p).toContain('nothing new');
+    ja.board.host.say(makeActor('Zoe'), 'a');
+    jb.board.host.say(makeActor('Zoe'), 'b');
+    expect(ja.board.host.unreadChat(ja.actor)).toBe(1);
+    expect(jb.board.host.unreadChat(jb.actor)).toBe(1);
+  });
+
+  it('two joins at once: the same name shares one seat and one lease, another name loses', async () => {
+    const s = svc.create('s');
+    const [x, y] = await Promise.all([s.join('alpha', 'Ann'), s.join('alpha', 'Ann')]);
+    expect(x).toBe(y);
+    expect(x.board.leases).toBe(1);
+    const other = svc.create('o');
+    const results = await Promise.allSettled([s.join('beta', 'Ann'), other.join('beta', 'Ann'), s.join('beta', 'Different')]);
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    expect(dir.loaded('beta')!.leases).toBe(1);
+  });
+});

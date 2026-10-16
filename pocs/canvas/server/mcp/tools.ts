@@ -29,8 +29,6 @@ export interface SessionTool {
 
 const str = (description: string): Json => ({ type: 'string', description });
 const obj = (properties: Json, required: string[] = []): Json => ({ type: 'object', properties, ...(required.length ? { required } : {}) });
-// every property but the optional ones (the generic-code test forbids the bare word that is also a plugin id as a string)
-const allBut = (properties: Json, ...optional: string[]) => Object.keys(properties).filter((k) => !optional.includes(k));
 
 /**
  * `tools` made to act on a joined board: they take the optional BOARD_ARG, which is removed before
@@ -89,7 +87,7 @@ export function sessionTools(cat: Catalog, session: McpSession): SessionTool[] {
     {
       name: 'canvas_join',
       description: 'Join a board: you get a seat there under `name` (your own cursor, log name and undo history). You can join several boards and the same board can have several agents. Other tools then act on the board you joined; with several joined, pass `canvas` to say which. Joining again under the same name changes nothing.',
-      inputSchema: obj(JOIN_PROPS, allBut(JOIN_PROPS, 'create')),
+      inputSchema: obj(JOIN_PROPS, ['board', 'name']),
       call: async (a) => {
         const j = await session.join(String(a.board ?? ''), String(a.name ?? ''), { create: a.create === true });
         const host = j.board.host;
@@ -107,7 +105,7 @@ export function sessionTools(cat: Catalog, session: McpSession): SessionTool[] {
     {
       name: 'canvas_leave',
       description: 'Leave a board you joined: your cursor and undo history go. Rejoining later starts a fresh seat.',
-      inputSchema: obj(LEAVE_PROPS, allBut(LEAVE_PROPS)),
+      inputSchema: obj(LEAVE_PROPS, ['board']),
       call: async (a) => `left "${session.leave(String(a.board ?? '')).name}"`,
     },
   ];

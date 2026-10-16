@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
@@ -11,6 +12,9 @@ import type { Log } from '../core/transport';
 // /mcp on the node server: MCP over streamable HTTP, one SDK Server + transport per session
 // (server/mcp/session.ts holds what a session has joined). The request has passed the guard (Host,
 // Origin, content type) before it gets here; the SDK's own DNS-rebinding check is left off for that reason.
+
+/** Per request: aborted when the client's response closes before it was finished (the SDK's own signal only follows protocol-level cancels). */
+const dropped = new AsyncLocalStorage<AbortSignal>();
 
 const MAX_BODY = 4 * 1024 * 1024;
 
@@ -32,18 +36,18 @@ async function readBody(req: IncomingMessage): Promise<string> {
   return Buffer.concat(chunks).toString('utf8');
 }
 
-export function mcpHandler(service: McpService, log: Log = () => {}, cat: Catalog = catalog()) {
+export function mcpHandler(service: McpService, log: Log = () => {}, cat: Catalog = catalog(), build: typeof sessionTools = sessionTools) {
   const live = new Map<string, StreamableHTTPServerTransport>();
 
   function connect(id: string, session: McpSession) {
-    const tools = sessionTools(cat, session);
+    const tools = build(cat, session);
     const server = new Server({ name: 'canvas', version: '0.3.0' }, { capabilities: { tools: {} } });
     server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: tools.map(({ name, description, inputSchema }) => ({ name, description, inputSchema: inputSchema as { type: 'object' } })) }));
     server.setRequestHandler(CallToolRequestSchema, async (req, extra) => {
       const tool = tools.find((t) => t.name === req.params.name);
       if (!tool) return { isError: true, content: [{ type: 'text' as const, text: `unknown tool ${req.params.name}; canvas_help lists what can be done` }] };
       try {
-        return { content: [{ type: 'text' as const, text: await tool.call((req.params.arguments ?? {}) as Record<string, any>, { signal: extra.signal }) }] };
+        return { content: [{ type: 'text' as const, text: await tool.call((req.params.arguments ?? {}) as Record<string, any>, { signal: AbortSignal.any([extra.signal, ...(dropped.getStore() ? [dropped.getStore()!] : [])]) }) }] };
       } catch (e) {
         return { isError: true, content: [{ type: 'text' as const, text: (e as Error).message }] };
       }
@@ -75,6 +79,7 @@ export function mcpHandler(service: McpService, log: Log = () => {}, cat: Catalo
       const sid = Array.isArray(given) ? given[0] : given;
       let transport: StreamableHTTPServerTransport | undefined;
       let session: McpSession | undefined;
+      let fresh = false;
       if (sid) {
         session = service.get(sid);
         transport = live.get(sid);
@@ -86,7 +91,14 @@ export function mcpHandler(service: McpService, log: Log = () => {}, cat: Catalo
         } catch (e) {
           return rpcError(res, 503, -32000, (e as Error).message);
         }
-        transport = await connect(id, session);
+        try {
+          transport = await connect(id, session);
+        } catch (e) {
+          session.close();
+          live.delete(id);
+          throw e;
+        }
+        fresh = true;
         log(`mcp: session ${id.slice(0, 8)} started`);
       } else {
         return rpcError(res, 400, -32000, 'Bad Request: no session (start with an initialize request)');
@@ -99,7 +111,16 @@ export function mcpHandler(service: McpService, log: Log = () => {}, cat: Catalo
         s.open--;
         s.touch();
       });
-      await transport.handleRequest(req, res, body);
+      const gone = new AbortController();
+      res.on('close', () => {
+        if (!res.writableFinished) gone.abort();
+      });
+      await dropped.run(gone.signal, () => transport.handleRequest(req, res, body));
+      // the SDK refused the initialize (no session id given out): nobody can ever use or close this session
+      if (fresh && !transport.sessionId) {
+        s.close();
+        live.delete(session.id);
+      }
     } catch (e) {
       log(`mcp: ${(e as Error).message}`);
       if (!res.headersSent) rpcError(res, 500, -32603, 'Internal error');

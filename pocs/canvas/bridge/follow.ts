@@ -9,7 +9,7 @@ export const DEFAULT_SERVE = 'http://localhost:5231';
 /** Where the CLI talks: a board of the service (`--canvas`), else the bridge as before (undefined = the client's default). */
 export function apiBase(o: { bridge?: string; board?: string }, env: Record<string, string | undefined> = process.env): string | undefined {
   if (o.board === undefined) return o.bridge;
-  if (!o.board) throw new Error('--canvas needs a board name');
+  if (!o.board || o.board === 'true') throw new Error('--canvas needs a board name'); // a bare flag parses as "true"
   return `${(o.bridge ?? env.CANVAS_SERVE ?? DEFAULT_SERVE).replace(/\/+$/, '')}/api/boards/${encodeURIComponent(o.board)}`;
 }
 
@@ -31,7 +31,7 @@ export interface FollowOptions {
  * `maxFailures` waits in a row failed, or returns when `signal` aborts.
  */
 export async function followChat(c: Pick<Client, 'chatWait' | 'doc'>, print: (text: string) => void, o: FollowOptions = {}): Promise<void> {
-  const { sliceS = 290, maxFailures = 3, backoff = [1000, 2000, 4000], signal } = o;
+  const { sliceS = 290, maxFailures = 3, backoff = [1000, 2000], signal } = o;
   const sleep = o.sleep ?? ((ms) => new Promise<void>((r) => setTimeout(r, ms)));
   let failures = 0;
   while (!signal?.aborted) {

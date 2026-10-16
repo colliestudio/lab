@@ -78,7 +78,7 @@ export function makeGuard(opts: { port: number; allowOrigins?: string[]; token?:
       const site = headers['sec-fetch-site'];
       if (origin === undefined && site !== undefined && site !== 'none' && site !== 'same-origin') return `a ${site} browser request without an Origin is not allowed`;
       // DELETE carries no body (MCP session close) and a browser cannot send it cross-site without a preflight we never answer
-      if (method !== 'GET' && method !== 'HEAD' && method !== 'DELETE' && !/^application\/json\s*(;|$)/i.test(headers['content-type'] ?? '')) return 'POST needs content-type: application/json';
+      if (method !== 'GET' && method !== 'HEAD' && method !== 'DELETE' && !/^application\/json\s*(;|$)/i.test(headers['content-type'] ?? '')) return `${method} needs content-type: application/json`;
       return undefined;
     },
   };

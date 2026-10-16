@@ -69,8 +69,9 @@ async function stop() {
   try {
     // stop taking connections first: a tab redialing after its board closed would reload it and
     // land its unsaved edits in a board that is about to be dropped
-    mcpService.closeAll(); // seats leave, leases are released
-    await server.close();
+    const closing = server.close();
+    mcpService.closeAll(); // seats leave, leases are released (same tick: no session can join in between)
+    await closing;
     await directory.closeAll();
   } finally {
     process.exit(0);
