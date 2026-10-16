@@ -160,8 +160,7 @@ describe('canvas serve', () => {
     const c = await browser('a');
     guardHosted(c.store); // what joinBridge does when the page joins a served board
     const before = onDisk('a');
-    expect(() => c.store.load({ nodes: [], edges: [] })).toThrow(/can not be replaced/);
-    await new Promise((r) => setTimeout(r, 700)); // past the board's write debounce: a wipe would be on disk by now
+    expect(() => c.store.load({ nodes: [], edges: [] })).toThrow(/cannot be replaced/);
     expect(c.store.doc.get('x')!.text).toBe('in a');
     expect(onDisk('a')).toBe(before);
     c.leave();

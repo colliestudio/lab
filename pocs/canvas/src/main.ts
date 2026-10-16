@@ -77,7 +77,8 @@ function openDoc(doc: CanvasDoc & { skipped?: string[] }, name: string) {
 }
 
 /**
- * What this page's board is, once connected: a served board or a bridge's file (the store refuses `load` for both).
+ * What this page's board is: 'served' / 'bridge' once connected (the store refuses `load` for both), 'pending' on a served
+ * page until the service answers (replaces are refused meanwhile), null for a local board.
  * Runtime state, not the URL: on a static host `/b/x` boots local and behaves locally.
  */
 let hosted: 'served' | 'bridge' | 'pending' | null = SERVED !== null ? 'pending' : null;
@@ -99,7 +100,6 @@ async function servedNew() {
 async function servedImport(fileName: string, text: string) {
   try {
     const { name } = await openServedBoard(() => createUnique(fileStem(fileName), text));
-    resetFileHandle();
     flash(`Imported ${fileName} as ${name}`);
   } catch (e) {
     failed('Open', e);
@@ -119,7 +119,10 @@ async function doOpen() {
   try {
     const res = await openFile();
     if (!res) return;
-    if (hosted === 'served') return void (await servedImport(res.name, serialize(res.doc)));
+    if (hosted === 'served') {
+      resetFileHandle(); // the picked file must not become the save target of the served board, whatever the import does
+      return void (await servedImport(res.name, serialize(res.doc)));
+    }
     openDoc(res.doc, res.name);
   } catch (e) {
     flash(`Open failed: ${(e as Error).message}`);

@@ -94,7 +94,7 @@ export function joinRoom(app: App, id: string, me: PlayerInfo, signal = signalin
   };
 }
 
-export const HOSTED_REFUSAL = 'this board is a file the service or bridge keeps: it can not be replaced from here';
+export const HOSTED_REFUSAL = 'this board is a file the service or bridge keeps: it cannot be replaced from here';
 
 /** A board kept by a service or bridge: the store refuses whole-document replaces. */
 export function guardHosted(store: Store) {

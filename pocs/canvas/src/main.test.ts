@@ -38,6 +38,10 @@ describe('hosted boards', () => {
     expect(src).toMatch(/if \(hosted === 'served'\) return void \(await servedImport\(file\.name, serialize\(doc\)\)\)/);
     expect(src).toMatch(/hosted = served \? 'served' : 'bridge';/);
   });
+  it('a file picked by Open on a served board never stays the save target', () => {
+    expect(src).toMatch(/if \(hosted === 'served'\) \{\s*resetFileHandle\(\);[^}]*servedImport\(res\.name/);
+    expect(src).toMatch(/async function doOpen\(\) \{\s*if \(hosted === 'bridge' \|\| hosted === 'pending'\) return refuse\(\);\s*try \{\s*const res = await openFile\(\)/); // refused before the picker opens
+  });
   it('a served page is pending until the probe answers, and local again on none', () => {
     expect(src).toMatch(/p\.kind === 'none' \? \(\(hosted = null\), startLocal\(\)\)/);
   });
