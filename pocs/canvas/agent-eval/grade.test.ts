@@ -176,6 +176,59 @@ describe('proto grader', () => {
   });
 });
 
+// ---- arch
+
+const PARTS_ARCH = ['Browser', 'API server', 'Postgres database', 'Redis cache'];
+const ARCH_ARROWS: [number, number, string][] = [[0, 1, 'HTTPS requests'], [1, 2, 'SQL queries'], [1, 3, 'cached reads']];
+
+function arch(o: { parts?: string[]; frame?: string | false; arrows?: [number, number, string][]; outside?: number; plain?: boolean; overlap?: boolean } = {}) {
+  const s = store();
+  const parts = o.parts ?? PARTS_ARCH;
+  const ids = parts.map((text, i) => {
+    const pos = o.overlap && i === 1 ? { x: 20, y: 20 } : { x: i * 300, y: o.outside === i ? 2000 : 0 };
+    return o.plain ? s.dispatch('board.add', { text, ...pos }).select![0] : s.dispatch('diagram.add', { kind: 'rect', text, ...pos }).select![0];
+  });
+  for (const [a, b, label] of o.arrows ?? ARCH_ARROWS) s.dispatch('core.connect', { from: ids[a], to: ids[b], label });
+  if (o.frame !== false) s.dispatch('frames.create', { around: ids.filter((_, i) => o.outside !== i), label: o.frame ?? 'Architecture' });
+  return s;
+}
+
+describe('arch grader', () => {
+  it('passes a framed, connected, labeled diagram; no-overlap is info', () => {
+    expect(failed('arch', arch())).toEqual([]);
+    expect(grade('arch', arch()).find((c) => c.id === 'no-overlap')).toMatchObject({ pass: true, info: true });
+    expect(grade('arch', arch({ overlap: true })).find((c) => c.id === 'no-overlap')).toMatchObject({ pass: false, info: true });
+  });
+  it('fails without a frame or with another title', () => {
+    expect(failed('arch', arch({ frame: false }))).toEqual(['frame', 'in-frame']);
+    expect(failed('arch', arch({ frame: 'Diagram' }))).toEqual(['frame', 'in-frame']);
+  });
+  it('fails a shape outside the frame and names it', () => {
+    const c = grade('arch', arch({ outside: 3 })).find((x) => x.id === 'in-frame')!;
+    expect([c.pass, c.detail]).toEqual([false, expect.stringContaining('Redis cache')]);
+  });
+  it('fails an unlabeled arrow, too few arrows, a cache left unconnected', () => {
+    expect(failed('arch', arch({ arrows: [[0, 1, 'HTTPS'], [1, 2, ''], [1, 3, 'reads']] }))).toEqual(['labeled']);
+    expect(failed('arch', arch({ arrows: ARCH_ARROWS.slice(0, 2) }))).toEqual(['connected', 'labeled']);
+    expect(failed('arch', arch({ arrows: [[0, 1, 'a'], [1, 2, 'b'], [0, 2, 'c']] }))).toEqual(['connected']);
+  });
+  it('accepts an intermediate shape on the path', () => {
+    const s = arch({ parts: [...PARTS_ARCH, 'Load balancer'], arrows: [[0, 4, 'a'], [4, 1, 'b'], [1, 2, 'c'], [1, 3, 'd']] });
+    expect(failed('arch', s)).toEqual([]);
+  });
+  it('plain text nodes are not shapes: components fails and the detail counts them', () => {
+    const f = grade('arch', arch({ plain: true }));
+    expect(f.filter((c) => !c.pass).map((c) => c.id)).toContain('components');
+    expect(f.find((c) => c.id === 'components')!.detail).toContain('4 plain text nodes');
+  });
+  it('one shape cannot be two components', () => {
+    expect(failed('arch', arch({ parts: ['Web app', 'API', 'Database', 'Cache'] }))).toEqual([]);
+    // "API client" matches both client and api, but is one shape: needs a second one
+    expect(failed('arch', arch({ parts: ['API client', 'Database', 'Cache', 'Notes'], arrows: ARCH_ARROWS }))).toContain('components');
+    expect(failed('arch', arch({ parts: ['API client', 'Database', 'Cache', 'Server'], arrows: ARCH_ARROWS }))).not.toContain('components');
+  });
+});
+
 describe('smoke grader', () => {
   it('passes an empty board', () => {
     expect(failed('smoke', store())).toEqual([]);

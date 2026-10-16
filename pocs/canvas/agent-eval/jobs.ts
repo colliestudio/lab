@@ -2,6 +2,8 @@ import type { DocView } from '../src/core/doc';
 import { columnOf, isColumn, isNote as isBoardNote } from '../src/plugins/board/logic';
 import { eventsOn, stickiesOn } from '../src/plugins/eventstorm/commands';
 import { board as boardField, isBoard, isEvent, kindOf, phaseOf, sticky } from '../src/plugins/eventstorm/model';
+import { frameAt, isFrame } from '../src/plugins/frames/model';
+import { isShape } from '../src/plugins/diagram/model';
 import { page, pages, outgoing, resolveLink, startPage, titleOf } from '../src/plugins/prototype/model';
 import { BLANK_HTML } from '../src/plugins/prototype/seed';
 import { check, quoteList, type Check } from './grade';
@@ -87,13 +89,13 @@ const TITLES: [string, RegExp][] = [
   ['home', /home|welcome|dashboard/i],
 ];
 
-/** Assign each wanted title to a different page, if possible. */
-function assign(titles: string[]): number[] | undefined {
+/** Assign each wanted pattern to a different title, if possible. */
+function assign(titles: string[], wanted: [string, RegExp][] = TITLES): number[] | undefined {
   const used = new Set<number>();
   const pick = (i: number): number[] | undefined => {
-    if (i === TITLES.length) return [];
+    if (i === wanted.length) return [];
     for (let p = 0; p < titles.length; p++) {
-      if (used.has(p) || !TITLES[i][1].test(titles[p])) continue;
+      if (used.has(p) || !wanted[i][1].test(titles[p])) continue;
       used.add(p);
       const rest = pick(i + 1);
       used.delete(p);
@@ -141,6 +143,63 @@ function gradeProto(doc: DocView): Check[] {
   return out;
 }
 
+// ---- arch: architecture diagram of diagram shapes and labeled arrows, inside a frame
+
+const PARTS: [string, RegExp][] = [
+  ['client', /browser|client|front.?end|web\s*app|spa|mobile/i],
+  ['api', /\bapi\b|server|back.?end|gateway|service/i],
+  ['database', /database|\bdb\b|postgres|mysql|sql|mongo|dynamo/i],
+  ['cache', /cache|redis|memcache/i],
+];
+
+function gradeArch(doc: DocView): Check[] {
+  const frames = doc.nodes.filter(isFrame);
+  const arch = frames.filter((f) => /architecture/i.test(f.label ?? ''));
+  const shapes = doc.nodes.filter((n) => isShape(n) && (n.text ?? '').trim());
+  const texts = shapes.map((n) => first(n.text));
+  const plain = doc.nodes.filter((n) => n.type === 'text' && !isShape(n)).length;
+  const out: Check[] = [check('frame', 'a frame titled Architecture', arch.length > 0, `frames: ${quoteList(frames.map((f) => f.label ?? ''))}`)];
+  if (!shapes.length) {
+    for (const [id, label] of [['components', 'shapes for a client, an API server, a database and a cache'], ['in-frame', 'every shape inside the Architecture frame'], ['connected', 'at least 3 arrows between shapes, the four components connected'], ['labeled', 'at least 3 arrows, each with a label']]) out.push(check(id, label, false, `no diagram shapes (${plain} plain text nodes)`));
+    return out;
+  }
+  const a = assign(texts, PARTS);
+  out.push(check('components', 'shapes for a client, an API server, a database and a cache', !!a, a ? `matched ${PARTS.map(([t], i) => `${t}=“${texts[a[i]]}”`).join(', ')}` : `shapes: ${quoteList(texts)}${shapes.length < 4 ? `; ${plain} plain text nodes` : ''}`));
+  const inArch = (id: string) => {
+    for (let cur: string | undefined = id, i = 0; cur && i < 20; i++) {
+      const n = doc.get(cur);
+      cur = n && frameAt(n, doc.nodes);
+      if (cur && arch.some((f) => f.id === cur)) return true;
+    }
+    return false;
+  };
+  const outside = shapes.filter((n) => !inArch(n.id));
+  out.push(check('in-frame', 'every shape inside the Architecture frame', arch.length > 0 && outside.length === 0, arch.length ? `${shapes.length - outside.length}/${shapes.length} inside${outside.length ? `; outside: ${quoteList(outside.map((n) => first(n.text)))}` : ''}` : 'no Architecture frame'));
+  const ids = new Set(shapes.map((n) => n.id));
+  const arrows = doc.edges.filter((e) => ids.has(e.fromNode) && ids.has(e.toNode) && e.fromNode !== e.toNode);
+  const adj = new Map<string, string[]>();
+  const link = (x: string, y: string) => adj.set(x, [...(adj.get(x) ?? []), y]);
+  for (const e of arrows) link(e.fromNode, e.toNode), link(e.toNode, e.fromNode);
+  let linked = false;
+  if (a) {
+    const seen = new Set<string>([shapes[a[0]].id]);
+    for (const queue = [shapes[a[0]].id]; queue.length; ) for (const m of adj.get(queue.pop()!) ?? []) if (!seen.has(m)) seen.add(m), queue.push(m);
+    linked = a.every((i) => seen.has(shapes[i].id));
+  }
+  out.push(check('connected', 'at least 3 arrows between shapes, the four components connected', arrows.length >= 3 && linked, `${arrows.length} shape-to-shape arrows of ${doc.edges.length} edges; components connected: ${a ? linked : 'components not found'}`));
+  const unlabeled = arrows.filter((e) => !(e.label ?? '').trim());
+  out.push(check('labeled', 'at least 3 arrows, each with a label', arrows.length >= 3 && unlabeled.length === 0, `${arrows.length - unlabeled.length}/${arrows.length} labeled: ${quoteList(arrows.map((e) => e.label ?? ''))}`));
+  const overlaps: string[] = [];
+  for (let i = 0; i < shapes.length; i++)
+    for (let j = i + 1; j < shapes.length; j++) {
+      const p = shapes[i];
+      const q = shapes[j];
+      if (p.x < q.x + q.width && q.x < p.x + p.width && p.y < q.y + q.height && q.y < p.y + p.height) overlaps.push(`“${first(p.text)}” / “${first(q.text)}”`);
+    }
+  out.push(check('no-overlap', 'no two shapes overlap', overlaps.length === 0, overlaps.length ? overlaps.join(', ') : 'none', true));
+  return out;
+}
+
 // ---- smoke: board unchanged (tool calls are checked from the transcript)
 
 const gradeSmoke = (doc: DocView): Check[] => [check('unchanged', 'board unchanged', doc.nodes.length === 0 && doc.edges.length === 0, `${doc.nodes.length} nodes, ${doc.edges.length} edges`)];
@@ -163,6 +222,11 @@ export const JOBS: Record<string, Job> = {
     prompt: 'Build a 4-page sign-in prototype: sign in, forgot password, check your email, and a home page after signing in. Link the pages so I can click through it.',
     grade: gradeProto,
   },
+  arch: {
+    id: 'arch',
+    prompt: 'Draw a small architecture diagram of a web app inside a frame titled "Architecture": a browser client, an API server, a database and a cache. Connect them with arrows, each labeled with what flows along it.',
+    grade: gradeArch,
+  },
   // probes of the isolation, graded by reading the transcript
   leak: {
     id: 'leak',
@@ -182,4 +246,4 @@ export const JOBS: Record<string, Job> = {
 };
 
 /** Jobs `all` runs (smoke is a probe). */
-export const ALL_JOBS = ['notes', 'storm', 'proto'];
+export const ALL_JOBS = ['notes', 'storm', 'proto', 'arch'];
