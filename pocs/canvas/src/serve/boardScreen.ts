@@ -12,14 +12,16 @@ export function showBoardScreen(probe: Exclude<Probe, { kind: 'ok' } | { kind: '
   card.setAttribute('role', 'alert');
   const title = document.createElement('h2');
   const body = document.createElement('p');
-  body.textContent = probe.error;
   if (probe.kind === 'missing') {
     title.textContent = `No board named “${name}”`;
     body.textContent = 'It may have been renamed or deleted.';
   } else if (probe.kind === 'newer') {
     title.textContent = 'Made by a newer canvas';
     body.textContent = probe.error; // the service says to upgrade and that the file is untouched
-  } else title.textContent = `Can’t open “${name}”`;
+  } else {
+    title.textContent = `Can’t open “${name}”`;
+    body.textContent = probe.error;
+  }
   const actions = document.createElement('div');
   actions.className = 'serve-actions';
   const all = document.createElement('a');
@@ -46,7 +48,8 @@ export function showBoardScreen(probe: Exclude<Probe, { kind: 'ok' } | { kind: '
   window.addEventListener(
     'keydown',
     (e) => {
-      if (!overlay.contains(e.target as Node)) e.stopImmediatePropagation();
+      // the screen needs Tab, Enter and Space only
+      if (!overlay.contains(e.target as Node) || !['Tab', 'Enter', ' '].includes(e.key)) e.stopImmediatePropagation();
     },
     true,
   );
