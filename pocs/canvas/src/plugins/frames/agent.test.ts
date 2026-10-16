@@ -107,6 +107,36 @@ describe('frames through the bridge', () => {
     expect(ok(h, 'frames.sink').changed).toBe(0);
   });
 
+  it('include reports what else it took in and refuses to swallow another frame unless forced', () => {
+    const h = new Host();
+    ok(h, 'diagram.add', { kind: 'rect', text: 'A' });
+    ok(h, 'frames.create', { around: ['A'], label: 'Arch' });
+    ok(h, 'diagram.add', { kind: 'sticky', text: 'Todo' });
+    ok(h, 'diagram.add', { kind: 'rect', text: 'Cache' });
+    const r = ok(h, 'frames.include', { id: 'Arch', nodes: ['Cache'] });
+    expect(r.captured).toEqual([expect.objectContaining({ title: 'Todo' })]);
+    expect(r.inside).toBe(3);
+
+    const g = new Host();
+    ok(g, 'diagram.add', { kind: 'rect', text: 'A' });
+    ok(g, 'frames.create', { around: ['A'], label: 'Arch' });
+    ok(g, 'diagram.add', { kind: 'sticky', text: 'Todo' });
+    ok(g, 'frames.create', { around: ['Todo'], label: 'Roadmap' });
+    ok(g, 'diagram.add', { kind: 'rect', text: 'Cache' });
+    const e = error(g, 'frames.include', { id: 'Arch', nodes: ['Cache'] });
+    expect(e).toMatch(/also take in the frame “Roadmap”.*core\.move.*force: true/);
+    expect(g.store.doc.nodes.find((n) => n.label === 'Arch')!.width).toBeLessThan(500);
+    const f = ok(g, 'frames.include', { id: 'Arch', nodes: ['Cache'], force: true });
+    expect(f.captured.map((c: any) => c.title)).toEqual(expect.arrayContaining(['Roadmap']));
+  });
+
+  it('rename returns the cleaned label and refuses an empty one', () => {
+    const h = new Host();
+    ok(h, 'frames.create', { label: 'A' });
+    expect(ok(h, 'frames.rename', { id: 'A', label: '  Plan  ' })).toMatchObject({ label: 'Plan', changed: 1 });
+    expect(error(h, 'frames.rename', { id: 'Plan', label: '   ' })).toMatch(/empty/);
+  });
+
   it('after the frame moves, its contents go along', () => {
     const h = new Host();
     ok(h, 'diagram.add', { kind: 'rect', text: 'A', x: 0, y: 0 });

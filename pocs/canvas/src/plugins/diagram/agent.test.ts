@@ -56,6 +56,9 @@ describe('diagram through the bridge', () => {
     const only = viewText(h, 'diagram.graph', { in: 'Architecture' });
     expect(only).toContain('Diagram: 3 shapes');
     expect(only).not.toContain('Elsewhere');
+    expect(viewText(h, 'diagram.graph', { in: 'Elsewhere' })).toMatch(/No diagram shapes in “Elsewhere”: it is not a frame/);
+    ok(h, 'frames.create', { label: 'Empty' });
+    expect(viewText(h, 'diagram.graph', { in: 'Empty' })).toBe('No diagram shapes in “Empty”.');
     expect(viewText(new Host(), 'diagram.graph')).toBe('No diagram shapes yet. diagram.add {kind, text} adds one.');
   });
 });

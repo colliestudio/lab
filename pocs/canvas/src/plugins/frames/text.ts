@@ -60,10 +60,7 @@ export function framesOf(doc: DocView): FramesView {
   return {
     frames,
     loose: doc.visible
-      .filter((n) => {
-        const backdrop: boolean = isFrame(n) || isPortal(n);
-        return !backdrop && !doc.carrierOf(n.id);
-      })
+      .filter((n) => !(isFrame(n) as boolean) && !(isPortal(n) as boolean) && !doc.carrierOf(n.id))
       .map(member),
     strayPortals: doc.nodes.filter((n) => isPortal(n) && !placed.has(n.id)).map(portal),
   };

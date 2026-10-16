@@ -37,6 +37,8 @@ export interface Graph {
   shapes: GraphShape[];
   arrows: GraphArrow[];
   overlaps: [string, string][];
+  /** Set when filtered: what the filter named. */
+  filter?: { title: string; isGroup: boolean };
 }
 
 const MAX_OVERLAPS = 10;
@@ -85,7 +87,8 @@ export function graphOf(doc: DocView, inId?: string): Graph {
       const b = listed[j];
       if (a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height) overlaps.push([a.id, b.id]);
     }
-  return { shapes, arrows, overlaps };
+  const target = inId ? doc.get(inId) : undefined;
+  return { shapes, arrows, overlaps, ...(inId ? { filter: { title: target ? titleOf(target) || inId : inId, isGroup: target?.type === 'group' } } : {}) };
 }
 
 const quote = (t: string) => {
@@ -95,6 +98,7 @@ const quote = (t: string) => {
 const ref = (title: string, id: string) => `${quote(title)} (${id})`;
 
 export function graphText(g: Graph): string {
+  if (!g.shapes.length && g.filter) return g.filter.isGroup ? `No diagram shapes in “${g.filter.title}”.` : `No diagram shapes in “${g.filter.title}”: it is not a frame.`;
   if (!g.shapes.length) return 'No diagram shapes yet. diagram.add {kind, text} adds one.';
   const out = [`Diagram: ${g.shapes.length} shape${g.shapes.length === 1 ? '' : 's'}, ${g.arrows.length} arrow${g.arrows.length === 1 ? '' : 's'}`, 'Shapes:'];
   const byId = new Map(g.shapes.map((s) => [s.id, s]));

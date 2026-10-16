@@ -146,7 +146,7 @@ function gradeProto(doc: DocView): Check[] {
 // ---- arch: architecture diagram of diagram shapes and labeled arrows, inside a frame
 
 const PARTS: [string, RegExp][] = [
-  ['client', /browser|client|front.?end|web\s*app|spa|mobile/i],
+  ['client', /browser|client|front.?end|web\s*app|\bspa\b|mobile/i],
   ['api', /\bapi\b|server|back.?end|gateway|service/i],
   ['database', /database|\bdb\b|postgres|mysql|sql|mongo|dynamo/i],
   ['cache', /cache|redis|memcache/i],
@@ -157,14 +157,15 @@ function gradeArch(doc: DocView): Check[] {
   const arch = frames.filter((f) => /architecture/i.test(f.label ?? ''));
   const shapes = doc.nodes.filter((n) => isShape(n) && (n.text ?? '').trim());
   const texts = shapes.map((n) => first(n.text));
-  const plain = doc.nodes.filter((n) => n.type === 'text' && !isShape(n)).length;
+  const scenes = doc.nodes.filter((n) => n['x-excalidraw'] !== undefined).length;
+  const plain = doc.nodes.filter((n) => n.type === 'text' && !isShape(n) && n['x-excalidraw'] === undefined).length;
   const out: Check[] = [check('frame', 'a frame titled Architecture', arch.length > 0, `frames: ${quoteList(frames.map((f) => f.label ?? ''))}`)];
   if (!shapes.length) {
-    for (const [id, label] of [['components', 'shapes for a client, an API server, a database and a cache'], ['in-frame', 'every shape inside the Architecture frame'], ['connected', 'at least 3 arrows between shapes, the four components connected'], ['labeled', 'at least 3 arrows, each with a label']]) out.push(check(id, label, false, `no diagram shapes (${plain} plain text nodes)`));
+    for (const [id, label] of [['components', 'shapes for a client, an API server, a database and a cache'], ['in-frame', 'every shape inside the Architecture frame'], ['connected', 'at least 3 arrows between shapes, the four components connected'], ['labeled', 'at least 3 arrows, each with a label']]) out.push(check(id, label, false, scenes ? `drew in Excalidraw (${scenes} scene${scenes === 1 ? '' : 's'}), not diagram shapes` : `no diagram shapes (${plain} other text nodes)`));
     return out;
   }
   const a = assign(texts, PARTS);
-  out.push(check('components', 'shapes for a client, an API server, a database and a cache', !!a, a ? `matched ${PARTS.map(([t], i) => `${t}=“${texts[a[i]]}”`).join(', ')}` : `shapes: ${quoteList(texts)}${shapes.length < 4 ? `; ${plain} plain text nodes` : ''}`));
+  out.push(check('components', 'shapes for a client, an API server, a database and a cache', !!a, a ? `matched ${PARTS.map(([t], i) => `${t}=“${texts[a[i]]}”`).join(', ')}` : `shapes: ${quoteList(texts)}${shapes.length < 4 ? `; ${plain} other text nodes` : ''}`));
   const inArch = (id: string) => {
     for (let cur: string | undefined = id, i = 0; cur && i < 20; i++) {
       const n = doc.get(cur);

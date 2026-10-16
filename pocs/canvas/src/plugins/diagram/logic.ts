@@ -221,7 +221,7 @@ const GUIDE = `Diagrams: shapes (rect, ellipse, diamond, text, sticky) with word
 export const specs: Record<string, CommandSpec> = {
   add: command({
     description:
-      'Add a diagram shape (rect, ellipse, diamond, text, sticky). Place it with x/y (top-left), cx/cy (center), beside `near` (on `side`), or right of everything. With `from` it is a new shape connected by an arrow from that shape (the fast flowchart step; `side` = which side of `from` the arrow leaves, `at` = where the new center goes). Returns the new id (and the arrow id with `from`). For a diagram (architecture, flowchart): add the shapes, join them with canvas_arrow, then frame them with canvas_do frames.create {around: [shapes], label}. Each shape is its own node, which is what arrows, frames and moves work on.',
+      'Add a diagram shape (rect, ellipse, diamond, text, sticky). Place it with x/y (top-left), cx/cy (center), beside `near` (on `side`), or right of everything. With `from` it is a new shape connected by an arrow from that shape (the fast flowchart step; `side` = which side of `from` the arrow leaves, `at` = where the new center goes). Returns the new id (and the arrow id with `from`). For a diagram (architecture, flowchart): add the shapes and join them with canvas_arrow; to put them in a frame, canvas_do frames.create {around: [shapes], label}. Each shape is its own node, which is what arrows, frames and moves work on. For a freehand sketch, or when asked for Excalidraw, use canvas_draw_new instead.',
     args: z.strictObject({
       kind: z.optional(kind.check(z.meta({ description: 'default rect' }))),
       text: z.optional(z.string()),

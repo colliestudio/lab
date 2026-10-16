@@ -219,7 +219,13 @@ describe('arch grader', () => {
   it('plain text nodes are not shapes: components fails and the detail counts them', () => {
     const f = grade('arch', arch({ plain: true }));
     expect(f.filter((c) => !c.pass).map((c) => c.id)).toContain('components');
-    expect(f.find((c) => c.id === 'components')!.detail).toContain('4 plain text nodes');
+    expect(f.find((c) => c.id === 'components')!.detail).toContain('4 other text nodes');
+  });
+  it('an Excalidraw scene is named as such; "spa" needs to be a word', () => {
+    const s = store();
+    s.dispatch('core.add', { nodes: [{ id: 'x', type: 'text', x: 0, y: 0, width: 10, height: 10, text: '', 'x-excalidraw': {} }] });
+    expect(grade('arch', s).find((c) => c.id === 'components')!.detail).toBe('drew in Excalidraw (1 scene), not diagram shapes');
+    expect(failed('arch', arch({ parts: ['Workspace', 'API', 'Database', 'Cache'] }))).toContain('components');
   });
   it('one shape cannot be two components', () => {
     expect(failed('arch', arch({ parts: ['Web app', 'API', 'Database', 'Cache'] }))).toEqual([]);

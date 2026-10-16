@@ -3,7 +3,7 @@ import { command, nodeRef, view, type CommandSpec } from '../../core/agent';
 import type { CanvasNode, Command, DocView, Store } from '../../core';
 import { titleOf } from '../../core/query';
 import type { PluginLogic } from '../logic';
-import { commands, freeSpot } from './commands';
+import { cleanLabel, commands, freeSpot, includeBox } from './commands';
 import { frameAt, isFrame, isPortal, memberships, orderedFrames } from './model';
 import { framesOf, framesText } from './text';
 
@@ -46,13 +46,15 @@ function needPortal(doc: DocView, id: string): CanvasNode {
   throw new Error(n ? `${quoted(n, id)} is not a portal` : `no node ${id}`);
 }
 
+/** Riders of a frame before an include ran, per call (the adapter and the result share the ctx). */
+const included = new WeakMap<object, Set<string>>();
 const order = (doc: DocView, id: string) => orderedFrames(doc).findIndex((f) => f.id === id) + 1;
 const inside = (doc: DocView, id: string) => doc.riders(id).filter((n) => doc.isVisible(n.id)).length;
 const changed = (r: { changes: unknown[] }) => r.changes.length;
 
 const GUIDE = `A frame is a named area (a JSON Canvas group): whatever has its center inside it is in it and moves with it.
 - Draw first, then frame it: frames.create {around: [ids or titles], label} fits a frame around those nodes. frames.create {label} alone makes an empty 640x420 frame right of everything.
-- frames.include {id, nodes} grows a frame so more nodes are inside it (shapes added later land right of everything, outside the frame).
+- frames.include {id, nodes} grows a frame so more nodes are inside it. Shapes added later land right of everything: if other frames lie in between it refuses (core.move the nodes next to the frame first, or force: true); \`captured\` in the result names other nodes it took in.
 - frames.resize sets its size (top-left stays); core.move {ids: [frame]} moves it with its contents; frames.rename renames it.
 - Frames have an order (the slides of a presentation): frames.reorder {id, to} (1-based), frames.skip leaves one out.
 - frames.unframe removes a frame and keeps its contents; core.delete removes it with them.
@@ -88,27 +90,46 @@ export const specs: Record<string, CommandSpec> = {
     },
   }),
   include: command({
-    description: 'Grow a frame so these nodes are inside it (it never shrinks; margins as in create). Nodes that now lie under the bigger frame are inside too. Use it for shapes added after the frame.',
-    args: z.strictObject({ id: ref, nodes: z.array(nodeRef('node to put in the frame (id or title)')).check(z.minLength(1)) }),
+    description:
+      'Grow a frame so these nodes are inside it (it never shrinks; margins as in create). Whatever else lies under the bigger frame is inside too: other nodes are listed as `captured` in the result; if it would take in another frame it refuses, unless force is true (move the nodes next to the frame with core.move first). Use it for shapes added after the frame.',
+    args: z.strictObject({
+      id: ref,
+      nodes: z.array(nodeRef('node to put in the frame (id or title)')).check(z.minLength(1)),
+      force: z.optional(z.boolean().check(z.meta({ description: 'also take in other frames that lie in the way' }))),
+    }),
     example: { id: 'Architecture', nodes: ['Cache'] },
-    toCommand: ({ id, nodes }, ctx) => {
-      needFrame(ctx.doc, id);
+    toCommand: ({ id, nodes, force }, ctx) => {
+      const f = needFrame(ctx.doc, id);
       if (nodes.includes(id)) throw new Error('a frame cannot be put in itself');
       const off = nodes.find((n) => !ctx.doc.get(n) || !ctx.doc.isVisible(n));
       if (off) throw new Error(`${quoted(ctx.doc.get(off), off)} is not on the table`);
+      const before = new Set(ctx.doc.riders(id).map((n) => n.id));
+      if (!force) {
+        const grown = includeBox(f, nodes.map((n) => ctx.doc.get(n)!));
+        const nodesAfter = ctx.doc.nodes.map((n) => (n.id === id ? { ...n, ...grown } : n));
+        const swallowed = ctx.doc.nodes.filter((g) => isFrame(g) && g.id !== id && !nodes.includes(g.id) && !before.has(g.id) && frameAt(g, nodesAfter) === id);
+        if (swallowed.length) throw new Error(`that would also take in the frame${swallowed.length > 1 ? 's' : ''} ${swallowed.map((g) => quoted(g, g.id)).join(', ')}. Move the nodes next to ${quoted(f, id)} with core.move first, or pass force: true`);
+      }
+      included.set(ctx, before);
       return { id, nodes };
     },
     result: (r, a, ctx) => {
       const f = ctx.doc.get(a.id)!;
-      return { id: a.id, width: f.width, height: f.height, inside: inside(ctx.doc, a.id), changed: changed(r) };
+      const before = included.get(ctx) ?? new Set<string>();
+      const captured = ctx.doc.riders(a.id).filter((n) => !before.has(n.id) && !a.nodes.includes(n.id)).map((n) => ({ id: n.id, title: titleOf(n) || n.type }));
+      return { id: a.id, width: f.width, height: f.height, inside: inside(ctx.doc, a.id), ...(captured.length ? { captured } : {}), changed: changed(r) };
     },
   }),
   rename: command({
     description: "Change a frame's (or portal's) title.",
     args: z.strictObject({ id: ref, label: z.string().check(z.minLength(1)) }),
     example: { id: 'Frame 1', label: 'Architecture' },
-    toCommand: (a, ctx) => (needFrame(ctx.doc, a.id, true), a),
-    result: (r, a) => ({ id: a.id, label: a.label.trim().slice(0, 80), changed: changed(r) }),
+    toCommand: (a, ctx) => {
+      needFrame(ctx.doc, a.id, true);
+      if (!cleanLabel(a.label)) throw new Error('the label is empty');
+      return a;
+    },
+    result: (r, a, ctx) => ({ id: a.id, label: ctx.doc.get(a.id)!.label, changed: changed(r) }),
   }),
   resize: command({
     description: "Set a frame's size (minimum 160x100); its top-left stays. Nodes are not moved, so a smaller frame can drop some out; a bigger one can take more in.",

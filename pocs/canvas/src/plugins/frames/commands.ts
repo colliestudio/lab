@@ -10,7 +10,7 @@ export const MIN_H = 100;
 const PAD = 40;
 
 const lowestZ = (doc: DocView) => (doc.nodes.length ? Math.min(...doc.nodes.map((n) => n.z ?? 0)) : 0);
-const cleanLabel = (v: unknown) => (typeof v === 'string' ? v.trim().slice(0, 80) : undefined);
+export const cleanLabel = (v: unknown) => (typeof v === 'string' ? v.trim().slice(0, 80) : undefined);
 
 /** Bounding box of nodes (world). */
 export function bounds(nodes: readonly Pick<CanvasNode, 'x' | 'y' | 'width' | 'height'>[]) {
@@ -89,15 +89,19 @@ export function freeSpot(doc: DocView, w: number, h: number): { x: number; y: nu
  * Grow frame `id` so every node in `nodes` lies inside it, with the margins `create {around}` uses.
  * Never shrinks. Growing can also take in other nodes now under the new box (membership is geometric).
  */
+export function includeBox(f: CanvasNode, picked: readonly CanvasNode[]) {
+  const b = bounds(picked);
+  const x = Math.min(f.x, b.x - PAD);
+  const y = Math.min(f.y, b.y - PAD - TITLE_H);
+  return { x: Math.round(x), y: Math.round(y), width: Math.round(Math.max(f.x + f.width, b.x + b.width + PAD) - x), height: Math.round(Math.max(f.y + f.height, b.y + b.height + PAD) - y) };
+}
+
 export const include: Command<{ id: string; nodes: string[] }> = (doc, a) => {
   const f = doc.get(a?.id);
   if (!isFrame(f) || !isIds(a.nodes)) return [];
   const picked = pick(doc, a.nodes).filter((n) => doc.isVisible(n.id));
   if (!picked.length || picked.some((n) => n.id === f.id)) return [];
-  const b = bounds(picked);
-  const x = Math.min(f.x, b.x - PAD);
-  const y = Math.min(f.y, b.y - PAD - TITLE_H);
-  const box = { x: Math.round(x), y: Math.round(y), width: Math.round(Math.max(f.x + f.width, b.x + b.width + PAD) - x), height: Math.round(Math.max(f.y + f.height, b.y + b.height + PAD) - y) };
+  const box = includeBox(f, picked);
   const sets = (['x', 'y', 'width', 'height'] as const).filter((k) => box[k] !== f[k]).map((k) => set(f.id, k, box[k]));
   if (!sets.length) return [];
   return {
