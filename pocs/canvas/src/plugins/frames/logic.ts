@@ -118,7 +118,9 @@ export const specs: Record<string, CommandSpec> = {
         let cur = n;
         let holder: string | undefined;
         for (let i = 0; i < 20; i++) {
-          const next = ctx.doc.carrierOf(cur) ?? frameAt(ctx.doc.get(cur)!, after);
+          const c = ctx.doc.carrierOf(cur);
+          // a frame holding it is judged on the grown layout; a board column or chess board holds it for good
+          const next = c && !isFrame(ctx.doc.get(c)) ? c : frameAt(ctx.doc.get(cur)!, after);
           if (next === id) {
             holder = undefined;
             break;
@@ -127,7 +129,12 @@ export const specs: Record<string, CommandSpec> = {
           holder ??= next;
           cur = next;
         }
-        if (holder) throw new Error(`${quoted(ctx.doc.get(n), n)} would stay outside: it is held by ${quoted(ctx.doc.get(holder), holder)}. Move it out first with core.move, or include ${quoted(ctx.doc.get(holder), holder)} instead`);
+        if (holder) {
+          const up = new Set<string>();
+          for (let c = ctx.doc.carrierOf(id); c && up.size < 20; c = ctx.doc.carrierOf(c)) up.add(c);
+          const hint = up.has(holder) ? '' : `, or include ${quoted(ctx.doc.get(holder), holder)} instead`;
+          throw new Error(`${quoted(ctx.doc.get(n), n)} would stay outside: it is held by ${quoted(ctx.doc.get(holder), holder)}. Move it out first with core.move${hint}`);
+        }
       }
       const parent = ctx.doc.carrierOf(id);
       included.set(ctx, { before, ...(parent ? { parent } : {}) });

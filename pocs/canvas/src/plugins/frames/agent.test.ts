@@ -136,6 +136,19 @@ describe('frames through the bridge', () => {
     ok(h, 'frames.create', { label: 'B', x: 1100, y: 0, width: 600, height: 300 });
     ok(h, 'diagram.add', { kind: 'rect', text: 'Cache', x: 1120, y: 60, width: 100, height: 60 });
     expect(error(h, 'frames.include', { id: 'A', nodes: ['Cache'] })).toMatch(/“Cache” \(\w+\) would stay outside: it is held by “B”.*core\.move/);
+    // loose in a parent frame that also holds the target: fine
+    const p = new Host();
+    ok(p, 'frames.create', { label: 'Page', x: 0, y: 0, width: 3000, height: 2000 });
+    ok(p, 'frames.create', { label: 'A', x: 100, y: 100, width: 400, height: 300 });
+    ok(p, 'diagram.add', { kind: 'rect', text: 'Cache', x: 1500, y: 100 });
+    expect(ok(p, 'frames.include', { id: 'A', nodes: ['Cache'] }).inside).toBe(1);
+    // a node held by the target's own ancestor never gets "include the ancestor" as a hint
+    const q = new Host();
+    ok(q, 'frames.create', { label: 'Page', x: 0, y: 0, width: 3000, height: 2000 });
+    ok(q, 'frames.create', { label: 'A', x: 100, y: 100, width: 400, height: 300 });
+    ok(q, 'frames.create', { label: 'Side', x: 2000, y: 0, width: 600, height: 400 });
+    ok(q, 'diagram.add', { kind: 'rect', text: 'Cache', x: 2100, y: 100, width: 100, height: 60 });
+    expect(error(q, 'frames.include', { id: 'A', nodes: ['Cache'] })).not.toMatch(/include “Page”/);
     // a nested frame growing past its parent says so
     const g = new Host();
     ok(g, 'frames.create', { label: 'Outer', x: 0, y: 0, width: 800, height: 600 });
