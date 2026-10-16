@@ -1,6 +1,7 @@
 import { isNum, pick } from '../../core/commands';
 import { set } from '../../core/doc';
 import type { CanvasEdge, CanvasNode, Change, Command, CommandResult, DocView } from '../../core';
+import { gotoElements } from './flow';
 import { BLANK_HTML, SEED_PAGES } from './seed';
 import { DEVICES, FIELD, HEADER, flowOrder, isNote, isPage, linksIn, note, outgoing, page, pageSize, pages, resolveLink, standIn, titleOf, type NoteField, type PageField } from './model';
 
@@ -76,7 +77,10 @@ export function autoLinkChanges(doc: DocView, ids: string[] | undefined, newId: 
   const src = ids ? pick(doc, ids).filter(isPage) : pages(doc);
   for (const p of src) {
     const made = new Set<string>();
-    for (const l of linksIn(page(p).html)) {
+    // linksIn needs a closing tag; links on void elements (<input type=submit data-goto>) come from the flow scan
+    const found = linksIn(page(p).html);
+    const extra = gotoElements(page(p).html).filter((e) => e.target && !found.some((l) => l.target === e.target)).map((e) => ({ target: e.target, text: e.text || e.target }));
+    for (const l of [...found, ...extra]) {
       const r = resolveLink(doc, p.id, l.target);
       if (!r) {
         missing.push(`${titleOf(p)} → ${l.target}`);

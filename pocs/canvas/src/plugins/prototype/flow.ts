@@ -3,8 +3,9 @@ import { BLANK_HTML } from './seed';
 import { DEVICES, flowOrder, isNote, note, outgoing, page, resolveLink, startPage, titleOf } from './model';
 
 // The prototype as a flow, for agents: what Play would do on each link, without playing. Node-safe
-// (no DOM). Links are found by scanning the page HTML for attributes, the way Auto-link and the
-// harness grader do: an attribute inside a comment or a script string counts too.
+// (no DOM). Links are found by scanning the page HTML for attributes (void, bare and unquoted
+// data-goto too; Auto-link adds what `linksIn` misses from this scan): an attribute inside a comment
+// or a script string counts too.
 
 export interface PageLink {
   tag: string;
@@ -37,7 +38,7 @@ export interface PageFlow {
   back?: string;
   /** A script calls canvas.goto(): not followed. */
   script: boolean;
-  /** `<a href="#…">` with no data-goto, data-back or onclick: clicking does nothing. */
+  /** `<a href="#…">` with no data-goto, data-back or onclick, and no id/name in the page for the fragment: clicking does nothing. */
   dead: number;
   writes: string[];
   shows: string[];
@@ -61,7 +62,7 @@ const clean = (s: string) => s.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim
 const ATTR = (name: string) => new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, 'i');
 
 /** Every element with a data-goto attribute, in document order. */
-function gotoElements(html: string): { tag: string; text: string; target: string }[] {
+export function gotoElements(html: string): { tag: string; text: string; target: string }[] {
   const out: { tag: string; text: string; target: string }[] = [];
   const re = /<([a-z][a-z0-9]*)\b([^>]*)>/gi;
   // quoted, unquoted or bare (bare = empty target: the page's only arrow); entities decoded for & < > "
@@ -83,12 +84,14 @@ function gotoElements(html: string): { tag: string; text: string; target: string
  * `<a href="#">` / `href="#x"` with no id/name "x" in the page and no data-goto, data-back or onclick on the
  * anchor: clicking does nothing. An anchor inside a data-goto container still counts (the container navigates).
  */
-const deadAnchors = (html: string) =>
-  [...html.matchAll(/<a\b[^>]*>/gi)].filter((m) => {
+const deadAnchors = (html: string) => {
+  const esc = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return [...html.matchAll(/<a\b[^>]*>/gi)].filter((m) => {
     const h = /\bhref\s*=\s*["']#([^"']*)["']/i.exec(m[0]);
     if (!h || /\b(data-goto|data-back|onclick)\b/i.test(m[0])) return false;
-    return !h[1] || !new RegExp(`\\b(id|name)\\s*=\\s*["']${h[1].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["']`, 'i').test(html);
+    return !h[1] || !new RegExp(`(?<![\\w-])id\\s*=\\s*["']${esc(h[1])}["']|<a\\b[^>]*\\bname\\s*=\\s*["']${esc(h[1])}["']`, 'i').test(html);
   }).length;
+};
 
 function stateOf(html: string) {
   const writes = new Set<string>();
@@ -114,7 +117,8 @@ export function pageFlow(doc: DocView, id: string): PageFlow {
   const arrowsOnly = outgoing(doc, id)
     .filter((e) => !used.has(e.id))
     .map((e) => ({ id: e.id, ...(e.label ? { label: e.label } : {}), to: e.toNode, toTitle: titleOf(doc.get(e.toNode)) }));
-  const back = /\bdata-back\b/i.test(html) ? 'data-back' : /\bcanvas\s*\.\s*back\s*\(/.test(html) ? 'canvas.back()' : undefined;
+  const markup = html.replace(/<style\b[\s\S]*?<\/style>/gi, '');
+  const back = /<[a-z][^>]*\bdata-back\b/i.test(markup) ? 'data-back' : /\bcanvas\s*\.\s*back\s*\(/.test(html) ? 'canvas.back()' : undefined;
   const notes = doc.nodes.filter((r) => isNote(r) && note(r).on === id).map((r) => ({ id: r.id, text: (r.text ?? '').trim() }));
   return {
     id,
@@ -187,7 +191,7 @@ export function flowText(f: Flow): string {
     for (const a of p.arrowsOnly) lines.push(`   arrow ${a.id}${a.label ? ` ${q(a.label)}` : ''} → ${ref(a.toTitle, a.to)}: only a chip in Play, nothing in the page links there`);
     if (p.dead) lines.push(`   ${p.dead} <a href="#…"> without data-goto: clicking ${p.dead === 1 ? 'it does' : 'them does'} nothing`);
     if (p.script) lines.push('   script calls canvas.goto: not checked');
-    if (!p.links.length && !p.arrowsOnly.length && !p.script) lines.push('   no links out (an end page)');
+    if (!p.links.length && !p.arrowsOnly.length && !p.script) lines.push(p.back ? '   no links forward (back only)' : '   no links out (an end page)');
     if (p.back) lines.push(`   back: ${p.back}`);
     if (p.writes.length) lines.push(`   writes: ${p.writes.join(', ')}`);
     if (p.shows.length) lines.push(`   shows: ${p.shows.join(', ')}`);
@@ -222,6 +226,6 @@ export function pageWarnings(doc: DocView, id: string): string[] {
   if (!html || html === BLANK_HTML.trim()) return ['blank page: page.edit {id, html} writes its HTML'];
   if (p.dead) out.push(`${p.dead} <a href="#…"> ${p.dead === 1 ? 'has' : 'have'} no data-goto: ${p.dead === 1 ? 'it does' : 'they do'} nothing in Play. Use data-goto="<page title>"`);
   for (const l of p.links) if (l.broken) out.push(l.target ? `data-goto ${q(l.target)} finds no page yet: create it, then page.autoLink` : 'empty data-goto: needs exactly one arrow out of this page');
-  if (!p.links.length && !p.script && !p.arrowsOnly.length) out.push('no data-goto: nothing in this page navigates (fine for an end page)');
+  if (!p.links.length && !p.script && !p.arrowsOnly.length && !p.back) out.push('no data-goto: nothing in this page navigates (fine for an end page)');
   return out;
 }

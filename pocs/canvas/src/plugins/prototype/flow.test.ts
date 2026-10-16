@@ -90,6 +90,21 @@ describe('page flow', () => {
     expect(a.links.map((l) => [l.target, l.to ?? null])).toEqual([['', null], ['B', id.B], ['Terms & Co', id['Terms & Co']]]);
   });
 
+  it('F4c autoLink draws arrows for void-element links too; back ignores CSS and a back-only page is not an end page', () => {
+    const { s, id } = make([
+      ['A', '<form><input type="submit" data-goto="B" value="Go"></form><button data-goto="C">c</button>'],
+      ['B', '<style>[data-back]{color:red}</style><p>b</p>'],
+      ['C', '<a data-back>Back</a>'],
+    ]);
+    expect(s.dispatch('page.autoLink', {}).changes).toHaveLength(2);
+    expect(s.doc.edges.map((e) => [e.fromNode, e.toNode, e.label]).sort()).toEqual([[id.A, id.B, 'B'], [id.A, id.C, 'c']].sort());
+    expect(pageFlow(s.doc, id.B).back).toBeUndefined();
+    const t = flowText(flowOf(s.doc));
+    expect(t).toContain('no links out (an end page)');
+    expect(t).toContain('no links forward (back only)');
+    expect(pageWarnings(s.doc, id.C)).toEqual([]);
+  });
+
   it('F5 empty doc and the text format', () => {
     expect(flowText(flowOf(store().doc))).toBe('No prototype pages yet. page.create {title, html} adds one; page.seed adds a 5-page example flow.');
     const { s, id } = make([
