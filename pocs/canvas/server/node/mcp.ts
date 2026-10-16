@@ -107,12 +107,10 @@ export function mcpHandler(service: McpService, log: Log = () => {}, cat: Catalo
       const s = session;
       s.open++;
       s.touch();
+      const gone = new AbortController();
       res.on('close', () => {
         s.open--;
         s.touch();
-      });
-      const gone = new AbortController();
-      res.on('close', () => {
         if (!res.writableFinished) gone.abort();
       });
       await dropped.run(gone.signal, () => transport.handleRequest(req, res, body));

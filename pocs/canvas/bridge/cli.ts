@@ -1,5 +1,5 @@
 import { catalog } from './catalog';
-import { client } from './client';
+import { client, type Client } from './client';
 import { cliArgs, parseArgv } from './flags';
 import { buildForms, findForm, formUsage, type Form } from './forms';
 import { chatText } from '../src/core/chat';
@@ -56,7 +56,8 @@ const argv = process.argv.slice(2);
 const { pos, flags, rest } = parseArgv(argv);
 const [command, ...params] = pos;
 const extra = PLUGIN_CLI.find((x) => x.verb.split(' ').every((w, i) => pos[i] === w));
-const c = client({ url: apiBase({ bridge: flags.bridge, board: flags.canvas }), as: flags.as ?? extra?.as, kind: extra?.kind === 'tool' ? 'tool' : 'agent' });
+// built in main(): a bad --canvas is reported like any other error
+let c: Client;
 const num = (k: string) => (flags[k] !== undefined ? Number(flags[k]) : undefined);
 const say = (line: string) => console.log(line);
 const parseJson = (s: string | undefined) => {
@@ -68,6 +69,7 @@ const parseJson = (s: string | undefined) => {
 };
 
 async function main() {
+  c = client({ url: apiBase({ bridge: flags.bridge, board: flags.canvas }), as: flags.as ?? extra?.as, kind: extra?.kind === 'tool' ? 'tool' : 'agent' });
   switch (command) {
     case undefined:
     case '--help':

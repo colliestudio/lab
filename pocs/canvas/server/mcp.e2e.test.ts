@@ -233,6 +233,7 @@ describe('canvas serve /mcp', () => {
   });
 
   it('a client that drops mid chat_wait loses no message', async () => {
+    await one.call('chat_read', { only_new: true, canvas: 'alpha' }); // nothing unread: the wait below really pends
     const sid = one.t.sessionId!;
     const body = JSON.stringify({ jsonrpc: '2.0', id: 77, method: 'tools/call', params: { name: 'chat_wait', arguments: { timeout_s: 20, canvas: 'alpha' } } });
     const req = request({ host: '127.0.0.1', port, path: '/mcp', method: 'POST', headers: { ...MCP_HEADERS, host: `127.0.0.1:${port}`, 'mcp-session-id': sid } });
@@ -243,6 +244,18 @@ describe('canvas serve /mcp', () => {
     await new Promise((r) => setTimeout(r, 300));
     await post('/api/boards/alpha/chat/say', { as: 'Zoe', text: 'while you were gone' });
     expect((await one.call('chat_read', { only_new: true, canvas: 'alpha' })).text).toContain('while you were gone');
+  });
+
+  it('a Monitor killed mid-wait over HTTP loses no message', async () => {
+    await one.call('chat_read', { only_new: true, canvas: 'alpha' });
+    const req = request({ host: '127.0.0.1', port, path: '/api/boards/alpha/chat/wait?as=Ann&timeout=20', method: 'GET', headers: { host: `127.0.0.1:${port}` } });
+    req.on('error', () => {});
+    req.end();
+    await new Promise((r) => setTimeout(r, 500));
+    req.destroy();
+    await new Promise((r) => setTimeout(r, 300));
+    await post('/api/boards/alpha/chat/say', { as: 'Zoe', text: 'for the next wait' });
+    expect((await one.call('chat_read', { only_new: true, canvas: 'alpha' })).text).toContain('for the next wait');
   });
 
   it('A16: SIGTERM with a joined session exits 0 and leaves an unedited board file alone', async () => {

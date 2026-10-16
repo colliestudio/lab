@@ -117,7 +117,8 @@ export function sessionTools(cat: Catalog, session: McpSession): SessionTool[] {
     description: `${single.description} With several boards joined and no \`${BOARD_ARG}\`, it waits on all of them and names the board of each message.`,
     call: async (args, ctx) => {
       if (args[BOARD_ARG] !== undefined || session.joins.size < 2) return single.call(args, ctx);
-      return waitAll(session, Number(args.timeout_s ?? 240), ctx.signal);
+      const t = Number(args.timeout_s ?? 240);
+      return waitAll(session, Number.isFinite(t) ? t : 240, ctx.signal);
     },
   };
   return [...own, ...scoped.map((t) => (t.name === 'chat_wait' ? chatWait : t))];
