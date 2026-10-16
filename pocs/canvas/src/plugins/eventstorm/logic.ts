@@ -132,7 +132,7 @@ export const specs: Record<string, CommandSpec> = {
       if (a.on && a.kind === 'event') throw new Error("on: events don't attach to events; use after to place an event on the timeline");
       if (!offered(phaseOf(b)).includes(a.kind)) {
         const from = KINDS[a.kind].from;
-        throw new Error(`kind: ${a.kind} comes in phase ${from}; board ${boardName(b)} is in ${phaseOf(b)}. Run storm.phase {phase:"${from}"} first (events snap into one timeline)`);
+        throw new Error(`kind: ${a.kind} comes in phase ${from}; board ${boardName(b)} is in ${phaseOf(b)}. Run storm.phase {phase:"${from}"} first (switching re-packs the events into one timeline)`);
       }
       if (a.on) {
         const t = mustSticky(doc, a.on, 'on');

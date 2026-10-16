@@ -352,7 +352,15 @@ describe('event storm: agent placement, move, attach', () => {
     expect(order(s, b)).toEqual(['A', 'B', 'C']);
     const xs = eventsOn(s.doc, b).map((e) => e.x);
     expect(new Set(xs).size).toBe(3);
-    expect(a).toBeTruthy();
+  });
+
+  it('move in explore keeps every event on the board', () => {
+    const { s, b } = withBoard();
+    const e = Array.from({ length: 6 }, (_, i) => add(s, b, 'event', { text: `E${i}` }));
+    s.dispatch('storm.move', { id: e[0], after: e[1] });
+    expect(eventsOn(s.doc, b)).toHaveLength(6);
+    const B = s.doc.get(b)!;
+    expect(eventsOn(s.doc, b).every((n) => n.x + n.width <= B.x + B.width)).toBe(true);
   });
 
   it('lane picks the swimlane; after + lane keeps the order and changes the lane', () => {

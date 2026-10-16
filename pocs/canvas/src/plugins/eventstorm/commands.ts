@@ -131,6 +131,12 @@ export function packPlan(b: CanvasNode, events: CanvasNode[], attached: (id: str
 /** Stickies on a board that are neither events nor attached to one. */
 const looseOn = (doc: DocView, b: CanvasNode) => doc.riders(b.id).filter((n) => isSticky(n) && !isEvent(n) && !sticky(n).on);
 
+/** A width change that keeps `nodes` (at their final spots) inside the board, unless the pack already sets the width. */
+const widenFor = (b: CanvasNode, nodes: CanvasNode[], pack: Change[]): Change[] => {
+  const right = Math.max(...nodes.map((n) => n.x + n.width)) + PAD - b.x;
+  return right > b.width && !pack.some((c) => c.op === 'set' && c.id === b.id && c.key === 'width') ? [set(b.id, 'width', Math.ceil(right))] : [];
+};
+
 /** Re-pack a board as it is now. */
 export function packBoard(doc: DocView, b: CanvasNode, extra: { add?: CanvasNode } = {}): Change[] {
   const events = eventsOn(doc, b.id);
@@ -226,8 +232,7 @@ export const add: Command<{ board: string; kind: StickyKind; x?: number; y?: num
   const pack = packBoard(doc, b, { add: node });
   const changes: Change[] = [{ op: 'add', node: placed(node, pack) }, ...pack.filter((c) => c.op !== 'set' || c.id !== node.id)];
   // a position we chose (not the caller's) must stay on the board: widen it, or the sticky falls off its right edge
-  const right = placed(node, pack).x + node.width + PAD - b.x;
-  if (!isNum(a.x) && !on && right > b.width && !pack.some((c) => c.op === 'set' && c.id === b.id && c.key === 'width')) changes.push(set(b.id, 'width', Math.ceil(right)));
+  if (!isNum(a.x) && !on) changes.push(...widenFor(b, [placed(node, pack)], pack));
   const events: EventSpec[] = node.text ? [{ type: 'storm.add', text: `added ${kindName(a.kind)} ${quote(node)}`, targets: [node.id], actor: logActor(node) }] : [];
   return { changes, select: [node.id], events };
 };
@@ -274,6 +279,7 @@ export const move: Command<{ id: string; after?: string; before?: string; first?
     if (final.y !== was.y) changes.unshift(set(e.id, 'y', final.y));
     if (final.x !== was.x) changes.unshift(set(e.id, 'x', final.x));
   }
+  if (!enforce) changes.push(...widenFor(b, events.map((e) => placed(e, pack)), pack));
   if (!changes.length) return [];
   return { changes, events: [{ type: 'storm.move', text: `moved ${quote(ev)}`, targets: [ev.id] }] };
 };
