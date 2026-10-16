@@ -128,8 +128,6 @@ export class BoardDirectory {
   /** Open and take a lease in one step: nothing can unload the board between the two. */
   async acquire(name: string, o: { create?: boolean } = {}): Promise<{ board: Board; release: () => void }> {
     const key = fold(name);
-    const bad = this.pinned.has(key) ? undefined : validName(name); // a pinned name is a file the operator chose
-    if (bad) throw new DirError(400, bad);
     // fixed-board storage (bridge mode): only the pinned board exists
     if (!this.storage.mutable && !this.pinned.has(key)) throw new DirError(404, `no board "${name}"`);
     const hit = this.boards.get(key);
@@ -140,7 +138,12 @@ export class BoardDirectory {
       // the board goes by the name storage knows it by, however the request spelled it: its watcher,
       // sidecars and file all use that one
       const stored = (await this.storage.list()).find((i) => fold(i.name) === key)?.name;
-      if (stored === undefined && !o.create) throw new DirError(404, `no board "${name}"`);
+      if (stored === undefined) {
+        // not a board that exists: only a valid name can be created, and a bad one is the caller's mistake
+        const bad = validName(name);
+        if (bad) throw new DirError(400, bad);
+        if (!o.create) throw new DirError(404, `no board "${name}"`);
+      }
       name = stored ?? name;
       let board: Board;
       try {

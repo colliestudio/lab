@@ -62,6 +62,16 @@ describe('listing and lazy loading', () => {
     expect(await dir.open('Case')).toBe(board);
   });
 
+  it('a stored board opens whatever its name looks like; unknown names are still validated', async () => {
+    make({ 'Q3:Q4': text([n('x')]), ' padded ': text([]) });
+    expect((await dir.open('Q3:Q4')).name).toBe('Q3:Q4');
+    expect((await dir.open(' padded ')).name).toBe(' padded ');
+    for (const bad of ['../etc/passwd', '..', 'a/b', '.hidden']) expect(await status(dir.open(bad)), bad).toBe(400);
+    expect(await status(dir.open('Q3:Q5'))).toBe(400);
+    expect(await status(dir.open('fine'))).toBe(404);
+    expect([...st.reads.keys()]).not.toContain('../etc/passwd');
+  });
+
   it('NFC and NFD spellings of a name are one board', async () => {
     const nfd = 'cafe\u0301';
     const nfc = 'caf\u00e9';
@@ -126,6 +136,18 @@ describe('idle unload', () => {
     expect(a.pending).toBe(true);
     await dir.sweep(later());
     expect(dir.loaded('a')).toBeDefined();
+  });
+
+  it('opening and idling a hand-made board leaves its file byte-identical', async () => {
+    const hand = JSON.stringify({ nodes: [n('x')], edges: [] }, null, 2) + '\n';
+    make({ hand });
+    const b = await dir.open('hand');
+    await vi.advanceTimersByTimeAsync(2000);
+    await dir.sweep(later(10 * IDLE));
+    expect(dir.loaded('hand')).toBeUndefined();
+    expect(b.host.store.nodes.size).toBe(1);
+    expect(st.files.get('hand')).toBe(hand);
+    expect(st.states.size).toBe(0);
   });
 
   it('an edited board unloads once its write is done; reopening sees the edit', async () => {
