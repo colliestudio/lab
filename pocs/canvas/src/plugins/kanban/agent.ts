@@ -58,9 +58,13 @@ function needStatus(doc: DocView, b: CanvasNode, s: string): string {
 
 const acText = (t: TaskField) => (t.ac ?? []).map((a, i) => `${i + 1}. [${a.done ? 'x' : ' '}] ${a.text}`).join('\n');
 
-/** The acceptance list after applying check / uncheck / set / remove / add (1-based, as `backlog task edit` counts). */
+/**
+ * The acceptance list after applying set, add, check, uncheck, then remove (1-based, as `backlog task edit` counts;
+ * numbers refer to the list with the new items at the end, so a call can add an item and tick it).
+ */
 export function applyAc(t: TaskField, ops: { check?: number[]; uncheck?: number[]; set?: { index: number; text: string }[]; remove?: number[]; add?: string[] }) {
   const list = (t.ac ?? []).map((a) => ({ ...a }));
+  for (const text of ops.add ?? []) list.push({ text, done: false });
   const at = (i: number) => {
     if (!Number.isInteger(i) || i < 1 || i > list.length) throw new Error(`acceptance criterion #${i} does not exist (${list.length ? `1 to ${list.length}` : 'this task has none'})`);
     return list[i - 1];
@@ -69,9 +73,7 @@ export function applyAc(t: TaskField, ops: { check?: number[]; uncheck?: number[
   for (const i of ops.check ?? []) at(i).done = true;
   for (const i of ops.uncheck ?? []) at(i).done = false;
   const gone = new Set((ops.remove ?? []).map((i) => (at(i), i)));
-  const kept = list.filter((_, i) => !gone.has(i + 1));
-  for (const text of ops.add ?? []) kept.push({ text, done: false });
-  return kept;
+  return list.filter((_, i) => !gone.has(i + 1));
 }
 
 const changed = (r: { changes: unknown[]; untracked?: unknown[] }) => r.changes.length + (r.untracked?.length ?? 0);

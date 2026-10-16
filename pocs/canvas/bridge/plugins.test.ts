@@ -46,7 +46,7 @@ describe('bridge plugin logic', () => {
   });
 
   it('covers every plugin', () => {
-    for (const prefix of ['core.', 'cards.', 'chess.', 'clock.', 'battleline.', 'mats.', 'board.', 'diagram.', 'storm.', 'page.', 'frames.']) {
+    for (const prefix of ['core.', 'cards.', 'chess.', 'clock.', 'battleline.', 'mats.', 'board.', 'diagram.', 'storm.', 'page.', 'frames.', 'kanban.']) {
       expect(bridgeCommands.some((c) => c.startsWith(prefix)), prefix).toBe(true);
     }
   });
@@ -58,7 +58,7 @@ describe('bridge plugin logic', () => {
   });
 
   it('registers frames last (its rider rule must follow the others)', () => {
-    expect(PLUGIN_LOGIC.map((e) => e.id)).toEqual(['cards', 'chess', 'clock', 'battleline', 'mats', 'board', 'diagram', 'eventstorm', 'prototype', 'excalidraw', 'frames']);
+    expect(PLUGIN_LOGIC.map((e) => e.id)).toEqual(['cards', 'chess', 'clock', 'battleline', 'mats', 'board', 'diagram', 'eventstorm', 'prototype', 'excalidraw', 'kanban', 'frames']);
   });
 
   it('useLogic skips logic a store already has', () => {
