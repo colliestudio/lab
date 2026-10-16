@@ -64,7 +64,9 @@ const ATTR = (name: string) => new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^'
 function gotoElements(html: string): { tag: string; text: string; target: string }[] {
   const out: { tag: string; text: string; target: string }[] = [];
   const re = /<([a-z][a-z0-9]*)\b([^>]*)>/gi;
-  const goto = ATTR('data-goto');
+  // quoted, unquoted or bare (bare = empty target: the page's only arrow); entities decoded for & < > "
+  const goto = /\bdata-goto(?![\w-])(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+)))?/i;
+  const decode = (t: string) => t.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&');
   for (const m of html.matchAll(re)) {
     const g = goto.exec(m[2]);
     if (!g) continue;
@@ -72,12 +74,21 @@ function gotoElements(html: string): { tag: string; text: string; target: string
     const rest = html.slice(m.index! + m[0].length);
     const close = rest.toLowerCase().indexOf(`</${tag}>`);
     const text = close >= 0 && !/^(input|img|br|hr|meta|link)$/.test(tag) ? clean(rest.slice(0, close)) : '';
-    out.push({ tag, text, target: (g[1] ?? g[2]).trim() });
+    out.push({ tag, text, target: decode(g[1] ?? g[2] ?? g[3] ?? '').trim() });
   }
   return out;
 }
 
-const deadAnchors = (html: string) => [...html.matchAll(/<a\b[^>]*>/gi)].filter((m) => /\bhref\s*=\s*["']#/i.test(m[0]) && !/\b(data-goto|data-back|onclick)\b/i.test(m[0])).length;
+/**
+ * `<a href="#">` / `href="#x"` with no id/name "x" in the page and no data-goto, data-back or onclick on the
+ * anchor: clicking does nothing. An anchor inside a data-goto container still counts (the container navigates).
+ */
+const deadAnchors = (html: string) =>
+  [...html.matchAll(/<a\b[^>]*>/gi)].filter((m) => {
+    const h = /\bhref\s*=\s*["']#([^"']*)["']/i.exec(m[0]);
+    if (!h || /\b(data-goto|data-back|onclick)\b/i.test(m[0])) return false;
+    return !h[1] || !new RegExp(`\\b(id|name)\\s*=\\s*["']${h[1].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["']`, 'i').test(html);
+  }).length;
 
 function stateOf(html: string) {
   const writes = new Set<string>();

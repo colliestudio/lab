@@ -135,6 +135,19 @@ describe('prototype through the bridge', () => {
     expect(startTitles(h)).toEqual(['New']);
   });
 
+  it('A8b create leaves start unset on a board of unflagged pages; seed refuses taken titles; unlink refuses non-page edges', () => {
+    const h = new Host();
+    h.store.dispatch('page.create', { x: 0, y: 0, title: 'Landing', html: '<p>l</p>' });
+    expect(startTitles(h)).toEqual([]);
+    expect(ok(h, 'page.create', { title: 'Settings', html: '<p>s</p>' }).start).toBe(false);
+    expect(startTitles(h)).toEqual([]);
+    expect(error(h, 'page.seed')).toMatch(/“Landing” already exists/);
+    ok(h, 'diagram.add', { kind: 'rect', text: 'A', x: 0, y: 3000 });
+    ok(h, 'diagram.add', { kind: 'rect', text: 'B', x: 400, y: 3000 });
+    const e = ok(h, 'core.connect', { from: 'A', to: 'B' });
+    expect(error(h, 'page.unlink', { edge: e.id ?? e.edge ?? h.store.doc.edges[0].id })).toMatch(/between pages/);
+  });
+
   it('A9 notes: under the page, ride it, noteText, attach after a move', () => {
     const h = new Host();
     protoFlow(h);

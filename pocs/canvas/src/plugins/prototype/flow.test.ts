@@ -79,6 +79,17 @@ describe('page flow', () => {
     expect(a.links[1].text).toBe('');
   });
 
+  it('F4b anchors with a target in the page are not dead; boolean, unquoted and entity data-goto are found', () => {
+    const { s, id } = make([
+      ['A', '<a href="#faq">FAQ</a><a href="#nope">x</a><section id="faq"></section><button data-goto>next</button><b data-goto=B>b</b><i data-goto="Terms &amp; Co">t</i>'],
+      ['B', '<p>b</p>'],
+      ['Terms & Co', '<p>t</p>'],
+    ]);
+    const a = pageFlow(s.doc, id.A);
+    expect(a.dead).toBe(1);
+    expect(a.links.map((l) => [l.target, l.to ?? null])).toEqual([['', null], ['B', id.B], ['Terms & Co', id['Terms & Co']]]);
+  });
+
   it('F5 empty doc and the text format', () => {
     expect(flowText(flowOf(store().doc))).toBe('No prototype pages yet. page.create {title, html} adds one; page.seed adds a 5-page example flow.');
     const { s, id } = make([

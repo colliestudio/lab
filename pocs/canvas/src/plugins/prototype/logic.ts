@@ -6,6 +6,7 @@ import type { PluginLogic } from '../logic';
 import { NOTE_W, NOTE_H, commands, duplicateRule, freeSpot } from './commands';
 import { flowOf, flowText, pageFlow, pageHtml, pageHtmlText, pageWarnings } from './flow';
 import { repairImport } from './io';
+import { SEED_PAGES } from './seed';
 import { DEVICES, isNote, isPage, note, page, pageSize, pages, startPage, titleOf } from './model';
 
 // Agent side: a spec per command, the page.flow and page.html views, the guide. Refusals with a reason
@@ -53,7 +54,7 @@ const arrowBetween = (doc: DocView, from: string, to: string) => doc.edges.find(
 const renamed = new WeakMap<object, string>();
 
 const GUIDE = `A prototype is HTML pages linked into a flow that people click through (Play, ⇧↵, or Interact on the canvas).
-- page.create {title, html} adds a page right of everything (phone width; device: tablet/desktop). The first page is the start page; page.start {id} picks another.
+- page.create {title, html} adds a page right of everything (phone width; device: tablet/desktop). The first page on an empty board is the start page; page.start {id} picks another.
 - Clicks live in the page HTML: data-goto="<page title>" on any element (button, a, div) goes to that page; data-back goes back. <a href="#…"> without data-goto does nothing.
 - Make the pages, then run page.autoLink once: it draws an arrow for each data-goto that finds its page (the flow on the canvas; chips under the page in Play). page.link {from, to, label} draws an arrow by hand; it makes nothing in the page clickable.
 - State across pages: data-store="name" on an input keeps what is typed; data-show="name" shows it on later pages (in Play and Interact only). Scripts: canvas.set(k, v), canvas.state, canvas.goto(title), canvas.back().
@@ -66,14 +67,14 @@ const GUIDE = `A prototype is HTML pages linked into a flow that people click th
 export const specs: Record<string, CommandSpec> = {
   create: command({
     description:
-      'Add a page: an HTML document shown as a node. Make things clickable with data-goto="<page title>" (href="#" does nothing); then page.autoLink draws the arrows. No x/y puts it right of everything; the first page becomes the start page. Returns the id, the links found in the HTML and warnings.',
+      'Add a page: an HTML document shown as a node. Make things clickable with data-goto="<page title>" (href="#" does nothing); then page.autoLink draws the arrows. No x/y puts it right of everything; the first page of an empty board becomes the start page. Returns the id, the links found in the HTML and warnings.',
     args: z.strictObject({
       title,
       html: z.optional(html.check(z.meta({ description: 'the whole page: inline <style>/<script>, self-contained (default: a blank page)' }))),
       device: z.optional(device),
       x: z.optional(z.number()),
       y: z.optional(z.number()),
-      start: z.optional(z.boolean().check(z.meta({ description: 'make it the start page (default: true when no page is start yet)' }))),
+      start: z.optional(z.boolean().check(z.meta({ description: 'make it the start page (default: true for the first page of an empty board)' }))),
     }),
     example: { title: 'Sign in', html: '<h1>Sign in</h1><input placeholder="Email"><button data-goto="Home">Sign in</button>' },
     text: asJson,
@@ -84,7 +85,7 @@ export const specs: Record<string, CommandSpec> = {
       titleTaken(ctx.doc, name);
       const dev = vwOf(d ?? 'phone');
       const at = a.x !== undefined ? { x: a.x, y: a.y } : freeSpot(ctx.doc, pageSize(dev.vw, dev.vh).width, pageSize(dev.vw, dev.vh).height);
-      return { ...a, ...at, title: name, vw: dev.vw, start: start ?? !pages(ctx.doc).some((p) => page(p).start) };
+      return { ...a, ...at, title: name, vw: dev.vw, start: start ?? !pages(ctx.doc).length };
     },
     result: (r, _a, ctx) => {
       const id = r.select![0] as string;
@@ -162,7 +163,8 @@ export const specs: Record<string, CommandSpec> = {
     toCommand: ({ edge, from, to }, ctx) => {
       if (edge !== undefined && (from !== undefined || to !== undefined)) throw new Error('give the arrow id, or from and to, not both');
       if (edge !== undefined) {
-        if (!ctx.doc.edges.some((e) => e.id === edge)) throw new Error(`no arrow ${edge}`);
+        const e = ctx.doc.edges.find((x) => x.id === edge);
+        if (!e || !isPage(ctx.doc.get(e.fromNode)) || !isPage(ctx.doc.get(e.toNode))) throw new Error(`no arrow ${edge} between pages`);
         return { edge };
       }
       if (from === undefined || to === undefined) throw new Error('give the arrow id (edge), or from and to');
@@ -232,10 +234,15 @@ export const specs: Record<string, CommandSpec> = {
   }),
   seed: command({
     description:
-      'Add the 5-page example flow (Landing → Sign up → Plan → Checkout → Welcome) with notes: data-goto by page title and arrow label, data-back, data-store/data-show, and a script with canvas.set. Read a page with the view page.html to copy the patterns. No x/y puts it right of everything. A start page that already exists stays.',
+      'Add the 5-page example flow (Landing → Sign up → Plan → Checkout → Welcome) with notes: data-goto by page title and arrow label, data-back, data-store/data-show, and a script with canvas.set. Read a page with the view page.html to copy the patterns. No x/y puts it right of everything. A start page that already exists stays. Refuses if a page already has one of its titles.',
     args: z.strictObject({ x: z.optional(z.number()), y: z.optional(z.number()) }),
     example: {},
-    toCommand: (a, ctx) => (bothOrNeither(a), a.x !== undefined ? a : freeSpot(ctx.doc, 1, 1)),
+    toCommand: (a, ctx) => {
+      bothOrNeither(a);
+      const taken = SEED_PAGES.filter((p) => pages(ctx.doc).some((n) => norm(titleOf(n)) === norm(p.title)));
+      if (taken.length) throw new Error(`the example's page titles must be unique, but ${taken.map((p) => q(p.title)).join(', ')} already exist${taken.length === 1 ? 's' : ''}: rename those pages first`);
+      return a.x !== undefined ? a : freeSpot(ctx.doc, 1, 1);
+    },
     result: (r, _a, ctx) => {
       const ids = (r.select ?? []) as string[];
       return { pages: Object.fromEntries(ids.map((id) => [titleOf(ctx.doc.get(id)!), id])), start: startPage(ctx.doc) };
@@ -250,7 +257,7 @@ export function registerPrototypeLogic(store: Store) {
     'page.flow',
     view({
       description:
-        "The prototype as a flow: pages in step order with the start page, every link in each page (data-goto, data-back) and where it goes, arrows with no link in the page, broken and dead links, pages Play can't reach, and shared state keys.",
+        "The prototype as a flow: pages in step order with the start page, every link in each page (data-goto, data-back) and where it goes, arrows with no link in the page, broken and dead links, pages no link in the pages reaches, and shared state keys.",
       args: z.strictObject({}),
       example: {},
       read: (doc) => flowOf(doc),
