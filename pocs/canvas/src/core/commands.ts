@@ -146,8 +146,13 @@ export function guardedDelete<A extends { ids: string[] }>(store: Store, cmd: Co
   return (doc, a, ctx) => {
     const free = pick(doc, a?.ids ?? []).filter((n) => !store.deleteGuards.some((g) => g(n, doc)));
     const r = cmd(doc, { ...a, ids: free.map((n) => n.id) }, ctx);
-    const res = Array.isArray(r) ? { changes: r } : r;
-    const events = keptEvents(doc, a?.ids, store, new Set(res.changes.flatMap((c) => (c.op === 'del' ? [c.id] : []))));
+    const base = Array.isArray(r) ? { changes: r } : r;
+    // what a deleted node contains goes with it (a kanban node's cards), as in core.delete
+    const gone = new Set(base.changes.flatMap((c) => (c.op === 'del' ? [c.id] : [])));
+    const walk = (id: string) => doc.children(id).forEach((c) => !gone.has(c.id) && (gone.add(c.id), walk(c.id)));
+    [...gone].forEach(walk);
+    const res = { ...base, changes: [...base.changes, ...[...gone].filter((id) => !base.changes.some((c) => c.op === 'del' && c.id === id)).map((id): Change => ({ op: 'del', id }))] };
+    const events = keptEvents(doc, a?.ids, store, gone);
     return events.length ? { ...res, events: [...(Array.isArray(res.events) ? res.events : []), ...events] } : res;
   };
 }

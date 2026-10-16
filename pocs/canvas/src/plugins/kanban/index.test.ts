@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { App, type CanvasNode } from '../../core';
+import { registerBoardLogic } from '../board/logic';
 import { kanbanPlugin } from './index';
 import { clock, task } from './model';
 import { closeTask, panelOpen } from './panel';
@@ -106,6 +107,43 @@ describe('moving cards (C15, C28)', () => {
     // and undo puts the card back
     app.store.undo();
     expect(taskField(app.store, 'two').status).toBe('In Progress');
+  });
+});
+
+describe('a drag the file overtook (C41)', () => {
+  it('if the file changed the status after the drag started, the drop does nothing and says so', () => {
+    const app = setup();
+    app.store.apply([{ op: 'set', id: 'one', key: 'x-kanban.base', value: { status: 'a', ordinal: 'o' } }]);
+    const told: string[] = [];
+    app.onNotify((m) => told.push(m));
+    type(app, 'one').onLocalDrag!(app.node('one')!, 'start', app);
+    app.store.apply([{ op: 'set', id: 'one', key: 'x-kanban.base', value: { status: 'b', ordinal: 'o' } }]);
+    const two = app.node('two')!;
+    type(app, 'b1').onDrop!(app.node('b1')!, ['one'], app, { x: two.x + 20, y: two.y + 2 });
+    expect(taskField(app.store, 'one').status).toBe('To Do');
+    expect(told).toEqual(["TASK-1 status: changed in the file meanwhile; kept the file's"]);
+  });
+});
+
+describe('notices and node removal', () => {
+  it('a node the serve can not sync tells the viewer why, once', () => {
+    const app = setup();
+    const told: string[] = [];
+    app.onNotify((m) => told.push(m));
+    app.dispatch('kanban.addBoard', { x: 3000, y: 0, source: 'nowhere' });
+    const id = app.doc.nodes.filter((n) => kx(n)?.kind === 'board').find((n) => n.id !== 'b1')!.id;
+    app.store.apply([{ op: 'set', id, key: 'x-kanban.state', value: { error: 'this serve has no kanban folder named "nowhere"' } }]);
+    app.store.apply([{ op: 'set', id, key: 'x-kanban.labels', value: ['x'] }]);
+    expect(told).toEqual(['Kanban nowhere: this serve has no kanban folder named "nowhere"']);
+  });
+
+  it('board.remove of a kanban node takes its cards; a card alone stays', () => {
+    const app = setup();
+    registerBoardLogic(app.store);
+    app.dispatch('board.remove', { ids: ['one'] });
+    expect(app.node('one')).toBeDefined();
+    app.dispatch('board.remove', { ids: ['b1'] });
+    expect(app.doc.nodes.filter((n) => kx(n)?.kind === 'task')).toEqual([]);
   });
 });
 

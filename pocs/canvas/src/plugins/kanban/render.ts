@@ -68,7 +68,7 @@ export function stateChip(b: CanvasNode, v: Pick<BoardView, 'served'>): { cls: s
 export function filterChips(b: CanvasNode): string {
   const f = board(b).filter;
   const chip = (text: string) => `<span class="kb-chip" data-action="filter">${esc(text)}</span>`;
-  return (f?.labels?.length ? chip(`label: ${f.labels.join(', ')}`) : '') + (f?.parent ? chip(`parent: ${f.parent.toLowerCase()}`) : '');
+  return (f?.labels?.length ? chip(`label: ${f.labels.join(', ')}`) : '') + (f?.parent ? chip(`parent: ${f.parent}`) : '');
 }
 
 export function boardHtml(b: CanvasNode, doc: DocView, v: BoardView, now?: number): string {

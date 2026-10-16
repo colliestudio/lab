@@ -393,8 +393,12 @@
   color: #92600a;
   font-size: 12px;
 }
+.kb-p-body > * {
+  flex: none;
+}
 .kb-p-body {
   flex: 1;
+  min-height: 0;
   overflow: auto;
   display: flex;
   flex-direction: column;
@@ -411,6 +415,7 @@
   font-weight: 400;
 }
 .kb-panel textarea {
+  min-height: 64px;
   font: 12.5px/1.45 -apple-system, system-ui, sans-serif;
   padding: 6px 8px;
   border: 1px solid #e4e4ea;

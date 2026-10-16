@@ -66,7 +66,7 @@ describe('the board node', () => {
     expect(h).toContain('kb-live');
     expect(h).toContain('live · demo');
     expect(h).toContain('label: canvas');
-    expect(h).toContain('parent: task-3');
+    expect(h).toContain('parent: TASK-3');
     expect(h).toContain('data-action="add:0"');
     expect(h).toContain('data-action="add:1"');
     expect(h).not.toContain('data-action="add:2"'); // Done takes no quick add

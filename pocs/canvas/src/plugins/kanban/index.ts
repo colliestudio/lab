@@ -25,6 +25,8 @@ const quicks = new WeakMap<App, Quick | null>();
 const pressGuarded = new WeakSet<HTMLElement>();
 /** The press that is going on started on a control of the board (its pointerdown ran `onAction`); its mousedown must not move the focus. */
 let pressedAction = false;
+/** Per dragged card: the file's status and order hashes when the drag started. */
+const dragSeen = new Map<string, [string | undefined, string | undefined]>();
 const quickOf = (app: App) => quicks.get(app) ?? null;
 
 const served = (app: App) => app.hosted === 'served';
@@ -282,6 +284,16 @@ export const kanbanPlugin: Plugin = {
         const moving = tasksIn(t, nodes);
         if (!moving) return;
         const { status, index } = slotAt(a, t, at, moving);
+        // a status or order the file changed since the drag started: the file wins
+        const changed = moving.filter((id) => {
+          const seen = dragSeen.get(id);
+          const b = task(a.node(id)!).base;
+          return seen && (seen[0] !== b?.status || seen[1] !== b?.ordinal);
+        });
+        if (changed.length) {
+          a.notify(`${changed.map((id) => task(a.node(id)!).taskId).join(', ')} status: changed in the file meanwhile; kept the file's`);
+          return;
+        }
         const f = board(t);
         if (status === f.doneColumn) {
           const open = moving.filter((id) => (task(a.node(id)!).ac ?? []).some((c) => !c.done));
@@ -310,6 +322,10 @@ export const kanbanPlugin: Plugin = {
       movable: (node, a) => !a.doc.parentOf(node.id) || (!!a.node(task(node).board) && liveBoard(app, a.node(task(node).board)!)),
       dropProxy: (node) => task(node).board,
       onLocalDrop: () => {},
+      onLocalDrag(node, phase) {
+        if (phase === 'start') dragSeen.set(node.id, [task(node).base?.status, task(node).base?.ordinal]);
+        else setTimeout(() => dragSeen.delete(node.id), 0);
+      },
       onClick(node, down, a) {
         if (down.shiftKey || down.metaKey || down.ctrlKey) return;
         openTask(a, node.id, env);
@@ -351,6 +367,18 @@ export const kanbanPlugin: Plugin = {
         seatSig = s;
         app.view.render();
       });
+    });
+
+    // a node the serve can not sync says why once (an unknown folder name, an unreadable folder)
+    const toldErrors = new Set<string>();
+    app.store.subscribe(() => {
+      for (const n of app.doc.nodes) {
+        const e = isBoard(n) ? board(n).state?.error : undefined;
+        if (e && !toldErrors.has(n.id + e)) {
+          toldErrors.add(n.id + e);
+          if (served(app)) app.notify(`Kanban ${board(n).name}: ${e}`);
+        }
+      }
     });
 
     // what the file changed behind a viewer's edit, and what could not be written, reaches everyone as a notice

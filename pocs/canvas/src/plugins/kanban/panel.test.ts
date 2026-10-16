@@ -156,6 +156,28 @@ describe('editing in the panel', () => {
     expect(q('.kb-p-progress').textContent).toContain('2/2');
   });
 
+  it('an uncommitted edit of a field the file changed meanwhile loses: the file value shows and a notice says so (C41)', () => {
+    const app = setup();
+    const told: string[] = [];
+    app.onNotify((m) => told.push(m));
+    // a synced task has a base; give it one, as the serve would
+    app.store.apply([{ op: 'set', id: 't', key: 'x-kanban.base', value: { title: 'h1' } }]);
+    const title = q<HTMLInputElement>('[name=title]');
+    title.dispatchEvent(new Event('focus'));
+    type(title, 'Typed, not saved');
+    // the file changes the title: the serve pulls it into the doc and moves the base
+    app.store.apply([{ op: 'set', id: 't', key: 'x-kanban.title', value: 'From the file' }, { op: 'set', id: 't', key: 'x-kanban.base', value: { title: 'h2' } }]);
+    title.dispatchEvent(new Event('blur'));
+    expect(taskField(app.store, 't').title).toBe('From the file');
+    expect(title.value).toBe('From the file');
+    expect(told).toEqual(["TASK-3.48 title: changed in the file meanwhile; kept the file's"]);
+    // unchanged file: the edit goes through
+    title.dispatchEvent(new Event('focus'));
+    type(title, 'Mine');
+    title.dispatchEvent(new Event('blur'));
+    expect(taskField(app.store, 't').title).toBe('Mine');
+  });
+
   it('a task that vanishes closes the panel with a notice (C59)', () => {
     const app = setup();
     const told: string[] = [];

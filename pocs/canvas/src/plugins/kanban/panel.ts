@@ -153,9 +153,21 @@ export function openTask(app: App, nodeId: string, env: PanelEnv) {
 
   /** Fields with typing the user has not sent yet: a refresh leaves them alone. */
   const pending = new Set<string>();
+  /** What the file held (the sync's base hash) when a field got the focus: if it differs at commit, the file changed it meanwhile. */
+  const seen = new Map<string, string | undefined>();
   const send = (name: string, patch: Record<string, unknown>) => {
     pending.delete(name);
-    if (!cur()) return;
+    const now = cur();
+    if (!now) return;
+    if (seen.has(name) && seen.get(name) !== now.base?.[name as 'title']) {
+      seen.delete(name);
+      const f = field(name);
+      if (typeof now[name as 'title'] === 'string') f.value = now[name as 'title'] as string;
+      app.notify(`${now.taskId ?? 'task'} ${name}: changed in the file meanwhile; kept the file's`);
+      fill();
+      return;
+    }
+    seen.delete(name);
     const text = patch[name];
     const bad = typeof text === 'string' ? markerProblem(text) : undefined;
     if (bad) return app.notify(bad);
@@ -307,8 +319,12 @@ export function openTask(app: App, nodeId: string, env: PanelEnv) {
   for (const name of ['title', 'description', 'plan', 'notes'] as const) {
     const input = field(name);
     const patch = () => ({ [name]: input.value });
+    input.addEventListener('focus', () => !seen.has(name) && seen.set(name, cur()?.base?.[name]));
     input.addEventListener('input', () => later(name, patch));
-    input.addEventListener('blur', () => flush(name, patch));
+    input.addEventListener('blur', () => {
+      flush(name, patch);
+      seen.delete(name);
+    });
   }
   field('title').addEventListener('keydown', (e) => {
     if ((e as KeyboardEvent).key === 'Enter') (e.target as HTMLElement).blur();
