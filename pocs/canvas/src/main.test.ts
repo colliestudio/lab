@@ -28,3 +28,17 @@ describe('empty boards', () => {
     expect(css).not.toContain('#1f5f3f');
   });
 });
+
+describe('hosted boards', () => {
+  const src = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
+  it('New board, Open and drop branch on the hosted state before they touch the store', () => {
+    expect(src).toMatch(/let hosted: 'served' \| 'bridge' \| null/);
+    expect(src).toMatch(/run: \(\) => \{\s*if \(hosted === 'served'\) return void servedNew\(\);\s*if \(hosted === 'bridge'\) return flash\(REFUSE\);/);
+    expect(src).toMatch(/async function doOpen\(\) \{\s*if \(hosted === 'bridge'\) return flash\(REFUSE\);/);
+    expect(src).toMatch(/if \(hosted === 'served'\) return void \(await servedImport\(file\.name, text\)\)/);
+    expect(src).toMatch(/hosted = served \? 'served' : 'bridge';/);
+  });
+  it('opens no window itself: the tab opens in newBoard.ts, before its await', () => {
+    expect(src).not.toMatch(/window\.open|win\.open/);
+  });
+});
