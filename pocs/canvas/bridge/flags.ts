@@ -6,7 +6,7 @@ import type { CliForm } from '../src/core/agent';
 type Json = Record<string, any>;
 
 /** Flags the CLI itself takes; they never become args. */
-export const GLOBAL_FLAGS = new Set(['as', 'bridge', 'board', 'follow', 'json', 'n', 'timeout']);
+export const GLOBAL_FLAGS = new Set(['as', 'bridge', 'canvas', 'follow', 'json', 'n', 'timeout']);
 
 export const kebab = (k: string) => k.replace(/_/g, '-').replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
 

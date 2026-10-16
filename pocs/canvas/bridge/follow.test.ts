@@ -2,15 +2,15 @@ import { describe, expect, it } from 'vitest';
 import type { ChatMessage } from '../src/core/chat';
 import { apiBase, followChat } from './follow';
 
-const msg = (text: string): ChatMessage => ({ id: text, text, time: 0, from: { id: 'p', name: 'Zoe', color: '#000', kind: 'person' } }) as ChatMessage;
+const msg = (text: string): ChatMessage => ({ id: text, text, time: 0, from: { id: 'p', name: 'Zoe', color: '#000' } }) as ChatMessage;
 const doc = async () => ({ nodes: [] }) as never;
 
 describe('apiBase', () => {
-  it('without --board nothing changes', () => {
+  it('without --canvas nothing changes', () => {
     expect(apiBase({}, {})).toBeUndefined();
     expect(apiBase({ bridge: 'http://x:1' }, { CANVAS_SERVE: 'http://s' })).toBe('http://x:1');
   });
-  it('--board builds the service URL: --bridge, else $CANVAS_SERVE, else the default; the name is encoded', () => {
+  it('--canvas builds the service URL: --bridge, else $CANVAS_SERVE, else the default; the name is encoded', () => {
     expect(apiBase({ board: 'my board' }, {})).toBe('http://localhost:5231/api/boards/my%20board');
     expect(apiBase({ board: 'b' }, { CANVAS_SERVE: 'http://localhost:5252/' })).toBe('http://localhost:5252/api/boards/b');
     expect(apiBase({ board: 'b/c', bridge: 'http://h:9' }, { CANVAS_SERVE: 'http://s' })).toBe('http://h:9/api/boards/b%2Fc');

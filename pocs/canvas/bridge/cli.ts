@@ -44,7 +44,7 @@ ${PLUGIN_CLI.map((x) => `  ${x.usage}`).join('\n')}
 
   --as NAME     who you are on the board (default $CANVAS_AS or "Claude")
   --bridge URL  default $CANVAS_BRIDGE or http://localhost:5222
-  --board NAME  a board of canvas serve instead of the bridge: URL is --bridge, else $CANVAS_SERVE, else http://localhost:5231
+  --canvas NAME a board of canvas serve instead of the bridge: URL is --bridge, else $CANVAS_SERVE, else http://localhost:5231
   --json        print JSON instead of text`;
 }
 
@@ -56,7 +56,7 @@ const argv = process.argv.slice(2);
 const { pos, flags, rest } = parseArgv(argv);
 const [command, ...params] = pos;
 const extra = PLUGIN_CLI.find((x) => x.verb.split(' ').every((w, i) => pos[i] === w));
-const c = client({ url: apiBase({ bridge: flags.bridge, board: flags.board }), as: flags.as ?? extra?.as, kind: extra?.kind === 'tool' ? 'tool' : 'agent' });
+const c = client({ url: apiBase({ bridge: flags.bridge, board: flags.canvas }), as: flags.as ?? extra?.as, kind: extra?.kind === 'tool' ? 'tool' : 'agent' });
 const num = (k: string) => (flags[k] !== undefined ? Number(flags[k]) : undefined);
 const say = (line: string) => console.log(line);
 const parseJson = (s: string | undefined) => {

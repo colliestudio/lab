@@ -216,7 +216,7 @@ describe('canvas serve /mcp', () => {
   });
 
   it('A15: the CLI follows a board of the service and prints messages as they come', async () => {
-    const cli = spawn(process.execPath, ['--import', 'tsx', 'bridge/cli.ts', 'chat', 'wait', '--board', 'alpha', '--as', 'Monitor', '--follow'], { cwd: root, env: { ...process.env, CANVAS_SERVE: url }, stdio: ['ignore', 'pipe', 'ignore'] });
+    const cli = spawn(process.execPath, ['--import', 'tsx', 'bridge/cli.ts', 'chat', 'wait', '--canvas', 'alpha', '--as', 'Monitor', '--follow'], { cwd: root, env: { ...process.env, CANVAS_SERVE: url }, stdio: ['ignore', 'pipe', 'ignore'] });
     let out = '';
     cli.stdout!.on('data', (d) => (out += d));
     try {
