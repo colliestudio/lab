@@ -118,6 +118,27 @@ describe('FolderStorage (one fixed file)', () => {
     expect(existsSync(join(dir, '.canvas-bridge', 'notes.txt.ystate'))).toBe(true);
   });
 
+  it('is that one board only: any other name is missing and cannot be written', async () => {
+    writeFileSync(join(dir, 'main.canvas'), 'm');
+    writeFileSync(join(dir, 'other.canvas'), 'o');
+    const st = new FolderStorage(dir, { file: join(dir, 'main.canvas') });
+    expect(await st.read('other')).toBeUndefined();
+    expect(await st.readState('other')).toBeUndefined();
+    await expect(st.write('other', 'x')).rejects.toThrow(/no board/);
+    expect(readFileSync(join(dir, 'other.canvas'), 'utf8')).toBe('o');
+  });
+
+  it('a conditional write is refused when the file changed since it was read', async () => {
+    const st = new FolderStorage(dir);
+    await st.write('a', 'one');
+    expect(await st.write('a', 'two', { from: 'one' })).toBe(true);
+    expect(await st.write('a', 'three', { from: 'one' })).toBe(false);
+    expect(await st.read('a')).toBe('two');
+    expect(await st.write('b', 'new', { from: undefined })).toBe(true);
+    expect(await st.write('b', 'again', { from: undefined })).toBe(false);
+    expect(readdirSync(dir).filter((f) => f.endsWith('.tmp'))).toEqual([]);
+  });
+
   it('names a .canvas file by its stem; a file that does not exist yet is just missing', async () => {
     const st = new FolderStorage(dir, { file: join(dir, 'board.canvas') });
     expect(await st.list()).toEqual([]);

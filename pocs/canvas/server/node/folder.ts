@@ -1,5 +1,5 @@
 import { watch, realpathSync, type FSWatcher } from 'node:fs';
-import { mkdir, open, readdir, readFile, rename, stat, writeFile, access } from 'node:fs/promises';
+import { mkdir, open, readdir, readFile, rename, stat, unlink, writeFile, access } from 'node:fs/promises';
 import { basename, dirname, extname, join, resolve } from 'node:path';
 import type { BoardInfo, BoardStorage } from '../core/storage';
 
@@ -63,6 +63,7 @@ export class FolderStorage implements BoardStorage {
   }
 
   async read(name: string) {
+    if (this.single && name !== FolderStorage.nameOf(this.single)) return undefined;
     try {
       return await readFile(this.path(name), 'utf8');
     } catch (e) {
@@ -71,11 +72,23 @@ export class FolderStorage implements BoardStorage {
     }
   }
 
-  async write(name: string, text: string) {
+  async write(name: string, text: string, expect?: { from: string | undefined }) {
+    this.own(name);
     const path = this.path(name);
     const tmp = `${path}.tmp`;
     await writeFile(tmp, text);
+    // an editor may have replaced the file while the temp file was written: look again right before the replace
+    if (expect && (await this.read(name)) !== expect.from) {
+      await unlink(tmp).catch(() => {});
+      return false;
+    }
     await rename(tmp, path);
+    return true;
+  }
+
+  /** Fixed-file mode: the one file is the only board there is. */
+  private own(name: string) {
+    if (this.single && name !== FolderStorage.nameOf(this.single)) throw new Error(`no board "${name}" here`);
   }
 
   async create(name: string, text: string) {
@@ -121,6 +134,7 @@ export class FolderStorage implements BoardStorage {
   }
 
   async readState(name: string) {
+    if (this.single && name !== FolderStorage.nameOf(this.single)) return undefined;
     try {
       return new Uint8Array(await readFile(this.sidecar(name, '.ystate')));
     } catch (e) {
