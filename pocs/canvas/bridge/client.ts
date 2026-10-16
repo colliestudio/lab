@@ -77,7 +77,7 @@ export function client(opts: { url?: string; as?: string; kind?: 'agent' | 'tool
     },
     wait: async (name, args = {}, timeoutS = 50) => {
       const r = await json(viewPath('wait', name, args, { timeout: String(timeoutS) }));
-      if (r?.waiting) return undefined;
+      if (r?.waiting) return undefined; // the server's answer for a timeout (a view value never has this key today)
       if (r?.error) throw new Error(r.error);
       return r;
     },

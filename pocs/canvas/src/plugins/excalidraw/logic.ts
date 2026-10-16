@@ -282,7 +282,6 @@ export function registerExcalidrawLogic(store: { register(name: string, cmd: Com
   store.exportFilters.push((d) => ({ ...d, nodes: d.nodes.map((n) => (isDrawing(n) ? { ...n, text: fallbackText(n) } : n)) }));
 }
 
-
 // ------------------------------------------------------------ agent shapes → Excalidraw elements
 
 /**
@@ -473,7 +472,6 @@ export function describe(n: CanvasNode): { id: string; type: string; label?: str
         : {}),
     }));
 }
-
 
 // ------------------------------------------------------------ agent descriptions (see core/agent.ts)
 

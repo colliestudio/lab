@@ -125,6 +125,8 @@ export class Store {
   private riderRules: CarrierOf[] = [];
   private layouts: LayoutRule[] = [];
   readonly importFilters: DocFilter[] = [];
+  /** `x-` fields whose (small) value agents see in node listings; others only show as names in `ext`. */
+  readonly summaryExt = new Set<string>();
   readonly exportFilters: DocFilter[] = [];
   /** How `core.duplicate` copies plugin objects (see DuplicateRule). */
   readonly duplicateRules: DuplicateRule[] = [];

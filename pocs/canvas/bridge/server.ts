@@ -332,7 +332,7 @@ async function api(req: IncomingMessage, res: ServerResponse) {
     }
     if (req.method === 'GET' && url.pathname === '/query') {
       const q = Object.fromEntries(url.searchParams);
-      return reply(200, queryNodes(host.store.doc, q));
+      return reply(200, queryNodes(host.store.doc, q, host.store.summaryExt));
     }
     if (req.method === 'GET' && url.pathname === '/log') {
       const n = Number(url.searchParams.get('limit')) || 20;

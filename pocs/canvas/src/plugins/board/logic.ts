@@ -385,7 +385,6 @@ export const specs: Record<string, CommandSpec> = {
     ],
     toCommand: ({ node, ...a }) => ({ id: node, ...a }),
     result: (r, a) => ({ id: a.node, changed: r.changes.length }),
-    text: (v) => (v as { id: string }).id,
   }),
   connect: command({
     description: 'Draw an arrow from one node to another (optional label). Re-linking updates the label.',
@@ -394,7 +393,6 @@ export const specs: Record<string, CommandSpec> = {
     tool: 'canvas_connect',
     cli: [{ verb: 'connect', pos: ['from', 'to'] }],
     result: (r, a) => ({ from: a.from, to: a.to, changed: r.changes.length }),
-    text: (v) => `${(v as { from: string }).from} → ${(v as { to: string }).to}`,
   }),
   disconnect: command({
     description: 'Remove the arrow between two nodes.',

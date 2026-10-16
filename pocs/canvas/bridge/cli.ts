@@ -121,9 +121,11 @@ async function main() {
 
 function report(r: { result: unknown; text?: string; changed?: number; undescribed?: boolean }) {
   if (flags.json) return console.log(JSON.stringify(r.result, null, 2));
-  if (r.changed === 0) return console.log('(no change)');
+  if (r.changed === 0) console.log('(no change)');
   const id = (r.result as { id?: unknown } | null)?.id;
-  console.log(r.text ?? (typeof id === 'string' ? id : JSON.stringify(r.result, null, 2)));
+  // a result that is only the change count has nothing more to show
+  const only = r.result && typeof r.result === 'object' && Object.keys(r.result).every((k) => k === 'changed');
+  if (r.text !== undefined || typeof id === 'string' || !only) console.log(r.text ?? (typeof id === 'string' ? id : JSON.stringify(r.result, null, 2)));
 }
 
 function showView(name: string, v: unknown) {

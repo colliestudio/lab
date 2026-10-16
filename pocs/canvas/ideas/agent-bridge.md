@@ -24,7 +24,7 @@
 - `bridge/server.ts` — WebSocket Yjs host + HTTP API + file watcher + state sidecar.
 - `bridge/host.ts` — doc, per-actor seats, file apply/merge. `bridge/canonical.ts` — stable serialize, diff. `src/core/query.ts` — summaries, filters, resolve node by id or title.
 - `bridge/cli.ts` — `canvas status|list|query|show|add-node|add-column|update|move|connect|disconnect|rm|undo|redo|log|cmd|sync-backlog`. Nodes by id or title (unique prefix/substring).
-- `bridge/mcp.ts` — MCP stdio server; its tools are generated from what plugins describe (next section).
+- `bridge/mcp.ts` — MCP stdio server; its tools are generated from what plugins describe (section above).
 - App: `?bridge=ws://host:5222` joins the bridge (no IndexedDB, no starter deck; top right shows players incl. agents).
 - Tests: +15 (edges, board commands, sync, canonical/diff/merge, host undo-per-actor, Yjs round trip, backlog parser). 244 total on the original branch; the merge branch adds the undo-step test, the guard and argument parser tests.
 - `bridge/guard.ts` + `bridge/args.ts`: request guard and argument parsing (a flag before the file is not the file; unknown flags are an error).
@@ -95,7 +95,7 @@ Had to change (small, listed):
 
 Gaps the API showed:
 - Bridge registers only core + board logic. Plugins' import/export filters (cards' `shapeExport`) and repairs don't run there, so a card table written by the bridge may differ from the browser's Save. Fix: plugin manifests that declare a DOM-free logic entry the host loads (fits the marketplace model).
-- ~~No way for a plugin to declare a command's arg schema~~ Done: commands describe themselves at registration (next section).
+- ~~No way for a plugin to declare a command's arg schema~~ Done: commands describe themselves at registration (section above).
 - Rider rule by geometry is O(notes × columns) per view build; fine to hundreds.
 
 ## Fit with the big vision

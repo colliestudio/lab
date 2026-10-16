@@ -105,7 +105,7 @@ export const coreSpecs: Record<string, CommandSpec> = {
     result: changed,
   }),
   unedge: command({
-    description: 'Remove arrows by id (shapes stay). To remove shapes, use canvas_remove.',
+    description: 'Remove arrows by id (shapes stay). Nodes are removed with their own delete or remove command.',
     args: z.strictObject({ arrows: z.array(z.string()) }),
     example: { arrows: ['e1f2a3'] },
     tool: 'canvas_remove_arrow',

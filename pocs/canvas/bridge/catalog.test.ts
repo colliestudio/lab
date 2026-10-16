@@ -1,5 +1,6 @@
 import * as z from 'zod/mini';
 import { describe, expect, it } from 'vitest';
+import { queryNodes } from '../src/core/query';
 import { buildCatalog } from './catalog';
 import { Host, makeActor } from './host';
 
@@ -124,6 +125,18 @@ describe('core arrows', () => {
     expect(err(h.run(claude, 'core.unedge', { arrows: [a] }))).toMatch(/no arrow/);
     expect(h.run(claude, 'core.unedge', { arrows: [c.result.id] })).toMatchObject({ ok: true, result: { changed: 1 } });
     expect(h.store.doc.edge(c.result.id)).toBeUndefined();
+  });
+});
+
+describe('node listings', () => {
+  it('carry only the plugin fields a plugin marked, as data', () => {
+    const h = new Host();
+    h.run(claude, 'diagram.add', { text: 'S', fill: '#fff' });
+    h.run(claude, 'chess.newgame', {});
+    const list = queryNodes(h.store.doc, {}, h.store.summaryExt);
+    expect(list.find((n) => n.text === 'S')!.data).toMatchObject({ 'x-shape': { kind: 'rect', fill: '#fff' } });
+    expect(list.filter((n) => n.data && !('x-shape' in n.data))).toEqual([]);
+    expect(list.find((n) => n.ext?.includes('x-chess'))!.data).toBeUndefined();
   });
 });
 

@@ -16,18 +16,18 @@ export interface NodeSummary {
   column?: string;
   /** Plugin namespaces on it (x-cards, x-sync…). */
   ext?: string[];
-  /** Small plugin fields by namespace (a shape's look, a card's face); big ones (a drawing) are left out, see `ext`. */
+  /** The plugin fields a plugin marked as worth listing (`Store.summaryExt`), by namespace. */
   data?: Record<string, unknown>;
   links?: { id: string; to: string; label?: string }[];
 }
 
 export const titleOf = (n: CanvasNode) => (n.label ?? n.text ?? n.url ?? n.file ?? '').split('\n')[0].replace(/^#+\s*/, '').trim();
 
-export function summarize(doc: DocView, n: CanvasNode): NodeSummary {
+export function summarize(doc: DocView, n: CanvasNode, keep: ReadonlySet<string> = new Set()): NodeSummary {
   const carrier = doc.carrierOf(n.id);
   const ext = Object.keys(n).filter((k) => k.startsWith('x-'));
   const links = doc.edges.filter((e) => e.fromNode === n.id).map((e) => ({ id: e.id, to: e.toNode, ...(e.label ? { label: e.label } : {}) }));
-  const data = Object.fromEntries(ext.map((k) => [k, n[k as keyof CanvasNode]]).filter(([, v]) => JSON.stringify(v ?? null).length <= 200));
+  const data = Object.fromEntries(ext.filter((k) => keep.has(k)).map((k) => [k, n[k as keyof CanvasNode]]));
   const text = n.text ?? n.label ?? n.url ?? n.file;
   return {
     id: n.id,
@@ -46,11 +46,11 @@ export function summarize(doc: DocView, n: CanvasNode): NodeSummary {
 }
 
 /** Filters: type, text (substring, case-insensitive), column (label), ext (namespace, e.g. x-sync). */
-export function queryNodes(doc: DocView, q: { type?: string; text?: string; column?: string; ext?: string }): NodeSummary[] {
+export function queryNodes(doc: DocView, q: { type?: string; text?: string; column?: string; ext?: string }, keep?: ReadonlySet<string>): NodeSummary[] {
   const text = q.text?.toLowerCase();
   const column = q.column?.toLowerCase();
   return doc.nodes
-    .map((n) => summarize(doc, n))
+    .map((n) => summarize(doc, n, keep))
     .filter((s) => !q.type || s.type === q.type)
     .filter((s) => !text || (s.text ?? '').toLowerCase().includes(text))
     .filter((s) => !column || (s.column ?? '').toLowerCase() === column)

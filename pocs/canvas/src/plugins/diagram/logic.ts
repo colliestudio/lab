@@ -237,7 +237,6 @@ export const specs: Record<string, CommandSpec> = {
     cli: [{ verb: 'style', pos: ['node'], keepNone: ['fill'] }],
     toCommand: ({ node, ...a }) => ({ id: node, ...a }),
     result: (r, a) => ({ id: a.node, changed: r.changes.length }),
-    text: (v) => (v as { id: string }).id,
   }),
   addConnected: command({
     description: 'Add a new shape with an arrow to it from `from` (the flowchart step). `side` = which side of `from` the arrow leaves; `at` = where the new center goes. Same as diagram.add with `from`.',
@@ -247,6 +246,7 @@ export const specs: Record<string, CommandSpec> = {
 };
 
 export function registerDiagramLogic(store: Store) {
+  store.summaryExt.add('x-shape'); // a shape's kind and colors show in listings
   store.register('diagram.add', add, specs.add);
   store.register('diagram.update', update, specs.update);
   store.register('diagram.resize', resize);
