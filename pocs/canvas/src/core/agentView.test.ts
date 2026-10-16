@@ -157,7 +157,12 @@ describe('read-only view', () => {
     const r = app.dispatch('core.delete', { ids: ['a'] });
     expect(r).toMatchObject({ ok: false, error: expect.stringContaining('read-only') });
     expect(app.node('a')).toBeDefined();
+    const before = app.store.log.toArray().length;
+    app.logEvents([{ type: 'x.y', text: 'timebox is over' }]);
+    expect(app.store.log.toArray()).toHaveLength(before);
     app.readOnly = false;
+    app.logEvents([{ type: 'x.y', text: 'timebox is over' }]);
+    expect(app.store.log.toArray()).toHaveLength(before + 1);
     expect(app.dispatch('core.delete', { ids: ['a'] }).ok).toBe(true);
   });
 });

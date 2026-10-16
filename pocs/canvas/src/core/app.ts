@@ -194,6 +194,7 @@ export class App {
   }
   /** Log events that no command reports (see log.ts); not an undo step. */
   logEvents(events: EventSpec[]) {
+    if (this.readOnly) return;
     this.store.appendLog(events);
   }
 

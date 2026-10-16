@@ -102,7 +102,8 @@ if (locked.held) {
 }
 const name = FolderStorage.nameOf(file);
 // Screenshots: a headless Chrome on the web app (the repo's dist, served below at /b/*) joined to this bridge in agent view.
-const shots = new HeadlessShots({ pageUrl: (board, actorId) => `http://127.0.0.1:${port}/b/${encodeURIComponent(board)}?bridge=ws://127.0.0.1:${port}&agentView=${encodeURIComponent(actorId)}`, log });
+const loopback = bindHost === '0.0.0.0' || bindHost === '::' ? '127.0.0.1' : bindHost.includes(':') ? `[${bindHost}]` : bindHost;
+const shots = new HeadlessShots({ pageUrl: (board, actorId) => `http://${loopback}:${port}/b/${encodeURIComponent(board)}?bridge=ws://${loopback}:${port}&agentView=${encodeURIComponent(actorId)}`, log });
 const directory = new BoardDirectory(storage, { shots, pinned: [name], seatIdleMs: IDLE_MS, log, prefix: false });
 const board = await directory.open(name, { create: true }).catch((e) => die(e));
 
