@@ -54,6 +54,9 @@ interface View {
   page: ShotPage;
   size: { width: number; height: number };
   lastUsed: number;
+  /** Shots queued or running on this page: a busy view is never evicted. */
+  busy: number;
+  closed: boolean;
   /** Shots on this page run one at a time. */
   chain: Promise<unknown>;
 }
@@ -107,6 +110,8 @@ export class HeadlessShots implements ShotProvider {
     const key = `${actor.id}@${board}`;
     const hit = this.views.get(key);
     if (hit) return hit;
+    // pending opens count toward the cap; only an idle view can make room, else the caller is told to retry
+    if (this.views.size >= this.maxViews && !this.evictIdle()) return Promise.reject(new ShotError(503, 'too many screenshot views open at once; try again in a moment'));
     const p = this.openView(key, board, actor, size);
     this.views.set(key, p);
     p.catch(() => this.views.get(key) === p && this.views.delete(key));
@@ -116,7 +121,6 @@ export class HeadlessShots implements ShotProvider {
 
   private async openView(key: string, board: string, actor: Actor, size: { width: number; height: number }): Promise<View> {
     const browser = await this.getBrowser();
-    await this.evictOver();
     const context = await browser.newContext({ viewport: size, deviceScaleFactor: 1 });
     try {
       const page = await context.newPage();
@@ -133,10 +137,8 @@ export class HeadlessShots implements ShotProvider {
         })()`,
       );
       this.o.log(`screenshots: view ${key} ready`);
-      const v: View = { key, board, context, page, size, lastUsed: Date.now(), chain: Promise.resolve() };
+      const v: View = { key, board, context, page, size, lastUsed: Date.now(), chain: Promise.resolve(), busy: 0, closed: false };
       this.ready.set(key, v);
-      // views still opening are not in `ready`, so parallel opens all passed the first check: trim again now
-      await this.evictOver(v);
       return v;
     } catch (e) {
       await context.close().catch(() => {});
@@ -147,17 +149,21 @@ export class HeadlessShots implements ShotProvider {
     }
   }
 
-  private async evictOver(keep?: View) {
-    while (this.views.size > this.maxViews) {
-      const oldest = [...this.ready.values()].filter((v) => v !== keep).sort((a, b) => a.lastUsed - b.lastUsed)[0];
-      if (!oldest) return;
-      await this.close1(oldest, 'too many views');
-    }
+  /** Close the least recently used view that has no shot queued; false when every view is busy or still opening. */
+  private evictIdle(): boolean {
+    const idle = [...this.ready.values()].filter((v) => v.busy === 0).sort((a, b) => a.lastUsed - b.lastUsed)[0];
+    if (!idle) return false;
+    void this.close1(idle, 'too many views');
+    return true;
   }
 
   private async close1(v: View, why: string) {
-    this.views.delete(v.key);
-    this.ready.delete(v.key);
+    if (v.closed) return; // a stale shot failing after its view was closed must not touch a newer view of the same seat
+    v.closed = true;
+    if (this.ready.get(v.key) === v) {
+      this.ready.delete(v.key);
+      this.views.delete(v.key);
+    }
     this.o.log(`screenshots: closing view ${v.key} (${why})`);
     await v.context.close().catch(() => {});
   }
@@ -168,9 +174,10 @@ export class HeadlessShots implements ShotProvider {
     const start = Date.now();
     const v = await this.view(board, actor, { width: r.width, height: r.height });
     v.lastUsed = Date.now(); // before anything can interleave: an idle sweep must not close a view that has a shot queued
+    v.busy++;
     const run = v.chain.then(() => this.take(v, r), () => this.take(v, r));
     v.chain = run.catch(() => {});
-    const shot = await run;
+    const shot = await run.finally(() => v.busy--);
     const ms = Date.now() - start;
     this.o.log(`screenshots: ${actor.name} ${board} ${r.target.kind} ${r.width}x${r.height} ${ms} ms`);
     return { ...shot, ms };

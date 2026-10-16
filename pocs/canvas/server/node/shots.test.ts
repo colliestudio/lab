@@ -172,12 +172,50 @@ describe('HeadlessShots', () => {
     await s.close();
   });
 
-  it('the cap holds when many seats open at once', async () => {
+  it('the cap counts pending opens: extra seats fail fast with a 503 and no view is torn down mid-shot', async () => {
     const f = fake();
     const s = make(f, { maxViews: 3 });
     const seats = Array.from({ length: 10 }, (_, i) => makeActor(`Seat ${i}`));
-    await Promise.allSettled(seats.map((a) => s.shoot('demo', a, req())));
-    expect(f.pages.filter((p) => !p.closed).length).toBeLessThanOrEqual(3);
+    const results = await Promise.allSettled(seats.map((a) => s.shoot('demo', a, req())));
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(3);
+    for (const r of results.filter((r) => r.status === 'rejected')) expect((r as PromiseRejectedResult).reason).toMatchObject({ status: 503, message: expect.stringContaining('too many screenshot views') });
+    expect(f.pages).toHaveLength(3);
+    expect(f.pages.every((p) => !p.closed)).toBe(true);
+    // all idle again: a new seat takes the place of the oldest
+    await s.shoot('demo', makeActor('Late'), req());
+    expect(f.pages.filter((p) => !p.closed)).toHaveLength(3);
+    await s.close();
+  });
+
+  it('a view with a shot in flight is never evicted to make room', async () => {
+    let release = () => {};
+    let first = true;
+    const f = fake({ frame: (_e) => (first ? ((first = false), new Promise((r) => (release = () => r({ nodes: [] })))) : Promise.resolve({ nodes: [] })) });
+    const s = make(f, { maxViews: 1 });
+    const slow = s.shoot('demo', claude, req());
+    await new Promise((r) => setTimeout(r, 20));
+    await expect(s.shoot('demo', codex, req())).rejects.toMatchObject({ status: 503 });
+    release();
+    await slow;
+    expect(f.pages[0].closed).toBe(false);
+    await s.close();
+  });
+
+  it('a stale shot that fails after its view was closed does not drop the seat’s newer view', async () => {
+    let fail = () => {};
+    let first = true;
+    const f = fake({ frame: (_e) => (first ? ((first = false), new Promise((_r, no) => (fail = () => no(new Error('Target page closed'))))) : Promise.resolve({ nodes: [] })) });
+    const s = make(f);
+    const stale = s.shoot('demo', claude, req()).catch((e) => e);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(await s.drop('demo')).toBe(1);
+    await s.shoot('demo', claude, req()); // opens a new view for the same seat
+    fail();
+    expect(await stale).toBeInstanceOf(Error);
+    expect(f.pages).toHaveLength(2);
+    expect(f.pages[1].closed).toBe(false);
+    expect(await s.drop('demo')).toBe(1); // the new view is still tracked
+    expect(f.pages[1].closed).toBe(true);
     await s.close();
   });
 
