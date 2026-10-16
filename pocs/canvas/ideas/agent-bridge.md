@@ -22,9 +22,9 @@
 
 - `src/plugins/board/` — new plugin. `logic.ts` (DOM-free): `board.add/update/remove/connect/disconnect/sync`, rider rule (a note rides the column its center is in). `index.ts`: note/column renderers (JSON Canvas colors 1–6, light markdown), Add ▸ Note / Column kits, right-click Edit / Link these two / Unlink / Color / Delete, double-click edit.
 - `bridge/server.ts` — WebSocket Yjs host + HTTP API + file watcher + state sidecar.
-- `bridge/host.ts` — doc, per-actor seats, file apply/merge. `bridge/canonical.ts` — stable serialize, diff. `bridge/query.ts` — summaries, filters, resolve node by id or title.
+- `bridge/host.ts` — doc, per-actor seats, file apply/merge. `bridge/canonical.ts` — stable serialize, diff. `src/core/query.ts` — summaries, filters, resolve node by id or title.
 - `bridge/cli.ts` — `canvas status|list|query|show|add-node|add-column|update|move|connect|disconnect|rm|undo|redo|log|cmd|sync-backlog`. Nodes by id or title (unique prefix/substring).
-- `bridge/mcp.ts` — MCP stdio server: `canvas_list, canvas_add_node, canvas_update_node, canvas_connect, canvas_remove, canvas_undo, canvas_log`.
+- `bridge/mcp.ts` — MCP stdio server; its tools are generated from what plugins describe (next section).
 - App: `?bridge=ws://host:5222` joins the bridge (no IndexedDB, no starter deck; top right shows players incl. agents).
 - Tests: +15 (edges, board commands, sync, canonical/diff/merge, host undo-per-actor, Yjs round trip, backlog parser). 244 total on the original branch; the merge branch adds the undo-step test, the guard and argument parser tests.
 - `bridge/guard.ts` + `bridge/args.ts`: request guard and argument parsing (a flag before the file is not the file; unknown flags are an error).
@@ -63,6 +63,20 @@ From the worktree `~/code/canvas-wt/agent-bridge` (ports are examples; `$APP` an
 8. MCP: `claude mcp add canvas -e CANVAS_AS=Claude -- ~/code/canvas-wt/agent-bridge/node_modules/.bin/tsx ~/code/canvas-wt/agent-bridge/bridge/mcp.ts` (via `pnpm --dir … canvas-mcp` fails where mise has no global pnpm, e.g. from `/tmp`), then ask Claude to "map the checkout flow on the canvas". It shows up as a second player "Claude" (use `CANVAS_AS` to name each agent).
 9. Ctrl-C the bridge: it writes the file and state; restart picks up where it was.
 
+## Plugins describe themselves; the bridge is generic
+
+A plugin says what an agent can do where it registers the command, so the bridge needs no plugin-specific code (a test keeps plugin names out of `bridge/`).
+
+- **Commands.** `store.register(name, cmd, spec)`; the spec (`src/core/agent.ts`) holds `description`, `args` (a `zod/mini` strict object, so unknown keys are errors), an `example` that must parse, and optionally a legacy `tool` name, `cli` forms and two small adapters: `toCommand` (agent args to the command's own args, may redirect to another command) and `result`/`text` (what the caller gets). Node arguments are `nodeRef()`: the bridge resolves ids or titles before the adapter runs. A command without a spec still runs, marked undescribed.
+- **Views.** `store.registerView(name, spec)`: `read(doc, args, actor)` per actor, `wait: true` for views a caller can block on (`undefined` = not yet), `text` for MCP/CLI.
+- **Guide.** `PluginLogic` gets `title`, `summary` and `guide` (at most 15 lines on how to work with the plugin).
+- **Generic tools.** `canvas_look` (the nodes, or a view), `canvas_do {command, args}`, `canvas_help {plugin?, command?}` and `canvas_wait {view, args?}`, plus `canvas_list/log/undo` and `chat_*`. Every spec that carries a `tool` name also becomes a named tool, so the earlier tool names still work. The CLI gets the verbs from the specs' `cli` forms (`canvas help` is generated), and `canvas run|view|wait|help` reach everything. HTTP: `POST /agent/run`, `GET /agent/help`, `/view` and `/wait` take `args=<json>`; `/cmd` stays raw and unchecked.
+- **Bad args fail before dispatch**, with every problem listed: `chess.move: args.move: expected string, received undefined. Example: {"move":"Nf3"}. More: canvas_help {...}`.
+- **Plugin-only CLI verbs** that are not command calls (`sync-backlog`, `bot chess`) live in the plugin's Node-only `cli.ts` and are listed in `src/plugins/cli.ts`.
+- **Writing one:** put the spec next to the command, keep `args` strict, give a real `example`, describe in one or two sentences what it does and when to use it, and write the guide last. Logic files import `core/agent` directly, never the core index (it pulls CSS).
+
+Not described yet (undescribed commands show up in `canvas_help`): the other plugins; passes are filed as separate tasks.
+
 ## What it says about the core / plugin API
 
 Fit well:
@@ -81,7 +95,7 @@ Had to change (small, listed):
 
 Gaps the API showed:
 - Bridge registers only core + board logic. Plugins' import/export filters (cards' `shapeExport`) and repairs don't run there, so a card table written by the bridge may differ from the browser's Save. Fix: plugin manifests that declare a DOM-free logic entry the host loads (fits the marketplace model).
-- No way for a plugin to declare a command's **arg schema**: MCP tool schemas are hand-written. A `describe` on commands (zod/JSON Schema + one-line doc) would let the bridge auto-expose every plugin command as a tool.
+- ~~No way for a plugin to declare a command's arg schema~~ Done: commands describe themselves at registration (next section).
 - Rider rule by geometry is O(notes × columns) per view build; fine to hundreds.
 
 ## Fit with the big vision
