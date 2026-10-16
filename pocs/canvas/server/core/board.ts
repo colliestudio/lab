@@ -107,8 +107,8 @@ export class Board {
     }
     if (text !== undefined) {
       if (host.store.nodes.size) host.written(host.fileText()); // base = what the state says; the file's edits since merge in
-      const line = host.applyFile(apply!);
-      if (line) this.log(line.replace(/^edited the file/, "loaded the file")); // not an edit: nothing was written
+      const line = host.applyFile(apply!, undefined, true);
+      if (line) this.log(line);
       host.written(text);
       this.lastText = text;
     }

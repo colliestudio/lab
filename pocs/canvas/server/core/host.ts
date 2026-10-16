@@ -315,7 +315,7 @@ export class Host {
    * Bring a file's content into the live doc as field-level changes (not undoable by anyone, logged
    * as the File). Returns the log line, or null when the file says nothing new.
    */
-  applyFile(text: string, actor: Actor = FILE_ACTOR): string | null {
+  applyFile(text: string, actor: Actor = FILE_ACTOR, loading = false): string | null {
     const next = parse(text);
     const v = this.store.doc;
     const cur: CanvasDoc = { nodes: v.nodes, edges: v.edges, extra: v.extra };
@@ -331,7 +331,7 @@ export class Host {
       }
     }, FILE);
     const touched = [...d.summary.added, ...d.summary.changed];
-    const line = `edited the file: ${describeDiff(d.summary)}`;
+    const line = `${loading ? 'loaded the file' : 'edited the file'}: ${describeDiff(d.summary)}`; // a load is not an edit by anyone
     this.store.appendLog([{ type: 'bridge.file', text: line, targets: touched.slice(0, 20), cue: 'pulse', actor }]);
     return line;
   }

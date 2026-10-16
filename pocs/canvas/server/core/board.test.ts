@@ -64,6 +64,7 @@ describe('Board: stored text', () => {
     const b = await Board.load('a', new MemoryStorage({ a: text([n('x')]) }), { log });
     expect(log).toHaveBeenCalledWith('loaded the file: 1 added');
     expect(log).not.toHaveBeenCalledWith(expect.stringContaining('edited the file'));
+    expect(b.host.store.log.toArray().map((e) => e.text)).toEqual(['loaded the file: 1 added']); // what players see
     await b.close();
   });
 
