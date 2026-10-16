@@ -1,4 +1,5 @@
 import * as Y from 'yjs';
+import type { CommandSpec, ViewSpec } from './agent';
 import { makeView, type CanvasDoc, type CanvasEdge, type CanvasNode, type Change, type CarrierOf, type DocView, type DuplicateRule, type LayoutRule, type ParentOf } from './doc';
 import { KEY_WINDOW, LOG_CAP, cleanEvent, type EventSpec, type Events, type LogActor, type LogEvent } from './log';
 
@@ -153,6 +154,8 @@ export class Store {
   /** Selected node ids, and edge ids (an edge can be picked; commands that take node ids ignore it). */
   selection: ReadonlySet<string> = new Set();
   private commands = new Map<string, Command>();
+  private specs = new Map<string, CommandSpec>();
+  private views = new Map<string, ViewSpec>();
   private listeners = new Set<() => void>();
   private view: DocView | null = null;
   /** Plain copies of nodes, kept until that node changes (a drag rewrites one node, not all of them). */
@@ -261,9 +264,29 @@ export class Store {
 
   // ------------------------------------------------------------ commands
 
-  register(name: string, cmd: Command) {
+  /** `spec` describes the command for agents (see agent.ts); without one it still runs, marked undescribed. */
+  register(name: string, cmd: Command, spec?: CommandSpec) {
     if (this.commands.has(name)) throw new Error(`command already registered: ${name}`);
     this.commands.set(name, cmd);
+    if (spec) this.specs.set(name, spec);
+  }
+
+  spec(name: string): CommandSpec | undefined {
+    return this.specs.get(name);
+  }
+
+  /** A plugin's read for agents (see agent.ts): a pure function of the doc, the args and who asks. */
+  registerView(name: string, spec: ViewSpec) {
+    if (this.views.has(name)) throw new Error(`view already registered: ${name}`);
+    this.views.set(name, spec);
+  }
+
+  view(name: string): ViewSpec | undefined {
+    return this.views.get(name);
+  }
+
+  viewNames(): string[] {
+    return [...this.views.keys()].sort();
   }
 
   has(name: string) {
