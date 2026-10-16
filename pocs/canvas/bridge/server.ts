@@ -79,8 +79,8 @@ const board = await directory.open(name, { create: true }).catch((e) => die(e));
 
 // join: the file and the room merge both ways, so a file that holds some other board (an agent pointed
 // at a real board by mistake) would be pushed into the room and the room into it. Only a new or empty
-// file, or one this room was saved to before, joins without --merge. (Checked right after the load, before
-// anything can be written.)
+// file, or one this room was saved to before, joins without --merge. (Checked right after the load; a new file is already written by then,
+// which is harmless: it is empty.)
 if (joinRef) {
   const roomMark = storage.roomMarkPath(name);
   const before = existsSync(roomMark) ? readFileSync(roomMark, 'utf8').trim() : undefined;
@@ -155,6 +155,7 @@ async function stop(code = 0) {
   relay?.stop();
   tunnel?.stop();
   try {
+    await server.close(); // before the flush, so nothing reconnects to a closing board
     await directory.closeAll();
   } finally {
     process.exit(code);

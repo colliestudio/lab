@@ -59,8 +59,10 @@ async function stop() {
   if (stopping) return;
   stopping = true;
   try {
-    await directory.closeAll();
+    // stop taking connections first: a tab redialing after its board closed would reload it and
+    // land its unsaved edits in a board that is about to be dropped
     await server.close();
+    await directory.closeAll();
   } finally {
     process.exit(0);
   }
