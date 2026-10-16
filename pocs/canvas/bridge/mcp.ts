@@ -5,6 +5,7 @@ import { client } from './client';
 import { COLORS, gameText, playMove, waitForTurn } from './chess';
 import { chatText } from './chatText';
 import type { GameView } from '../src/plugins/chess/game';
+import { describe, isDrawing, pickFrame, type Shape } from '../src/plugins/excalidraw/logic';
 
 // MCP server: the same operations as the CLI, as tools, so a Claude agent can read the board and
 // add/move/link nodes live while people watch (it is seated as a player: cursor, log name, undo).
@@ -327,6 +328,80 @@ server.registerTool(
     inputSchema: { timeout_s: z.number().optional() },
   },
   tool(async (a: { timeout_s?: number }) => (await chatText(c, await c.chatWait(a.timeout_s ?? 240))) || 'nothing new yet; call chat_wait again'),
+);
+
+// ------------------------------------------------------------ Excalidraw drawings
+const drawingId = async (node?: string) => {
+  const ds = (await c.doc()).nodes.filter(isDrawing);
+  if (node) return pickFrame(ds, node) ?? c.resolve(node);
+  if (ds.length === 1) return ds[0].id;
+  throw new Error(ds.length ? `${ds.length} drawings: pass drawing (${ds.map((d) => d.id).join(', ')})` : 'no drawing on the canvas: canvas_draw_new first');
+};
+const shape = z
+  .object({
+    type: z.enum(['rectangle', 'ellipse', 'diamond', 'text', 'arrow']),
+    ref: z.string().optional().describe('your name for it (becomes its id when free): arrows point at refs or shape ids'),
+    label: z.string().optional().describe('text inside a shape, or on an arrow'),
+    text: z.string().optional().describe('for type text'),
+    x: z.number().optional(),
+    y: z.number().optional(),
+    width: z.number().optional(),
+    height: z.number().optional(),
+    size: z.number().optional().describe('font size for type text (default 20)'),
+    from: z.string().optional().describe('arrow start: ref or shape id'),
+    to: z.string().optional().describe('arrow end: ref or shape id'),
+    stroke: z.string().optional().describe('#hex'),
+    fill: z.string().optional().describe('#hex'),
+    dashed: z.boolean().optional(),
+    ends: z.enum(['none', 'end', 'both']).optional(),
+  })
+  .passthrough();
+const drawingRef = z.string().optional().describe('frame node id or title (default: the only Excalidraw frame on the canvas)');
+
+server.registerTool(
+  'canvas_draw_new',
+  {
+    description:
+      'Put a new Excalidraw frame on the canvas: a titled frame people draw in with the real Excalidraw (it scrolls/zooms inside; the frame keeps its size), optionally with shapes. x/y = center (640x440), or top-left with width/height. Returns its id.',
+    inputSchema: { title: z.string().optional(), x: z.number().optional(), y: z.number().optional(), width: z.number().optional(), height: z.number().optional(), shapes: z.array(shape).optional() },
+  },
+  tool(async (a: { title?: string; x?: number; y?: number; width?: number; height?: number; shapes?: unknown[] }) => ({
+    id: (await cmd('excalidraw.create', { x: a.x ?? 0, y: a.y ?? 0, width: a.width, height: a.height, title: a.title, shapes: a.shapes as Shape[] | undefined })).select?.[0],
+  })),
+);
+server.registerTool(
+  'canvas_draw_shapes',
+  { description: "List an Excalidraw drawing's shapes: id, type, label, position, arrows (from → to ids).", inputSchema: { drawing: drawingRef } },
+  tool(async (a: { drawing?: string }) => {
+    const id = await drawingId(a.drawing);
+    return describe((await c.doc()).nodes.find((n) => n.id === id)!);
+  }),
+);
+server.registerTool(
+  'canvas_draw_add',
+  {
+    description:
+      'Add shapes to an Excalidraw drawing: boxes (rectangle/ellipse/diamond with a label), text, arrows between shapes (from/to = a ref from this call or an existing shape id, optional label). x/y are the drawing’s own coordinates (see canvas_draw_shapes; boxes ~140x70); without x/y shapes go in a row right of the drawing. The frame shows new shapes (it re-fits if they fall outside its view).',
+    inputSchema: { drawing: drawingRef, shapes: z.array(shape) },
+  },
+  tool(async (a: { drawing?: string; shapes: unknown[] }) => {
+    const id = await drawingId(a.drawing);
+    await cmd('excalidraw.add', { id, shapes: a.shapes });
+    return describe((await c.doc()).nodes.find((n) => n.id === id)!);
+  }),
+);
+server.registerTool(
+  'canvas_draw_remove',
+  { description: 'Delete shapes from an Excalidraw drawing by id (their labels go too).', inputSchema: { drawing: drawingRef, ids: z.array(z.string()) } },
+  tool(async (a: { drawing?: string; ids: string[] }) => cmd('excalidraw.remove', { id: await drawingId(a.drawing), ids: a.ids })),
+);
+
+server.registerTool(
+  'canvas_draw_frame',
+  { description: 'Change an Excalidraw frame: title, locked (a static picture people cannot draw in until unlocked), fit (show the whole drawing again).', inputSchema: { drawing: drawingRef, title: z.string().optional(), locked: z.boolean().optional(), fit: z.boolean().optional() } },
+  tool(async (a: { drawing?: string; title?: string; locked?: boolean; fit?: boolean }) =>
+    cmd('excalidraw.frame', { id: await drawingId(a.drawing), title: a.title, locked: a.locked, view: a.fit ? null : undefined }),
+  ),
 );
 
 await server.connect(new StdioServerTransport());

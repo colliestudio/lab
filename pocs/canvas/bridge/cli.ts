@@ -5,6 +5,7 @@ import { parseBacklog } from './backlog';
 import { COLORS, gameText, playMove, runBot, waitForTurn } from './chess';
 import { chatText } from './chatText';
 import type { GameView } from '../src/plugins/chess/game';
+import { describe, isDrawing, pickFrame, type Shape } from '../src/plugins/excalidraw/logic';
 
 // canvas: edit a live canvas from the shell (agents, scripts, people). Talks to the bridge.
 //   pnpm canvas <command> [args] [--as NAME] [--bridge URL]
@@ -48,6 +49,21 @@ const HELP = `canvas: read and edit a live canvas through the bridge
                                           built-in opponent: sits, waits, moves (as --as, default "Bot")
   chess commands take --board ID when there is more than one board
 
+  draw new [--title T] [--x X --y Y] [--width W --height H] [--shapes JSON]
+                                          a new Excalidraw frame (centered at x/y, or top-left with width/height); prints its id
+  draw shapes [--in N] [--json]           the drawing's shapes: id, type, label, x/y, arrows from→to
+  draw add JSON [--in N]                  add shapes: [{"type":"rectangle","ref":"a","label":"Start"},
+                                            {"type":"ellipse","ref":"b","label":"End"},{"type":"arrow","from":"a","to":"b","label":"go"}]
+                                          types rectangle|ellipse|diamond (label, x, y, width, height, stroke, fill, dashed),
+                                          text (text, size), arrow (from, to = ref or shape id; label, dashed, ends none|end|both)
+                                          a free ref becomes the shape's id; x/y = the drawing's own coordinates
+                                          (see draw shapes); no x/y = a row right of the drawing's shapes
+  draw box LABEL [--type rectangle|ellipse|diamond] [--ref R] [--in N]
+  draw arrow FROM TO [--label L] [--in N]
+  draw rm ID [ID…] [--in N]
+  draw title T | lock | unlock | fit [--in N]   the frame: rename, static picture on/off, fit the drawing
+  --in N: the frame (node id or title); default the only one on the canvas
+
   chat say TEXT [--node N]                say something in the table chat (@Name mentions; --node = about a node)
   chat read [-n 20] [--new] [--json]      last messages, or only what's new since you last looked
   chat wait [--timeout S]                 block until someone else says something (≤290 s), print it
@@ -87,6 +103,54 @@ async function run(name: string, args: unknown) {
   if (!r.ok) throw new Error(r.error ?? 'failed');
   if (!r.changed) console.log('(no change)');
   return r;
+}
+
+/** The drawing a draw command works on: --in, else the only one on the canvas. */
+async function drawing() {
+  const ds = (await c.doc()).nodes.filter(isDrawing);
+  if (flags.in) return pickFrame(ds, flags.in) ?? c.resolve(flags.in);
+  if (ds.length === 1) return ds[0].id;
+  throw new Error(ds.length ? `${ds.length} drawings on the canvas: pick one with --in (${ds.map((d) => d.id).join(', ')})` : 'no drawing on the canvas: draw new');
+}
+
+async function draw([sub, ...args]: string[]) {
+  const parseShapes = (j?: string) => {
+    if (!j) throw new Error('shapes JSON missing');
+    const v = JSON.parse(j);
+    return (Array.isArray(v) ? v : [v]) as Shape[];
+  };
+  switch (sub) {
+    case 'new': {
+      const shapes = flags.shapes ? parseShapes(flags.shapes) : undefined;
+      const r = await run('excalidraw.create', { x: num('x') ?? 0, y: num('y') ?? 0, width: num('width'), height: num('height'), title: flags.title, shapes });
+      return console.log(r.select?.[0] ?? '');
+    }
+    case 'shapes': {
+      const id = await drawing();
+      const n = (await c.doc()).nodes.find((x) => x.id === id)!;
+      const list = describe(n);
+      if (flags.json) return console.log(JSON.stringify(list, null, 2));
+      for (const s of list) console.log(`${s.id.padEnd(22)} ${s.type.padEnd(9)} ${String(s.x).padStart(6)},${String(s.y).padEnd(6)} ${s.label ?? ''}${s.from ? `  ${s.from} → ${s.to}` : ''}`);
+      return;
+    }
+    case 'add':
+      return void (await run('excalidraw.add', { id: await drawing(), shapes: parseShapes(args.join(' ')) }));
+    case 'box':
+      return void (await run('excalidraw.add', { id: await drawing(), shapes: [{ type: (flags.type ?? 'rectangle') as 'rectangle', label: args.join(' '), ref: flags.ref }] }));
+    case 'arrow':
+      return void (await run('excalidraw.add', { id: await drawing(), shapes: [{ type: 'arrow', from: args[0], to: args[1], label: flags.label }] }));
+    case 'rm':
+      return void (await run('excalidraw.remove', { id: await drawing(), ids: args }));
+    case 'title':
+      return void (await run('excalidraw.frame', { id: await drawing(), title: args.join(' ') }));
+    case 'lock':
+    case 'unlock':
+      return void (await run('excalidraw.frame', { id: await drawing(), locked: sub === 'lock' }));
+    case 'fit':
+      return void (await run('excalidraw.frame', { id: await drawing(), view: null }));
+    default:
+      throw new Error('draw new | shapes | add | box | arrow | rm | title | lock | unlock | fit (see canvas help)');
+  }
 }
 
 const bool = (k: string) => (flags[k] !== undefined ? flags[k] !== 'false' : undefined);
@@ -255,6 +319,8 @@ async function main() {
       const log = await c.log(1);
       return console.log(r.changed ? log[0]?.text : `backlog: ${input.items.length} tasks, board already up to date`);
     }
+    case 'draw':
+      return draw(params);
     case 'chat':
       return chat(params[0], params.slice(1));
     case 'chess':

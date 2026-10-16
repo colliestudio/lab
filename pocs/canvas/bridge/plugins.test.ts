@@ -47,7 +47,7 @@ describe('bridge plugin logic', () => {
   });
 
   it('registers frames last (its rider rule must follow the others)', () => {
-    expect(PLUGIN_LOGIC.map((e) => e.id)).toEqual(['cards', 'chess', 'clock', 'battleline', 'mats', 'board', 'diagram', 'eventstorm', 'prototype', 'frames']);
+    expect(PLUGIN_LOGIC.map((e) => e.id)).toEqual(['cards', 'chess', 'clock', 'battleline', 'mats', 'board', 'diagram', 'eventstorm', 'prototype', 'excalidraw', 'frames']);
   });
 
   it('useLogic skips logic a store already has', () => {
