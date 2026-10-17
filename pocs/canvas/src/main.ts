@@ -321,11 +321,7 @@ function startBridge(url: string, served?: { name: string }) {
   mountChat(app, chrome.topRight, url);
   if (served) {
     document.title = `${served.name} · Canvas`;
-    const back = document.createElement('a');
-    back.href = '/';
-    back.className = 'share-btn';
-    back.textContent = 'All canvases';
-    chrome.topLeft.prepend(back);
+    app.registerMainMenuItem({ id: 'app.allCanvases', order: -1, entry: () => ({ label: 'All canvases', run: () => (location.href = '/') }) });
   }
   flash(served ? `Opening ${served.name}…` : `Connecting to the bridge at ${url}…`);
   room.synced.then(() => {
