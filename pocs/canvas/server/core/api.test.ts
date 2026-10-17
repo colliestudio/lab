@@ -147,7 +147,7 @@ describe('/shot', () => {
     await withShots(ok);
     const r = await get('/shot?as=Claude Code&kind=tool');
     expect(r.status).toBe(200);
-    expect(r.json).toMatchObject({ mime: 'image/png', seat: 'tool:claude-code', target: 'whole board', width: 1000, height: 750, ms: 12, nodes: [{ id: 'a' }] });
+    expect(r.json).toMatchObject({ mime: 'image/png', seat: 'tool:claude-code', target: 'whole canvas', width: 1000, height: 750, ms: 12, nodes: [{ id: 'a' }] });
     expect(Buffer.from((r.json as { png: string }).png, 'base64')).toEqual(Buffer.from(PNG));
     expect(calls[0].board).toBe('demo');
     expect(calls[0].actor.id).toBe('tool:claude-code');

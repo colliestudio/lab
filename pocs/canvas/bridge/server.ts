@@ -97,7 +97,7 @@ try {
 if (locked.held) {
   unmark();
   const h = locked.holder!;
-  console.error(`canvas bridge: ${storage.dir} is served live by ${describeHolder(h)}; open the board there${h.urls[0] ? ` (${h.urls[0]}/)` : ''}, or stop that service, or use a file in another folder`);
+  console.error(`canvas bridge: ${storage.dir} is served live by ${describeHolder(h)}; open the canvas there${h.urls[0] ? ` (${h.urls[0]}/)` : ''}, or stop that service, or use a file in another folder`);
   process.exit(2);
 }
 const name = FolderStorage.nameOf(file);
@@ -117,7 +117,7 @@ if (joinRef) {
   const items = board.host.store.nodes.size + board.host.store.edges.size;
   if (items && before !== joinRef.room && !opts.merge) {
     console.error(
-      `canvas bridge: ${file} already holds a board (${items} item${items === 1 ? '' : 's'})${before ? ` saved from room ${before}` : ''}; joining room ${joinRef.room} would merge it into the room and the room into it.\n` +
+      `canvas bridge: ${file} already holds a canvas (${items} item${items === 1 ? '' : 's'})${before ? ` saved from room ${before}` : ''}; joining room ${joinRef.room} would merge it into the room and the room into it.\n` +
         'Leave the file out (the bridge then uses a new one), give a new file, or add --merge to do it anyway.',
     );
     process.exit(2);
@@ -151,7 +151,7 @@ log(`canvas bridge: ${file} on http://${bindHost}:${port} (browsers: ?bridge=ws:
 if (joinRef) {
   const signal = opts.signal ?? joinRef.signal ?? appUrl.replace(/^http/, 'ws');
   relay = joinRelay({ url: relayUrl(signal, joinRef.room), attach: (ws) => board.connect(wsConn(ws), { relay: true }), log });
-  say('', `Joined room ${joinRef.room} through ${signal}`, `Board file (saved while the bridge is here): ${file}`, `Agents on this machine: CANVAS_BRIDGE=http://localhost:${port} pnpm canvas --as <Name> <command>`, 'Ctrl-C leaves the room.', '');
+  say('', `Joined room ${joinRef.room} through ${signal}`, `Canvas file (saved while the bridge is here): ${file}`, `Agents on this machine: CANVAS_BRIDGE=http://localhost:${port} pnpm canvas --as <Name> <command>`, 'Ctrl-C leaves the room.', '');
   if (opts.share) say('(share is not needed with join: the bridge connects out, nothing is exposed)');
 } else if (sharing) void share();
 
@@ -169,11 +169,11 @@ async function share() {
   }
   say(
     '',
-    tunnel ? 'Send this link (it opens the app straight into this board; the bridge is public while it runs):' : `Local link (a quick tunnel would make it reachable from other machines; drop --no-tunnel):`,
+    tunnel ? 'Send this link (it opens the app straight into this canvas; the bridge is public while it runs):' : `Local link (a quick tunnel would make it reachable from other machines; drop --no-tunnel):`,
     bridgeLink(appUrl, address),
     '',
     `Bridge address: ${address.url}   pairing token: ${token}`,
-    `Board file: ${file}`,
+    `Canvas file: ${file}`,
     `Agents on this machine: CANVAS_BRIDGE=http://localhost:${port} pnpm canvas --as <Name> <command>`,
     'Ctrl-C stops the bridge' + (tunnel ? ' and the tunnel.' : '.'),
     '',

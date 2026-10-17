@@ -4,7 +4,7 @@ export const GROUPS: [string, [string, string][]][] = [
   [
     'Screen',
     [
-      ['Menu (top left)', 'File, Edit, Room, Add, View (board background, light/dark theme), game submenus (New hand, Play prototype), Bridge…, Help'],
+      ['Menu (top left)', 'File, Edit, Room, Add, View (canvas background, light/dark theme), game submenus (New hand, Play prototype), Bridge…, Help'],
       ['Dock (bottom)', 'Select, hand and + (put something on the table); tooltips name each button and its shortcut'],
       ['People, Chat, Share (top right)', 'Who is here and the connection, the chat, and the invite link'],
       ['Zoom and ? (bottom right)', 'Zoom out / % / in / fit, and this help. Messages (saved, opened, link copied) appear above the dock'],
@@ -34,9 +34,9 @@ export const GROUPS: [string, [string, string][]][] = [
     'Diagrams (shapes and arrows)',
     [
       ['R O D T S', 'Rectangle, ellipse, diamond, text, sticky note tool (also in the dock). Only with nothing selected (else typing edits the selected shape) and with the pointer not over another kind of object: over a deck S and D keep shuffle and draw, over a frame O is the outline. Click = default size, drag = that size. Esc leaves the tool'],
-      ['Double-click empty board', 'A line of text right there'],
+      ['Double-click empty canvas', 'A line of text right there'],
       ['↵, double-click, or just type', 'Edit the selected shape’s text in place. Esc or a click elsewhere keeps it (⌘↵ too); ⌫ inside edits text, not the shape'],
-      ['Hover a shape, drag a dot', 'Pull an arrow: let go on another shape to connect (near its edge picks the side), on empty board for a new connected shape of the same kind, or just click the dot for the next one'],
+      ['Hover a shape, drag a dot', 'Pull an arrow: let go on another shape to connect (near its edge picks the side), on empty canvas for a new connected shape of the same kind, or just click the dot for the next one'],
       ['Click an arrow, ↵ or double-click', 'Select it (⌫ deletes); edit its label in place. The left panel sets color, dashed, curved and arrowheads'],
       ['Left panel', 'Shape kind, stroke, fill, dashed, text size for the selected shapes'],
       ['Drag a square on a selected shape', 'Resize (⇧ on a corner keeps the proportions)'],
@@ -244,7 +244,7 @@ export const GROUPS: [string, [string, string][]][] = [
     'Files',
     [
       ['⌘S / ⇧⌘S', 'Save / save as .canvas (JSON Canvas, opens in Obsidian)'],
-      ['⌘O, drop a file, Menu ▸ File', 'Open a .canvas file (File also has New board, Save, Save as)'],
+      ['⌘O, drop a file, Menu ▸ File', 'Open a .canvas file (File also has New canvas, Save, Save as)'],
       ['', 'The table also saves itself in this browser'],
     ],
   ],

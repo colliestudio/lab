@@ -44,11 +44,11 @@ export const fold = (name: string) => name.normalize('NFC').toLowerCase();
 
 /** Why `name` can't be a board name, or undefined when it can. Names are file stems, never paths. */
 export function validName(name: string): string | undefined {
-  if (typeof name !== 'string' || !name.trim()) return 'a board name can not be empty';
-  if (name !== name.trim()) return 'a board name can not start or end with a space';
-  if (name.length > 100) return 'a board name can be at most 100 characters';
-  if (/[/\\:\u0000-\u001f\u007f]/.test(name)) return 'a board name can not contain / \\ : or control characters';
-  if (name.startsWith('.')) return 'a board name can not start with a dot';
+  if (typeof name !== 'string' || !name.trim()) return 'a canvas name can not be empty';
+  if (name !== name.trim()) return 'a canvas name can not start or end with a space';
+  if (name.length > 100) return 'a canvas name can be at most 100 characters';
+  if (/[/\\:\u0000-\u001f\u007f]/.test(name)) return 'a canvas name can not contain / \\ : or control characters';
+  if (name.startsWith('.')) return 'a canvas name can not start with a dot';
   return undefined;
 }
 
@@ -136,7 +136,7 @@ export class BoardDirectory {
   async acquire(name: string, o: { create?: boolean } = {}): Promise<{ board: Board; release: () => void }> {
     const key = fold(name);
     // fixed-board storage (bridge mode): only the pinned board exists
-    if (!this.storage.mutable && !this.pinned.has(key)) throw new DirError(404, `no board "${name}"`);
+    if (!this.storage.mutable && !this.pinned.has(key)) throw new DirError(404, `no canvas "${name}"`);
     const hit = this.boards.get(key);
     if (hit) return { board: hit, release: hit.hold() };
     return this.locked([key], async () => {
@@ -149,7 +149,7 @@ export class BoardDirectory {
         // not a board that exists: only a valid name can be created, and a bad one is the caller's mistake
         const bad = this.pinned.has(key) ? undefined : validName(name); // a pinned name is a file the operator chose
         if (bad) throw new DirError(400, bad);
-        if (!o.create) throw new DirError(404, `no board "${name}"`);
+        if (!o.create) throw new DirError(404, `no canvas "${name}"`);
       }
       name = stored ?? name;
       let board: Board;
@@ -192,7 +192,7 @@ export class BoardDirectory {
     return this.locked([fold(name)], async () => {
       await this.mustNotExist(name);
       const content = text ?? stableSerialize({ nodes: [], edges: [], extra: { [FORMAT_KEY]: FORMAT_VERSION } });
-      if (!(await this.storage.create(name, content))) throw new DirError(409, `a board named "${name}" already exists`);
+      if (!(await this.storage.create(name, content))) throw new DirError(409, `a canvas named "${name}" already exists`);
       return name;
     });
   }
@@ -226,18 +226,18 @@ export class BoardDirectory {
   }
 
   private mustBeMutable() {
-    if (!this.storage.mutable) throw new DirError(405, 'this server serves one fixed board: it can not create, rename or delete boards');
+    if (!this.storage.mutable) throw new DirError(405, 'this server serves one fixed canvas: it can not create, rename or delete canvases');
   }
 
   private async mustExist(name: string): Promise<string> {
     const found = (await this.storage.list()).find((i) => fold(i.name) === fold(name));
-    if (!found) throw new DirError(404, `no board "${name}"`);
+    if (!found) throw new DirError(404, `no canvas "${name}"`);
     return found.name;
   }
 
   private async mustNotExist(name: string, except?: string) {
     const clash = (await this.storage.list()).find((i) => fold(i.name) === fold(name) && i.name !== except);
-    if (clash) throw new DirError(409, `a board named "${clash.name}" already exists`);
+    if (clash) throw new DirError(409, `a canvas named "${clash.name}" already exists`);
   }
 
   /** A board about to be renamed or deleted: refused while anyone has it open, else flushed and unloaded. */

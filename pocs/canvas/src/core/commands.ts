@@ -89,7 +89,7 @@ const changed = (r: { changes: unknown[] }) => ({ changed: r.changes.length });
 
 export const coreSpecs: Record<string, CommandSpec> = {
   background: command({
-    description: `Set the board's background color for everyone (kept in the board file, shown in screenshots). A #hex color or a preset name: ${PRESETS.map((p) => p.id).join(', ')}. null or "auto" goes back to the default, which follows each person's light/dark theme. Light text and arrows are drawn automatically on dark colors. canvas_look {"view": "core.board"} reads it.`,
+    description: `Set the canvas's background color for everyone (kept in the canvas file, shown in screenshots). A #hex color or a preset name: ${PRESETS.map((p) => p.id).join(', ')}. null or "auto" goes back to the default, which follows each person's light/dark theme. Light text and arrows are drawn automatically on dark colors. canvas_look {"view": "core.board"} reads it.`,
     args: z.strictObject({ color: z.nullable(z.string().check(z.meta({ description: '#hex or preset name; null/"auto" = default' }))) }),
     example: { color: 'slate' },
     result: (_r, a) => ({ background: colorFromInput(a.color) ?? null }),
@@ -140,7 +140,7 @@ export const coreSpecs: Record<string, CommandSpec> = {
 };
 
 const boardView = view({
-  description: 'Board-wide settings: the background color (null = the default, which follows each person\'s light/dark theme).',
+  description: 'Canvas-wide settings: the background color (null = the default, which follows each person\'s light/dark theme).',
   args: z.strictObject({}),
   example: {},
   read: (doc) => ({ background: backgroundOf(doc.extra) ?? null }),

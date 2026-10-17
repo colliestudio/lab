@@ -25,14 +25,14 @@ export function mountHome(root: HTMLElement, f: typeof fetch = fetch) {
 
   root.innerHTML = '';
   root.className = 'home';
-  const title = h('h1', '', 'Boards');
+  const title = h('h1', '', 'Canvases');
   const form = h('form', 'home-new');
   const input = h('input');
-  input.placeholder = 'New board name';
-  input.setAttribute('aria-label', 'New board name');
+  input.placeholder = 'New canvas name';
+  input.setAttribute('aria-label', 'New canvas name');
   input.autocomplete = 'off';
   input.spellcheck = false;
-  const add = h('button', 'home-btn primary', 'New board');
+  const add = h('button', 'home-btn primary', 'New canvas');
   add.type = 'submit';
   form.append(input, add);
   const formError = h('p', 'home-error');
@@ -167,7 +167,7 @@ export function mountHome(root: HTMLElement, f: typeof fetch = fetch) {
 
   async function remove(name: string, err: HTMLElement) {
     rowMsg(name, err, '');
-    if (!confirm(`Move “${name}” to the trash? It goes to .canvas-bridge/trash in the boards folder.`)) return;
+    if (!confirm(`Move “${name}” to the trash? It goes to .canvas-bridge/trash in the canvases folder.`)) return;
     try {
       await deleteBoard(name, f);
       await refresh();

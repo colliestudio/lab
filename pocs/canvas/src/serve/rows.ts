@@ -11,7 +11,7 @@ export interface Row {
   error?: string;
 }
 
-export const emptyText = 'No boards yet. Name one above to start.';
+export const emptyText = 'No canvases yet. Name one above to start.';
 
 function ago(ms: number, now: number): string {
   const s = Math.max(0, Math.round((now - ms) / 1000));

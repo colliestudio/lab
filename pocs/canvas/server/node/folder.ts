@@ -167,7 +167,7 @@ export class FolderStorage implements BoardStorage {
 
   /** Fixed-file mode: the one file is the only board there is. */
   private own(name: string) {
-    if (this.single && name !== FolderStorage.nameOf(this.single)) throw new Error(`no board "${name}" here`);
+    if (this.single && name !== FolderStorage.nameOf(this.single)) throw new Error(`no canvas "${name}" here`);
   }
 
   async create(name: string, text: string) {

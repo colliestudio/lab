@@ -61,7 +61,7 @@ export class McpSession {
     try {
       lease = await this.svc.directory.acquire(board, { create: o.create });
     } catch (e) {
-      if (e instanceof DirError && e.status === 404) throw new Error(`${e.message}; canvas_boards lists the boards${o.create ? '' : ', create: true makes a new one'}`);
+      if (e instanceof DirError && e.status === 404) throw new Error(`${e.message}; canvas_boards lists the canvases${o.create ? '' : ', create: true makes a new one'}`);
       throw e;
     }
     const key = fold(lease.board.name);
@@ -105,9 +105,9 @@ export class McpSession {
       if (!j) throw new Error(`not joined to "${board}"${this.joinedText()}`);
       return j;
     }
-    if (this.joins.size === 0) throw new Error('join a board first: canvas_boards lists them, canvas_join {board, name} seats you');
+    if (this.joins.size === 0) throw new Error('join a canvas first: canvas_boards lists them, canvas_join {board, name} seats you');
     if (this.joins.size === 1) return [...this.joins.values()][0];
-    throw new Error(`you are joined to several boards (${this.names()}): say which with the canvas argument`);
+    throw new Error(`you are joined to several canvases (${this.names()}): say which with the canvas argument`);
   }
 
   names(): string {

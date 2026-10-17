@@ -87,7 +87,7 @@ export class Board {
    */
   static async load(name: string, storage: BoardStorage, opts: BoardOptions & { create?: boolean } = {}): Promise<Board> {
     const text = await storage.read(name);
-    if (text === undefined && !opts.create) throw new DirError(404, `no board "${name}"`);
+    if (text === undefined && !opts.create) throw new DirError(404, `no canvas "${name}"`);
     let apply: string | undefined; // refuses before any state is touched
     try {
       apply = text === undefined ? undefined : prepare(text);
@@ -326,7 +326,7 @@ export class Board {
    */
   connect(conn: Conn, opts: { relay?: boolean } = {}) {
     const relay = !!opts.relay;
-    if (this.closed) return conn.close(1001, 'board closed');
+    if (this.closed) return conn.close(1001, 'canvas closed');
     this.conns.set(conn, { ids: new Set(), relay });
     this.lastActive = Date.now();
     conn.onMessage((data) => {
@@ -396,7 +396,7 @@ export class Board {
     try {
       await this.flush();
     } finally {
-      for (const c of [...this.conns.keys()]) c.close(1001, 'board closed');
+      for (const c of [...this.conns.keys()]) c.close(1001, 'canvas closed');
       this.conns.clear();
       this.unseat?.();
       this.host.sweep(-Infinity); // seats leave: their awareness intervals stop

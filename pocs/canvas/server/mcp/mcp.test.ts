@@ -74,7 +74,7 @@ describe('scopedTools', () => {
     const [t] = scopedTools([tool('t', {}, async () => 'fine')], s);
     expect(await t.call({}, ctx())).toBe('fine');
     const [u] = scopedTools([tool('u', {}, async (c) => String(await c.query({})))], s);
-    await expect(u.call({}, ctx())).rejects.toThrow('join a board first');
+    await expect(u.call({}, ctx())).rejects.toThrow('join a canvas first');
   });
 
   it('with several joins an unnamed call lists them; a named one works', async () => {
@@ -153,7 +153,7 @@ describe('sessions', () => {
 
   it('create: only with the flag', async () => {
     const s = svc.create('s');
-    await expect(s.join('new', 'Ann')).rejects.toThrow('no board "new"');
+    await expect(s.join('new', 'Ann')).rejects.toThrow('no canvas "new"');
     await s.join('new', 'Ann', { create: true });
     expect((await dir.list()).map((e) => e.name)).toContain('new');
   });

@@ -15,7 +15,7 @@ export class BoardFileError extends Error {
     super(
       existing
         ? `${name}.canvas is not a canvas file the server can read: ${cause.message}. The file is untouched.`
-        : `the text for "${name}" is not a canvas file: ${cause.message}. No board was made.`,
+        : `the text for "${name}" is not a canvas file: ${cause.message}. No canvas was made.`,
     );
     this.name = 'BoardFileError';
   }

@@ -288,4 +288,4 @@ export function liveBridges(dir: string, here: Here = hereInfo()): BridgeMark[] 
 }
 
 export const describeBridges = (dir: string, bs: BridgeMark[]) =>
-  `${dir} has a bridge with a board open (${bs.map((b) => `pid ${b.pid}, ${b.file}`).join('; ')}); stop it, or delete ${bs.map((b) => bridgeMarker(dir, b.pid)).join(', ')} if that bridge no longer runs`;
+  `${dir} has a bridge with a canvas open (${bs.map((b) => `pid ${b.pid}, ${b.file}`).join('; ')}); stop it, or delete ${bs.map((b) => bridgeMarker(dir, b.pid)).join(', ')} if that bridge no longer runs`;

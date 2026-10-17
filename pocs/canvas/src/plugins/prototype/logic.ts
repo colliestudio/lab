@@ -54,7 +54,7 @@ const arrowBetween = (doc: DocView, from: string, to: string) => doc.edges.find(
 const renamed = new WeakMap<object, string>();
 
 const GUIDE = `A prototype is HTML pages linked into a flow that people click through (Play, ⇧↵, or Interact on the canvas).
-- page.create {title, html} adds a page right of everything (phone width; device: tablet/desktop). The first page on an empty board is the start page; page.start {id} picks another.
+- page.create {title, html} adds a page right of everything (phone width; device: tablet/desktop). The first page on an empty canvas is the start page; page.start {id} picks another.
 - Clicks live in the page HTML: data-goto="<page title>" on any element (button, a, div) goes to that page; data-back goes back. <a href="#…"> without data-goto does nothing.
 - Make the pages, then run page.autoLink once: it draws an arrow for each data-goto that finds its page (the flow on the canvas; chips under the page in Play). page.link {from, to, label} draws an arrow by hand; it makes nothing in the page clickable.
 - State across pages: data-store="name" on an input keeps what is typed; data-show="name" shows it on later pages (in Play and Interact only). Scripts: canvas.set(k, v), canvas.state, canvas.goto(title), canvas.back().
@@ -67,14 +67,14 @@ const GUIDE = `A prototype is HTML pages linked into a flow that people click th
 export const specs: Record<string, CommandSpec> = {
   create: command({
     description:
-      'Add a page: an HTML document shown as a node. Make things clickable with data-goto="<page title>" (href="#" does nothing); then page.autoLink draws the arrows. No x/y puts it right of everything; the first page of an empty board becomes the start page. Returns the id, the links found in the HTML and warnings.',
+      'Add a page: an HTML document shown as a node. Make things clickable with data-goto="<page title>" (href="#" does nothing); then page.autoLink draws the arrows. No x/y puts it right of everything; the first page of an empty canvas becomes the start page. Returns the id, the links found in the HTML and warnings.',
     args: z.strictObject({
       title,
       html: z.optional(html.check(z.meta({ description: 'the whole page: inline <style>/<script>, self-contained (default: a blank page)' }))),
       device: z.optional(device),
       x: z.optional(z.number()),
       y: z.optional(z.number()),
-      start: z.optional(z.boolean().check(z.meta({ description: 'make it the start page (default: true for the first page of an empty board)' }))),
+      start: z.optional(z.boolean().check(z.meta({ description: 'make it the start page (default: true for the first page of an empty canvas)' }))),
     }),
     example: { title: 'Sign in', html: '<h1>Sign in</h1><input placeholder="Email"><button data-goto="Home">Sign in</button>' },
     text: asJson,

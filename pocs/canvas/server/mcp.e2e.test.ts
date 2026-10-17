@@ -103,7 +103,7 @@ describe('canvas serve /mcp', () => {
     expect(r.text).toContain('gamma');
     const look = await one.call('canvas_look');
     expect(look.isError).toBe(true);
-    expect(look.text).toContain('join a board first');
+    expect(look.text).toContain('join a canvas first');
     const help = await one.call('canvas_help');
     expect(help.isError).toBe(false);
   });
@@ -150,7 +150,7 @@ describe('canvas serve /mcp', () => {
     expect((await one.call('canvas_join', { board: 'alpha', name: 'Ann' })).isError).toBe(false); // same name again: no-op
     const missing = await two.call('canvas_join', { board: 'nope', name: 'Bob' });
     expect(missing.isError).toBe(true);
-    expect(missing.text).toContain('no board "nope"');
+    expect(missing.text).toContain('no canvas "nope"');
     expect((await get('/api/boards')).json.map((b: { name: string }) => b.name)).not.toContain('nope');
     expect((await two.call('canvas_join', { board: 'fresh', name: 'Bob', create: true })).isError).toBe(false);
     expect((await get('/api/boards')).json.map((b: { name: string }) => b.name)).toContain('fresh');

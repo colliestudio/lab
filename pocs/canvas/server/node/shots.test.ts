@@ -239,12 +239,12 @@ describe('HeadlessShots', () => {
       b.newContext = async (o) => {
         const c = await nc(o);
         const np = c.newPage;
-        c.newPage = async () => ({ ...(await np()), evaluate: async () => { throw new Error('page.evaluate: Error: board not found: no board "x"\n  at'); } });
+        c.newPage = async () => ({ ...(await np()), evaluate: async () => { throw new Error('page.evaluate: Error: canvas not found: no canvas "x"\n  at'); } });
         return c;
       };
       return b;
     } });
-    await expect(s.shoot('x', claude, req())).rejects.toMatchObject({ status: 400, message: 'board not found: no board "x"' });
+    await expect(s.shoot('x', claude, req())).rejects.toMatchObject({ status: 400, message: 'canvas not found: no canvas "x"' });
     await s.close();
   });
 });

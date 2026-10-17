@@ -18,7 +18,7 @@ export class FormatError extends Error {
   ) {
     super(
       isNewer(found, supported)
-        ? `this board is format ${found}; this server supports up to ${supported}. Update the server to open it (the file is untouched).`
+        ? `this canvas is format ${found}; this server supports up to ${supported}. Update the server to open it (the file is untouched).`
         : `${FORMAT_KEY} must be a positive integer (found ${JSON.stringify(found) ?? 'nothing'})`,
     );
     this.name = 'FormatError';

@@ -18,6 +18,6 @@ export const syncBacklog: CliExtra = {
     const at = flags.x !== undefined ? { x: Number(flags.x), y: Number(flags.y ?? 0) } : undefined;
     const r = await api.run('board.sync', { ...input, at });
     const changed = (r.result as { changed?: number }).changed;
-    say(changed ? ((await api.log(1))[0]?.text ?? 'synced') : `backlog: ${input.items.length} tasks, board already up to date`);
+    say(changed ? ((await api.log(1))[0]?.text ?? 'synced') : `backlog: ${input.items.length} tasks, canvas already up to date`);
   },
 };

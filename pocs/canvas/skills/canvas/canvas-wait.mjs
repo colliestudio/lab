@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Helper for the /canvas skill. No dependencies: Node built-ins and global fetch.
 //   node canvas-wait.mjs name                      seat name for this directory
-//   node canvas-wait.mjs follow <board> --as <seat> [--serve URL]
+//   node canvas-wait.mjs follow <canvas> --as <seat> [--serve URL]
 //                                                  print each new chat message as one line (for a Monitor)
 
 import { execFile, execFileSync } from 'node:child_process';
@@ -101,7 +101,7 @@ async function follow(board, seat, serve) {
         // The serve seats actors by slug (makeActor in server/core/host.ts), so fold the same way.
         const slug = seat.slice(0, 32).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'agent';
         if (!st.actors.some((a) => a?.id === `agent:${slug}`)) {
-          process.stderr.write(`canvas-wait: seat "${seat}" is not on board "${board}" at ${serve} (wrong --serve? join over MCP first)\n`);
+          process.stderr.write(`canvas-wait: seat "${seat}" is not on canvas "${board}" at ${serve} (wrong --serve? join over MCP first)\n`);
           code = 1;
           break;
         }
@@ -117,9 +117,9 @@ async function follow(board, seat, serve) {
     } catch (e) {
       if (code !== null) break;
       if (!failures++) failedSince = Date.now();
-      process.stderr.write(`canvas-wait: ${e.message} (failing for ${Math.round((Date.now() - failedSince) / 1000)}s) board "${board}" at ${serve}\n`);
+      process.stderr.write(`canvas-wait: ${e.message} (failing for ${Math.round((Date.now() - failedSince) / 1000)}s) canvas "${board}" at ${serve}\n`);
       if (Date.now() - failedSince >= giveUpMs) {
-        process.stderr.write(`canvas-wait: gave up on board "${board}" at ${serve}\n`);
+        process.stderr.write(`canvas-wait: gave up on canvas "${board}" at ${serve}\n`);
         code = 1;
         break;
       }
@@ -131,7 +131,7 @@ async function follow(board, seat, serve) {
 }
 
 function usage() {
-  process.stderr.write('usage: canvas-wait.mjs name | follow <board> --as <seat> [--serve URL]\n');
+  process.stderr.write('usage: canvas-wait.mjs name | follow <canvas> --as <seat> [--serve URL]\n');
   process.exit(2);
 }
 

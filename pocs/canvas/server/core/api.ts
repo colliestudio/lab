@@ -180,7 +180,7 @@ export async function directoryApi(dir: BoardDirectory, req: ApiRequest): Promis
       if (method === 'GET') return ok(await dir.list());
       if (method === 'POST') {
         const body = await req.body();
-        if (body.text !== undefined && typeof body.text !== 'string') return fail(400, '"text" must be the board file as a string');
+        if (body.text !== undefined && typeof body.text !== 'string') return fail(400, '"text" must be the canvas file as a string');
         return ok({ name: await dir.create(String(body.name ?? ''), body.text) }, 201);
       }
       return undefined;
@@ -204,7 +204,7 @@ export async function serviceApi(dir: BoardDirectory, req: ApiRequest): Promise<
   const own = await directoryApi(dir, req);
   if (own) return own;
   const m = /^\/api\/boards\/([^/]+)(\/.*)$/.exec(req.path);
-  if (!m) return fail(404, 'GET /api/info /api/boards; POST /api/boards {name, text?} /api/boards/<name>/rename {to} /api/boards/<name>/delete; a board: /api/boards/<name>/doc /status /agent/run …');
+  if (!m) return fail(404, 'GET /api/info /api/boards; POST /api/boards {name, text?} /api/boards/<name>/rename {to} /api/boards/<name>/delete; a canvas: /api/boards/<name>/doc /status /agent/run …');
   try {
     return await dir.use(decodeName(m[1]), (b) => boardApi(b, { ...req, path: m[2] }));
   } catch (e) {
@@ -216,7 +216,7 @@ function decodeName(seg: string): string {
   try {
     return decodeURIComponent(seg);
   } catch {
-    throw new DirError(400, 'the board name in the path is not valid URL encoding');
+    throw new DirError(400, 'the canvas name in the path is not valid URL encoding');
   }
 }
 
