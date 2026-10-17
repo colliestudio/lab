@@ -4,7 +4,7 @@ export const GROUPS: [string, [string, string][]][] = [
   [
     'Screen',
     [
-      ['Menu (top left)', 'File, Edit, Room, Add, game submenus (New hand, Play prototype), Bridge…, Help'],
+      ['Menu (top left)', 'File, Edit, Room, Add, View (board background, light/dark theme), game submenus (New hand, Play prototype), Bridge…, Help'],
       ['Dock (bottom)', 'Select, hand and + (put something on the table); tooltips name each button and its shortcut'],
       ['People, Chat, Share (top right)', 'Who is here and the connection, the chat, and the invite link'],
       ['Zoom and ? (bottom right)', 'Zoom out / % / in / fit, and this help. Messages (saved, opened, link copied) appear above the dock'],

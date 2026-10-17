@@ -39,6 +39,6 @@
 }
 .bd-col-head {
   padding: 10px 14px;
-  color: #2b2f36;
+  color: var(--cv-ink);
   font: 600 15px system-ui, sans-serif;
 }

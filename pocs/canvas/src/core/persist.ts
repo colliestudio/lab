@@ -10,7 +10,8 @@ export async function persistLocally(app: App, name: string): Promise<{ empty: b
   await p.whenSynced;
   app.store.migrate();
   app.store.undoManager.clear();
-  return { empty: app.store.nodes.size === 0 };
+  // a background alone is something worth keeping
+  return { empty: app.store.nodes.size === 0 && app.store.meta.size === 0 };
 }
 
 /** Viewport is per-device view state, not document state: plain localStorage. */

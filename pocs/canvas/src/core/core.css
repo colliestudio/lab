@@ -11,6 +11,9 @@
   --cv-bg: #f8f9fa;
   --cv-dot: rgba(0, 0, 0, 0.14);
   --cv-label-bg: var(--cv-bg);
+  /* what is drawn straight on the board (free text, arrows, their labels): follows the background */
+  --cv-ink: #1e1e1e;
+  --cv-label-fg: var(--cv-ink);
   --cv-select: #4c8dff;
   background-color: var(--cv-bg);
   background-image: radial-gradient(circle, var(--cv-dot) 1.1px, transparent 1.5px);
@@ -702,18 +705,20 @@
   z-index: 0;
 }
 .cv-edges line {
-  stroke: rgba(30, 34, 44, 0.7);
+  stroke: var(--cv-ink);
+  stroke-opacity: 0.7;
   stroke-width: 2.5;
 }
 .cv-edges marker path {
-  fill: rgba(30, 34, 44, 0.8);
+  fill: var(--cv-ink);
+  fill-opacity: 0.8;
 }
 .cv-edges text {
-  fill: #1e222c;
+  fill: var(--cv-ink);
   font: 13px system-ui, sans-serif;
   text-anchor: middle;
   paint-order: stroke;
-  stroke: rgba(248, 249, 250, 0.9);
+  stroke: var(--cv-bg);
   stroke-width: 3px;
 }
 
@@ -902,7 +907,7 @@
   padding: 1px 6px;
   border-radius: 4px;
   background: var(--cv-label-bg, #fafafa);
-  color: var(--cv-label-fg, #1e1e1e);
+  color: var(--cv-label-fg);
   font: 14px/1.3 system-ui, sans-serif;
   white-space: pre;
   text-align: center;

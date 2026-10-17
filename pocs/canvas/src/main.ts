@@ -1,5 +1,5 @@
 import './style.css';
-import { App, type Room, chromeButton, joinBridge, mountAgentView, joinRoom, loadPlayer, mountChat, mountChrome, mountLog, mountZoomControl, savePlayer, openFile, parse, serialize, persistLocally, persistViewport, resetFileHandle, roomDbName, saveFile, type CanvasDoc } from './core';
+import { App, type Room, chromeButton, joinBridge, mountAgentView, joinRoom, loadPlayer, mountChat, mountChrome, mountLog, mountTheme, mountZoomControl, savePlayer, openFile, parse, serialize, persistLocally, persistViewport, resetFileHandle, roomDbName, saveFile, type CanvasDoc } from './core';
 import { copyText, createRoomFrom, mountRoomStatus, roomFromUrl, roomLink } from './share';
 import { openBridgeDialog } from './bridgeDialog';
 import { bridgeFromLocation, bridgeHref, rememberBridge } from './bridges';
@@ -42,6 +42,7 @@ const app = new App(document.getElementById('table')!);
 }
 if (AGENT_VIEW) app.readOnly = true;
 const chrome = mountChrome(app);
+mountTheme(app, { forceLight: !!AGENT_VIEW });
 const flash = chrome.toast;
 // every plugin's data side from the shared list (the bridge registers the same list); `use` below adds the DOM side
 registerPluginLogic(app.store);

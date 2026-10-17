@@ -181,7 +181,7 @@ export class Store {
     this.meta = this.ydoc.getMap('meta');
     this.log = this.ydoc.getArray('log');
     // captureTimeout: we decide grouping ourselves (each dispatch = one undo step unless merged)
-    this.undoManager = new Y.UndoManager([this.nodes, this.edges], {
+    this.undoManager = new Y.UndoManager([this.nodes, this.edges, this.meta], {
       trackedOrigins: new Set([this.local]),
       captureTimeout: Number.MAX_SAFE_INTEGER,
     });
@@ -413,6 +413,10 @@ export class Store {
       }
       case 'unedge':
         this.edges.delete(c.id);
+        return;
+      case 'meta':
+        if (c.value === undefined) this.meta.delete(c.key);
+        else this.meta.set(c.key, c.value);
         return;
       case 'set': {
         // A node deleted (maybe concurrently) stays deleted: never resurrect it through a set.

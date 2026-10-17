@@ -13,7 +13,8 @@ export function renderShape(n: CanvasNode, el: HTMLElement) {
   const wrap = document.createElement('div');
   wrap.className = `dg-shape dg-k-${kind}${s.dashed ? ' dg-dashed' : ''}`;
   const fill = fillOf(s);
-  wrap.style.setProperty('--dg-stroke', canvasColor(strokeOf(s))!);
+  // an unset stroke is the board's ink, unless the shape has a (light) fill of its own to sit on
+  wrap.style.setProperty('--dg-stroke', s.stroke === undefined && fill === 'none' ? 'var(--cv-ink)' : canvasColor(strokeOf(s))!);
   wrap.style.setProperty('--dg-fill', fill === 'none' ? 'transparent' : canvasColor(fill)!);
   wrap.style.setProperty('--dg-size', `${sizeOf(s)}px`);
   if (kind === 'diamond') {

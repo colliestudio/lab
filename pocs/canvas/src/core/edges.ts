@@ -200,7 +200,7 @@ export class EdgeLayer {
 
   private drawStyled(e: CanvasEdge, a: Box, b: Box, selected: boolean, live: Set<string>) {
     const geo = edgeGeometry(e, a, b);
-    const color = canvasColor(e.color) ?? '#1e1e1e';
+    const color = canvasColor(e.color) ?? 'var(--cv-ink)';
     const style = edgeStyle(e);
     const grp = document.createElementNS(SVG, 'g');
     grp.setAttribute('class', 'cv-edge' + (selected ? ' cv-edge-sel' : ''));

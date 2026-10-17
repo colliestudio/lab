@@ -105,6 +105,26 @@ describe('Board: stored text', () => {
   });
 });
 
+describe('Board: background', () => {
+  it('an agent command and a browser edit both land in the file, and a restart reads them back', async () => {
+    const st = new MemoryStorage({ a: text([n('x')], { [FORMAT_KEY]: 1 }) });
+    const b = await Board.load('a', st, quiet);
+    const c = fakeClient(b);
+    expect(b.host.dispatch(claude, 'core.background', { color: 'slate' }).ok).toBe(true);
+    await tick();
+    expect(JSON.parse(st.files.get('a')!)['x-canvas-background']).toBe('#2b3340');
+    expect(c.store.doc.extra?.['x-canvas-background']).toBe('#2b3340'); // the browser sees it
+    c.store.dispatch('core.background', { color: '#e2f1e8' });
+    await tick();
+    expect(JSON.parse(st.files.get('a')!)['x-canvas-background']).toBe('#e2f1e8');
+    c.disconnect();
+    await b.close();
+    const again = await Board.load('a', st, quiet);
+    expect(again.host.store.doc.extra?.['x-canvas-background']).toBe('#e2f1e8');
+    await again.close();
+  });
+});
+
 describe('Board: writes never overwrite an edit from outside', () => {
   it('an edit that lands between the read and the write is merged, not lost', async () => {
     const st = new MemoryStorage({ a: text([n('x', { text: 'one' })], { [FORMAT_KEY]: 1 }) });
