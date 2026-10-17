@@ -1,7 +1,7 @@
 {
   "name": "canvas-desktop",
   "private": true,
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Collie Canvas desktop (Electron): a window shell over a canvas serve",
   "main": "build/main.cjs",
   "scripts": {

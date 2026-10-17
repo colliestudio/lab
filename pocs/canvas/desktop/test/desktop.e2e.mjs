@@ -212,6 +212,22 @@ try {
   await new Promise((r) => setTimeout(r, 900));
   await app.close();
   check('a session-only backend writes no state.json', !existsSync(join(fakeHome, 'Library', 'Application Support', 'Collie Canvas', 'state.json')));
+
+  // ---- a prototype page renders in the window (srcdoc frame; the load watch must not remove it)
+  const pageBoard = {
+    nodes: [{ id: 'p1', type: 'text', text: '### Page', x: 0, y: 0, width: 640, height: 426, 'x-page': { title: 'Page', html: '<h1 id="hi">Hello page</h1>', vw: 1280 } }],
+    edges: [],
+  };
+  await api('/api/boards', { name: 'Pages', text: JSON.stringify(pageBoard) });
+  app = await launch(mkdtempSync(join(tmpdir(), 'collie-e2e-user-')), BACKEND);
+  await app.evaluate(() => globalThis.__shell.openBoard('Pages'));
+  const pages = await winByUrl(app, /\/b\/Pages$/);
+  await until(() => pages.locator('iframe.pg-frame').count().then((n) => n > 0), 10000);
+  await new Promise((r) => setTimeout(r, 3500)); // past the 2 s handshake of the load watch
+  check('a prototype page renders in its window', (await pages.locator('iframe.pg-frame').count()) === 1 && (await pages.frameLocator('iframe.pg-frame').locator('#hi').innerText().catch(() => '')) === 'Hello page');
+  check('and is not replaced by the "left the canvas" placeholder', (await pages.locator('.pg-gone').count()) === 0, await pages.locator('.pg-gone').first().getAttribute('data-why').catch(() => ''));
+  await shot(pages, '7-page');
+  await app.close();
 } catch (e) {
   console.error(e);
   failed++;

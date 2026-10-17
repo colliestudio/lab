@@ -138,10 +138,14 @@ function srcdocFrame(html: string, scripts: boolean, state: Record<string, strin
   keys.set(frame, key);
   frame.srcdoc = srcdocDocument(html, { scripts, state, key });
   let attached = false;
-  const watch = loadWatch(scripts, () => {
+  const bornAt = performance.now();
+  const watch = loadWatch(scripts, (why) => {
+    // the reason is for whoever debugs a page that was removed by mistake (the desktop app logs console errors)
+    console.error(`page frame removed (${why}; scripts ${scripts ? 'on' : 'off'}, ${Math.round(performance.now() - bornAt)} ms after it was made)`);
     // the frame left its document: remove it (best effort: the page keeps what its first attempt sent, and can send more until this runs)
     const gone = document.createElement('div');
     gone.className = 'pg-gone';
+    gone.setAttribute('data-why', why);
     gone.style.cssText = frame.style.cssText;
     gone.textContent = 'This page tried to leave the canvas and was stopped. Interact with it, play it or edit it to show it again.';
     frame.replaceWith(gone);
