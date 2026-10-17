@@ -1,7 +1,7 @@
 {
   "name": "canvas-desktop",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Collie Canvas desktop (Electron): a window shell over a canvas serve",
   "main": "build/main.cjs",
   "scripts": {
@@ -10,7 +10,7 @@
     "package": "node build.mjs && electron-builder --dir --mac --arm64",
     "publish-app": "node scripts/publish.mjs",
     "test:e2e": "node build.mjs && node test/desktop.e2e.mjs",
-    "typecheck": "tsc --noEmit -p ."
+    "typecheck": "../node_modules/.bin/tsc --noEmit -p ."
   },
   "devDependencies": {
     "electron": "44.7.0",

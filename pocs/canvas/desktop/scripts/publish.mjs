@@ -1,7 +1,7 @@
 // Build the unsigned arm64 app, zip it and publish it where the Mac Mini serves static files, so
 // the MacBook can install it with one command (scripts/install.sh):
 //   pnpm --dir desktop publish-app [--out <dir>] [--base-url <url>] [--keep N]
-// Writes into <out> (default $COLLIE_APPS_DIR or the workspace's local/recap-out/apps, served at
+// Writes into <out> ($COLLIE_APPS_DIR when --out is not given; on the Mini the folder served at
 // http://mini.internal:5412/apps/):
 //   collie-canvas-<yyyymmdd-hhmm>-<sha>.zip   one per publish (the newest --keep, default 5, stay)
 //   collie-canvas-latest.zip                  copy of the newest
@@ -18,7 +18,8 @@ const arg = (name, def) => {
   const i = process.argv.indexOf(`--${name}`);
   return i > 0 ? process.argv[i + 1] : def;
 };
-const out = arg('out', process.env.COLLIE_APPS_DIR ?? '/Users/alex/workspaces/cs/local/recap-out/apps');
+const out = arg('out', process.env.COLLIE_APPS_DIR);
+if (!out) throw new Error('say where to publish: --out <dir> or COLLIE_APPS_DIR (the folder served at the apps URL)');
 const baseUrl = arg('base-url', process.env.COLLIE_APPS_URL ?? 'http://mini.internal:5412/apps').replace(/\/+$/, '');
 const keep = Number(arg('keep', 5));
 const run = (cmd, args, opts = {}) => execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'], ...opts }).trim();

@@ -1,5 +1,5 @@
 import { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, session, shell, type IpcMainEvent, type IpcMainInvokeEvent, type MenuItemConstructorOptions } from 'electron';
-import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { boardHref } from '../../src/serve/route';
@@ -38,19 +38,25 @@ app.enableSandbox();
 // ---------------------------------------------------------------- state
 
 const envBackend = normalizeBackend(process.env.CANVAS_BACKEND ?? '');
+// CANVAS_BACKEND on the installed app's own data (no CANVAS_USER_DATA) is for this run only: nothing is read from or written to state.json
+const sessionOnly = !!envBackend && !process.env.CANVAS_USER_DATA;
 let state: State = (() => {
   let raw: unknown;
-  try {
-    raw = JSON.parse(readFileSync(STATE_FILE, 'utf8'));
-  } catch {}
+  if (!sessionOnly)
+    try {
+      raw = JSON.parse(readFileSync(STATE_FILE, 'utf8'));
+    } catch {}
   const s = sanitizeState(raw, DEFAULT_BACKEND);
   return envBackend ? { ...s, backend: envBackend } : s;
 })();
 const backend = () => state.backend;
 
 function persist() {
+  if (sessionOnly) return;
   try {
-    writeFileSync(STATE_FILE, JSON.stringify(state, null, 2) + '\n');
+    // temp file + rename: a crash mid-write must not lose the saved backend
+    writeFileSync(STATE_FILE + '.tmp', JSON.stringify(state, null, 2) + '\n');
+    renameSync(STATE_FILE + '.tmp', STATE_FILE);
   } catch (e) {
     log('state: could not save', (e as Error).message);
   }
@@ -107,6 +113,16 @@ function createWindow(key: string, bounds?: Bounds): BrowserWindow {
     buildMenu();
   });
   const wc = win.webContents;
+  // The app's shortcuts win over the board page's own (the board binds Cmd+O to its file import; File > Import covers it here)
+  wc.on('before-input-event', (e, i) => {
+    const mod = process.platform === 'darwin' ? i.meta : i.control;
+    if (i.type !== 'keyDown' || !mod || i.shift || i.alt) return;
+    const k = i.key.toLowerCase();
+    if (k === 'o' || k === 'k') {
+      e.preventDefault();
+      openSwitcher();
+    }
+  });
   wc.setWindowOpenHandler(({ url }) => {
     route(win, url);
     return { action: 'deny' };
@@ -430,7 +446,13 @@ app.on('second-instance', (_e, argv, cwd) => {
 // ---------------------------------------------------------------- start
 
 app.whenReady().then(() => {
-  session.defaultSession.setPermissionRequestHandler((_wc, permission, cb) => cb(['clipboard-read', 'clipboard-sanitized-write', 'fullscreen'].includes(permission)));
+  session.defaultSession.setPermissionRequestHandler((_wc, permission, cb, details) => {
+    let own = false;
+    try {
+      own = new URL(details.requestingUrl).origin === backend();
+    } catch {}
+    cb(own && ['clipboard-read', 'clipboard-sanitized-write', 'fullscreen'].includes(permission));
+  });
   log(`ready: backend ${backend()}, electron ${process.versions.electron}`);
   ready = true;
   const saved = state.windows;
