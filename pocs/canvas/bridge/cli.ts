@@ -5,6 +5,7 @@ import { buildForms, findForm, formUsage, type Form } from './forms';
 import { chatText } from '../src/core/chat';
 import { apiBase, followChat } from './follow';
 import { PLUGIN_CLI } from '../src/plugins/cli';
+import { runShot, SHOT_USAGE } from './shotCli';
 
 // canvas: edit a live canvas from the shell (agents, scripts, people). Talks to the bridge.
 //   pnpm canvas <command> [args] [--as NAME] [--bridge URL]
@@ -28,6 +29,8 @@ function help() {
   show                                    the .canvas file text
   undo | redo                             your own last step (per --as)
   log [-n 20]
+  ${SHOT_USAGE}
+      a PNG of the board as your seat sees it (NODE: id or title; --labels tags nodes with ids and lists them)
   help [PLUGIN [COMMAND]]                 what plugins can do: guide, commands, views
   run NAME [JSON]                         any command, args checked (canvas help lists them)
   view NAME [JSON]                        read a plugin view
@@ -100,6 +103,9 @@ async function main() {
     }
     case 'log':
       for (const e of await c.log(num('n') ?? 20)) console.log(`${e.time.slice(11, 19)}  ${e.actor ?? '—'} ${e.text}`);
+      return;
+    case 'screenshot':
+      await runShot(c, params, flags, say);
       return;
     case 'cmd':
       return console.log(JSON.stringify(await c.cmd(params[0], parseJson(params[1])), null, 2));

@@ -6,6 +6,8 @@ import { BoardDirectory } from './directory';
 import { Board } from './board';
 import { stableSerialize } from './canonical';
 import { MemoryStorage } from './memory';
+import { ShotError, type ShotProvider, type ShotRequest } from './shots';
+import type { Actor } from './host';
 
 const req = (method: string, path: string, body: unknown = {}, headers: ApiRequest['headers'] = {}): ApiRequest => {
   const [p, qs] = path.split('?');
@@ -122,5 +124,71 @@ describe('directoryApi and serviceApi', () => {
     const r = await call('GET', '/api/boards/new/status');
     expect(r).toMatchObject({ status: 409, json: { error: expect.stringContaining('format 7') } });
     expect(st.files.get('new')).toBe(text);
+  });
+});
+
+describe('/shot', () => {
+  const PNG = new Uint8Array([137, 80, 78, 71, 1, 2, 3]);
+  const texts = stableSerialize({
+    nodes: [
+      { id: 'a', type: 'text', text: 'Alpha', x: 0, y: 0, width: 100, height: 50 },
+      { id: 'b', type: 'text', text: 'Beta', x: 200, y: 0, width: 100, height: 50 },
+    ],
+    edges: [],
+  });
+  const withShots = async (shoot: ShotProvider['shoot']) => (board = await Board.load('demo', new MemoryStorage({ demo: texts }), { log: () => {}, shots: { shoot, drop: async () => 0, close: async () => {} } }));
+  const calls: { board: string; actor: Actor; r: ShotRequest }[] = [];
+  const ok = (board: string, actor: Actor, r: ShotRequest) => (calls.push({ board, actor, r }), Promise.resolve({ png: PNG, width: r.width, height: r.height, ms: 12, nodes: [{ id: 'a', type: 'text', box: [1, 2, 3, 4] as [number, number, number, number] }] }));
+  const get = (path: string) => boardApi(board, req('GET', path));
+  const args = (a: object, extra = '') => `/shot?args=${encodeURIComponent(JSON.stringify(a))}${extra}`;
+
+  it('passes the seat, defaults and the board state to the provider, and returns base64 + metadata', async () => {
+    calls.length = 0;
+    await withShots(ok);
+    const r = await get('/shot?as=Claude Code&kind=tool');
+    expect(r.status).toBe(200);
+    expect(r.json).toMatchObject({ mime: 'image/png', seat: 'tool:claude-code', target: 'whole board', width: 1000, height: 750, ms: 12, nodes: [{ id: 'a' }] });
+    expect(Buffer.from((r.json as { png: string }).png, 'base64')).toEqual(Buffer.from(PNG));
+    expect(calls[0].board).toBe('demo');
+    expect(calls[0].actor.id).toBe('tool:claude-code');
+    expect(calls[0].r).toMatchObject({ target: { kind: 'all' }, width: 1000, height: 750, padding: 40, labels: false });
+    expect(calls[0].r.stateVector).toMatch(/^[A-Za-z0-9+/=]+$/);
+  });
+
+  it('resolves a node title to its id, clamps sizes, and takes a region and labels', async () => {
+    calls.length = 0;
+    await withShots(ok);
+    await get(args({ node: 'beta', width: 99999, height: 5, labels: true, padding: 10 }));
+    expect(calls[0].r).toMatchObject({ target: { kind: 'node', id: 'b' }, width: 2000, height: 200, padding: 10, labels: true });
+    await get(args({ region: { x: -10, y: 5, width: 300, height: 200 } }, '&as=Claude'));
+    expect(calls[1].r.target).toEqual({ kind: 'region', x: -10, y: 5, width: 300, height: 200 });
+    expect(calls[1].actor.id).toBe('agent:claude');
+  });
+
+  it('a bad region or an unknown node is a 400 with a clear message', async () => {
+    await withShots(ok);
+    for (const [a, msg] of [
+      [{ region: { x: 0, y: 0, width: 0, height: 10 } }, 'above 0'],
+      [{ region: { x: 'a', y: 0, width: 5, height: 10 } }, 'region.x must be a number'],
+      [{ region: 5 }, 'region must be'],
+      [{ node: 'zzz' }, 'no node "zzz"'],
+      [{ node: 'a', region: { x: 0, y: 0, width: 1, height: 1 } }, 'not both'],
+    ] as const) {
+      const r = await get(args(a));
+      expect(r.status).toBe(400);
+      expect((r.json as { error: string }).error).toContain(msg);
+    }
+    expect((await get('/shot?args=%7B')).status).toBe(400);
+  });
+
+  it('without a provider: 503 "not available here"; a provider error keeps its status and text', async () => {
+    await open();
+    const none = await get('/shot');
+    expect(none.status).toBe(503);
+    expect((none.json as { error: string }).error).toContain('screenshots are not available here');
+    await withShots(() => Promise.reject(new ShotError(503, 'no browser for screenshots: install Chrome')));
+    expect(await get('/shot')).toEqual({ status: 503, json: { error: 'no browser for screenshots: install Chrome' } });
+    await withShots(() => Promise.reject(new Error('boom')));
+    expect((await get('/shot')).status).toBe(500);
   });
 });

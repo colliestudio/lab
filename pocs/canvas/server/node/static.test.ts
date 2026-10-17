@@ -27,10 +27,10 @@ const call = (p: number, path: string, o: { method?: string; headers?: Record<st
     req.end();
   });
 
-const serve = (root: string) =>
+const serve = (root: string, only?: RegExp) =>
   new Promise<{ s: Server; p: number }>((resolve) => {
     const guard = makeGuard({ port: 0 });
-    const a = createStaticApp(root, guard);
+    const a = createStaticApp(root, guard, { only });
     const s = createServer(async (req, res) => {
       if (!(await a.handle(req, res))) {
         res.writeHead(418);
@@ -132,5 +132,18 @@ describe('static app', () => {
       expect(r.body).toContain('pnpm build');
     }
     expect((await call(missingPort, '/assets/a.js')).status).toBe(404);
+  });
+});
+
+describe('static app with `only` (the bridge)', () => {
+  it('serves just the matching paths and leaves /doc, /status and / to the caller', async () => {
+    const { s, p } = await serve(app, /^\/(b|assets|excalidraw)\//);
+    try {
+      expect((await call(p, '/b/x')).body).toBe('<title>board</title>');
+      expect((await call(p, '/assets/a.js')).status).toBe(200);
+      for (const path of ['/doc', '/status', '/', '/query?x=1', '/x.woff2']) expect((await call(p, path)).status, path).toBe(418);
+    } finally {
+      s.close();
+    }
   });
 });

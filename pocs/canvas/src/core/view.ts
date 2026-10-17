@@ -215,11 +215,16 @@ export class View {
     const minY = Math.min(...nodes.map((n) => n.y));
     const maxX = Math.max(...nodes.map((n) => n.x + n.width));
     const maxY = Math.max(...nodes.map((n) => n.y + n.height));
+    this.fitBox({ x: minX, y: minY, width: maxX - minX, height: maxY - minY }, padding, maxZoom);
+  }
+
+  /** Zoom/pan so a world box sits centered in the view with `padding` px around it. */
+  fitBox(box: { x: number; y: number; width: number; height: number }, padding = 60, maxZoom = 1.5) {
     const w = this.root.clientWidth - padding * 2;
     const h = this.root.clientHeight - padding * 2;
-    const zoom = Math.min(maxZoom, Math.max(Viewport.MIN, Math.min(w / (maxX - minX), h / (maxY - minY))));
-    const x = (this.root.clientWidth - (maxX - minX) * zoom) / 2 - minX * zoom;
-    const y = (this.root.clientHeight - (maxY - minY) * zoom) / 2 - minY * zoom;
+    const zoom = Math.min(maxZoom, Math.max(Viewport.MIN, Math.min(w / box.width, h / box.height)));
+    const x = (this.root.clientWidth - box.width * zoom) / 2 - box.x * zoom;
+    const y = (this.root.clientHeight - box.height * zoom) / 2 - box.y * zoom;
     this.app.viewport.set(x, y, zoom);
   }
 

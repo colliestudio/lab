@@ -8,6 +8,7 @@ import { makeGuard } from './node/guard';
 import { acquireFolderLock, describeBridges, FolderLockedError, liveBridges } from './node/lock';
 import { createNodeServer } from './node/http';
 import { createStaticApp } from './node/static';
+import { HeadlessShots } from './node/shots';
 import { mcpHandler } from './node/mcp';
 import { McpService } from './mcp/session';
 
@@ -68,7 +69,10 @@ process.on('exit', () => lock.release());
 // Bridges mark the folder before they check our lock, so one of the two sees the other.
 const bridges = liveBridges(storage.dir);
 if (bridges.length) fail(describeBridges(storage.dir, bridges), 1);
-const directory = new BoardDirectory(storage, { idleMs: args.idleMs, sweepMs: Math.min(10_000, Math.max(50, (args.idleMs ?? 600_000) / 2)), log });
+// Screenshots: a headless Chrome on this serve's own web app (agent view), started on the first request.
+const loopback = host === '0.0.0.0' || host === '::' ? '127.0.0.1' : host.includes(':') ? `[${host}]` : host;
+const shots = new HeadlessShots({ pageUrl: (board, actorId) => `http://${loopback}:${port}/b/${encodeURIComponent(board)}?agentView=${encodeURIComponent(actorId)}`, log });
+const directory = new BoardDirectory(storage, { shots, idleMs: args.idleMs, sweepMs: Math.min(10_000, Math.max(50, (args.idleMs ?? 600_000) / 2)), log });
 const appDir = resolve(args.app ?? fileURLToPath(new URL('../dist', import.meta.url)));
 for (const f of ['index.html', 'home.html']) {
   if (!existsSync(join(appDir, f))) console.warn(`canvas serve: ${join(appDir, f)} is missing; the web app won't open until \`pnpm build\` has run (the API works)`);
@@ -101,6 +105,7 @@ async function stop() {
     mcpService.closeAll(); // seats leave, leases are released (same tick: no session can join in between)
     await closing;
     await directory.closeAll();
+    await shots.close();
   } finally {
     process.exit(0);
   }

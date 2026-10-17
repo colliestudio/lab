@@ -8,6 +8,8 @@ import { MemoryStorage } from '../core/memory';
 import { McpService } from '../mcp/session';
 import { sessionTools } from '../mcp/tools';
 import { mcpHandler } from './mcp';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
 const INIT = JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'raw', version: '1' } } });
 
@@ -55,5 +57,22 @@ describe('mcpHandler initialize', () => {
     });
     expect((await init(url, 'application/json, text/event-stream')).status).toBe(500);
     expect(svc.sessions.size).toBe(0);
+  });
+});
+
+describe('mcpHandler tool results', () => {
+  it('a string result is one text block; an array of blocks (an image) is passed through as is', async () => {
+    const url = await start((_cat, _session) => [
+      { name: 'say', description: 'x', inputSchema: { type: 'object', properties: {} }, call: async () => 'plain' },
+      { name: 'pic', description: 'x', inputSchema: { type: 'object', properties: {} }, call: async () => [{ type: 'image' as const, data: 'iVBO', mimeType: 'image/png' }, { type: 'text' as const, text: 'caption' }] },
+    ]);
+    const client = new Client({ name: 't', version: '1' });
+    await client.connect(new StreamableHTTPClientTransport(new URL(url)));
+    try {
+      expect((await client.callTool({ name: 'say', arguments: {} })).content).toEqual([{ type: 'text', text: 'plain' }]);
+      expect((await client.callTool({ name: 'pic', arguments: {} })).content).toEqual([{ type: 'image', data: 'iVBO', mimeType: 'image/png' }, { type: 'text', text: 'caption' }]);
+    } finally {
+      await client.close();
+    }
   });
 });

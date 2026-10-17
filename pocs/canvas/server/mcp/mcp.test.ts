@@ -180,7 +180,7 @@ describe('chat_wait over several boards', () => {
     await new Promise((r) => setTimeout(r, 20));
     jb.board.host.say(makeActor('Zoe'), 'hi @Ann');
     ja.board.host.say(makeActor('Zoe'), 'also here'); // lands while the race is being settled
-    const text = await p;
+    const text = (await p) as string;
     expect(text).toContain('# beta');
     expect(text).toContain('hi @Ann');
     expect(ja.board.host.unreadChat(ja.actor)).toBeLessThanOrEqual(1);
@@ -226,5 +226,33 @@ describe('cancelling and racing', () => {
     const results = await Promise.allSettled([s.join('beta', 'Ann'), other.join('beta', 'Ann'), s.join('beta', 'Different')]);
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
     expect(dir.loaded('beta')!.leases).toBe(1);
+  });
+});
+
+describe('canvas_screenshot through a session', () => {
+  it('reaches the board’s provider as the seat that joined, with the board state, and answers with an image', async () => {
+    const calls: { board: string; actor: string; target: unknown; sv: string }[] = [];
+    const shots = {
+      shoot: async (board: string, actor: { id: string }, r: { target: unknown; stateVector: string; width: number; height: number }) => (
+        calls.push({ board, actor: actor.id, target: r.target, sv: r.stateVector }),
+        { png: new Uint8Array([137, 80, 78, 71]), width: r.width, height: r.height, ms: 7, nodes: [] }
+      ),
+      drop: async () => 0,
+      close: async () => {},
+    };
+    const d2 = new BoardDirectory(new MemoryStorage({ alpha: stableSerialize({ nodes: [{ id: 'n', type: 'text', text: 'Hello', x: 0, y: 0, width: 100, height: 50 }], edges: [], extra: { 'x-canvas-format': 1 } }) }), { sweepMs: 0, log: () => {}, shots });
+    const s2 = new McpService(d2, { idleMs: IDLE, now: () => now });
+    try {
+      const s = s2.create('s9');
+      await s.join('alpha', 'Ann');
+      const t = sessionTools(catalog(), s).find((x) => x.name === 'canvas_screenshot')!;
+      const out = (await t.call({ node: 'Hello' }, ctx())) as { type: string; data?: string; mimeType?: string; text?: string }[];
+      expect(calls).toEqual([{ board: 'alpha', actor: 'agent:ann', target: { kind: 'node', id: 'n' }, sv: expect.any(String) }]);
+      expect(out[0]).toEqual({ type: 'image', data: Buffer.from([137, 80, 78, 71]).toString('base64'), mimeType: 'image/png' });
+      expect(out[1].text).toContain('agent:ann');
+    } finally {
+      s2.closeAll();
+      await d2.closeAll();
+    }
   });
 });

@@ -23,3 +23,4 @@ export { Presence, mountPresenceView, type PlayerInfo, type Peer } from './prese
 export { loadPlayer, savePlayer, PALETTE, MAX_NAME, type StoredPlayer } from './player';
 export { joinRoom, joinBridge, guardHosted, HOSTED_REFUSAL, signalingUrl, roomDbName, type Room } from './sync';
 export { parseBridgeAddress, bridgeLink, parseRoomRef, type BridgeAddress } from './bridgeAddress';
+export { mountAgentView, covers, type ShotTarget, type FrameOpts, type InView, type CanvasShotApi } from './agentView';

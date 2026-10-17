@@ -20,6 +20,9 @@ importers:
       lib0:
         specifier: ^0.2.119
         version: 0.2.119
+      playwright-core:
+        specifier: ^1.64.0
+        version: 1.64.0
       react:
         specifier: ^19.3.0
         version: 19.3.0
@@ -72,9 +75,6 @@ importers:
       happy-dom:
         specifier: ^20.14.6
         version: 20.14.6
-      playwright-core:
-        specifier: ^1.64.0
-        version: 1.64.0
       typescript:
         specifier: ^7.0.2
         version: 7.0.2

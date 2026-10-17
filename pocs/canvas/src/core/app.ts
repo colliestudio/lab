@@ -40,6 +40,8 @@ export class App {
   readonly renameHooks: ((app: App, me: PlayerInfo) => void)[] = [];
   readonly view: View;
   viewer = LOCAL_PLAYER;
+  /** A page that only looks (the screenshot page): nothing dispatched from here, timers included, changes the board. */
+  readOnly = false;
   /** Set when the table is shared (multiplayer); null when playing solo. */
   presence: Presence | null = null;
   /** This device's player when solo (in a room: presence.me). */
@@ -192,6 +194,7 @@ export class App {
   }
   /** Log events that no command reports (see log.ts); not an undo step. */
   logEvents(events: EventSpec[]) {
+    if (this.readOnly) return;
     this.store.appendLog(events);
   }
 
@@ -256,6 +259,7 @@ export class App {
 
   // --- helpers ---
   dispatch<A>(name: string, args: A, opts?: { merge?: boolean; undoable?: boolean }): DispatchResult {
+    if (this.readOnly) return { ok: false, error: 'this view is read-only', changes: [] };
     return this.store.dispatch(name, args, opts);
   }
   get doc() {

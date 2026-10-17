@@ -39,7 +39,11 @@ const MIME: Record<string, string> = {
   '.txt': 'text/plain; charset=utf-8',
 };
 
-export function createStaticApp(root: string, guard: Guard): StaticApp {
+/**
+ * `only`: serve just the paths it matches and leave the rest alone (the bridge shows the app for its screenshot
+ * page at /b/*, /assets/* and /excalidraw/*, and must not shadow /doc, /status and its other routes).
+ */
+export function createStaticApp(root: string, guard: Guard, o: { only?: RegExp } = {}): StaticApp {
   const base = resolve(root);
 
   function notFound(res: ServerResponse) {
@@ -74,7 +78,7 @@ export function createStaticApp(root: string, guard: Guard): StaticApp {
         text(res, 400, 'bad request target');
         return true;
       }
-      if (RESERVED.test(url.pathname)) return false;
+      if (RESERVED.test(url.pathname) || (o.only && !o.only.test(url.pathname))) return false;
       if (!guard.hostAllowed(req.headers)) {
         text(res, 403, `Host ${req.headers.host ?? '(none)'} is not allowed`);
         return true;

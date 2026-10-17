@@ -3,7 +3,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { catalog } from './catalog';
 import { client } from './client';
-import { toolList } from './tools';
+import { toContent, toolList } from './tools';
 
 // MCP server: the same operations as the CLI, as tools, so a Claude agent can read the board and
 // add/move/link nodes live while people watch (it is seated as a player: cursor, log name, undo).
@@ -20,7 +20,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
   const tool = tools.find((t) => t.name === req.params.name);
   if (!tool) return { isError: true, content: [{ type: 'text' as const, text: `unknown tool ${req.params.name}; canvas_help lists what can be done` }] };
   try {
-    return { content: [{ type: 'text' as const, text: await tool.call(c, (req.params.arguments ?? {}) as Record<string, any>) }] };
+    return { content: toContent(await tool.call(c, (req.params.arguments ?? {}) as Record<string, any>)) };
   } catch (e) {
     return { isError: true, content: [{ type: 'text' as const, text: (e as Error).message }] };
   }

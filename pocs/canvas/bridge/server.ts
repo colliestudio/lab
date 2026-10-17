@@ -7,6 +7,9 @@ import { makeGuard } from '../server/node/guard';
 import { FolderStorage } from '../server/node/folder';
 import { describeHolder, lockState, markBridge } from '../server/node/lock';
 import { createNodeServer } from '../server/node/http';
+import { createStaticApp } from '../server/node/static';
+import { HeadlessShots } from '../server/node/shots';
+import { fileURLToPath } from 'node:url';
 import { wsConn } from '../server/node/ws';
 import { joinRelay, relayUrl } from './relay';
 import { startTunnel, type Tunnel } from './tunnel';
@@ -98,7 +101,10 @@ if (locked.held) {
   process.exit(2);
 }
 const name = FolderStorage.nameOf(file);
-const directory = new BoardDirectory(storage, { pinned: [name], seatIdleMs: IDLE_MS, log, prefix: false });
+// Screenshots: a headless Chrome on the web app (the repo's dist, served below at /b/*) joined to this bridge in agent view.
+const loopback = bindHost === '0.0.0.0' || bindHost === '::' ? '127.0.0.1' : bindHost.includes(':') ? `[${bindHost}]` : bindHost;
+const shots = new HeadlessShots({ pageUrl: (board, actorId) => `http://${loopback}:${port}/b/${encodeURIComponent(board)}?bridge=ws://${loopback}:${port}&agentView=${encodeURIComponent(actorId)}`, log });
+const directory = new BoardDirectory(storage, { shots, pinned: [name], seatIdleMs: IDLE_MS, log, prefix: false });
 const board = await directory.open(name, { create: true }).catch((e) => die(e));
 
 // join: the file and the room merge both ways, so a file that holds some other board (an agent pointed
@@ -128,6 +134,8 @@ const server = createNodeServer({
   guard,
   log,
   defaultBoard: name,
+  // only what the app page loads: a new top-level file in the build (favicon, worker) must be added here
+  app: createStaticApp(fileURLToPath(new URL('../dist', import.meta.url)), guard, { only: /^\/(b|assets|excalidraw)\// }),
   statusExtra: () => ({ file, port, room: joinRef ? { id: joinRef.room, online: relay?.online() ?? false } : undefined }),
 });
 
@@ -181,6 +189,7 @@ async function stop(code = 0) {
   try {
     await server.close(); // before the flush, so nothing reconnects to a closing board
     await directory.closeAll();
+    await shots.close();
   } finally {
     process.exit(code);
   }

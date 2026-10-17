@@ -1,7 +1,7 @@
 import { chatText } from '../../src/core/chat';
 import type { Catalog } from '../../bridge/catalog';
 import { client, type Client } from '../../bridge/client';
-import { toolList, type ToolSpec } from '../../bridge/tools';
+import { toolList, type ToolResult, type ToolSpec } from '../../bridge/tools';
 import { fold } from '../core/directory';
 import { localSend } from './local';
 import { MAX_NAME, type McpSession } from './session';
@@ -24,7 +24,7 @@ export interface SessionTool {
   name: string;
   description: string;
   inputSchema: Json;
-  call(args: Json, ctx: CallCtx): Promise<string>;
+  call(args: Json, ctx: CallCtx): Promise<ToolResult>;
 }
 
 const str = (description: string): Json => ({ type: 'string', description });
