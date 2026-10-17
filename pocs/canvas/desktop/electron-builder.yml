@@ -1,0 +1,28 @@
+# Unsigned build: pnpm package → dist/mac-arm64/Collie Canvas.app (pnpm publish-app also zips and publishes it)
+appId: studio.collie.canvas
+productName: Collie Canvas
+copyright: Collie Studio
+directories:
+  output: dist
+files:
+  - build/**
+  - "!build/**/*.map"
+  - package.json
+  - "!**/node_modules/**"
+asar: true
+npmRebuild: false
+nodeGypRebuild: false
+electronLanguages: [en]
+mac:
+  target: dir
+  icon: assets/icon.icns
+  identity: null
+  category: public.app-category.productivity
+fileAssociations:
+  - ext: canvas
+    name: JSON Canvas
+    description: JSON Canvas board
+    role: Editor
+    rank: Default
+    icon: assets/icon.icns
+    mimeType: application/json

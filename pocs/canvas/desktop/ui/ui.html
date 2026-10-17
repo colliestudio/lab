@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'" />
+<title>Collie Canvas</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.4 -apple-system, system-ui, sans-serif; background: #1e1e1e; color: #e8e8e8; -webkit-user-select: none; user-select: none; }
+  .pane { display: none; padding: 16px; height: 100vh; flex-direction: column; }
+  body[data-mode="switcher"] #switcher, body[data-mode="backend"] #backend { display: flex; }
+  body[data-mode="error"] #error { display: flex; align-items: center; justify-content: center; text-align: center; }
+  input { width: 100%; font: inherit; padding: 9px 11px; border-radius: 7px; border: 1px solid #444; background: #2a2a2a; color: inherit; outline: none; -webkit-user-select: text; user-select: text; }
+  input:focus { border-color: #6b9eff; }
+  #list { margin: 8px 0 0; padding: 0; list-style: none; overflow: auto; flex: 1; }
+  #list li { padding: 7px 11px; border-radius: 6px; cursor: default; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #list li.sel { background: #3a5a9a; }
+  #list li.new { color: #9bc2ff; }
+  #list li.empty { color: #888; }
+  button { font: inherit; padding: 7px 16px; border-radius: 7px; border: 1px solid #555; background: #333; color: inherit; cursor: pointer; }
+  button.primary { background: #3a6fd8; border-color: #3a6fd8; }
+  .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+  h1 { font-size: 18px; margin: 0 0 6px; }
+  .muted { color: #9a9a9a; }
+  code { font: 13px ui-monospace, Menlo, monospace; background: #2a2a2a; padding: 2px 6px; border-radius: 5px; -webkit-user-select: text; user-select: text; }
+  #err { color: #ff8a80; min-height: 1.4em; margin-top: 8px; }
+  #hint { margin-top: 8px; }
+</style>
+</head>
+<body>
+<div id="switcher" class="pane">
+  <input id="q" placeholder="Open or create a board…" autocomplete="off" spellcheck="false" />
+  <ul id="list"></ul>
+</div>
+<div id="backend" class="pane">
+  <h1>Backend</h1>
+  <p class="muted">The canvas serve this app shows (its address, e.g. <code>http://mini.internal:5310</code>). Changing it closes the open board windows.</p>
+  <input id="url" autocomplete="off" spellcheck="false" />
+  <div id="err"></div>
+  <div class="row"><button id="cancel">Cancel</button><button id="force" hidden>Use anyway</button><button id="save" class="primary">Save</button></div>
+</div>
+<div id="error" class="pane">
+  <div>
+    <h1>Can't reach the canvas backend</h1>
+    <p><code id="eurl"></code></p>
+    <p class="muted" id="emsg"></p>
+    <p class="muted">Retrying every few seconds.</p>
+    <div class="row" style="justify-content:center"><button id="retry" class="primary">Retry now</button></div>
+  </div>
+</div>
+<script>
+const p = new URLSearchParams(location.search);
+const mode = p.get('mode');
+document.body.dataset.mode = mode;
+const $ = (id) => document.getElementById(id);
+if (mode === 'error') {
+  $('eurl').textContent = p.get('url') || '';
+  $('emsg').textContent = p.get('msg') || '';
+  $('retry').onclick = () => shell.retry();
+}
+if (mode === 'backend') {
+  shell.backend().then((v) => { $('url').value = v; $('url').select(); });
+  const save = async (force) => {
+    const r = await shell.setBackend($('url').value, force);
+    if (r.ok) return shell.close();
+    $('err').textContent = r.error || 'Failed';
+    $('force').hidden = !r.canForce;
+  };
+  $('save').onclick = () => save(false);
+  $('force').onclick = () => save(true);
+  $('cancel').onclick = () => shell.close();
+  $('url').addEventListener('keydown', (e) => { if (e.key === 'Enter') save(false); });
+  addEventListener('keydown', (e) => { if (e.key === 'Escape') shell.close(); });
+}
+if (mode === 'switcher') {
+  let names = [], rows = [], sel = 0, loadErr = '';
+  const words = (s) => s.toLowerCase().split(/\s+/).filter(Boolean);
+  function filter(q) {
+    const w = words(q);
+    const hit = names.filter((n) => w.every((x) => n.toLowerCase().includes(x)));
+    const lq = q.trim().toLowerCase();
+    return lq ? [...hit.filter((n) => n.toLowerCase().startsWith(lq)), ...hit.filter((n) => !n.toLowerCase().startsWith(lq))] : hit;
+  }
+  function render() {
+    const q = $('q').value;
+    const hits = filter(q);
+    rows = hits.map((n) => ({ kind: 'open', name: n }));
+    const t = q.trim();
+    if (t && !names.some((n) => n.toLowerCase() === t.toLowerCase())) rows.push({ kind: 'new', name: t });
+    sel = Math.min(sel, Math.max(rows.length - 1, 0));
+    $('list').replaceChildren(...(rows.length ? rows.map((r, i) => {
+      const li = document.createElement('li');
+      li.textContent = r.kind === 'new' ? `Create "${r.name}"` : r.name;
+      li.className = (i === sel ? 'sel ' : '') + (r.kind === 'new' ? 'new' : '');
+      li.onclick = () => choose(r);
+      return li;
+    }) : [Object.assign(document.createElement('li'), { className: 'empty', textContent: loadErr || 'No boards' })]));
+    $('list').querySelector('.sel')?.scrollIntoView({ block: 'nearest' });
+  }
+  async function choose(r) {
+    if (!r) return;
+    if (r.kind === 'new') {
+      const res = await shell.create(r.name);
+      if (res.error) { loadErr = res.error; render(); return; }
+    } else await shell.open(r.name);
+    shell.close();
+  }
+  $('q').addEventListener('input', () => { sel = 0; render(); });
+  addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') shell.close();
+    else if (e.key === 'ArrowDown' || (e.ctrlKey && e.key === 'n')) { sel = Math.min(sel + 1, rows.length - 1); render(); e.preventDefault(); }
+    else if (e.key === 'ArrowUp' || (e.ctrlKey && e.key === 'p')) { sel = Math.max(sel - 1, 0); render(); e.preventDefault(); }
+    else if (e.key === 'Enter') choose(rows[sel]);
+  });
+  addEventListener('blur', () => shell.close());
+  shell.boards().then((r) => { names = r.names; loadErr = r.error || ''; render(); });
+  render();
+  $('q').focus();
+}
+</script>
+</body>
+</html>
