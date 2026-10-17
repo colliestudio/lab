@@ -55,7 +55,7 @@ const host = args.host ?? '127.0.0.1';
 const log = (...m: unknown[]) => console.log(new Date().toISOString().slice(11, 19), ...m);
 const hostOrigins = args.hostNames.map((n) => `http://${n}:${port}`);
 const guard = makeGuard({ port, allowOrigins: [...args.allowOrigins, ...hostOrigins, ...(process.env.CANVAS_ALLOW_ORIGIN?.split(',') ?? [])] });
-const storage = new FolderStorage(dir);
+const storage = new FolderStorage(dir, { log: (m) => log(`canvas serve: ${m}`) });
 // One live writer per folder: a second serve (or a bridge, or the desktop app) must not open these boards.
 // Released on any exit, SIGTERM and a failed listen included; after a SIGKILL the next start finds it stale.
 let lock: ReturnType<typeof acquireFolderLock>;
@@ -87,8 +87,12 @@ try {
 } catch (e) {
   fail(`cannot listen on ${host}:${port}: ${(e as Error).message}`, 1);
 }
-const boards = await directory.list();
-log(`canvas serve: ${storage.dir} on http://${host}:${port} (${boards.length} board${boards.length === 1 ? '' : 's'}; open http://${host}:${port}/; app origins allowed: ${guard.origins.join(', ')})`);
+// Say it loudly when the folder can not be read (macOS holds the process in the read until it has Full Disk Access);
+// the server stays up, so /api/info answers and every board call says why it fails.
+const blocked = await storage.check();
+if (blocked) log(`canvas serve: ${storage.dir} is NOT readable: ${blocked}`);
+const boards = blocked ? [] : await directory.list();
+log(`canvas serve: ${storage.dir} on http://${host}:${port} (${blocked ? 'folder not readable' : `${boards.length} board${boards.length === 1 ? '' : 's'}`}; open http://${host}:${port}/; app origins allowed: ${guard.origins.join(', ')})`);
 for (const o of hostOrigins) log(`open ${o}/`);
 if (!args.allowOrigins.length && !hostOrigins.length && !process.env.CANVAS_ALLOW_ORIGIN) log(`from another host name (http://<host name>:${port}): start with --allow-origin http://<that name>:${port}`);
 log(`lock: ${lock.path}`);

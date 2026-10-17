@@ -1,4 +1,4 @@
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -215,5 +215,65 @@ describe('serve-service.sh', () => {
     expect(r.status).toBe(0);
     expect(r.stdout).toContain('missing release');
     execFileSync('ln', ['-sfn', cur, p('home', 'current')]);
+  });
+
+  describe('the new release must read the data folder (macOS TCC blocks it while /api/info keeps answering)', () => {
+    // a stand-in for the serve, in its own process (the script runs synchronously)
+    const fakeServe = (boards: 'ok' | 'blocked' | 'hang') =>
+      spawn(
+        process.execPath,
+        [
+          '-e',
+          `require('http').createServer((q, r) => {
+            if (q.url === '/api/info') return r.end('{}');
+            if (${JSON.stringify(boards)} === 'hang') return;
+            if (${JSON.stringify(boards)} === 'blocked') { r.writeHead(503, { 'content-type': 'application/json' }); return r.end('{"error":"the data folder X did not answer within 8 s","kind":"folder-blocked"}'); }
+            r.end('[]');
+          }).listen(${env.CANVAS_SERVE_PORT}, '127.0.0.1')`,
+        ],
+        { stdio: 'ignore' },
+      );
+    const release = (wait: string) =>
+      new Promise<{ status: number | null; stderr: string; stdout: string }>((resolve) => {
+        const c = spawn('bash', [script, 'release'], { env: { ...process.env, ...env, CANVAS_SERVE_WAIT: wait } });
+        let stderr = '';
+        let stdout = '';
+        c.stderr.on('data', (d) => (stderr += d));
+        c.stdout.on('data', (d) => (stdout += d));
+        c.on('close', (status) => resolve({ status, stderr, stdout }));
+      });
+    const withServe = async (mode: 'ok' | 'blocked' | 'hang', wait: string) => {
+      const srv = fakeServe(mode);
+      await new Promise((r) => setTimeout(r, 500));
+      try {
+        return await release(wait);
+      } finally {
+        srv.kill('SIGKILL');
+      }
+    };
+
+    it('a serve whose /api/boards says the folder is blocked is rolled back with the grant message', async () => {
+      const before = target();
+      const r = await withServe('blocked', '2');
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain('cannot read the data folder');
+      expect(r.stderr).toContain('folder-blocked');
+      expect(r.stderr).toContain('Full Disk Access');
+      expect(target()).toBe(before);
+    }, 30_000);
+
+    it('a serve whose /api/boards never answers is rolled back too', async () => {
+      const before = target();
+      const r = await withServe('hang', '1');
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain('GET /api/boards did not answer within 5 s');
+      expect(target()).toBe(before);
+    }, 30_000);
+
+    it('a serve that lists the folder is up', async () => {
+      const r = await withServe('ok', '2');
+      expect(r.status, r.stderr).toBe(0);
+      expect(r.stdout).toContain(`up on port ${env.CANVAS_SERVE_PORT}`);
+    }, 30_000);
   });
 });
