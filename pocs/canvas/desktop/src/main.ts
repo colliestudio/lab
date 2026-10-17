@@ -1,7 +1,7 @@
 import { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, nativeImage, session, shell, type IpcMainEvent, type IpcMainInvokeEvent, type MenuItemConstructorOptions } from 'electron';
-import { spawn } from 'node:child_process';
-import { appendFileSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
-import { basename, join, resolve } from 'node:path';
+import { execFileSync, spawn } from 'node:child_process';
+import { appendFileSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { boardHref } from '../../src/serve/route';
 import { listBoards } from '../../src/serve/api';
@@ -258,9 +258,47 @@ function isPoppedOut(name: string): boolean {
 
 const focusPopout = async (name: string): Promise<boolean> => !!(await send(popoutSocket(MAIN_DATA, name), { cmd: 'focus' }));
 
+/** The main app's executable (a pop-out runs from a renamed copy, but starts the main app from the real one). */
+const MAIN_EXEC = process.env.COLLIE_CANVAS_MAIN_EXEC ?? process.execPath;
+
+/**
+ * What a pop-out runs: a clone of the app bundle that macOS lists under the canvas' name (Cmd+Tab, Dock
+ * label, Activity Monitor) instead of "Collie Canvas". An APFS clone costs no disk and ~0.6 s the first
+ * time (edit Info.plist, ad-hoc sign); it is rebuilt when the app changes. Anything wrong: the plain app.
+ */
+function popoutExecutable(name: string): string {
+  if (!app.isPackaged || process.platform !== 'darwin') return MAIN_EXEC;
+  try {
+    const bundle = resolve(MAIN_EXEC, '../../..');
+    const shim = join(MAIN_DATA, 'shims', `${popoutId(name)}.app`);
+    const exe = join(shim, 'Contents', 'MacOS', basename(MAIN_EXEC));
+    const stamp = `${bundle}|${statSync(join(bundle, 'Contents', 'Info.plist')).mtimeMs}|${name}`;
+    let have = '';
+    try {
+      have = readFileSync(shim + '.stamp', 'utf8');
+    } catch {}
+    if (have !== stamp) {
+      rmSync(shim, { recursive: true, force: true });
+      mkdirSync(dirname(shim), { recursive: true });
+      execFileSync('/bin/cp', ['-cR', bundle, shim]);
+      const plist = join(shim, 'Contents', 'Info.plist');
+      const set = (k: string, v: string) => execFileSync('/usr/libexec/PlistBuddy', ['-c', `Set :${k} ${v.replace(/[\r\n]+/g, ' ')}`, plist]);
+      set('CFBundleDisplayName', name);
+      set('CFBundleIdentifier', `studio.collie.canvas.${popoutId(name)}`);
+      execFileSync('/usr/bin/codesign', ['--force', '--deep', '--sign', '-', shim]);
+      writeFileSync(shim + '.stamp', stamp);
+    }
+    return exe;
+  } catch (e) {
+    log('pop-out copy failed, using the app itself:', (e as Error).message);
+    return MAIN_EXEC;
+  }
+}
+
 /** Launch another instance of this app (the same binary: a packaged app, or electron with the app path in a dev run). */
-function launch(args: string[]) {
-  const child = spawn(process.execPath, [...(app.isPackaged ? [] : [app.getAppPath()]), ...args], { detached: true, stdio: 'ignore', env: process.env });
+function launch(args: string[], popoutOf?: string) {
+  const exe = popoutOf !== undefined ? popoutExecutable(popoutOf) : MAIN_EXEC;
+  const child = spawn(exe, [...(app.isPackaged ? [] : [app.getAppPath()]), ...args], { detached: true, stdio: 'ignore', env: { ...process.env, COLLIE_CANVAS_MAIN_EXEC: MAIN_EXEC } });
   child.on('error', (e) => log('launch failed:', e.message));
   child.unref();
 }
@@ -295,7 +333,7 @@ function navigateMain(name: string | null) {
 
 async function popOut(name: string) {
   if (await focusPopout(name)) return;
-  launch([`--canvas=${name}`]);
+  launch([`--canvas=${name}`], name);
   if (!isPopout && shown === name) navigateMain(null); // the canvas has its own window now; the main one goes to the list
 }
 
@@ -591,7 +629,7 @@ function answer(m: Message): Reply {
 /** Bring back the pop-outs that were open when the app (or the machine) went down. */
 async function restorePopouts() {
   for (const i of listInstances(MAIN_DATA)) {
-    if (i.keep && !(await livePopout(MAIN_DATA, i.canvas))) launch([`--canvas=${i.canvas}`]);
+    if (i.keep && !(await livePopout(MAIN_DATA, i.canvas))) launch([`--canvas=${i.canvas}`], i.canvas);
   }
 }
 
