@@ -270,15 +270,15 @@ function launch(args: string[]) {
  * pop-out the main app does it (started when it isn't running).
  */
 async function openCanvas(name: string | null, opts: { popout?: boolean } = {}): Promise<void> {
-  if (name !== null && (await focusPopout(name))) return;
+  if (name !== null && !opts.popout && (await focusPopout(name))) return;
   if (isPopout) {
     if (name === POPOUT) return void (alive() && focusWin(alive()!));
-    if (name !== null && opts.popout) return launch([`--canvas=${name}`]);
+    if (name !== null && opts.popout) return void (await popOut(name));
     if (await send(mainSocket(MAIN_DATA), { cmd: 'open', canvas: name ?? undefined })) return;
     return launch(name === null ? [] : [`--open-canvas=${name}`]);
   }
   if (name !== null) state.recent = pushRecent(state.recent, name);
-  if (name !== null && opts.popout) return popOut(name);
+  if (name !== null && opts.popout) return void (await popOut(name));
   navigateMain(name);
 }
 
@@ -293,7 +293,8 @@ function navigateMain(name: string | null) {
   if (w.webContents.getURL() !== urlFor(name)) load(w, urlFor(name));
 }
 
-function popOut(name: string) {
+async function popOut(name: string) {
+  if (await focusPopout(name)) return;
   launch([`--canvas=${name}`]);
   if (!isPopout && shown === name) navigateMain(null); // the canvas has its own window now; the main one goes to the list
 }
