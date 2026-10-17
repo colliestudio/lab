@@ -57,7 +57,8 @@ export function mountTheme(app: App, opts: { forceLight?: boolean } = {}) {
             separator: true,
             run: () => {
               picker.value = normalizeColor(cur) ?? lookOf(undefined, resolveTheme(pref, !!media?.matches)).bg;
-              picker.showPicker?.() ?? picker.click();
+              if (picker.showPicker) picker.showPicker();
+              else picker.click();
             },
           },
         ],
