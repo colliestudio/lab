@@ -142,7 +142,7 @@ describe('FolderStorage (one fixed file)', () => {
     const st = new FolderStorage(dir, { file: join(dir, 'main.canvas') });
     expect(await st.read('other')).toBeUndefined();
     expect(await st.readState('other')).toBeUndefined();
-    await expect(st.write('other', 'x')).rejects.toThrow(/no board/);
+    await expect(st.write('other', 'x')).rejects.toThrow(/no canvas/);
     expect(readFileSync(join(dir, 'other.canvas'), 'utf8')).toBe('o');
   });
 

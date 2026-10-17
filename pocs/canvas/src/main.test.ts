@@ -18,7 +18,7 @@ describe('main.ts', () => {
 describe('empty boards', () => {
   const src = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
   it('New board is the only way to start over, and it puts nothing on the board', () => {
-    expect(src).toContain("label: 'New board'");
+    expect(src).toContain("label: 'New canvas'");
     expect(src).not.toMatch(/New table|startTable|registerStarter|newKinds/);
     expect(src).toMatch(/function newBoard\(\) \{[^}]*store\.load\(\{ nodes: \[\], edges: \[\] \}\)[^}]*\}/s);
   });

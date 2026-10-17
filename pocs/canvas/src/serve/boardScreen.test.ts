@@ -9,7 +9,7 @@ afterEach(() => {
 describe('board screen', () => {
   it('says why, links back to the list, and offers Retry only for a failure', () => {
     showBoardScreen({ kind: 'newer', error: 'this board is format 2' }, 'x');
-    expect(document.querySelector('.serve-card')!.textContent).toContain('Made by a newer canvas');
+    expect(document.querySelector('.serve-card')!.textContent).toContain('Made by a newer version of Canvas');
     expect(document.querySelector('.serve-card a')!.getAttribute('href')).toBe('/');
     expect(document.querySelector('.serve-card button')).toBeNull();
     document.body.innerHTML = '';

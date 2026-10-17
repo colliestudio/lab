@@ -170,7 +170,7 @@ describe('Board: format version', () => {
     const b = await Board.load('a', st, { log });
     st.externalWrite('a', newer);
     await tick(200);
-    expect(log).toHaveBeenCalledWith(expect.stringContaining('not applied (this board is format 99'));
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('not applied (this canvas is format 99'));
     expect(b.host.store.doc.get('x')!.text).toBe('one');
     b.host.dispatch(claude, 'board.update', { id: 'x', text: 'mine' });
     await b.flush();

@@ -200,6 +200,6 @@ describe('canvas-wait follow', () => {
     let err = '';
     p.stderr!.on('data', (d) => (err += d));
     expect(await new Promise((r) => p.once('exit', r))).toBe(1);
-    expect(err).toContain('seat "Claude · nobody" is not on board "a"');
+    expect(err).toContain('seat "Claude · nobody" is not on canvas "a"');
   });
 });

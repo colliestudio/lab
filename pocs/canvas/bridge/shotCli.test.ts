@@ -40,7 +40,7 @@ describe('runShot', () => {
   it('writes the PNG from base64, prints path and size, lists ids with --labels', async () => {
     dir = mkdtempSync(join(tmpdir(), 'canvas-shotcli-'));
     const asked: ShotArgs[] = [];
-    const reply: ShotReply = { png: Buffer.from([137, 80, 78, 71, 9]).toString('base64'), mime: 'image/png', seat: 'agent:claude', target: 'whole board', width: 1000, height: 750, ms: 88, nodes: [{ id: 'n1', type: 'text', box: [1, 2, 3, 4] }] };
+    const reply: ShotReply = { png: Buffer.from([137, 80, 78, 71, 9]).toString('base64'), mime: 'image/png', seat: 'agent:claude', target: 'whole canvas', width: 1000, height: 750, ms: 88, nodes: [{ id: 'n1', type: 'text', box: [1, 2, 3, 4] }] };
     const c = { shot: async (a: ShotArgs) => (asked.push(a), reply) } as unknown as Client;
     const out = join(dir, 'sub', 's.png');
     const lines: string[] = [];
