@@ -67,7 +67,7 @@ const GUIDE = `A prototype is HTML pages linked into a flow that people click th
 export const specs: Record<string, CommandSpec> = {
   create: command({
     description:
-      'Add a page: an HTML document shown as a node. Make things clickable with data-goto="<page title>" (href="#" does nothing); then page.autoLink draws the arrows. No x/y puts it right of everything; the first page of an empty board becomes the start page. Returns the id, the links found in the HTML and warnings.',
+      'Add a page: an HTML document shown as a node. Make things clickable with data-goto="<page title>" (href="#" does nothing); then page.autoLink draws the arrows. No x/y puts it right of everything; the first page of an empty canvas becomes the start page. Returns the id, the links found in the HTML and warnings.',
     args: z.strictObject({
       title,
       html: z.optional(html.check(z.meta({ description: 'the whole page: inline <style>/<script>, self-contained (default: a blank page)' }))),

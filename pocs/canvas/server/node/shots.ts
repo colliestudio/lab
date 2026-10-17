@@ -183,7 +183,7 @@ export class HeadlessShots implements ShotProvider {
     } catch (e) {
       await context.close().catch(() => {});
       // the page says when the board it was opened for is gone
-      const gone = /(board (not found|not available): .*)/.exec(String((e as Error).message));
+      const gone = /(canvas (not found|not available): .*)/.exec(String((e as Error).message));
       if (gone) throw new ShotError(gone[2] === 'not found' ? 400 : 503, gone[1].split('\n')[0]);
       throw e;
     }
