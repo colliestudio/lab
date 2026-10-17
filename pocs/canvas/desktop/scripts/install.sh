@@ -116,4 +116,4 @@ fi
 
 rm -rf "$BACKUP"
 say "Installed $NAME $VERSION ($BUILD, $SHA)${OLD_VERSION:+, was $OLD_VERSION}"
-say "Boards: iCloud Drive/Collie Canvas (or ~/Collie Canvas when iCloud Drive is off)"
+say "Shows the canvas serve at its saved address (default http://mini.internal:5310; change it in the app: Collie Canvas > Backend...)"
