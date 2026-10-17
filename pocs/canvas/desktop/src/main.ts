@@ -1,6 +1,6 @@
 import { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, nativeImage, session, shell, type IpcMainEvent, type IpcMainInvokeEvent, type MenuItemConstructorOptions } from 'electron';
 import { execFileSync, spawn } from 'node:child_process';
-import { appendFileSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { boardHref } from '../../src/serve/route';
@@ -176,11 +176,15 @@ function createWindow(bounds?: Bounds): BrowserWindow {
     if (url.startsWith(UI_URL)) return;
     const name = canvasOf(url);
     if (!isPopout && name !== null && isPoppedOut(name)) {
-      // back/forward landed on a canvas that has its own window: show that one instead
-      return void focusPopout(name).then((ok) => ok && !w.isDestroyed() && load(w, urlFor(null)));
+      // back/forward landed on a canvas that has its own window: show that one instead (a stale registry
+      // entry, whose pid now belongs to another process, fails to focus: then the main window keeps it)
+      return void focusPopout(name).then((ok) => (ok ? !w.isDestroyed() && load(w, urlFor(null)) : shownChanged(url)));
     }
-    if (classify(backend(), url).kind === 'internal') return;
-    shown = isPopout ? POPOUT : name;
+    shownChanged(url);
+  };
+  const shownChanged = (url: string) => {
+    if (w.isDestroyed() || classify(backend(), url).kind === 'internal') return;
+    shown = isPopout ? POPOUT : canvasOf(url);
     if (!isPopout) w.setTitle(pageTitle(shown));
     snapshot();
     buildMenu();
@@ -265,6 +269,8 @@ const MAIN_EXEC = process.env.COLLIE_CANVAS_MAIN_EXEC ?? process.execPath;
  * What a pop-out runs: a clone of the app bundle that macOS lists under the canvas' name (Cmd+Tab, Dock
  * label, Activity Monitor) instead of "Collie Canvas". An APFS clone costs no disk and ~0.6 s the first
  * time (edit Info.plist, ad-hoc sign); it is rebuilt when the app changes. Anything wrong: the plain app.
+ * Only the outer bundle is re-signed: `--deep` would rewrite the Electron framework (~200 MB per clone).
+ * The clone claims no document types, so Finder never picks it to open a .canvas file.
  */
 function popoutExecutable(name: string): string {
   if (!app.isPackaged || process.platform !== 'darwin') return MAIN_EXEC;
@@ -277,15 +283,18 @@ function popoutExecutable(name: string): string {
     try {
       have = readFileSync(shim + '.stamp', 'utf8');
     } catch {}
-    if (have !== stamp) {
+    if (have !== stamp || !existsSync(exe)) {
       rmSync(shim, { recursive: true, force: true });
       mkdirSync(dirname(shim), { recursive: true });
       execFileSync('/bin/cp', ['-cR', bundle, shim]);
       const plist = join(shim, 'Contents', 'Info.plist');
-      const set = (k: string, v: string) => execFileSync('/usr/libexec/PlistBuddy', ['-c', `Set :${k} ${v.replace(/[\r\n]+/g, ' ')}`, plist]);
-      set('CFBundleDisplayName', name);
-      set('CFBundleIdentifier', `studio.collie.canvas.${popoutId(name)}`);
-      execFileSync('/usr/bin/codesign', ['--force', '--deep', '--sign', '-', shim]);
+      // plutil takes the value as one argument as is (PlistBuddy would parse quotes and backslashes in the name)
+      execFileSync('/usr/bin/plutil', ['-replace', 'CFBundleDisplayName', '-string', name.replace(/[\r\n]+/g, ' '), plist]);
+      execFileSync('/usr/bin/plutil', ['-replace', 'CFBundleIdentifier', '-string', `studio.collie.canvas.${popoutId(name)}`, plist]);
+      try {
+        execFileSync('/usr/bin/plutil', ['-remove', 'CFBundleDocumentTypes', plist]);
+      } catch {} // none declared
+      execFileSync('/usr/bin/codesign', ['--force', '--sign', '-', shim]);
       writeFileSync(shim + '.stamp', stamp);
     }
     return exe;
@@ -464,6 +473,8 @@ ipcMain.handle('ui:set-backend', async (e, value: unknown, force: unknown) => {
   log(`backend: ${origin}`);
   // the pop-outs show canvases of the old backend: they close and are not brought back
   for (const i of await livePopouts(MAIN_DATA)) await send(popoutSocket(MAIN_DATA, i.canvas), { cmd: 'quit', forget: true });
+  // and the ones not running now (quit with Cmd+Q) are not brought back either
+  for (const i of listInstances(MAIN_DATA)) if (i.keep) writeInstance(MAIN_DATA, { ...i, keep: false });
   setImmediate(() => {
     alive()?.destroy();
     win = undefined;

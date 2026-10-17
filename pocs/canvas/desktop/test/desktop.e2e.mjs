@@ -311,6 +311,17 @@ try {
   // ---- changing the backend closes the pop-outs (they showed the old one's canvases) and forgets them
   const user3 = newUser();
   app = await launch(user3, BACKEND);
+  // a kept pop-out that is not running now (quit with Cmd+Q): forgotten as well
+  const idle = join(user3, 'popouts', await app.evaluate(() => globalThis.__shell.popoutId('Idle')));
+  mkdirSync(idle, { recursive: true });
+  writeFileSync(join(idle, 'instance.json'), JSON.stringify({ canvas: 'Idle', pid: 999999, keep: true }));
+  // a closed pop-out's entry whose pid now belongs to another process (here: this test) is not a pop-out
+  const stale = join(user3, 'popouts', await app.evaluate(() => globalThis.__shell.popoutId('Roadmap')));
+  mkdirSync(stale, { recursive: true });
+  writeFileSync(join(stale, 'instance.json'), JSON.stringify({ canvas: 'Roadmap', pid: process.pid, keep: false }));
+  await app.evaluate(() => globalThis.__shell.openCanvas('Roadmap'));
+  await until(async () => (await mainWindows(app)).join() === 'Roadmap');
+  check('a stale pop-out entry (pid reused) does not keep the main window from showing the canvas', (await mainWindows(app)).join() === 'Roadmap' && (await app.evaluate(() => globalThis.__shell.shown())) === 'Roadmap', (await mainWindows(app)).join());
   await app.evaluate(() => globalThis.__shell.popOut('Plans'));
   await popout(user3, 'Plans');
   await app.evaluate(() => globalThis.__shell.openBackendDialog());
@@ -319,7 +330,8 @@ try {
   await bd2.fill('#url', BACKEND.replace('127.0.0.1', 'localhost'));
   await bd2.click('#save');
   await until(async () => !(await running(user3)).length, 8000);
-  check('changing the backend closes the pop-outs and does not bring them back', !(await running(user3)).length && instances(user3)[0]?.keep === false);
+  check('changing the backend closes the pop-outs and does not bring them back', !(await running(user3)).length && instances(user3).find((i) => i.canvas === 'Plans')?.keep === false);
+  check('nor the kept ones that were not running', instances(user3).find((i) => i.canvas === 'Idle')?.keep === false, JSON.stringify(instances(user3)));
   await app.close();
 
   // ---- backend unreachable, then back
