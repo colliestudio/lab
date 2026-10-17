@@ -25,17 +25,20 @@
   .muted { color: #9a9a9a; }
   code { font: 13px ui-monospace, Menlo, monospace; background: #2a2a2a; padding: 2px 6px; border-radius: 5px; -webkit-user-select: text; user-select: text; }
   #err { color: #ff8a80; min-height: 1.4em; margin-top: 8px; }
-  #hint { margin-top: 8px; }
+  #keys { margin-top: 8px; font-size: 12px; }
+  #list li .tag { float: right; color: #9a9a9a; font-size: 12px; }
+  body[data-mode="icon"] { background: transparent; }
 </style>
 </head>
 <body>
 <div id="switcher" class="pane">
-  <input id="q" placeholder="Open or create a board…" autocomplete="off" spellcheck="false" />
+  <input id="q" placeholder="Open or create a canvas…" autocomplete="off" spellcheck="false" />
   <ul id="list"></ul>
+  <div id="keys" class="muted">Enter opens here &middot; &#8997;Enter in its own window</div>
 </div>
 <div id="backend" class="pane">
   <h1>Backend</h1>
-  <p class="muted">The canvas serve this app shows (its address, e.g. <code>http://mini.internal:5310</code>). Changing it closes the open board windows.</p>
+  <p class="muted">The canvas serve this app shows (its address, e.g. <code>http://mini.internal:5310</code>). Changing it closes the pop-out windows.</p>
   <input id="url" autocomplete="off" spellcheck="false" />
   <div id="err"></div>
   <div class="row"><button id="cancel">Cancel</button><button id="force" hidden>Use anyway</button><button id="save" class="primary">Save</button></div>
@@ -52,6 +55,26 @@
 <script>
 const p = new URLSearchParams(location.search);
 const mode = p.get('mode');
+// The Dock icon of a pop-out: the canvas' first letter on a rounded tile whose color follows its name.
+window.drawIcon = () => {
+  const c = document.createElement('canvas');
+  c.width = c.height = 1024;
+  const g = c.getContext('2d');
+  const hue = Number(p.get('hue')) || 0;
+  const grad = g.createLinearGradient(0, 100, 0, 924);
+  grad.addColorStop(0, `hsl(${hue} 62% 58%)`);
+  grad.addColorStop(1, `hsl(${hue} 62% 38%)`);
+  g.shadowColor = 'rgba(0,0,0,.35)'; g.shadowBlur = 28; g.shadowOffsetY = 12;
+  g.fillStyle = grad;
+  g.beginPath(); g.roundRect(100, 100, 824, 824, 185); g.fill();
+  g.shadowColor = 'transparent';
+  g.fillStyle = '#fff';
+  g.font = '600 520px -apple-system, system-ui, sans-serif';
+  g.textAlign = 'center'; g.textBaseline = 'alphabetic';
+  const m = g.measureText(p.get('letter') || '#');
+  g.fillText(p.get('letter') || '#', 512, 512 + (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2);
+  return c.toDataURL('image/png');
+};
 document.body.dataset.mode = mode;
 const $ = (id) => document.getElementById(id);
 if (mode === 'error') {
@@ -74,7 +97,7 @@ if (mode === 'backend') {
   addEventListener('keydown', (e) => { if (e.key === 'Escape') shell.close(); });
 }
 if (mode === 'switcher') {
-  let names = [], rows = [], sel = 0, loadErr = '';
+  let names = [], popped = [], rows = [], sel = 0, loadErr = '';
   const words = (s) => s.toLowerCase().split(/\s+/).filter(Boolean);
   function filter(q) {
     const w = words(q);
@@ -92,18 +115,19 @@ if (mode === 'switcher') {
     $('list').replaceChildren(...(rows.length ? rows.map((r, i) => {
       const li = document.createElement('li');
       li.textContent = r.kind === 'new' ? `Create "${r.name}"` : r.name;
+      if (r.kind === 'open' && popped.includes(r.name)) li.append(Object.assign(document.createElement('span'), { className: 'tag', textContent: 'own window' }));
       li.className = (i === sel ? 'sel ' : '') + (r.kind === 'new' ? 'new' : '');
-      li.onclick = () => choose(r);
+      li.onclick = (e) => choose(r, e.altKey);
       return li;
-    }) : [Object.assign(document.createElement('li'), { className: 'empty', textContent: loadErr || 'No boards' })]));
+    }) : [Object.assign(document.createElement('li'), { className: 'empty', textContent: loadErr || 'No canvases' })]));
     $('list').querySelector('.sel')?.scrollIntoView({ block: 'nearest' });
   }
-  async function choose(r) {
+  async function choose(r, popout) {
     if (!r) return;
     if (r.kind === 'new') {
-      const res = await shell.create(r.name);
+      const res = await shell.create(r.name, !!popout);
       if (res.error) { loadErr = res.error; render(); return; }
-    } else await shell.open(r.name);
+    } else await shell.open(r.name, !!popout);
     shell.close();
   }
   $('q').addEventListener('input', () => { sel = 0; render(); });
@@ -111,10 +135,10 @@ if (mode === 'switcher') {
     if (e.key === 'Escape') shell.close();
     else if (e.key === 'ArrowDown' || (e.ctrlKey && e.key === 'n')) { sel = Math.min(sel + 1, rows.length - 1); render(); e.preventDefault(); }
     else if (e.key === 'ArrowUp' || (e.ctrlKey && e.key === 'p')) { sel = Math.max(sel - 1, 0); render(); e.preventDefault(); }
-    else if (e.key === 'Enter') choose(rows[sel]);
+    else if (e.key === 'Enter') choose(rows[sel], e.altKey);
   });
   if (!p.get('keep')) addEventListener('blur', () => shell.close());
-  shell.boards().then((r) => { names = r.names; loadErr = r.error || ''; render(); });
+  shell.canvases().then((r) => { names = r.names; popped = r.popped; loadErr = r.error || ''; render(); });
   render();
   $('q').focus();
 }

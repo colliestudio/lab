@@ -5,7 +5,7 @@
 # Downloads the newest build, checks it, quits a running Collie Canvas politely, replaces
 # ~/Applications/Collie Canvas.app, clears the quarantine flag (the build is unsigned), opens it.
 # The previous app stays as a backup until the new one has started; if it doesn't start, the backup
-# goes back. Boards and settings are not touched (they live elsewhere).
+# goes back. Canvases and settings are not touched (they live elsewhere).
 #
 # Overrides (for testing): COLLIE_APPS_URL, COLLIE_INSTALL_DIR, COLLIE_OPEN_CMD (default "open"),
 # COLLIE_NO_LAUNCH=1 (replace only, no quit, no launch).
@@ -68,6 +68,8 @@ OLD_VERSION=""
 
 if [ -z "${COLLIE_NO_LAUNCH:-}" ] && running; then
   say "Quitting $NAME"
+  # pop-outs run from clones of the app under its data folder (other bundle ids): end them too; the new app brings them back
+  pkill -TERM -f "$HOME/Library/Application Support/$NAME/shims/.*\\.app/Contents/MacOS/" >/dev/null 2>&1 || true
   osascript -e "tell application id \"$BUNDLE_ID\" to quit" >/dev/null 2>&1 || true
   i=0
   while running && [ "$i" -lt 60 ]; do
