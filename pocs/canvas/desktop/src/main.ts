@@ -1,13 +1,13 @@
 import { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, nativeImage, session, shell, type IpcMainEvent, type IpcMainInvokeEvent, type MenuItemConstructorOptions } from 'electron';
 import { execFileSync, spawn } from 'node:child_process';
-import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { boardHref } from '../../src/serve/route';
 import { listBoards } from '../../src/serve/api';
 import { createUnique, fileStem } from '../../src/serve/newBoard';
 import { classify, iconSpec, normalizeBackend, pageTitle, parseArgs, popoutId, pushRecent, sanitizeState, type Bounds, type State } from './logic';
-import { listen, listInstances, livePopout, livePopouts, mainSocket, pidAlive, popoutDir, popoutSocket, readInstance, send, writeInstance, type InstanceInfo, type Message, type Reply } from './instances';
+import { listen, listInstances, livePopout, livePopouts, mainSocket, nextRestore, pidAlive, popoutDir, popoutSocket, popoutsDir, readInstance, send, writeInstance, type InstanceInfo, type Message, type Reply } from './instances';
 import { APP_NAME, DEFAULT_BACKEND, userDataDir } from './paths';
 
 // Collie Canvas desktop: a window shell over a canvas serve (the "backend", default the always-on one on
@@ -132,6 +132,8 @@ function createWindow(bounds?: Bounds): BrowserWindow {
   w.on('page-title-updated', (e) => e.preventDefault()); // the title is the canvas' name
   w.once('ready-to-show', () => {
     if (!hidden) w.show();
+    // only a pop-out that got as far as a window is brought back later (one that dies on start is not retried forever)
+    if (isPopout && !sessionOnly) saveInstance({ keep: true, starts: 0 });
   });
   w.on('move', snapshotSoon);
   w.on('resize', snapshotSoon);
@@ -436,7 +438,7 @@ const trusted = (e: IpcMainEvent | IpcMainInvokeEvent) => e.senderFrame?.url.sta
 
 ipcMain.handle('ui:canvases', async (e) => {
   if (!trusted(e)) return { names: [], popped: [] };
-  const popped = listInstances(MAIN_DATA).filter((i) => pidAlive(i.pid)).map((i) => i.canvas);
+  const popped = (await livePopouts(MAIN_DATA)).map((i) => i.canvas);
   try {
     return { names: (await listBoards(backendFetch)).map((b) => b.name).sort((a, b) => a.localeCompare(b)), popped };
   } catch (err) {
@@ -639,10 +641,60 @@ function answer(m: Message): Reply {
 
 /** Bring back the pop-outs that were open when the app (or the machine) went down. */
 async function restorePopouts() {
+  if (sessionOnly) return; // a run with a one-off backend leaves the real registry alone
   for (const i of listInstances(MAIN_DATA)) {
-    if (i.keep && !(await livePopout(MAIN_DATA, i.canvas))) launch([`--canvas=${i.canvas}`], i.canvas);
+    if (!i.keep || (await livePopout(MAIN_DATA, i.canvas))) continue;
+    const next = nextRestore(i);
+    if (!next.launch) {
+      log(`pop-out ${i.canvas}: died on start ${next.starts} times, not restarting it`);
+      writeInstance(MAIN_DATA, { ...i, keep: false });
+      continue;
+    }
+    writeInstance(MAIN_DATA, { ...i, starts: next.starts });
+    launch([`--canvas=${i.canvas}`], i.canvas);
+  }
+  await prunePopouts();
+}
+
+/**
+ * Delete what pop-outs left behind: profiles of pop-outs that are neither running nor kept, and app
+ * clones that belong to none of the remaining ones or were cloned from another build of the app.
+ * Only ever inside <data>/popouts and <data>/shims.
+ */
+async function prunePopouts() {
+  const infos = listInstances(MAIN_DATA);
+  const liveNames = new Set((await livePopouts(MAIN_DATA)).map((i) => i.canvas));
+  const wanted = new Set(infos.filter((i) => i.keep || liveNames.has(i.canvas)).map((i) => popoutId(i.canvas)));
+  const inside = (root: string, p: string) => resolve(p).startsWith(resolve(root) + '/');
+  const profiles = popoutsDir(MAIN_DATA);
+  for (const d of safeReaddir(profiles)) {
+    const p = join(profiles, d);
+    let entry: InstanceInfo | undefined;
+    try {
+      entry = JSON.parse(readFileSync(join(p, 'instance.json'), 'utf8'));
+    } catch {}
+    const keepIt = !!entry && (entry.keep || liveNames.has(entry.canvas));
+    if (!keepIt && inside(profiles, p)) rmSync(p, { recursive: true, force: true });
+  }
+  const shims = join(MAIN_DATA, 'shims');
+  const bundle = resolve(MAIN_EXEC, '../../..');
+  for (const f of safeReaddir(shims)) {
+    const id = f.replace(/\.app(\.stamp)?$/, '');
+    let current = false;
+    try {
+      current = readFileSync(join(shims, `${id}.app.stamp`), 'utf8').startsWith(`${bundle}|${statSync(join(bundle, 'Contents', 'Info.plist')).mtimeMs}|`);
+    } catch {}
+    const running = [...liveNames].some((n) => popoutId(n) === id);
+    if ((!wanted.has(id) || !current) && !running && inside(shims, join(shims, f))) rmSync(join(shims, f), { recursive: true, force: true });
   }
 }
+const safeReaddir = (dir: string): string[] => {
+  try {
+    return readdirSync(dir);
+  } catch {
+    return [];
+  }
+};
 
 app.whenReady().then(async () => {
   session.defaultSession.setPermissionRequestHandler((_wc, permission, cb, details) => {
@@ -666,7 +718,7 @@ app.whenReady().then(async () => {
   ready = true;
   if (isPopout) {
     const prior = readInstance(MAIN_DATA, POPOUT);
-    instance = { canvas: POPOUT, pid: process.pid, keep: true, bounds: prior?.bounds, sock: popoutSocket(MAIN_DATA, POPOUT) };
+    instance = { canvas: POPOUT, pid: process.pid, keep: prior?.keep && !sessionOnly ? true : false, starts: prior?.starts, bounds: prior?.bounds, sock: popoutSocket(MAIN_DATA, POPOUT) };
     saveInstance();
     createWindow(prior?.bounds);
     void setPopoutIcon(POPOUT);
@@ -677,8 +729,8 @@ app.whenReady().then(async () => {
     void restorePopouts();
     for (const f of pending.splice(0)) void importFile(f);
     // keep the Window menu's list of pop-outs current
-    setInterval(() => {
-      const names = listInstances(MAIN_DATA).filter((i) => pidAlive(i.pid)).map((i) => i.canvas).sort();
+    setInterval(async () => {
+      const names = (await livePopouts(MAIN_DATA)).map((i) => i.canvas).sort();
       if (names.join('\0') !== poppedNames.join('\0')) {
         poppedNames = names;
         buildMenu();
@@ -701,6 +753,7 @@ app.whenReady().then(async () => {
       state: () => state,
       menu: () => Menu.getApplicationMenu(),
       mainData: MAIN_DATA,
+      mainSock: mainSocket(MAIN_DATA),
       popoutId,
     };
   }

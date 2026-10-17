@@ -68,6 +68,8 @@ OLD_VERSION=""
 
 if [ -z "${COLLIE_NO_LAUNCH:-}" ] && running; then
   say "Quitting $NAME"
+  # pop-outs run from clones of the app under its data folder (other bundle ids): end them too; the new app brings them back
+  pkill -TERM -f "$HOME/Library/Application Support/$NAME/shims/.*\\.app/Contents/MacOS/" >/dev/null 2>&1 || true
   osascript -e "tell application id \"$BUNDLE_ID\" to quit" >/dev/null 2>&1 || true
   i=0
   while running && [ "$i" -lt 60 ]; do

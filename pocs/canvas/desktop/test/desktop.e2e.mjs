@@ -3,7 +3,7 @@
 // Windows stay hidden (CANVAS_HIDE_WINDOWS); evidence screenshots go to $CANVAS_E2E_SHOTS when set.
 // Pop-outs are separate processes this test spawns through the app; they end by CANVAS_TEST_TTL at the latest, and the test quits them over their sockets.
 import { execFileSync, spawn } from 'node:child_process';
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { connect } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -60,12 +60,13 @@ const launch = (userData, backend) =>
   electron.launch({ executablePath: electronPath, args: [desktop], env: { ...process.env, CANVAS_USER_DATA: userData, CANVAS_BACKEND: backend, CANVAS_HIDE_WINDOWS: '1', CANVAS_TEST: '1', CANVAS_TEST_TTL: '300' } });
 const titles = (app) => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().map((w) => w.getTitle()));
 const users = [];
+const sockDirs = new Set(); // the sockets' folders in the temp dir: removed at the end
 const newUser = () => (users.push(mkdtempSync(join(tmpdir(), 'collie-e2e-user-'))), users.at(-1));
 // the pop-outs of one main app's data folder, from their instance.json files
 const instances = (user) => {
   const dir = join(user, 'popouts');
   if (!existsSync(dir)) return [];
-  return readdirSync(dir).flatMap((d) => { try { return [JSON.parse(readFileSync(join(dir, d, 'instance.json'), 'utf8'))]; } catch { return []; } });
+  return readdirSync(dir).flatMap((d) => { try { const i = JSON.parse(readFileSync(join(dir, d, 'instance.json'), 'utf8')); if (i.sock) sockDirs.add(join(i.sock, '..')); return [i]; } catch { return []; } });
 };
 const sockSend = (sock, msg) => new Promise((res) => {
   let buf = '';
@@ -300,6 +301,24 @@ try {
   await quitPopouts(user);
   await app.close();
 
+  // ---- leftovers are pruned; a pop-out that dies on start is given up on; bad socket messages are refused
+  const pr = newUser();
+  mkdirSync(join(pr, 'popouts', 'old-11111111'), { recursive: true });
+  writeFileSync(join(pr, 'popouts', 'old-11111111', 'instance.json'), JSON.stringify({ canvas: 'OldOne', pid: 999999, keep: false }));
+  writeFileSync(join(pr, 'popouts', 'old-11111111', 'Cookies'), 'x');
+  mkdirSync(join(pr, 'popouts', 'ghost-22222222'), { recursive: true });
+  writeFileSync(join(pr, 'popouts', 'ghost-22222222', 'instance.json'), JSON.stringify({ canvas: 'Ghost', pid: 999999, keep: true, starts: 2 }));
+  mkdirSync(join(pr, 'shims', 'oldone-11111111.app', 'Contents'), { recursive: true });
+  writeFileSync(join(pr, 'shims', 'oldone-11111111.app.stamp'), 'x');
+  app = await launch(pr, BACKEND);
+  await until(() => !existsSync(join(pr, 'popouts', 'ghost-22222222')), 8000);
+  check('a pop-out that died on start twice is not started again (logged)', !(await running(pr)).length && readFileSync(join(pr, 'logs', 'main.log'), 'utf8').includes('pop-out Ghost: died on start'));
+  check('the profile and clone of a pop-out that is neither running nor kept are deleted', !existsSync(join(pr, 'popouts', 'old-11111111')) && !existsSync(join(pr, 'shims', 'oldone-11111111.app')) && !existsSync(join(pr, 'shims', 'oldone-11111111.app.stamp')));
+  const msock = await app.evaluate(() => globalThis.__shell.mainSock);
+  sockDirs.add(join(msock, '..'));
+  check('a message with a non-string canvas is refused and the app keeps running', (await sockSend(msock, { cmd: 'open', canvas: 1 }))?.ok === false && !!(await sockSend(msock, { cmd: 'ping' })));
+  await app.close();
+
   // ---- a 0.2 state file (list of windows) still opens: its first window becomes the main window
   const old = newUser();
   writeFileSync(join(old, 'state.json'), JSON.stringify({ backend: BACKEND, windows: [{ board: 'Roadmap', bounds: { x: 10, y: 10, width: 800, height: 600 } }, { board: 'Retro' }], recent: ['Roadmap'] }));
@@ -382,6 +401,7 @@ try {
 } finally {
   await app?.close().catch(() => {});
   for (const u of users) await quitPopouts(u).catch(() => {});
+  for (const d of sockDirs) rmSync(d, { recursive: true, force: true });
   for (const c of children) c.kill();
 }
 console.log(failed ? `${failed} failed` : 'all passed');

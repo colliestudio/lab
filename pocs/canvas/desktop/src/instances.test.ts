@@ -1,8 +1,8 @@
-import { mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { listen, listInstances, livePopout, livePopouts, popoutSocket, readInstance, send, writeInstance } from './instances';
+import { listen, listInstances, livePopout, livePopouts, nextRestore, pidAlive, popoutSocket, readInstance, send, socketDir, validMessage, writeInstance } from './instances';
 
 const servers: { close(): void }[] = [];
 afterEach(() => servers.splice(0).forEach((s) => s.close()));
@@ -44,5 +44,40 @@ describe('registry', () => {
     expect(await livePopout(main, 'Live')).not.toBeNull();
     expect(await livePopout(main, 'Stale')).toBeNull();
     expect((await livePopouts(main)).map((i) => i.canvas)).toEqual(['Live']);
+  });
+});
+
+describe('safety', () => {
+  it('never treats pid 0 or a negative pid as a process', () => {
+    expect(pidAlive(0)).toBe(false);
+    expect(pidAlive(-1)).toBe(false);
+    expect(pidAlive(process.pid)).toBe(true);
+    const main = dataDir();
+    writeInstance(main, { canvas: 'Zero', pid: 0, keep: true });
+    expect(listInstances(main)).toEqual([]);
+  });
+  it('rejects messages with a non-string command or canvas', async () => {
+    expect(validMessage({ cmd: 'open', canvas: 1 })).toBe(false);
+    expect(validMessage({ cmd: 5 })).toBe(false);
+    expect(validMessage({ cmd: 'open', canvas: 'a' })).toBe(true);
+    const main = dataDir();
+    const sock = popoutSocket(main, 'Msg');
+    servers.push(await listen(sock, () => ({ ok: true })));
+    expect(await send(sock, { cmd: 'open', canvas: 1 as unknown as string })).toMatchObject({ ok: false });
+  });
+  it('makes the socket folder private to the user', async () => {
+    const main = dataDir();
+    mkdirSync(socketDir(main), { recursive: true, mode: 0o755 });
+    servers.push(await listen(popoutSocket(main, 'Perm'), () => ({ ok: true })));
+    expect(statSync(socketDir(main)).mode & 0o077).toBe(0);
+  });
+});
+
+describe('restore', () => {
+  it('starts a kept pop-out again, twice at most', () => {
+    expect(nextRestore({ keep: true })).toEqual({ launch: true, starts: 1 });
+    expect(nextRestore({ keep: true, starts: 1 })).toEqual({ launch: true, starts: 2 });
+    expect(nextRestore({ keep: true, starts: 2 })).toEqual({ launch: false, starts: 2 });
+    expect(nextRestore({ keep: false })).toEqual({ launch: false, starts: 0 });
   });
 });
