@@ -89,9 +89,10 @@ try {
 }
 // Say it loudly when the folder can not be read (macOS holds the process in the read until it has Full Disk Access);
 // the server stays up, so /api/info answers and every board call says why it fails.
-const blocked = await storage.check();
+// The listing runs under the same deadline as check(): a miss there must not end the process either.
+let blocked = await storage.check();
+const boards = blocked ? [] : await directory.list().catch((e: Error) => ((blocked = e.message), []));
 if (blocked) log(`canvas serve: ${storage.dir} is NOT readable: ${blocked}`);
-const boards = blocked ? [] : await directory.list();
 log(`canvas serve: ${storage.dir} on http://${host}:${port} (${blocked ? 'folder not readable' : `${boards.length} board${boards.length === 1 ? '' : 's'}`}; open http://${host}:${port}/; app origins allowed: ${guard.origins.join(', ')})`);
 for (const o of hostOrigins) log(`open ${o}/`);
 if (!args.allowOrigins.length && !hostOrigins.length && !process.env.CANVAS_ALLOW_ORIGIN) log(`from another host name (http://<host name>:${port}): start with --allow-origin http://<that name>:${port}`);
