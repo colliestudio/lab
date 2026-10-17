@@ -199,6 +199,16 @@ describe('load watch', () => {
     w.onLoad();
     w.onLoad();
     expect(foreign).toHaveBeenCalledTimes(1);
+    expect(foreign).toHaveBeenCalledWith('second-load');
+  });
+  it('says why: no handshake, leaving', () => {
+    const a = vi.fn();
+    loadWatch(true, a).onLoad();
+    vi.advanceTimersByTime(2001);
+    expect(a).toHaveBeenCalledWith('no-handshake');
+    const b = vi.fn();
+    loadWatch(true, b).onLeaving();
+    expect(b).toHaveBeenCalledWith('leaving');
   });
   it('a first load with no runtime message in time is foreign (the page navigated while parsing)', () => {
     const foreign = vi.fn();

@@ -135,28 +135,30 @@ export const hasKey = (data: unknown, key: string) => !!data && typeof data === 
  * Any later `load`, or a first `load` that no runtime vouches for within `ms`, means the frame left
  * the srcdoc document: `foreign` fires (once).
  */
-export function loadWatch(scripts: boolean, foreign: () => void, ms = 2000) {
+export type ForeignReason = 'second-load' | 'no-handshake' | 'leaving';
+
+export function loadWatch(scripts: boolean, foreign: (why: ForeignReason) => void, ms = 2000) {
   let loads = 0;
   let vouched = !scripts;
   let done = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const fire = () => {
+  const fire = (why: ForeignReason) => {
     if (done) return;
     done = true;
     clearTimeout(timer);
-    foreign();
+    foreign(why);
   };
   return {
     onLoad() {
-      if (++loads > 1) return fire();
-      if (!vouched) timer = setTimeout(() => !vouched && fire(), ms);
+      if (++loads > 1) return fire('second-load');
+      if (!vouched) timer = setTimeout(() => !vouched && fire('no-handshake'), ms);
     },
     onLoaded() {
       vouched = true;
       clearTimeout(timer);
     },
     /** The runtime saw its frame navigate: foreign right away (a navigation may never load a document). */
-    onLeaving: fire,
+    onLeaving: () => fire('leaving'),
     dispose() {
       done = true;
       clearTimeout(timer);
