@@ -10,7 +10,7 @@ import type { DockItem, MenuEntry } from './plugin';
 /** Dock sections in order; sections nobody listed go before the last. */
 const DOCK_SECTIONS = ['tools', 'create', 'add'];
 /** Main-menu submenus in order; other groups follow in registration order, ungrouped rows last. */
-const MENU_GROUPS = ['File', 'Edit', 'Room', 'Add'];
+const MENU_GROUPS = ['File', 'Edit', 'Room', 'Add', 'View'];
 
 /** An icon button with a tooltip (name and shortcut), the look every chrome button shares. */
 export function chromeButton(iconName: string, label: string, shortcut?: string): HTMLButtonElement {

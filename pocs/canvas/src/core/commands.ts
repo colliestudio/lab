@@ -1,8 +1,9 @@
 import * as z from 'zod/mini';
-import { command, nodeRef, type CommandSpec } from './agent';
+import { command, nodeRef, view, type CommandSpec } from './agent';
 import { set, type CanvasEdge, type CanvasNode, type Change, type DocView } from './doc';
 import { isSide, type EdgeStyle } from './edges';
 import type { Store } from './store';
+import { BACKGROUND_KEY, PRESETS, backgroundOf, colorFromInput } from './theme';
 
 // Generic commands every object gets. Args are validated; bad args are a no-op.
 
@@ -87,6 +88,12 @@ const arrowArgs = (a: { label?: string | null; from_side?: string | null; to_sid
 const changed = (r: { changes: unknown[] }) => ({ changed: r.changes.length });
 
 export const coreSpecs: Record<string, CommandSpec> = {
+  background: command({
+    description: `Set the board's background color for everyone (kept in the board file, shown in screenshots). A #hex color or a preset name: ${PRESETS.map((p) => p.id).join(', ')}. null or "auto" goes back to the default, which follows each person's light/dark theme. Light text and arrows are drawn automatically on dark colors. canvas_look {"view": "core.board"} reads it.`,
+    args: z.strictObject({ color: z.nullable(z.string().check(z.meta({ description: '#hex or preset name; null/"auto" = default' }))) }),
+    example: { color: 'slate' },
+    result: (_r, a) => ({ background: colorFromInput(a.color) ?? null }),
+  }),
   move: command({
     description: 'Move nodes by (dx, dy); what rides on them (a board\'s pieces) goes along.',
     args: z.strictObject({ ids: z.array(nodeRef()), dx: z.number(), dy: z.number() }),
@@ -132,6 +139,18 @@ export const coreSpecs: Record<string, CommandSpec> = {
   }),
 };
 
+const boardView = view({
+  description: 'Board-wide settings: the background color (null = the default, which follows each person\'s light/dark theme).',
+  args: z.strictObject({}),
+  example: {},
+  read: (doc) => ({ background: backgroundOf(doc.extra) ?? null }),
+  text: (v) => {
+    const b = (v as { background: string | null }).background;
+    const preset = PRESETS.find((p) => p.color === b);
+    return b ? `background: ${b}${preset ? ` (${preset.name})` : ''}` : 'background: default (follows light/dark theme)';
+  },
+});
+
 export function registerCoreCommands(store: Store) {
   const spec = (name: string) => coreSpecs[name];
   store.register('core.move', (doc, a: { ids: string[]; dx: number; dy: number }) => {
@@ -140,6 +159,16 @@ export function registerCoreCommands(store: Store) {
     const nodes = pick(doc, a.ids).filter((n) => !doc.parentOf(n.id));
     return withRiders(doc, nodes).flatMap((n) => [set(n.id, 'x', Math.round(n.x + a.dx)), set(n.id, 'y', Math.round(n.y + a.dy))]);
   }, spec('move'));
+  /** The board's background: one field of the file. Anything but a color (or null/""/"auto") is refused. */
+  store.register('core.background', (doc, a: { color: string | null }) => {
+    const c = a?.color;
+    const clear = c === null || c === undefined || (typeof c === 'string' && ['', 'auto', 'default', 'none'].includes(c.trim().toLowerCase()));
+    const color = clear ? undefined : colorFromInput(c);
+    if (!clear && !color) throw new Error(`not a color: ${JSON.stringify(c)} (use #rrggbb or one of ${PRESETS.map((p) => p.id).join(', ')})`);
+    if (backgroundOf(doc.extra) === color) return [];
+    return [{ op: 'meta', key: BACKGROUND_KEY, value: color }];
+  }, spec('background'));
+  store.registerView('core.board', boardView);
   store.register('core.front', (doc, a: { ids: string[] }) => toFront(doc, pick(doc, a?.ids)));
   /** Deletes nodes, everything they contain and everything riding on them (a board's pieces). */
   store.register('core.delete', (doc, a: { ids: string[] }) => {

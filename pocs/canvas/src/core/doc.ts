@@ -81,7 +81,9 @@ export type Change =
   | { op: 'edge'; edge: CanvasEdge }
   /** Set one field of an edge (`key` may be "x-edge.dashed"); `value: undefined` deletes it. Like `set` for nodes. */
   | { op: 'edgeset'; id: string; key: string; value: unknown }
-  | { op: 'unedge'; id: string };
+  | { op: 'unedge'; id: string }
+  /** Set a top-level field of the board file (`extra`, e.g. its background); `value: undefined` deletes it. */
+  | { op: 'meta'; key: string; value: unknown };
 
 export const set = (id: string, key: string, value: unknown): Change => ({ op: 'set', id, key, value });
 

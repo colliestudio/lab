@@ -22,7 +22,7 @@ describe('empty boards', () => {
     expect(src).not.toMatch(/New table|startTable|registerStarter|newKinds/);
     expect(src).toMatch(/function newBoard\(\) \{[^}]*store\.load\(\{ nodes: \[\], edges: \[\] \}\)[^}]*\}/s);
   });
-  it('the board background is set in one place (variables on .cv-root)', () => {
+  it('the board background default is set in one place (variables on .cv-root); a board or the theme overrides it from themeView', () => {
     const css = readFileSync(new URL('./core/core.css', import.meta.url), 'utf8');
     expect(css.match(/--cv-bg:/g)).toHaveLength(1);
     expect(css).not.toContain('#1f5f3f');

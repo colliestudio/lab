@@ -1,0 +1,120 @@
+/* Dark theme for the app's chrome (html[data-theme='dark'], set by themeView.ts). The board itself
+   follows its own background (--cv-bg and friends on .cv-root); the outline, chat and log panels are
+   dark already. Filled objects (stickies, cards, shapes with a fill) keep their colors. */
+html[data-theme='dark'] {
+  --ui-bg: #23262d;
+  --ui-fg: #e8eaee;
+  --ui-muted: #9aa1ad;
+  --ui-line: rgba(255, 255, 255, 0.12);
+  --ui-hover: rgba(255, 255, 255, 0.09);
+  --ui-active-bg: #2b3d63;
+  --ui-active-fg: #8db4ff;
+  --ui-field: #1b1d22;
+}
+html[data-theme='dark'] body {
+  background: #0c0d10;
+}
+html[data-theme='dark'] .cv-chrome {
+  background: rgba(35, 38, 45, 0.96);
+  color: var(--ui-fg);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--ui-line);
+}
+html[data-theme='dark'] .cv-chrome button:hover,
+html[data-theme='dark'] .cv-chrome .player.me {
+  background: var(--ui-hover);
+}
+html[data-theme='dark'] .cv-chrome button[aria-pressed='true'],
+html[data-theme='dark'] .cv-chrome .chat-btn.active {
+  background: var(--ui-active-bg);
+  color: var(--ui-active-fg);
+}
+html[data-theme='dark'] .cv-dock-sep {
+  background: var(--ui-line);
+}
+html[data-theme='dark'] .cv-chrome .room-state {
+  color: var(--ui-muted);
+}
+html[data-theme='dark'] .cv-chrome [data-tip]::after,
+html[data-theme='dark'] .cv-toast {
+  background: #eceff4;
+  color: #1e1e1e;
+}
+
+/* menus, dialogs, panels */
+html[data-theme='dark'] .cv-menu,
+html[data-theme='dark'] .dg-panel,
+html[data-theme='dark'] .es-dialog {
+  background: var(--ui-bg);
+  color: var(--ui-fg);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.6), 0 0 0 1px var(--ui-line);
+}
+html[data-theme='dark'] .cv-menu-title {
+  color: var(--ui-muted);
+  border-bottom-color: var(--ui-line);
+}
+html[data-theme='dark'] .cv-menu-sep,
+html[data-theme='dark'] .es-dialog-head {
+  background: var(--ui-line);
+  border-bottom-color: var(--ui-line);
+}
+html[data-theme='dark'] .cv-menu-check {
+  color: var(--ui-active-fg);
+}
+html[data-theme='dark'] .cv-menu-why,
+html[data-theme='dark'] .cv-menu-item kbd,
+html[data-theme='dark'] .cv-menu-arrow,
+html[data-theme='dark'] .dg-panel h4 {
+  color: var(--ui-muted);
+}
+html[data-theme='dark'] .cv-menu-item.cv-active,
+html[data-theme='dark'] .cv-menu-item.cv-open {
+  background: var(--ui-active-bg);
+}
+html[data-theme='dark'] .cv-menu-item.cv-disabled {
+  color: #6b7280;
+}
+html[data-theme='dark'] .cv-menu-item.cv-disabled.cv-active {
+  background: var(--ui-hover);
+}
+html[data-theme='dark'] .cv-menu-number input,
+html[data-theme='dark'] .name-field input,
+html[data-theme='dark'] .bridge-form input,
+html[data-theme='dark'] .cv-menu-go,
+html[data-theme='dark'] .bridge-btn,
+html[data-theme='dark'] .serve-actions button,
+html[data-theme='dark'] .dg-panel button {
+  background: var(--ui-field);
+  color: var(--ui-fg);
+  border-color: var(--ui-line);
+}
+html[data-theme='dark'] .dg-panel button:hover {
+  background: var(--ui-hover);
+}
+html[data-theme='dark'] .dg-panel button.on {
+  border-color: #4c8dff;
+  background: var(--ui-active-bg);
+}
+html[data-theme='dark'] .help-panel,
+html[data-theme='dark'] .name-dialog,
+html[data-theme='dark'] .serve-card {
+  background: var(--ui-bg);
+  color: var(--ui-fg);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.7), 0 0 0 1px var(--ui-line);
+}
+html[data-theme='dark'] .help-panel dd,
+html[data-theme='dark'] .name-field span,
+html[data-theme='dark'] .bridge-section h3,
+html[data-theme='dark'] .bridge-hint,
+html[data-theme='dark'] .bridge-btn.quiet {
+  color: var(--ui-muted);
+}
+html[data-theme='dark'] .help-panel h3 {
+  color: #7cc39c;
+}
+html[data-theme='dark'] .name-colors button[aria-checked='true'] {
+  outline-color: var(--ui-fg);
+}
+html[data-theme='dark'] .bridge-cmd {
+  background: var(--ui-field);
+  color: var(--ui-fg);
+}
