@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { makeActor } from '../core/host';
 import { ShotError, type ShotRequest } from '../core/shots';
-import { HeadlessShots, type ShotBrowser, type ShotPage } from './shots';
+import { HeadlessShots, launchChrome, type ChromiumLike, type ShotBrowser, type ShotPage } from './shots';
 
 // HeadlessShots with a fake browser: how views are kept, serialized and closed.
 
@@ -9,7 +9,7 @@ const req = (over: Partial<ShotRequest> = {}): ShotRequest => ({ target: { kind:
 const claude = makeActor('Claude');
 const codex = makeActor('Codex');
 
-function fake(opts: { status?: number; frame?: (expr: string) => Promise<unknown> } = {}) {
+function fake(opts: { bounds?: { width: number; height: number }; status?: number; frame?: (expr: string) => Promise<unknown> } = {}) {
   const f = {
     launches: 0,
     pages: [] as { url: string; closed: boolean; viewports: { width: number; height: number }[]; active: number; maxActive: number }[],
@@ -31,6 +31,7 @@ function fake(opts: { status?: number; frame?: (expr: string) => Promise<unknown
             newPage: async (): Promise<ShotPage> => ({
               goto: async (url) => ((rec.url = url), { status: () => opts.status ?? 200 }),
               evaluate: async (expr) => {
+                if (expr.includes('canvasShot.bounds')) return opts.bounds ?? null;
                 if (!expr.includes('canvasShot.frame')) return true;
                 rec.active++;
                 rec.maxActive = Math.max(rec.maxActive, rec.active);
@@ -245,5 +246,76 @@ describe('HeadlessShots', () => {
     } });
     await expect(s.shoot('x', claude, req())).rejects.toMatchObject({ status: 400, message: 'board not found: no board "x"' });
     await s.close();
+  });
+});
+
+describe('HeadlessShots whole-board size', () => {
+  it('autoSize takes the board’s shape when the default would be too small to read, and reports the size it used', async () => {
+    const f = fake({ bounds: { width: 24000, height: 3500 } });
+    const s = make(f);
+    const shot = await s.shoot('demo', claude, req({ autoSize: true }));
+    expect(shot.width).toBe(2000);
+    expect(shot.height).toBe(800);
+    expect(f.pages[0].viewports.at(-1)).toEqual({ width: shot.width, height: shot.height });
+    // a request with a size asked for is left alone
+    const fixed = await s.shoot('demo', claude, req());
+    expect(fixed).toMatchObject({ width: 1000, height: 750 });
+    await s.close();
+  });
+});
+
+describe('launchChrome', () => {
+  function fakeChromium(over: Partial<ChromiumLike> = {}) {
+    const calls = { launch: [] as unknown[], cdp: [] as string[], contextsClosed: 0, otherClosed: 0, browserClosed: 0 };
+    const ctx = (mine: boolean) => ({ newPage: async () => ({}) as never, close: async () => void (mine ? calls.contextsClosed++ : calls.otherClosed++) });
+    const browser = {
+      newContext: async () => ctx(true),
+      close: async () => void calls.browserClosed++,
+      on: () => {},
+    };
+    const chromium: ChromiumLike = {
+      launch: async (o) => (calls.launch.push(o), browser),
+      connectOverCDP: async (u) => (calls.cdp.push(u), browser),
+      ...over,
+    };
+    return { calls, chromium };
+  }
+
+  it('without CANVAS_CDP it launches: CANVAS_CHROME binary, else the installed Chrome', async () => {
+    const a = fakeChromium();
+    await launchChrome(() => {}, { CANVAS_CHROME: '/opt/chrome' }, a.chromium);
+    expect(a.calls.launch).toEqual([{ executablePath: '/opt/chrome', headless: true }]);
+    expect(a.calls.cdp).toEqual([]);
+    const b = fakeChromium();
+    await launchChrome(() => {}, {}, b.chromium);
+    expect(b.calls.launch).toEqual([{ channel: 'chrome', headless: true }]);
+  });
+
+  it('with CANVAS_CDP it connects and does not launch', async () => {
+    const f = fakeChromium();
+    await launchChrome(() => {}, { CANVAS_CDP: 'http://127.0.0.1:9222', CANVAS_CHROME: '/opt/chrome' }, f.chromium);
+    expect(f.calls.cdp).toEqual(['http://127.0.0.1:9222']);
+    expect(f.calls.launch).toEqual([]);
+  });
+
+  it('closing a shared browser closes the contexts we opened and then only lets go of the connection', async () => {
+    const f = fakeChromium();
+    const b = await launchChrome(() => {}, { CANVAS_CDP: 'ws://x' }, f.chromium);
+    const c1 = await b.newContext({ viewport: { width: 1, height: 1 }, deviceScaleFactor: 1 });
+    await b.newContext({ viewport: { width: 1, height: 1 }, deviceScaleFactor: 1 });
+    await c1.close();
+    expect(f.calls.contextsClosed).toBe(1);
+    await b.close();
+    expect(f.calls.contextsClosed).toBe(2); // the other one once, the first not twice
+    expect(f.calls.otherClosed).toBe(0);
+    expect(f.calls.browserClosed).toBe(1); // playwright's close on a connected browser disconnects; the Chrome keeps running
+  });
+
+  it('an unreachable CANVAS_CDP is logged and Chrome is launched instead', async () => {
+    const logs: string[] = [];
+    const f = fakeChromium({ connectOverCDP: async () => Promise.reject(new Error('connect ECONNREFUSED 127.0.0.1:9222')) });
+    await launchChrome((m) => logs.push(String(m)), { CANVAS_CDP: 'http://127.0.0.1:9222' }, f.chromium);
+    expect(f.calls.launch).toHaveLength(1);
+    expect(logs.join('\n')).toContain('CANVAS_CDP http://127.0.0.1:9222 did not answer (connect ECONNREFUSED');
   });
 });

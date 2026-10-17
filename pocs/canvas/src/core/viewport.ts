@@ -5,6 +5,8 @@ export class Viewport {
   zoom = 1;
   static MIN = 0.1;
   static MAX = 4;
+  /** The lowest zoom this viewport takes; the agent view lowers it to fit boards wider than 10 screens. */
+  minZoom = Viewport.MIN;
   /** Zoom levels for buttons/keys. */
   static STEPS = [0.1, 0.25, 0.33, 0.5, 0.67, 0.8, 1, 1.25, 1.5, 2, 3, 4];
   private listeners = new Set<() => void>();
@@ -12,7 +14,7 @@ export class Viewport {
   set(x: number, y: number, zoom: number) {
     this.x = x;
     this.y = y;
-    this.zoom = Math.min(Viewport.MAX, Math.max(Viewport.MIN, zoom));
+    this.zoom = Math.min(Viewport.MAX, Math.max(this.minZoom, zoom));
     for (const fn of this.listeners) fn();
   }
 
@@ -22,7 +24,7 @@ export class Viewport {
 
   /** Zoom by `factor`, keeping the screen point (sx, sy) fixed. */
   zoomAt(sx: number, sy: number, factor: number) {
-    const z = Math.min(Viewport.MAX, Math.max(Viewport.MIN, this.zoom * factor));
+    const z = Math.min(Viewport.MAX, Math.max(this.minZoom, this.zoom * factor));
     const [wx, wy] = this.toWorld(sx, sy);
     this.set(sx - wx * z, sy - wy * z, z);
   }

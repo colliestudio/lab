@@ -13,6 +13,8 @@ export interface ShotRequest {
   height: number;
   padding: number;
   labels: boolean;
+  /** Whole board with no size asked for: the picture may take the board's shape (see shotSize). */
+  autoSize?: boolean;
   /** base64 of the board's Y state vector: the picture must include at least that much. */
   stateVector: string;
 }
@@ -79,8 +81,23 @@ export function parseShotArgs(args: Record<string, unknown>, doc: { nodes: { id:
     width: size(args.width, SHOT_DEFAULTS.width, 'width'),
     height: size(args.height, SHOT_DEFAULTS.height, 'height'),
     padding: args.padding === undefined ? SHOT_DEFAULTS.padding : clamp(num(args.padding, 'padding'), 0, 400),
+    ...(target.kind === 'all' && args.width === undefined && args.height === undefined ? { autoSize: true } : {}),
     labels: args.labels === true || args.labels === 'true' || args.labels === 1,
   };
 }
 
 export const describeTarget = (t: ShotTarget) => (t.kind === 'all' ? 'whole board' : t.kind === 'node' ? `node ${t.id}` : `region ${t.x},${t.y} ${t.width}x${t.height}`);
+
+/**
+ * The picture size for a whole-board shot with no size asked for. The default size when the board
+ * fits at a readable zoom; a wide or tall board gets a bigger picture in its own shape instead.
+ */
+export function shotSize(r: Pick<ShotRequest, 'width' | 'height' | 'padding'>, board: { width: number; height: number } | null): { width: number; height: number } {
+  if (!board) return { width: r.width, height: r.height };
+  const zoom = Math.min((r.width - r.padding * 2) / board.width, (r.height - r.padding * 2) / board.height);
+  if (zoom >= 0.4) return { width: r.width, height: r.height };
+  const aspect = clamp((board.width + r.padding * 2) / (board.height + r.padding * 2), 0.4, 2.5);
+  const long = MAX_SIZE;
+  const short = Math.max(MIN_SIZE * 2, Math.round(long / Math.max(aspect, 1 / aspect)));
+  return aspect >= 1 ? { width: long, height: short } : { width: short, height: long };
+}

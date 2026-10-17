@@ -76,10 +76,16 @@ function trackFrames(): (root: HTMLElement) => boolean {
 
 export interface CanvasShotApi {
   frame(opts: FrameOpts): Promise<{ nodes: InView[] }>;
+  /** Size of the box around everything the seat sees, in board units; null on an empty board. */
+  bounds(): { width: number; height: number } | null;
 }
 
 export function mountAgentView(app: App): CanvasShotApi {
   const root = app.view.root;
+  // a board many screens wide must still fit; the seat's own cursor and selection are not part of what it looks at
+  app.viewport.minZoom = 0.005;
+  app.hidePeer = (id) => id === app.viewer;
+  const shown = () => app.store.doc.visible.filter((n) => !app.isConcealed(n));
   const framesLoaded = trackFrames();
   let labelLayer: HTMLElement | undefined;
 
@@ -120,7 +126,7 @@ export function mountAgentView(app: App): CanvasShotApi {
 
   const aim = (t: ShotTarget, padding: number) => {
     const doc = app.store.doc;
-    if (t.kind === 'all') return app.view.fit(padding);
+    if (t.kind === 'all') return app.view.fit(padding, shown());
     if (t.kind === 'region') return app.view.fitBox(t, padding, Viewport.MAX);
     const n = doc.get(t.id);
     if (!n || !doc.isVisible(t.id) || app.isConcealed(n)) throw new Error(`node ${t.id} is not shown to ${app.viewer}`);
@@ -128,6 +134,13 @@ export function mountAgentView(app: App): CanvasShotApi {
   };
 
   const api: CanvasShotApi = {
+    bounds() {
+      const nodes = shown();
+      if (!nodes.length) return null;
+      const w = Math.max(...nodes.map((n) => n.x + n.width)) - Math.min(...nodes.map((n) => n.x));
+      const h = Math.max(...nodes.map((n) => n.y + n.height)) - Math.min(...nodes.map((n) => n.y));
+      return { width: Math.max(1, w), height: Math.max(1, h) };
+    },
     async frame(opts) {
       await waitSynced(app.store.ydoc, opts.stateVector);
       aim(opts.target, opts.padding ?? 40);

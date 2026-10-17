@@ -105,7 +105,7 @@ export function mountPresenceView(app: App, presence: Presence) {
 
   const draw = () => {
     const vp = app.viewport;
-    const peers = presence.peers();
+    const peers = presence.peers().filter((p) => !app.hidePeer(p.id));
     const alive = new Set<number>();
     for (const p of peers) {
       if (!p.cursor) continue;

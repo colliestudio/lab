@@ -1,5 +1,5 @@
 import type { Actor } from '../core/host';
-import { ShotError, type Shot, type ShotProvider, type ShotRequest } from '../core/shots';
+import { ShotError, shotSize, type Shot, type ShotProvider, type ShotRequest } from '../core/shots';
 import type { Log } from '../core/transport';
 
 // Screenshots through one headless Chrome kept warm in this process (the serve or the bridge).
@@ -38,12 +38,50 @@ export interface HeadlessShotsOptions {
   launch?: () => Promise<ShotBrowser>;
 }
 
-const NO_BROWSER = 'no browser for screenshots: install Google Chrome or set CANVAS_CHROME to a Chrome/Chromium binary (canvas_look still works)';
+const NO_BROWSER = 'no browser for screenshots: install Google Chrome, set CANVAS_CHROME to a Chrome/Chromium binary, or set CANVAS_CDP to a running Chrome (canvas_look still works)';
 const NO_BUILD = 'screenshots need the built web app: run pnpm build';
 
-async function launchChrome(): Promise<ShotBrowser> {
-  const { chromium } = await import('playwright-core');
-  const executablePath = process.env.CANVAS_CHROME;
+/** The slice of playwright-core's `chromium` that picks a browser (tests inject a fake). */
+export interface ChromiumLike {
+  launch(o: { executablePath?: string; channel?: string; headless: boolean }): Promise<unknown>;
+  connectOverCDP(endpoint: string): Promise<unknown>;
+}
+
+/**
+ * CANVAS_CDP=<ws or http url of a running Chrome> shares that browser (Chrome started with
+ * --remote-debugging-port): we open our own contexts in it and close only those. If it can't be
+ * reached, or CANVAS_CDP is unset, Chrome is launched (CANVAS_CHROME binary, else the installed Chrome).
+ */
+export async function launchChrome(log: Log = () => {}, env: NodeJS.ProcessEnv = process.env, chromium?: ChromiumLike): Promise<ShotBrowser> {
+  chromium ??= (await import('playwright-core')).chromium as unknown as ChromiumLike;
+  const cdp = env.CANVAS_CDP?.trim();
+  if (cdp) {
+    try {
+      const b = (await chromium.connectOverCDP(cdp)) as unknown as ShotBrowser;
+      const mine = new Set<ShotContext>();
+      return {
+        async newContext(o) {
+          const c = await b.newContext(o);
+          mine.add(c);
+          const close = c.close.bind(c);
+          c.close = async () => {
+            mine.delete(c);
+            await close();
+          };
+          return c;
+        },
+        // the shared Chrome stays: our contexts go, then we let go of the connection
+        async close() {
+          await Promise.all([...mine].map((c) => c.close().catch(() => {})));
+          await b.close();
+        },
+        on: (event, fn) => b.on(event, fn),
+      };
+    } catch (e) {
+      log(`screenshots: CANVAS_CDP ${cdp} did not answer (${String((e as Error).message).split('\n')[0]}); launching Chrome instead`);
+    }
+  }
+  const executablePath = env.CANVAS_CHROME;
   return (await chromium.launch(executablePath ? { executablePath, headless: true } : { channel: 'chrome', headless: true })) as unknown as ShotBrowser;
 }
 
@@ -84,7 +122,7 @@ export class HeadlessShots implements ShotProvider {
 
   private getBrowser(): Promise<ShotBrowser> {
     if (this.browser) return this.browser;
-    const p = (this.o.launch ?? launchChrome)().then(
+    const p = (this.o.launch ?? (() => launchChrome(this.o.log)))().then(
       (b) => {
         b.on('disconnected', () => {
           if (this.browser !== p) return;
@@ -198,15 +236,20 @@ export class HeadlessShots implements ShotProvider {
   private async take(v: View, r: ShotRequest): Promise<Omit<Shot, 'ms'>> {
     v.lastUsed = Date.now();
     try {
-      if (v.size.width !== r.width || v.size.height !== r.height) {
-        await v.page.setViewportSize({ width: r.width, height: r.height });
-        v.size = { width: r.width, height: r.height };
+      let size = { width: r.width, height: r.height };
+      if (r.autoSize) {
+        const bounds = (await v.page.evaluate('window.canvasShot.bounds()')) as { width: number; height: number } | null;
+        size = shotSize(r, bounds);
+      }
+      if (v.size.width !== size.width || v.size.height !== size.height) {
+        await v.page.setViewportSize(size);
+        v.size = size;
       }
       const { target, padding, labels, stateVector } = r;
       const framed = (await v.page.evaluate(`window.canvasShot.frame(${JSON.stringify({ target, padding, labels, stateVector })})`)) as { nodes: Shot['nodes'] };
       const png = await v.page.screenshot({ type: 'png' });
       v.lastUsed = Date.now();
-      return { png, width: r.width, height: r.height, nodes: framed.nodes };
+      return { png, width: size.width, height: size.height, nodes: framed.nodes };
     } catch (e) {
       const msg = String((e as Error).message);
       const refused = /(node .+ is not shown to .+)/.exec(msg);

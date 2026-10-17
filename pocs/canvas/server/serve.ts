@@ -20,6 +20,10 @@ import { McpService } from './mcp/session';
 //    /delete (to the trash folder) change it
 //  - MCP agents: http://HOST:PORT/mcp (claude mcp add --transport http canvas <that URL>); a session joins boards
 //    with canvas_join and its tools then act there (server/mcp/)
+//  - Screenshots (canvas_screenshot) need a Chrome on this machine (node/shots.ts): installed Google Chrome by default,
+//    CANVAS_CHROME=<binary> for another Chrome/Chromium, or CANVAS_CDP=<ws or http url> (e.g. http://127.0.0.1:9222, Chrome
+//    started with --remote-debugging-port) to use a Chrome that is already running: we open and close only our own
+//    contexts there, never the browser. If CANVAS_CDP does not answer, Chrome is launched as usual.
 //  - The folder is locked while it runs (.canvas-serve.lock, node/lock.ts): a second serve or a bridge refuses it, and it refuses a folder a bridge has open.
 //  - A board loads when first used and unloads when nobody has it open (--idle-ms). Each board's file
 //    stays the durable record, as with the bridge.

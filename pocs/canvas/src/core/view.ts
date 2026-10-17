@@ -222,7 +222,7 @@ export class View {
   fitBox(box: { x: number; y: number; width: number; height: number }, padding = 60, maxZoom = 1.5) {
     const w = this.root.clientWidth - padding * 2;
     const h = this.root.clientHeight - padding * 2;
-    const zoom = Math.min(maxZoom, Math.max(Viewport.MIN, Math.min(w / box.width, h / box.height)));
+    const zoom = Math.min(maxZoom, Math.max(this.app.viewport.minZoom, Math.min(w / box.width, h / box.height)));
     const x = (this.root.clientWidth - box.width * zoom) / 2 - box.x * zoom;
     const y = (this.root.clientHeight - box.height * zoom) / 2 - box.y * zoom;
     this.app.viewport.set(x, y, zoom);
