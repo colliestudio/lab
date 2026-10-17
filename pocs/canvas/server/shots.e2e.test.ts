@@ -206,6 +206,89 @@ describe.skipIf(!CHROME)('screenshots in a real browser', () => {
   }, 60_000);
 });
 
+describe.skipIf(!CHROME)('whole-board shot of a wide board, no app chrome', () => {
+  beforeAll(async () => {
+    ensureBuild();
+    probe = await chromium.launch({ executablePath: CHROME, headless: true });
+    await startServe();
+    await api('', { name: 'wide' });
+    for (let i = 0; i < 40; i++) await run('wide', 'board.add', { text: `n${i}`, x: i * 1500, y: (i % 5) * 900 });
+    for (let i = 0; i < 3; i++) await run('wide', 'frames.create', { x: i * 20000, y: -900, width: 18000, height: 600, label: `F${i}` });
+  }, 120_000);
+  afterAll(async () => {
+    serveProc?.kill('SIGKILL');
+    await probe?.close();
+    rmSync(boardsDir, { recursive: true, force: true });
+  });
+
+  it('every node is inside the picture (which takes the board’s shape), and the outline, dock and the viewing seat’s own cursor are not drawn', async () => {
+    const s = (await api('/wide/shot?as=x')) as { png: string; width: number; height: number; nodes: { id: string; box: [number, number, number, number] }[] };
+    expect(s.width).toBe(2000);
+    expect(s.height).toBeLessThan(2000);
+    expect(s.nodes).toHaveLength(43);
+    for (const n of s.nodes) {
+      const [x, y, w, h] = n.box;
+      expect(x).toBeGreaterThanOrEqual(0);
+      expect(y).toBeGreaterThanOrEqual(0);
+      expect(x + w).toBeLessThanOrEqual(s.width);
+      expect(y + h).toBeLessThanOrEqual(s.height);
+    }
+    // the same page a shot uses: nothing beside the table shows
+    const page = await probe.newPage({ viewport: { width: 1000, height: 750 } });
+    try {
+      await page.goto(`${base}/b/wide?agentView=agent:x`);
+      await page.waitForFunction('window.canvasSynced');
+      await page.evaluate('window.canvasSynced');
+      const shown = (await page.evaluate(
+        `[...document.body.children].filter((e) => e.tagName !== 'SCRIPT' && e.id !== 'table' && getComputedStyle(e).display !== 'none').map((e) => e.className)`,
+      )) as string[];
+      expect(shown).toEqual([]);
+      expect(await page.evaluate(`!!document.querySelector('.fr-outline')`)).toBe(true); // it exists, hidden
+    } finally {
+      await page.close();
+    }
+  }, 90_000);
+});
+
+describe.skipIf(!CHROME)('screenshots in a Chrome that is already running (CANVAS_CDP)', () => {
+  let shared: ChildProcess;
+  let sharedDir: string;
+  let cdp: string;
+  const alive = async () => !!(await fetch(`${cdp}/json/version`).catch(() => null))?.ok;
+  beforeAll(async () => {
+    ensureBuild();
+    sharedDir = mkdtempSync(join(tmpdir(), 'canvas-shots-cdp-'));
+    const port = await freePort();
+    shared = spawn(CHROME!, ['--headless=new', `--remote-debugging-port=${port}`, `--user-data-dir=${sharedDir}`, '--no-first-run', 'about:blank'], { stdio: 'ignore' });
+    cdp = `http://127.0.0.1:${port}`;
+    await until(alive);
+    boardsDir = mkdtempSync(join(tmpdir(), 'canvas-shots-e2e-'));
+    const sp = await freePort();
+    serveProc = spawn(process.execPath, ['--import', 'tsx', 'server/serve.ts', boardsDir, '--port', String(sp)], { cwd: root, stdio: 'ignore', env: { ...process.env, CANVAS_CDP: cdp, CANVAS_CHROME: '/nonexistent' } });
+    base = `http://127.0.0.1:${sp}`;
+    await until(async () => !!(await fetch(base + '/api/info').catch(() => null))?.ok);
+    await api('', { name: 'main' });
+    await run('main', 'board.add', { text: 'hi', x: 0, y: 0 });
+  }, 120_000);
+  afterAll(() => {
+    serveProc?.kill('SIGKILL');
+    shared?.kill('SIGKILL');
+    rmSync(boardsDir, { recursive: true, force: true });
+    rmSync(sharedDir, { recursive: true, force: true, maxRetries: 5 });
+  });
+
+  it('takes the shot in the running Chrome (CANVAS_CHROME is a dead path, so it did not launch), and that Chrome is still up after', async () => {
+    const s = (await api('/main/shot?as=x')) as { png: string; nodes: unknown[] };
+    expect(Buffer.from(s.png, 'base64').subarray(0, 4).toString('hex')).toBe('89504e47');
+    expect(s.nodes).toHaveLength(1);
+    const targets = (await (await fetch(`${cdp}/json/list`)).json()) as { url: string }[];
+    expect(targets.some((t) => t.url.includes('agentView=agent'))).toBe(true); // our page lives in the shared browser
+    serveProc.kill('SIGTERM');
+    await new Promise((r) => setTimeout(r, 1500));
+    expect(await alive()).toBe(true);
+  }, 90_000);
+});
+
 describe.skipIf(!CHROME)('screenshots through a bridge', () => {
   let b: TestBridge;
   let stdio: Client;

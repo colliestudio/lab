@@ -939,7 +939,11 @@
 .agent-view .cv-log,
 .agent-view .cv-cues,
 .agent-view .cv-menu,
-.agent-view .help-overlay {
+.agent-view .help-overlay,
+.agent-view .pc-viewas,
+.agent-view .dg-panel,
+/* whatever a plugin (outline, banners, palettes) appends to <body> beside the table is app chrome */
+.agent-view > :not(#table):not(script) {
   display: none !important;
 }
 .agent-view .cv-world * {

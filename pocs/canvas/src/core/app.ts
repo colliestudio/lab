@@ -42,6 +42,8 @@ export class App {
   viewer = LOCAL_PLAYER;
   /** A page that only looks (the screenshot page): nothing dispatched from here, timers included, changes the board. */
   readOnly = false;
+  /** Peers whose cursor and selection are not drawn (the agent view hides its own seat). */
+  hidePeer: (id: string) => boolean = () => false;
   /** Set when the table is shared (multiplayer); null when playing solo. */
   presence: Presence | null = null;
   /** This device's player when solo (in a room: presence.me). */

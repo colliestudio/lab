@@ -111,6 +111,37 @@ describe('canvasShot.frame (A2, A3)', () => {
   });
 });
 
+describe('whole board fits however wide it is, and the seat own presence is hidden', () => {
+  it('a board 60 screens wide still has every node inside the view; bounds() is the box around what the seat sees', async () => {
+    const { app, shot } = table();
+    const wide = Array.from({ length: 40 }, (_, i) => text(`n${i}`, i * 1500, (i % 5) * 900));
+    app.store.load({ nodes: wide, edges: [] });
+    expect(shot.bounds()).toEqual({ width: 39 * 1500 + 200, height: 4 * 900 + 100 });
+    await shot.frame({ target: { kind: 'all' }, padding: 40 });
+    expect(app.viewport.zoom).toBeLessThan(0.1);
+    for (const n of wide) {
+      const s = screen(app, n);
+      expect(s.x).toBeGreaterThanOrEqual(39.5);
+      expect(s.x + s.w).toBeLessThanOrEqual(W - 39.5);
+      expect(s.y + s.h).toBeLessThanOrEqual(H - 39.5);
+    }
+  });
+
+  it('an empty board has no bounds; a normal table keeps its 0.1 zoom floor', () => {
+    const { shot } = table();
+    expect(shot.bounds()).toBeNull();
+    const root = document.createElement('div');
+    roots.push(root);
+    expect(new App(root).viewport.minZoom).toBe(0.1);
+  });
+
+  it('hides the viewing seat but not other seats', () => {
+    const { app } = table('agent:claude');
+    expect(app.hidePeer('agent:claude')).toBe(true);
+    expect(app.hidePeer('agent:codex')).toBe(false);
+  });
+});
+
 describe('observer and freshness (A4)', () => {
   it('an observer joins with no awareness state; a normal join has one', () => {
     const { app } = table();
