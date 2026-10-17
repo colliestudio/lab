@@ -166,13 +166,13 @@ export class HeadlessShots implements ShotProvider {
       const page = await context.newPage();
       const res = await page.goto(this.o.pageUrl(board, actor.id), { waitUntil: 'domcontentloaded', timeout: 15_000 });
       if (res && res.status() === 503) throw new ShotError(503, NO_BUILD);
-      if (res && res.status() >= 400) throw new Error(`the board page answered ${res.status()}`);
+      if (res && res.status() >= 400) throw new Error(`the canvas page answered ${res.status()}`);
       await page.evaluate(
         `(async () => {
           const until = Date.now() + 15000;
           while (!window.canvasSynced && Date.now() < until) await new Promise((r) => setTimeout(r, 25));
           if (!window.canvasSynced) throw new Error('the page did not start (is the web app build current? run pnpm build)');
-          await Promise.race([window.canvasSynced, new Promise((_, no) => setTimeout(() => no(new Error('the board did not sync in 15 s')), 15000))]);
+          await Promise.race([window.canvasSynced, new Promise((_, no) => setTimeout(() => no(new Error('the canvas did not sync in 15 s')), 15000))]);
           return true;
         })()`,
       );
@@ -296,7 +296,7 @@ export class HeadlessShots implements ShotProvider {
     for (const [key, p] of [...this.views]) {
       const v = await p.catch(() => undefined);
       if (v?.board === board && this.views.get(key) === p) {
-        await this.close1(v, 'board changing');
+        await this.close1(v, 'canvas changing');
         n++;
       }
     }

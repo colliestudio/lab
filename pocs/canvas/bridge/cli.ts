@@ -30,7 +30,7 @@ function help() {
   undo | redo                             your own last step (per --as)
   log [-n 20]
   ${SHOT_USAGE}
-      a PNG of the board as your seat sees it (NODE: id or title; --labels tags nodes with ids and lists them)
+      a PNG of the canvas as your seat sees it (NODE: id or title; --labels tags nodes with ids and lists them)
   help [PLUGIN [COMMAND]]                 what plugins can do: guide, commands, views
   run NAME [JSON]                         any command, args checked (canvas help lists them)
   view NAME [JSON]                        read a plugin view
@@ -45,9 +45,9 @@ From the plugins (arguments marked ... take the remaining words; V = a value; no
 ${lines.join('\n')}
 ${PLUGIN_CLI.map((x) => `  ${x.usage}`).join('\n')}
 
-  --as NAME     who you are on the board (default $CANVAS_AS or "Claude")
+  --as NAME     who you are on the canvas (default $CANVAS_AS or "Claude")
   --bridge URL  default $CANVAS_BRIDGE or http://localhost:5222
-  --canvas NAME a board of canvas serve instead of the bridge: URL is --bridge, else $CANVAS_SERVE, else http://localhost:5310 (the always-on serve)
+  --canvas NAME a canvas of canvas serve instead of the bridge: URL is --bridge, else $CANVAS_SERVE, else http://localhost:5310 (the always-on serve)
   --json        print JSON instead of text`;
 }
 

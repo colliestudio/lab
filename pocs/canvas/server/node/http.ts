@@ -78,7 +78,7 @@ export function createNodeServer(o: NodeServerOptions): NodeServer {
           reply = { status: 200, json: { file: extra.file, port: extra.port, ...rest, ...extra } };
         }
       }
-      send(res, reply ?? { status: 404, json: { error: 'GET /api/info /api/boards; a board: /api/boards/<name>/doc /status … (WebSocket: /ws/<name>)' } });
+      send(res, reply ?? { status: 404, json: { error: 'GET /api/info /api/boards; a canvas: /api/boards/<name>/doc /status … (WebSocket: /ws/<name>)' } });
     } catch (e) {
       send(res, errorReply(e));
     }
@@ -105,7 +105,7 @@ export function createNodeServer(o: NodeServerOptions): NodeServer {
       }
     }
     if (name === undefined) {
-      refuse('WebSocket', req, 'no board in the path (use /ws/<board>)');
+      refuse('WebSocket', req, 'no canvas in the path (use /ws/<canvas>)');
       return deny(404, 'Not Found');
     }
     let lease;

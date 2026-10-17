@@ -24,7 +24,7 @@ export function shotArgsFromCli(words: string[], flags: Record<string, string>):
   if (words[0] !== undefined) out.node = words[0];
   if (flags.region !== undefined) {
     const p = flags.region.split(',').map((s) => number('region', s));
-    if (p.length !== 4) throw new Error('--region takes X,Y,W,H in board coordinates, e.g. --region 0,0,800,600');
+    if (p.length !== 4) throw new Error('--region takes X,Y,W,H in canvas coordinates, e.g. --region 0,0,800,600');
     out.region = { x: p[0], y: p[1], width: p[2], height: p[3] };
   }
   if (flags.labels !== undefined) out.labels = flags.labels === 'true';

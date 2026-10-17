@@ -38,7 +38,7 @@ const obj = (properties: Json, required: string[] = []): Json => ({ type: 'objec
 export function scopedTools(tools: ToolSpec[], session: McpSession): SessionTool[] {
   return tools.map((t) => {
     if (t.inputSchema.properties?.[BOARD_ARG]) throw new Error(`tool ${t.name} already has an argument named ${BOARD_ARG}`);
-    const inputSchema = { ...t.inputSchema, properties: { ...t.inputSchema.properties, [BOARD_ARG]: str('which joined board; optional when you joined only one') } };
+    const inputSchema = { ...t.inputSchema, properties: { ...t.inputSchema.properties, [BOARD_ARG]: str('which joined canvas; optional when you joined only one') } };
     return {
       name: t.name,
       description: t.description,
@@ -62,11 +62,11 @@ export function scopedTools(tools: ToolSpec[], session: McpSession): SessionTool
 }
 
 const JOIN_PROPS: Json = {
-  board: str('the board name (canvas_boards lists them)'),
+  board: str('the canvas name (canvas_boards lists them)'),
   name: str(`the name others see on your cursor and in the log, up to ${MAX_NAME} characters`),
-  create: { type: 'boolean', description: 'make the board if it does not exist (default false)' },
+  create: { type: 'boolean', description: 'make the canvas if it does not exist (default false)' },
 };
-const LEAVE_PROPS: Json = { board: str('a board you joined') };
+const LEAVE_PROPS: Json = { board: str('a canvas you joined') };
 
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
@@ -74,19 +74,19 @@ export function sessionTools(cat: Catalog, session: McpSession): SessionTool[] {
   const own: SessionTool[] = [
     {
       name: 'canvas_boards',
-      description: 'List the boards this service has, and which ones you have joined (with the name you sit under). Join one with canvas_join.',
+      description: 'List the canvases this service has, and which ones you have joined (with the name you sit under). Join one with canvas_join.',
       inputSchema: obj({}),
       call: async () => {
         const list = await session.svc.directory.list();
         const mine = (n: string) => session.joins.get(fold(n));
         const line = (e: (typeof list)[number]) => `${e.name}  ${e.loaded ? 'loaded' : 'not loaded'} · ${plural(e.browsers, 'browser')}${mine(e.name) ? ` · joined as ${mine(e.name)!.actor.name}` : ''}${e.error ? ` · cannot open: ${e.error}` : ''}`;
         const sorted = [...list.filter((e) => mine(e.name)), ...list.filter((e) => !mine(e.name))];
-        return sorted.length ? sorted.map(line).join('\n') : '(no boards yet: canvas_join with create: true makes one)';
+        return sorted.length ? sorted.map(line).join('\n') : '(no canvases yet: canvas_join with create: true makes one)';
       },
     },
     {
       name: 'canvas_join',
-      description: 'Join a board: you get a seat there under `name` (your own cursor, log name and undo history). You can join several boards and the same board can have several agents. Other tools then act on the board you joined; with several joined, pass `canvas` to say which. Joining again under the same name changes nothing.',
+      description: 'Join a canvas: you get a seat there under `name` (your own cursor, log name and undo history). You can join several canvases and the same canvas can have several agents. Other tools then act on the canvas you joined; with several joined, pass `canvas` to say which. Joining again under the same name changes nothing.',
       inputSchema: obj(JOIN_PROPS, ['board', 'name']),
       call: async (a) => {
         const j = await session.join(String(a.board ?? ''), String(a.name ?? ''), { create: a.create === true });
@@ -104,7 +104,7 @@ export function sessionTools(cat: Catalog, session: McpSession): SessionTool[] {
     },
     {
       name: 'canvas_leave',
-      description: 'Leave a board you joined: your cursor and undo history go. Rejoining later starts a fresh seat.',
+      description: 'Leave a canvas you joined: your cursor and undo history go. Rejoining later starts a fresh seat.',
       inputSchema: obj(LEAVE_PROPS, ['board']),
       call: async (a) => `left "${session.leave(String(a.board ?? '')).name}"`,
     },
@@ -114,7 +114,7 @@ export function sessionTools(cat: Catalog, session: McpSession): SessionTool[] {
   if (!single) throw new Error('no chat_wait tool to extend');
   const chatWait: SessionTool = {
     ...single,
-    description: `${single.description} With several boards joined and no \`${BOARD_ARG}\`, it waits on all of them and names the board of each message.`,
+    description: `${single.description} With several canvases joined and no \`${BOARD_ARG}\`, it waits on all of them and names the canvas of each message.`,
     call: async (args, ctx) => {
       if (args[BOARD_ARG] !== undefined || session.joins.size < 2) return single.call(args, ctx);
       const t = Number(args.timeout_s ?? 240);

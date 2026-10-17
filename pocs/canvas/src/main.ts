@@ -87,8 +87,8 @@ function openDoc(doc: CanvasDoc & { skipped?: string[] }, name: string) {
  */
 let hosted: 'served' | 'bridge' | 'pending' | null = SERVED !== null ? 'pending' : null;
 /** New board / Open / drop while the board is not ours to replace: a bridge's file, or a served page still waiting for the service to answer. */
-const refuse = () => flash(hosted === 'pending' ? 'Opening the board…' : REFUSE);
-const REFUSE = 'This board is the bridge’s file: New board and Open would overwrite it';
+const refuse = () => flash(hosted === 'pending' ? 'Opening the canvas…' : REFUSE);
+const REFUSE = 'This canvas is the bridge’s file: New canvas and Open would overwrite it';
 const failed = (what: string, e: unknown) => flash(`${what} failed: ${(e as Error).message}`);
 
 /** A served board is a file the service keeps: New board makes another board and opens it. */
@@ -97,7 +97,7 @@ async function servedNew() {
     const { name, sameTab } = await openServedBoard(() => createUnique('Untitled', undefined));
     flash(`Made ${name}${sameTab ? '' : ': opened in a new tab'}`);
   } catch (e) {
-    failed('New board', e);
+    failed('New canvas', e);
   }
 }
 /** Open / drop on a served board: the file becomes a new served board. */
@@ -139,11 +139,11 @@ app.registerMainMenuItem({
   group: 'File',
   order: 0,
   entry: () => ({
-    label: 'New board',
+    label: 'New canvas',
     run: () => {
       if (hosted === 'served') return void servedNew();
       if (hosted === 'bridge' || hosted === 'pending') return refuse();
-      if (confirm(ROOM ? 'Start a new board for everyone in this room?' : 'Start a new board? Unsaved changes are lost.')) newBoard();
+      if (confirm(ROOM ? 'Start a new canvas for everyone in this room?' : 'Start a new canvas? Unsaved changes are lost.')) newBoard();
     },
   }),
 });
@@ -229,7 +229,7 @@ if (BRIDGE) startBridge(BRIDGE);
 else if (SERVED !== null) void probeBoard(SERVED).then((p) => {
     if (p.kind === 'ok') return startBridge(boardWsUrl(location, SERVED), { name: p.name });
     // the screenshot page has no board screen to show: it says why it has nothing to shoot, at once
-    if (AGENT_VIEW) return agentViewFailed(p.kind === 'missing' ? `board not found: ${p.error}` : `board not available: ${p.kind === 'none' ? 'the service did not answer' : p.error}`);
+    if (AGENT_VIEW) return agentViewFailed(p.kind === 'missing' ? `canvas not found: ${p.error}` : `canvas not available: ${p.kind === 'none' ? 'the service did not answer' : p.error}`);
     return p.kind === 'none' ? ((hosted = null), startLocal()) : showBoardScreen(p, SERVED);
   });
 else startLocal();
@@ -324,7 +324,7 @@ function startBridge(url: string, served?: { name: string }) {
     const back = document.createElement('a');
     back.href = '/';
     back.className = 'share-btn';
-    back.textContent = 'All boards';
+    back.textContent = 'All canvases';
     chrome.topLeft.prepend(back);
   }
   flash(served ? `Opening ${served.name}…` : `Connecting to the bridge at ${url}…`);

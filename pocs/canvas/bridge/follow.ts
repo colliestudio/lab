@@ -9,7 +9,7 @@ export const DEFAULT_SERVE = 'http://localhost:5310';
 /** Where the CLI talks: a board of the service (`--canvas`), else the bridge as before (undefined = the client's default). */
 export function apiBase(o: { bridge?: string; board?: string }, env: Record<string, string | undefined> = process.env): string | undefined {
   if (o.board === undefined) return o.bridge;
-  if (!o.board || o.board === 'true') throw new Error('--canvas needs a board name'); // a bare flag parses as "true"
+  if (!o.board || o.board === 'true') throw new Error('--canvas needs a canvas name'); // a bare flag parses as "true"
   return `${(o.bridge ?? env.CANVAS_SERVE ?? DEFAULT_SERVE).replace(/\/+$/, '')}/api/boards/${encodeURIComponent(o.board)}`;
 }
 

@@ -77,10 +77,10 @@ export function toolList(cat: Catalog): ToolSpec[] {
     {
       name: 'canvas_screenshot',
       description:
-        'See the board as a person sees it, as an image: layout, overlaps, how drawings, pages and game boards look. The whole board, one node or frame (`node`), or a world `region`. `labels: true` tags each node with its id so you can act on it with canvas_do. For facts, text and ids use canvas_look (exact, cheaper). Loop: canvas_look, canvas_do, canvas_screenshot, fix. About 1k tokens per image; you see only what your seat may see.',
+        'See the canvas as a person sees it, as an image: layout, overlaps, how drawings, pages and game boards look. The whole canvas, one node or frame (`node`), or a world `region`. `labels: true` tags each node with its id so you can act on it with canvas_do. For facts, text and ids use canvas_look (exact, cheaper). Loop: canvas_look, canvas_do, canvas_screenshot, fix. About 1k tokens per image; you see only what your seat may see.',
       inputSchema: obj({
-        node: str('a node or frame (id or title) to fill the picture; default the whole board'),
-        region: { type: 'object', description: 'a box in board coordinates to show instead: {x, y, width, height}', properties: { x: num('left'), y: num('top'), width: num('width'), height: num('height') }, required: ['x', 'y', 'width', 'height'] },
+        node: str('a node or frame (id or title) to fill the picture; default the whole canvas'),
+        region: { type: 'object', description: 'a box in canvas coordinates to show instead: {x, y, width, height}', properties: { x: num('left'), y: num('top'), width: num('width'), height: num('height') }, required: ['x', 'y', 'width', 'height'] },
         labels: { type: 'boolean', description: 'tag every node in view with its id (default false)' },
         width: num('picture width in px, 200 to 2000 (default 1000)'),
         height: num('picture height in px, 200 to 2000 (default 750)'),

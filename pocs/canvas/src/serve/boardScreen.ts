@@ -13,10 +13,10 @@ export function showBoardScreen(probe: Exclude<Probe, { kind: 'ok' } | { kind: '
   const title = document.createElement('h2');
   const body = document.createElement('p');
   if (probe.kind === 'missing') {
-    title.textContent = `No board named “${name}”`;
+    title.textContent = `No canvas named “${name}”`;
     body.textContent = 'It may have been renamed or deleted.';
   } else if (probe.kind === 'newer') {
-    title.textContent = 'Made by a newer canvas';
+    title.textContent = 'Made by a newer version of Canvas';
     body.textContent = probe.error; // the service says to upgrade and that the file is untouched
   } else {
     title.textContent = `Can’t open “${name}”`;
@@ -26,7 +26,7 @@ export function showBoardScreen(probe: Exclude<Probe, { kind: 'ok' } | { kind: '
   actions.className = 'serve-actions';
   const all = document.createElement('a');
   all.href = '/';
-  all.textContent = 'All boards';
+  all.textContent = 'All canvases';
   actions.append(all);
   if (probe.kind === 'failed') {
     const retry = document.createElement('button');

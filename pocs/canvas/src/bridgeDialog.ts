@@ -76,7 +76,7 @@ export function openBridgeDialog(ctx: BridgeDialogContext) {
 
   if (ctx.room) {
     const r = ctx.room;
-    const s = section('Agents in this room', 'A bridge joins this room as one more player and brings agents in: their cursors, chat and edits show up here for everyone, and it saves the board to a .canvas file.');
+    const s = section('Agents in this room', 'A bridge joins this room as one more player and brings agents in: their cursors, chat and edits show up here for everyone, and it saves the canvas to a .canvas file.');
     const state = el('p', 'bridge-state');
     const cmd = el('code', 'bridge-cmd', agentCommand(r.link, r.id));
     s.append(state, el('p', 'bridge-hint', 'Ask your agent to run this in the canvas repo, on the machine it works on:'), cmd, button('Copy command', async () => ctx.notify((await copyText(agentCommand(r.link, r.id))) ? 'Command copied' : 'Select the command and copy it')));
@@ -88,7 +88,7 @@ export function openBridgeDialog(ctx: BridgeDialogContext) {
     });
   }
 
-  const s = section('Connect to a bridge', ctx.room ? 'Opens its board in this tab and leaves the room.' : 'Paste the address or the link the bridge printed. Opens its board in this tab.');
+  const s = section('Connect to a bridge', ctx.room ? 'Opens its canvas in this tab and leaves the room.' : 'Paste the address or the link the bridge printed. Opens its canvas in this tab.');
   const form = el('form', 'bridge-form');
   const input = el('input');
   input.placeholder = 'wss://…  or the link the bridge printed';

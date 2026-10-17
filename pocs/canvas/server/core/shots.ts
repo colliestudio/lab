@@ -70,7 +70,7 @@ export function parseShotArgs(args: Record<string, unknown>, doc: { nodes: { id:
     }
   } else if (args.region !== undefined) {
     const r = args.region as Record<string, unknown> | null;
-    if (!r || typeof r !== 'object') throw new ShotError(400, 'region must be {x, y, width, height} in board coordinates');
+    if (!r || typeof r !== 'object') throw new ShotError(400, 'region must be {x, y, width, height} in canvas coordinates');
     const box = { x: num(r.x, 'region.x'), y: num(r.y, 'region.y'), width: num(r.width, 'region.width'), height: num(r.height, 'region.height') };
     if (box.width <= 0 || box.height <= 0) throw new ShotError(400, 'region width and height must be above 0');
     target = { kind: 'region', ...box };
@@ -86,7 +86,7 @@ export function parseShotArgs(args: Record<string, unknown>, doc: { nodes: { id:
   };
 }
 
-export const describeTarget = (t: ShotTarget) => (t.kind === 'all' ? 'whole board' : t.kind === 'node' ? `node ${t.id}` : `region ${t.x},${t.y} ${t.width}x${t.height}`);
+export const describeTarget = (t: ShotTarget) => (t.kind === 'all' ? 'whole canvas' : t.kind === 'node' ? `node ${t.id}` : `region ${t.x},${t.y} ${t.width}x${t.height}`);
 
 /**
  * The picture size for a whole-board shot with no size asked for. The default size when the board
