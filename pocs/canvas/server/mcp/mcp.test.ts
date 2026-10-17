@@ -113,6 +113,44 @@ describe('sessions', () => {
     expect(dir.loaded('alpha')!.leases).toBe(1); // the refused joins released their leases
   });
 
+  it('a seat whose session has been silent past the takeover time goes to a new session joining under the same name; before that it is taken', async () => {
+    const a = svc.create('a');
+    const b = svc.create('b');
+    const j = await a.join('alpha', 'Claude');
+    const board = dir.loaded('alpha')!;
+    const c = await dir.open('alpha');
+    c.host.dispatch(j.actor, 'board.add', { id: 'x', text: 'pasted' });
+    expect(c.host.seated().map((x) => x.name)).toEqual(['Claude']);
+    now += 119_000;
+    await expect(b.join('alpha', 'Claude')).rejects.toThrow('taken');
+    now += 2_000;
+    a.open = 1; // a request in flight: not silent
+    await expect(b.join('alpha', 'Claude')).rejects.toThrow('taken');
+    a.open = 0;
+    const j2 = await b.join('alpha', 'Claude');
+    expect(j2.actor.id).toBe(j.actor.id);
+    expect(a.joins.size).toBe(0); // the old session lost it
+    expect(c.host.seated().map((x) => x.name)).toEqual(['Claude']);
+    expect(j.abort.signal.aborted).toBe(true); // its waits end
+    expect(board.leases).toBe(1);
+  });
+
+  it('leave and a closing session take the seat off the table (cursor and selection gone for everyone)', async () => {
+    const a = svc.create('a');
+    const j = await a.join('alpha', 'Claude');
+    const b = await dir.open('alpha');
+    b.host.dispatch(j.actor, 'board.add', { id: 'x', text: 'pasted' });
+    expect(b.host.seated()).toHaveLength(1);
+    a.leave('alpha');
+    expect(b.host.seated()).toHaveLength(0);
+    const a2 = svc.create('a2');
+    await a2.join('alpha', 'Claude');
+    b.host.dispatch(makeActor('Claude'), 'board.add', { id: 'y', text: 'again' });
+    expect(b.host.seated()).toHaveLength(1);
+    a2.close();
+    expect(b.host.seated()).toHaveLength(0);
+  });
+
   it('create: only with the flag', async () => {
     const s = svc.create('s');
     await expect(s.join('new', 'Ann')).rejects.toThrow('no board "new"');
