@@ -26,6 +26,8 @@ export interface McpOptions {
   max?: number;
   /** How often joined seats are kept at the table. Default 30 s. */
   touchMs?: number;
+  /** A seat whose session has had no request for this long can be taken over by a new session joining under the same name (a dead client holds its seat until the idle sweep). Default 2 minutes. */
+  takeoverMs?: number;
   now?: () => number;
 }
 
@@ -71,10 +73,15 @@ export class McpSession {
       if (mine.actor.id === actor.id) return mine;
       throw new Error(`already joined "${mine.name}" as ${mine.actor.name}; canvas_leave it first to join under another name`);
     }
-    const other = this.svc.holder(key, actor.id, this);
+    let other = this.svc.holder(key, actor.id, this);
+    if (other && !this.closed && this.svc.quiet(other)) {
+      // the agent behind that session is gone (or long silent): this one is the same name, so it takes the seat over, with a clean cursor and selection
+      other.leave(lease.board.name);
+      other = this.svc.holder(key, actor.id, this);
+    }
     if (other || this.closed) {
       lease.release();
-      throw new Error(this.closed ? 'this session is closed' : `the seat "${actor.name}" on "${lease.board.name}" is taken by another agent; join under another name`);
+      throw new Error(this.closed ? 'this session is closed' : `the seat "${actor.name}" on "${lease.board.name}" is taken by another agent that is still active; join under another name`);
     }
     const join: Join = { name: lease.board.name, board: lease.board, actor, release: lease.release, abort: new AbortController() };
     this.joins.set(key, join);
@@ -134,6 +141,7 @@ export class McpService {
   private readonly idleMs: number;
   private readonly max: number;
   private readonly touchMs: number;
+  private readonly takeoverMs: number;
   readonly now: () => number;
 
   constructor(
@@ -143,6 +151,7 @@ export class McpService {
     this.idleMs = opts.idleMs ?? 30 * 60_000;
     this.max = opts.max ?? 200;
     this.touchMs = opts.touchMs ?? 30_000;
+    this.takeoverMs = opts.takeoverMs ?? 120_000;
     this.now = opts.now ?? Date.now;
   }
 
@@ -177,6 +186,11 @@ export class McpService {
   holder(board: string, actorId: string, except: McpSession): McpSession | undefined {
     for (const s of this.sessions.values()) if (s !== except && s.joins.get(board)?.actor.id === actorId) return s;
     return undefined;
+  }
+
+  /** No request in flight and none for `takeoverMs`: its seats may be taken over. */
+  quiet(s: McpSession): boolean {
+    return s.open === 0 && this.now() - s.lastSeen >= this.takeoverMs;
   }
 
   /** Joined seats stay at the table while the session lives, however quiet it is. */

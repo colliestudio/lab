@@ -210,6 +210,45 @@ describe('Board: connections', () => {
     await b.close();
   });
 
+  describe('what a seat shows others of its selection', () => {
+    const selOf = (c: ReturnType<typeof fakeClient>, name: string) => {
+      const st = [...c.awareness.getStates().values()].find((x) => (x as { user?: { name: string } }).user?.name === name) as { sel?: string[] } | undefined;
+      return st?.sel;
+    };
+
+    it('what an agent just made or pasted shows selected for a few seconds, then clears (the cursor stays)', async () => {
+      const b = await Board.load('a', new MemoryStorage({ a: text([]) }), quiet);
+      const c = fakeClient(b);
+      b.host.dispatch(claude, 'board.add', { id: 'x', text: 'one' });
+      b.host.dispatch(claude, 'board.add', { id: 'y', text: 'two' });
+      expect(selOf(c, 'Claude')).toEqual(['y']);
+      await tick(b.host.selectionMs - 100);
+      expect(selOf(c, 'Claude')).toEqual(['y']); // a new action restarted the clock
+      await tick(200);
+      expect(selOf(c, 'Claude')).toEqual([]);
+      const state = [...c.awareness.getStates().values()].find((x) => (x as { user?: { name: string } }).user?.name === 'Claude') as { cursor: unknown };
+      expect(state.cursor).not.toBeNull();
+      await b.close();
+    });
+
+    it('leaving the table clears the seat for everyone, and a later seat of the same name starts with nothing selected', async () => {
+      const b = await Board.load('a', new MemoryStorage({ a: text([]) }), quiet);
+      const c = fakeClient(b);
+      b.host.dispatch(claude, 'board.add', { id: 'x', text: 'one' });
+      expect(selOf(c, 'Claude')).toEqual(['x']);
+      await tick(3000);
+      b.host.unseat(claude);
+      expect(selOf(c, 'Claude')).toBeUndefined();
+      b.host.dispatch(claude, 'board.add', { id: 'y', text: 'two' });
+      expect(selOf(c, 'Claude')).toEqual(['y']);
+      await tick(3000); // the first seat's timer (due at 5 s) does not clear the new seat's selection
+      expect(selOf(c, 'Claude')).toEqual(['y']);
+      await tick(10_000);
+      expect(selOf(c, 'Claude')).toEqual([]);
+      await b.close();
+    });
+  });
+
   it('counts the relay as a connection but not as a browser; a malformed frame is dropped and logged', async () => {
     const log = vi.fn();
     const b = await Board.load('a', new MemoryStorage({ a: text([n('x')]) }), { log });

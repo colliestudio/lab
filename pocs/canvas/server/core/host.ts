@@ -43,6 +43,8 @@ interface Seat {
   store: Store;
   awareness: Awareness;
   last: number;
+  /** Clears the selection a while after the actor's last command. */
+  selTimer?: ReturnType<typeof setTimeout>;
 }
 
 export class Host {
@@ -56,6 +58,8 @@ export class Host {
   /** The file as last written or read: a file edit = its diff from this (3-way merge with the live doc). */
   private base: CanvasDoc | null = null;
   readonly catalog: Catalog = catalog();
+  /** How long what an actor just touched shows as its selection before it clears (its cursor stays). */
+  selectionMs = 5000;
 
   constructor() {
     this.store = this.newStore();
@@ -99,6 +103,7 @@ export class Host {
   unseat(actor: Actor) {
     const s = this.seats.get(actor.id);
     if (!s) return;
+    clearTimeout(s.selTimer);
     s.awareness.setLocalState(null);
     for (const fn of this.seatListeners) fn(s.awareness, false);
     s.store.undoManager.destroy();
@@ -306,7 +311,7 @@ export class Host {
     });
   }
 
-  /** Show the actor's cursor on (the middle of) the first node it touched, and select them. */
+  /** Show the actor's cursor on (the middle of) the first node it touched, and select them for a few seconds. */
   private point(seat: Seat, ids: string[]) {
     const doc = this.store.doc;
     const ns = ids.map((id) => doc.get(id)).filter((n): n is CanvasNode => !!n);
@@ -314,6 +319,13 @@ export class Host {
     if (!n) return;
     seat.awareness.setLocalStateField('cursor', { x: Math.round(n.x + n.width * 0.6), y: Math.round(n.y + n.height * 0.6) });
     seat.awareness.setLocalStateField('sel', ns.map((x) => x.id));
+    // a paste or a bulk create must not leave blue outlines on everything for as long as the seat lives
+    clearTimeout(seat.selTimer);
+    seat.selTimer = setTimeout(() => {
+      seat.selTimer = undefined;
+      if (this.seats.get(seat.actor.id) === seat) seat.awareness.setLocalStateField('sel', []);
+    }, this.selectionMs);
+    seat.selTimer.unref?.();
   }
 
   // ------------------------------------------------------------ the file
