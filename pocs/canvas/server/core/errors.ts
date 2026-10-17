@@ -28,3 +28,11 @@ export class NotLocalError extends Error {
     this.name = 'NotLocalError';
   }
 }
+
+/** The board folder does not answer (macOS blocking the process, an offline volume): refused at once instead of hanging every request. */
+export class FolderBlockedError extends Error {
+  constructor(msg: string) {
+    super(msg);
+    this.name = 'FolderBlockedError';
+  }
+}

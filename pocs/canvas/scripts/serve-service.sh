@@ -3,7 +3,8 @@
 #
 #   release [ref]   tag the ref (default poc), export it to <home>/releases/<tag>, build, switch <home>/current
 #                   to it and (re)start the service. This is the whole upgrade. If the new release does not
-#                   answer within CANVAS_SERVE_WAIT seconds, current goes back to the previous one (exit 1).
+#                   answer /api/info and list the data folder (GET /api/boards; macOS can block a process from
+#                   the folder without Full Disk Access) within CANVAS_SERVE_WAIT seconds, current goes back to the previous one (exit 1).
 #   rollback [tag]  switch back to the release before the current one (or the named tag) and restart
 #   install         (re)write the launchd agent for the current release and start it
 #   uninstall       stop and remove the agent; releases stay
@@ -157,14 +158,32 @@ new_process() {
   [ "$lpid" = "$fpid" ]
 }
 
+# The folder answers too: GET /api/boards lists it. macOS holds a process without Full Disk Access in the read for ever
+# (while /api/info keeps answering), so this is the check that a new release can actually read the data.
+folder_answers() {
+  local body status
+  FOLDER_WHY=""
+  body="$(curl -s --max-time 5 -w '\n%{http_code}' "http://localhost:$PORT/api/boards" 2>/dev/null)" || { FOLDER_WHY="GET /api/boards did not answer within 5 s"; return 1; }
+  status="${body##*$'\n'}"
+  [ "$status" = 200 ] && return 0
+  FOLDER_WHY="GET /api/boards answered $status: $(printf '%s' "${body%$'\n'*}" | head -c 600)"
+  return 1
+}
+
 await_up() {
-  local i
+  local i node
   [ "$WAIT" = 0 ] && return 0
+  FOLDER_WHY=""
   for i in $(seq 1 "$WAIT"); do
-    if curl -sf --max-time 2 "http://localhost:$PORT/api/info" >/dev/null 2>&1 && new_process; then echo "up on port $PORT"; return 0; fi
+    if curl -sf --max-time 2 "http://localhost:$PORT/api/info" >/dev/null 2>&1 && new_process && folder_answers; then echo "up on port $PORT"; return 0; fi
     sleep 1
   done
   tail -n 15 "$LOGS/serve.log" 2>/dev/null >&2 || true
+  if [ -n "$FOLDER_WHY" ]; then
+    node="$(node_of "$1")"
+    echo "serve-service: $1 is up but cannot read the data folder ($DATA): $FOLDER_WHY" >&2
+    echo "serve-service: on macOS grant ${node:-the node binary} Full Disk Access (System Settings > Privacy & Security > Full Disk Access), then run install" >&2
+  fi
   echo "serve-service: $1 did not answer on port $PORT within ${WAIT}s (log above)" >&2
   return 1
 }

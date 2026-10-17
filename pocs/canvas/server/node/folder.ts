@@ -4,6 +4,7 @@ import { mkdir, open, readdir, readFile, rename, stat, unlink, writeFile, access
 import { basename, dirname, extname, join, resolve } from 'node:path';
 import { platform } from 'node:os';
 import { NotLocalError } from '../core/errors';
+import { IoGuard } from './ioGuard';
 import type { BoardInfo, BoardStorage } from '../core/storage';
 
 // Boards as .canvas files in one folder (iCloud, Dropbox, a git repo all work: it is just files).
@@ -36,15 +37,41 @@ export class FolderStorage implements BoardStorage {
 
   private downloads = new Map<string, number>();
   private readonly download: (path: string) => void;
+  private readonly io: IoGuard;
 
-  /** `download`: asks the cloud store to fetch an evicted board (default: `brctl download` on macOS). */
-  constructor(dir: string, opts: { file?: string; download?: (path: string) => void } = {}) {
+  /**
+   * `download`: asks the cloud store to fetch an evicted board (default: `brctl download` on macOS).
+   * `timeoutMs`: how long a folder call may take before the folder counts as blocked (default 8 s, or $CANVAS_FOLDER_TIMEOUT_MS):
+   * macOS holds a process without Full Disk Access in the read forever, so calls fail with FolderBlockedError instead.
+   * `log`: told when the folder stops answering and when it answers again.
+   */
+  constructor(dir: string, opts: { file?: string; download?: (path: string) => void; timeoutMs?: number; log?: (msg: string) => void } = {}) {
     this.download = opts.download ?? (platform() === 'darwin' ? (p) => void execFile(process.env.CANVAS_BRCTL || 'brctl', ['download', p], () => {}) : () => {});
     // the real path, so a symlinked folder (/tmp on macOS) is one folder to the watcher and to names
     this.dir = realpathSync(resolve(opts.file ? dirname(opts.file) : dir));
     this.single = opts.file ? basename(opts.file) : undefined;
     this.mutable = !opts.file;
     this.stateDir = join(this.dir, '.canvas-bridge');
+    this.io = new IoGuard({
+      dir: this.dir,
+      timeoutMs: opts.timeoutMs ?? (Number(process.env.CANVAS_FOLDER_TIMEOUT_MS) || 8000),
+      probe: () => readdir(this.dir),
+      log: opts.log,
+    });
+    // every call that touches the folder runs under the deadline
+    for (const m of ['list', 'read', 'write', 'create', 'rename', 'remove', 'readState', 'writeState'] as const) {
+      const call = (this[m] as (...a: unknown[]) => Promise<unknown>).bind(this);
+      (this as unknown as Record<string, unknown>)[m] = (...a: unknown[]) => this.io.run(() => call(...a));
+    }
+  }
+
+  /** Does the folder answer? Undefined when it does, else why not (the message says what to grant when macOS is blocking it). */
+  async check(): Promise<string | undefined> {
+    try {
+      await this.io.run(() => readdir(this.dir));
+    } catch (e) {
+      return (e as Error).message;
+    }
   }
 
   /** The name a single file is served as. */
