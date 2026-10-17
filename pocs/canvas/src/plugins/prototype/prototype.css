@@ -22,10 +22,10 @@
 
 /* edges (under the nodes) */
 .pg-edges { position: absolute; left: 0; top: 0; width: 1px; height: 1px; overflow: visible; pointer-events: none; z-index: 0; }
-.pg-edge { fill: none; stroke: rgba(30, 34, 44, 0.55); stroke-width: 2.5; }
-.pg-edge.pg-head { fill: rgba(30, 34, 44, 0.75); stroke: none; }
-.pg-edge.pg-flash { stroke: #ffb020; stroke-width: 5; }
-.pg-edge.pg-head.pg-flash { fill: #ffb020; stroke: none; }
+.pg-edge { fill: none; stroke: var(--cv-ink); stroke-opacity: 0.55; stroke-width: 2.5; }
+.pg-edge.pg-head { fill: var(--cv-ink); fill-opacity: 0.75; stroke: none; }
+.pg-edge.pg-flash { stroke: #ffb020; stroke-opacity: 1; stroke-width: 5; }
+.pg-edge.pg-head.pg-flash { fill: #ffb020; fill-opacity: 1; stroke: none; }
 .pg-edge-labels { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 0; }
 .pg-edge-label { position: absolute; left: 0; top: 0; white-space: nowrap; padding: 3px 9px; border-radius: 999px; background: #20242c; color: #e8ecf3; font: 600 12px system-ui, sans-serif; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3); }
 .pg-edge-label.pg-flash { background: #ffb020; color: #20242c; }
