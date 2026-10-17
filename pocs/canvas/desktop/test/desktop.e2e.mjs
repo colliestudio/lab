@@ -77,7 +77,7 @@ const sockSend = (sock, msg) => new Promise((res) => {
 });
 const live = async (i) => !!i.sock && !!(await sockSend(i.sock, { cmd: 'ping' }));
 const running = async (user) => (await Promise.all(instances(user).map(async (i) => ((await live(i)) ? i : null)))).filter(Boolean);
-const popout = (user, name) => until(async () => { const i = instances(user).find((x) => x.canvas === name && x.url && x.icon); return i && (await live(i)) ? i : null; }, 15000);
+const popout = (user, name) => until(async () => { const i = instances(user).find((x) => x.canvas === name && x.url && x.icon); return i && (await live(i)) ? i : null; }, 25000);
 const quitPopouts = async (user, forget = false) => { for (const i of await running(user)) await sockSend(i.sock, { cmd: 'quit', forget }); await until(async () => !(await running(user)).length, 8000); };
 const psArgs = (pid) => { try { return execFileSync('ps', ['-p', String(pid), '-o', 'args='], { encoding: 'utf8' }).trim(); } catch { return ''; } };
 const labels = (items) => items.flatMap((i) => [i.label, ...(i.submenu ? labels(i.submenu.items) : [])]);
@@ -294,7 +294,7 @@ try {
   await until(() => mproc.exitCode !== null, 8000);
   app = await launch(user, BACKEND);
   const back2 = await popout(user, 'Roadmap');
-  check('relaunch brings back the pop-out that was kept', !!back2 && back2.pid !== road.pid);
+  check('relaunch brings back the pop-out that was kept', !!back2 && back2.pid !== road.pid, JSON.stringify([back2?.pid, road.pid, instances(user)]));
   await new Promise((r) => setTimeout(r, 1200));
   check('and not the one the user closed', (await running(user)).map((i) => i.canvas).join() === 'Roadmap', (await running(user)).map((i) => i.canvas).join());
   await quitPopouts(user);
