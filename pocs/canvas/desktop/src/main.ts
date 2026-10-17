@@ -169,8 +169,13 @@ function route(from: BrowserWindow | null, url: string) {
   const t = classify(backend(), url);
   if (t.kind === 'board') return void openBoard(t.name);
   if (t.kind === 'home') return openHome();
-  if (t.kind === 'external') return void shell.openExternal(url);
+  if (t.kind === 'external') return openExternal(url);
   if (t.kind === 'internal' && from && !from.isDestroyed()) return load(from, url);
+}
+
+function openExternal(url: string) {
+  if (process.env.CANVAS_TEST === '1') ((globalThis as any).__opened ??= []).push(url); // the e2e test must not open a browser
+  else void shell.openExternal(url);
 }
 
 function focusWin(w: BrowserWindow) {
@@ -249,7 +254,7 @@ function uiWindow(mode: 'switcher' | 'backend', size: { width: number; height: n
   win.once('ready-to-show', () => (hidden ? undefined : win.show()));
   win.webContents.on('will-navigate', (e) => e.preventDefault());
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  void win.loadFile(UI_HTML, { query: { mode } });
+  void win.loadFile(UI_HTML, { query: hidden ? { mode, keep: '1' } : { mode } }); // keep: tests run hidden windows, which are never focused
   return win;
 }
 

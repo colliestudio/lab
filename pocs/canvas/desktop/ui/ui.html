@@ -113,7 +113,7 @@ if (mode === 'switcher') {
     else if (e.key === 'ArrowUp' || (e.ctrlKey && e.key === 'p')) { sel = Math.max(sel - 1, 0); render(); e.preventDefault(); }
     else if (e.key === 'Enter') choose(rows[sel]);
   });
-  addEventListener('blur', () => shell.close());
+  if (!p.get('keep')) addEventListener('blur', () => shell.close());
   shell.boards().then((r) => { names = r.names; loadErr = r.error || ''; render(); });
   render();
   $('q').focus();
