@@ -9,7 +9,7 @@
     "start": "node build.mjs && electron .",
     "package": "node build.mjs && electron-builder --dir --mac --arm64",
     "publish-app": "node scripts/publish.mjs",
-    "test:e2e": "node test/desktop.e2e.mjs",
+    "test:e2e": "node build.mjs && node test/desktop.e2e.mjs",
     "typecheck": "tsc --noEmit -p ."
   },
   "devDependencies": {
