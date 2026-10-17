@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { createServer, connect, type Server } from 'node:net';
 import { join } from 'node:path';
-import { nameHash, popoutId } from './logic';
+import { nameHash, popoutId, type Bounds } from './logic';
 
 // How the app's processes find each other. The main app and each pop-out are separate Electron
 // processes. Each listens on a unix socket (short paths: macOS allows 104 bytes); a pop-out also
@@ -17,6 +17,9 @@ export interface InstanceInfo {
   /** How many times the instance was asked to come to the front. */
   focused?: number;
   icon?: { letter: string; hue: number };
+  bounds?: Bounds;
+  /** Where it listens (also lets a test or a script reach it). */
+  sock?: string;
 }
 
 export type Message = { cmd: string; canvas?: string; forget?: boolean };
