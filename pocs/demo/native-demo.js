@@ -1,13 +1,13 @@
 // Same journey, Playwright-native only: screencast video with chapters + action
 // annotations, and a trace grouped by step. No rrweb.
-import { chromium } from "playwright";
+import { launchChrome } from "./src/chrome.js";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { start } from "./app/server.js";
 
 const OUT = "out/native";
 mkdirSync(OUT, { recursive: true });
 const server = await start(7100);
-const browser = await chromium.launch();
+const browser = await launchChrome();
 const context = await browser.newContext({
   viewport: { width: 1280, height: 800 },
   // Context-level recording is full-size; page.screencast.start() captured at 800×500 inside a 1280×800 frame.

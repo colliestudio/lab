@@ -1,7 +1,7 @@
 // Contact sheet: one PNG with a frame every few seconds, each labelled with time, the current
 // step's caption and any expects in that window. The agent's default self-check: look at it.
 import { readFileSync, writeFileSync } from "node:fs";
-import { chromium } from "playwright";
+import { launchChrome } from "./chrome.js";
 
 const RRWEB = readFileSync(new URL("../node_modules/rrweb/umd/rrweb.min.js", import.meta.url), "utf8").replace(/\n\/\/# sourceMappingURL=.*$/, "");
 const CSS = readFileSync(new URL("../node_modules/rrweb/dist/style.css", import.meta.url), "utf8");
@@ -17,7 +17,7 @@ export async function buildSheet(dir, { every = 3000, cols = 2, tile = 560, brow
     ...steps.filter((s) => !s.kind).map((s) => Math.min(total, s.t - t0 + 900))])].sort((a, b) => a - b);
 
   const own = !browser;
-  browser ??= await chromium.launch();
+  browser ??= await launchChrome();
   const { width, height } = manifest.viewport;
   const page = await browser.newPage({ viewport: { width, height } });
   await page.setContent(`<style>${CSS} body{margin:0} .replayer-mouse{display:none}</style><div id="root"></div><script>${RRWEB}</script>`);

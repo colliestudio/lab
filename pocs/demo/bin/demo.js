@@ -4,7 +4,7 @@ import { existsSync, statSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { basename, dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { chromium } from "playwright";
+import { launchChrome } from "../src/chrome.js";
 import { record } from "../src/recorder.js";
 import { buildPlayer } from "../src/player.js";
 import { buildSheet } from "../src/sheet.js";
@@ -14,9 +14,7 @@ const flag = (n) => rest.includes(n);
 const OUT = resolve(new URL("../out", import.meta.url).pathname);
 
 async function launch() {
-  // Browser resolution: Playwright's cached Chromium, else the system Chrome.
-  try { return { browser: await chromium.launch(), label: `Playwright Chromium ${""}` }; }
-  catch { return { browser: await chromium.launch({ channel: "chrome" }), label: "system Chrome" }; }
+  return { browser: await launchChrome(), label: process.env.DEMO_CHROME ? `Chrome (${process.env.DEMO_CHROME})` : "system Chrome" };
 }
 const up = async (url) => { try { await fetch(url, { redirect: "manual" }); return true; } catch { return false; } };
 

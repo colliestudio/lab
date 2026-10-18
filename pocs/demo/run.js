@@ -9,7 +9,7 @@
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { createInterface } from "node:readline";
-import { chromium } from "playwright";
+import { launchChrome } from "./src/chrome.js";
 import { record } from "./src/recorder.js";
 import { buildPlayer } from "./src/player.js";
 import { mkdirSync, rmSync } from "node:fs";
@@ -86,7 +86,7 @@ for (let i = 0; ; i++) {
 
 // ---- record ----
 const t0 = Date.now();
-const browser = await chromium.launch();
+const browser = await launchChrome();
 const r = await record(browser, { name, stage, url: `http://localhost:${APP_PORT}` });
 r.catcher = await catcher();
 const watch = dbWatch(DB_PATH);
