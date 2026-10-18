@@ -10,11 +10,18 @@
 #   uninstall       stop and remove the agent; releases stay
 #   status          current release, launchd state, what the server answers, releases
 #
-# macOS only (launchd, BSD mv/sed). Everything is overridable with CANVAS_SERVE_* (tests and QA use scratch values; see the defaults below).
+# macOS only (launchd); the git and file handling also runs on Linux, which is how the tests run there. Everything is overridable with CANVAS_SERVE_* (tests and QA use scratch values; see the defaults below).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="${CANVAS_SERVE_REPO:-$(git -C "$SCRIPT_DIR/.." rev-parse --show-toplevel)}"
+# Where the canvas package sits inside REPO: empty when it is the repo root, "pocs/canvas" in the lab monorepo.
+# A release exports only that directory. Only meaningful when this script lives in REPO (a scratch REPO elsewhere: root).
+SUBDIR=""
+if [ "$(git -C "$SCRIPT_DIR/.." rev-parse --show-toplevel 2>/dev/null)" = "$(git -C "$REPO" rev-parse --show-toplevel 2>/dev/null)" ]; then
+  SUBDIR="$(git -C "$SCRIPT_DIR/.." rev-parse --show-prefix)"
+  SUBDIR="${SUBDIR%/}"
+fi
 REF="${CANVAS_SERVE_REF:-poc}"
 PREFIX="${CANVAS_SERVE_TAG_PREFIX:-serve-}"
 SHOME="${CANVAS_SERVE_HOME:-$HOME/code/canvas-serve}"
@@ -125,7 +132,8 @@ activate() {
   node="$(node_of "$tag")"
   [ -n "$node" ] || die "no node path recorded for $tag"
   ln -s "releases/$tag" "$SHOME/current.tmp.$$"
-  mv -fh "$SHOME/current.tmp.$$" "$SHOME/current"
+  # replace the symlink itself, not what it points at (BSD -h, GNU -T)
+  if [ "$(uname)" = Darwin ]; then mv -fh "$SHOME/current.tmp.$$" "$SHOME/current"; else mv -fT "$SHOME/current.tmp.$$" "$SHOME/current"; fi
   mkdir -p "$LOGS" "$AGENTS"
   rotate_log
   new="$(mktemp "${TMPDIR:-/tmp}/canvas-serve-plist.XXXXXX")"
@@ -228,7 +236,7 @@ create it first: mkdir -p \"$DATA\""
   sha="$(git -C "$REPO" rev-parse --short "$tag^{commit}")"
   echo "release $tag ($ref @ $sha) -> $rel"
   # RELEASE is written last: a directory without it is an unfinished build and never a rollback target
-  if ! { git -C "$REPO" archive "$tag" | tar -x -C "$rel"; } ||
+  if ! { git -C "$REPO" archive "${tag}${SUBDIR:+:$SUBDIR}" | tar -x -C "$rel"; } ||
     ! (cd "$rel" && if [ -n "${CANVAS_SERVE_BUILD:-}" ]; then bash -c "$CANVAS_SERVE_BUILD"; else default_build; fi); then
     die "build failed; tag $tag removed, nothing switched"
   fi

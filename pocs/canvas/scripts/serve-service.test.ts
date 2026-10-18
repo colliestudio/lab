@@ -277,3 +277,31 @@ describe('serve-service.sh', () => {
     }, 30_000);
   });
 });
+
+// In the lab monorepo the package is a subdirectory of the repo: a release exports that directory only.
+describe('serve-service.sh in a monorepo', () => {
+  it('releases the package directory the script lives in, not the whole repo', () => {
+    const mono = p('mono');
+    mkdirSync(join(mono, 'pocs', 'canvas', 'scripts'), { recursive: true });
+    mkdirSync(join(mono, 'pocs', 'canvas', 'server'));
+    mkdirSync(join(mono, 'pocs', 'other'));
+    writeFileSync(join(mono, 'pocs', 'canvas', 'server', 'serve.ts'), '// stub\n');
+    writeFileSync(join(mono, 'pocs', 'other', 'x.txt'), 'x');
+    writeFileSync(join(mono, 'README.md'), 'root');
+    execFileSync('cp', [script, join(mono, 'pocs', 'canvas', 'scripts', 'serve-service.sh')]);
+    execFileSync('git', ['init', '-q', '-b', 'poc', mono]);
+    execFileSync('git', ['-C', mono, 'add', '-A']);
+    execFileSync('git', ['-C', mono, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'one']);
+    const home = p('mono-home');
+    const r = spawnSync('bash', [join(mono, 'pocs', 'canvas', 'scripts', 'serve-service.sh'), 'release'], {
+      env: { ...process.env, ...env, CANVAS_SERVE_REPO: mono, CANVAS_SERVE_HOME: home, CANVAS_SERVE_LABEL: `${LABEL}-mono`, CANVAS_SERVE_BUILD: 'true' },
+      encoding: 'utf8',
+    });
+    expect(r.status, r.stderr + r.stdout).toBe(0);
+    const rel = join(home, 'releases', `${PREFIX}${today()}-1`);
+    expect(existsSync(join(rel, 'server', 'serve.ts'))).toBe(true);
+    expect(existsSync(join(rel, 'scripts', 'serve-service.sh'))).toBe(true);
+    expect(existsSync(join(rel, 'pocs'))).toBe(false);
+    expect(existsSync(join(rel, 'README.md'))).toBe(false);
+  });
+});
