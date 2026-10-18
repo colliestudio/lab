@@ -128,6 +128,11 @@ export class Store {
   readonly exportFilters: DocFilter[] = [];
   /** `x-` fields whose (small) value agents see in node listings; others only show as names in `ext`. */
   readonly summaryExt = new Set<string>();
+  /**
+   * Nodes a plugin keeps out of agents' node listings because a view of its own tells more (a kanban
+   * node's hundred task nodes: `kanban.board` lists them as text). They still exist and can be addressed.
+   */
+  readonly unlisted: ((n: CanvasNode, doc: DocView) => boolean)[] = [];
   /** How `core.duplicate` copies plugin objects (see DuplicateRule). */
   readonly duplicateRules: DuplicateRule[] = [];
   /** Per-plugin "back to the starting state" commands, run together by `core.reset` (one undo step). */
@@ -149,6 +154,8 @@ export class Store {
    * the one below; `core.reset` is always undone whole.
    */
   readonly undoGuards: ((id: string, doc: DocView) => string | undefined)[] = [];
+  /** Nodes a plugin does not let a plain delete remove (they go with their container): the reason, shown in the log. */
+  readonly deleteGuards: ((n: CanvasNode, doc: DocView) => string | undefined)[] = [];
   /** Told why an undo/redo was refused (the app shows it). */
   onUndoRefused?: (reason: string) => void;
   /** Commands that upgrade older docs in place; run (not undoable) after every load. Must be idempotent. */

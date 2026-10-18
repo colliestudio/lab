@@ -5,7 +5,7 @@ import { resolveNode } from '../../src/core/query';
 import { Store, type DispatchResult } from '../../src/core/store';
 import { registerCoreCommands } from '../../src/core/commands';
 import type { CanvasDoc, CanvasNode, Change } from '../../src/core/doc';
-import type { LogActor } from '../../src/core/log';
+import type { EventSpec, LogActor } from '../../src/core/log';
 import { registerPluginLogic } from '../../src/plugins/logic';
 import { after, chatArray, chatMessages, sendChat, type ChatMessage } from '../../src/core/chat';
 import { Redirect, type AgentCtx } from '../../src/core/agent';
@@ -28,6 +28,7 @@ export const FILE_ACTOR: Actor = { id: 'file', name: 'File', color: '#8a8a8a', k
 export type RunResult = { ok: true; result: unknown; text?: string; undescribed?: true; changed: number; touched: string[] } | { ok: false; error: string };
 
 const FILE = Symbol('file');
+const SYSTEM = Symbol('system');
 const AGENT_COLORS = ['#d97757', '#6a5acd', '#2e8b57', '#c71585', '#1e90ff'];
 
 export function makeActor(name: string, kind: Actor['kind'] = 'agent'): Actor {
@@ -368,6 +369,20 @@ export class Host {
   /** Did this transaction come from the file (so writing it back would only echo)? */
   static fromFile(origin: unknown) {
     return origin === FILE;
+  }
+
+  /**
+   * A serve extra (a plugin that keeps the doc in step with something outside) changes the doc: one
+   * transaction, not undoable by any seat or browser. Events that name no `actor` are logged with none (not as whoever ran the last command).
+   */
+  applySystem(changes: Change[], events: EventSpec[] = []) {
+    if (changes.length) this.store.apply(changes, SYSTEM);
+    if (events.length) this.store.appendLog(events.map((e) => ({ actor: null, ...e })));
+  }
+
+  /** Did this transaction come from `applySystem`? */
+  static fromSystem(origin: unknown) {
+    return origin === SYSTEM;
   }
 }
 

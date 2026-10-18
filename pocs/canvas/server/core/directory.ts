@@ -1,3 +1,4 @@
+import type { ServeBoard } from '../../src/core/serveExtra';
 import { FORMAT_KEY, FORMAT_VERSION, FormatError, checkFormat } from '../../src/core/format';
 import { parse } from '../../src/core/io';
 import { Board } from './board';
@@ -26,6 +27,10 @@ export interface DirectoryOptions {
   pinned?: string[];
   /** Takes screenshots; its pages are closed before a board unloads, renames or is deleted. */
   shots?: ShotProvider;
+  /** Serve extras (src/core/serveExtra.ts): called after each board loads; what it returns runs when the board unloads. */
+  attach?: (b: ServeBoard) => (() => void) | void;
+  /** More fields for GET /api/info. */
+  info?: () => Record<string, unknown>;
 }
 
 export interface BoardEntry {
@@ -161,8 +166,25 @@ export class BoardDirectory {
       }
       this.errors.delete(key);
       this.boards.set(key, board);
+      this.attach(board);
       return { board, release: board.hold() };
     });
+  }
+
+  /** Start the serve extras' work for a loaded board; a failing extra never keeps the board from opening. */
+  private attach(board: Board) {
+    if (!this.opts.attach) return;
+    try {
+      const stop = this.opts.attach(board.serveHandle());
+      if (stop) board.addCloser(stop);
+    } catch (e) {
+      board.log(`serve extension failed: ${(e as Error).message}`);
+    }
+  }
+
+  /** Extra fields for GET /api/info (from the serve extras). */
+  info(): Record<string, unknown> {
+    return this.opts.info?.() ?? {};
   }
 
   private prefixed(name: string): Log {

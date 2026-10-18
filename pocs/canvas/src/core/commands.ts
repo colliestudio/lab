@@ -2,7 +2,7 @@ import * as z from 'zod/mini';
 import { command, nodeRef, view, type CommandSpec } from './agent';
 import { set, type CanvasEdge, type CanvasNode, type Change, type DocView } from './doc';
 import { isSide, type EdgeStyle } from './edges';
-import type { Store } from './store';
+import type { Command, Store } from './store';
 import { BACKGROUND_KEY, PRESETS, backgroundOf, colorFromInput } from './theme';
 
 // Generic commands every object gets. Args are validated; bad args are a no-op.
@@ -151,6 +151,31 @@ const boardView = view({
   },
 });
 
+/** Log entries for the nodes a delete-guard kept (those not deleted with their container anyway). */
+export function keptEvents(doc: DocView, ids: unknown, store: Store, deleted: ReadonlySet<string>) {
+  const texts = pick(doc, ids as string[])
+    .filter((n) => !deleted.has(n.id))
+    .map((n) => store.deleteGuards.map((g) => g(n, doc)).find(Boolean))
+    .filter((t): t is string => !!t);
+  return [...new Set(texts)].map((text) => ({ type: 'core.kept', text }));
+}
+
+/** `cmd` (a command that deletes the nodes in `args.ids`) with the delete guards applied: guarded nodes stay, and the log says so. */
+export function guardedDelete<A extends { ids: string[] }>(store: Store, cmd: Command<A>): Command<A> {
+  return (doc, a, ctx) => {
+    const free = pick(doc, a?.ids ?? []).filter((n) => !store.deleteGuards.some((g) => g(n, doc)));
+    const r = cmd(doc, { ...a, ids: free.map((n) => n.id) }, ctx);
+    const base = Array.isArray(r) ? { changes: r } : r;
+    // what a deleted node contains goes with it (a kanban node's cards), as in core.delete
+    const gone = new Set(base.changes.flatMap((c) => (c.op === 'del' ? [c.id] : [])));
+    const walk = (id: string) => doc.children(id).forEach((c) => !gone.has(c.id) && (gone.add(c.id), walk(c.id)));
+    [...gone].forEach(walk);
+    const res = { ...base, changes: [...base.changes, ...[...gone].filter((id) => !base.changes.some((c) => c.op === 'del' && c.id === id)).map((id): Change => ({ op: 'del', id }))] };
+    const events = keptEvents(doc, a?.ids, store, gone);
+    return events.length ? { ...res, events: [...(Array.isArray(res.events) ? res.events : []), ...events] } : res;
+  };
+}
+
 export function registerCoreCommands(store: Store) {
   const spec = (name: string) => coreSpecs[name];
   store.register('core.move', (doc, a: { ids: string[]; dx: number; dy: number }) => {
@@ -179,10 +204,13 @@ export function registerCoreCommands(store: Store) {
       for (const c of doc.children(id)) walk(c.id);
       for (const r of doc.riders(id)) walk(r.id);
     };
-    for (const n of pick(doc, a?.ids)) walk(n.id);
+    for (const n of pick(doc, a?.ids)) if (!store.deleteGuards.some((g) => g(n, doc))) walk(n.id);
+    // a guarded node that goes with its container (a board deleted with its cards) was not kept
+    const events = keptEvents(doc, a?.ids, store, out);
     // edge ids (a picked arrow) go too
     const edges = isIds(a?.ids) ? a.ids.filter((id) => doc.edge(id)) : [];
-    return [...[...out].map((id): Change => ({ op: 'del', id })), ...edges.map((id): Change => ({ op: 'unedge', id }))];
+    const changes = [...[...out].map((id): Change => ({ op: 'del', id })), ...edges.map((id): Change => ({ op: 'unedge', id }))];
+    return events.length ? { changes, events } : changes;
   }, spec('delete'));
   /** Deletes arrows only (ids that are not arrows are refused). */
   store.register('core.unedge', (doc, a: { ids: string[] }) => {

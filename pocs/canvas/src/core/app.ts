@@ -44,6 +44,11 @@ export class App {
   readOnly = false;
   /** Peers whose cursor and selection are not drawn (the agent view hides its own seat). */
   hidePeer: (id: string) => boolean = () => false;
+  /**
+   * What keeps this page's board: a canvas serve ('served'), a bridge ('bridge'), or nothing (null: a local board or a room).
+   * Plugins whose data lives outside the doc (a kanban node syncing a folder) work only on 'served'.
+   */
+  hosted: 'served' | 'bridge' | null = null;
   /** Set when the table is shared (multiplayer); null when playing solo. */
   presence: Presence | null = null;
   /** This device's player when solo (in a room: presence.me). */

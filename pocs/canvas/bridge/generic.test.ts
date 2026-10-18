@@ -24,8 +24,8 @@ function pluginSources(dirPath = join(dir, '../src/plugins')): string[] {
 const SCHEMA_ARGS: Record<string, string[]> = { 'server/mcp/tools.ts': ['board'] };
 
 describe('bridge/ and server/ stay generic', () => {
-  it('imports no plugin but the list and the CLI extras', () => {
-    const allowed = [join(root, 'src/plugins/logic'), join(root, 'src/plugins/cli')];
+  it('imports no plugin but the lists (logic, CLI extras, serve extras)', () => {
+    const allowed = [join(root, 'src/plugins/logic'), join(root, 'src/plugins/cli'), join(root, 'src/plugins/serve')];
     for (const f of files) {
       for (const m of code(f).matchAll(/from\s+'([^']*src\/plugins\/[^']*)'/g)) expect(allowed, `${f} imports ${m[1]}`).toContain(resolve(root, f, '..', m[1]));
     }

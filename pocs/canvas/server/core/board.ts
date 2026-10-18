@@ -5,6 +5,8 @@ import * as encoding from 'lib0/encoding';
 import * as decoding from 'lib0/decoding';
 import { parse } from '../../src/core/io';
 import { FORMAT_KEY, FORMAT_VERSION, FormatError, checkFormat, migrateFormat } from '../../src/core/format';
+import { newId } from '../../src/core/store';
+import type { ServeBoard } from '../../src/core/serveExtra';
 import { Host, type Actor } from './host';
 import { stableSerialize } from './canonical';
 import { BoardFileError, DirError } from './errors';
@@ -66,6 +68,7 @@ export class Board {
   private queued = 0;
   private unwatch: (() => void) | undefined;
   private unseat: (() => void) | undefined;
+  private closers: (() => void)[] = [];
   private closed = false;
 
   private constructor(
@@ -382,12 +385,49 @@ export class Board {
     for (const a of this.seatAwareness) conn.send(awarenessMsg(a, [a.clientID]));
   }
 
+  // ------------------------------------------------------------ serve extras
+
+  /** Run `fn` when the board closes, before its final flush (a serve extra's watcher or timer). */
+  addCloser(fn: () => void) {
+    if (this.closed) fn();
+    else this.closers.push(fn);
+  }
+
+  /** This board as a serve extra sees it (src/core/serveExtra.ts). */
+  serveHandle(): ServeBoard {
+    const host = this.host;
+    return {
+      name: this.name,
+      doc: () => host.store.doc,
+      apply: (changes, events) => {
+        if (!this.closed) host.applySystem(changes, events);
+      },
+      newId,
+      onDocChange: (fn) => {
+        const h = (tr: Y.Transaction) => {
+          if (!Host.fromSystem(tr.origin)) fn();
+        };
+        host.ydoc.on('afterTransaction', h);
+        return () => host.ydoc.off('afterTransaction', h);
+      },
+      onClose: (fn) => this.addCloser(fn),
+      log: (m) => this.log(m),
+    };
+  }
+
   // ------------------------------------------------------------ end of life
 
   /** Flush, then let go of everything: timers, the watcher, connections, seats, the doc. */
   async close(): Promise<void> {
     if (this.closed) return;
     this.closed = true; // from here nothing re-arms a timer or reaches a new connection
+    for (const fn of this.closers.splice(0)) {
+      try {
+        fn();
+      } catch (e) {
+        this.log(`close: ${(e as Error).message}`);
+      }
+    }
     clearTimeout(this.writeTimer);
     clearTimeout(this.readTimer);
     clearTimeout(this.normTimer);

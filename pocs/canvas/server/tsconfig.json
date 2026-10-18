@@ -4,5 +4,6 @@
     "lib": ["ES2022", "DOM"],
     "types": ["node", "vite/client"]
   },
-  "include": [".", "../src/core/*.d.ts"]
+  "include": [".", "../src/core/*.d.ts", "../src/plugins/*/node"],
+  "exclude": []
 }

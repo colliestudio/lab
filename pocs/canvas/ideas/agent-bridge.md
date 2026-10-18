@@ -7,7 +7,7 @@
 ```
  .canvas file ⇄ bridge (Node, :5222) ⇄ WebSocket (y-websocket protocol) ⇄ browsers (?bridge=ws://…:5222)
                   ↑ HTTP API (/cmd /undo /query /doc /log /status)
-          canvas CLI · MCP server · sync-backlog (any script)
+          canvas CLI · MCP server · any script
 ```
 
 - **Bridge = host.** One `Y.Doc`. Browsers sync over plain WebSocket (simplest local transport; no WebRTC in Node). `bridge/server.ts`.
@@ -16,14 +16,14 @@
 - **doc → file**: after every change (300 ms debounce) the bridge writes canonical text (`bridge/canonical.ts`): fixed key order, tabs, nodes in z order, edges by id. Editing one field (text, color, y) = a one-line git diff; a move changes the x and y lines.
 - **file → doc**: `fs.watch` on the directory (editors and `git checkout` replace the file). An edit becomes a **3-way field merge**: diff(file as the bridge last saw it → new file) applied to the live doc as per-field `Change`s. A field a person changed in the browser meanwhile, and the file didn't touch, survives. Logged as actor **File**. A pending doc → file write first merges any file change the watcher hasn't applied yet, so a save never gets overwritten; an invalid file is left alone (doc changes wait) until it parses.
 - **Restarts**: `<dir>/.canvas-bridge/<name>.ystate` keeps Yjs history, so a restarted bridge and still-open tabs agree on identity; file edits made while it was down merge in at start. Delete it any time; the file wins.
-- **Integration (existing system)**: `canvas sync-backlog` runs `backlog task list --plain` (read only) in `~/workspaces/cs`, parses it (`bridge/backlog.ts`) and dispatches one `board.sync`: statuses → columns, tasks → notes (ids `backlog:TASK-35`, `x-sync` metadata, color by priority). Re-runnable: unchanged input = no change; changed text updates; status change moves the note to the new column; notes a person rearranged within their column stay; deleted tasks go. Runs as actor "Backlog.md" (kind tool).
+- **Integration (existing system)**: the first integration was `canvas sync-backlog` (retired when the kanban node replaced it, see `ideas/kanban.md`): it ran `backlog task list --plain` (read only) in `~/workspaces/cs`, parsed it and dispatched one `board.sync`: statuses → columns, tasks → notes (ids `backlog:TASK-35`, `x-sync` metadata, color by priority). Re-runnable: unchanged input = no change; changed text updates; status change moves the note to the new column; notes a person rearranged within their column stay; deleted tasks go. Runs as actor "Backlog.md" (kind tool).
 
 ## What's built (branch `idea/agent-bridge`)
 
 - `src/plugins/board/` — new plugin. `logic.ts` (DOM-free): `board.add/update/remove/connect/disconnect/sync`, rider rule (a note rides the column its center is in). `index.ts`: note/column renderers (JSON Canvas colors 1–6, light markdown), Add ▸ Note / Column kits, right-click Edit / Link these two / Unlink / Color / Delete, double-click edit.
 - `bridge/server.ts` — WebSocket Yjs host + HTTP API + file watcher + state sidecar.
 - `bridge/host.ts` — doc, per-actor seats, file apply/merge. `bridge/canonical.ts` — stable serialize, diff. `src/core/query.ts` — summaries, filters, resolve node by id or title.
-- `bridge/cli.ts` — `canvas status|list|query|show|add-node|add-column|update|move|connect|disconnect|rm|undo|redo|log|cmd|sync-backlog`. Nodes by id or title (unique prefix/substring).
+- `bridge/cli.ts` — `canvas status|list|query|show|add-node|add-column|update|move|connect|disconnect|rm|undo|redo|log|cmd`. Nodes by id or title (unique prefix/substring).
 - `bridge/mcp.ts` — MCP stdio server; its tools are generated from what plugins describe (section above).
 - App: `?bridge=ws://host:5222` joins the bridge (no IndexedDB, no starter deck; top right shows players incl. agents).
 - Tests: +15 (edges, board commands, sync, canonical/diff/merge, host undo-per-actor, Yjs round trip, backlog parser). 244 total on the original branch; the merge branch adds the undo-step test, the guard and argument parser tests.
@@ -56,7 +56,7 @@ From the worktree `~/code/canvas-wt/agent-bridge` (ports are examples; `$APP` an
    - `pnpm canvas add-node "Payment taken" --near "Order placed" --color 4`
    - `pnpm canvas connect "Order" "Payment" --label then`
    - Claude's cursor jumps to each note, the log (bottom left) says "Claude added note …".
-4. `pnpm canvas sync-backlog` → three columns of cs's Backlog tasks appear (as "Backlog.md"). Run again: "board already up to date". Move a task in Backlog (`backlog task edit …`) and re-run: it moves column.
+4. (retired with `sync-backlog`) A Backlog.md folder is now shown by a kanban node on a canvas serve (`ideas/kanban.md`).
 5. Edit in the browser (double-click a note) → `git -C /tmp/demo diff` shows one line. Edit the file in an editor → browser updates, log says "File edited the file: 1 changed". `git checkout board.canvas` → the board reverts live.
 6. `pnpm canvas undo` → undoes Claude's last step only (people's and other agents' steps stay). `pnpm canvas undo --as Someone` → "nothing to undo". If another actor overwrote Claude's last step, `undo` says so and does nothing; the next `undo` goes to the step before.
 7. A web page cannot act: from a page on another origin, a `fetch` POST of `/chat/say` or `/cmd`, a read of `/chat/read`, and a `new WebSocket(...)` are all refused (bridge log: `refused POST /cmd: Origin … is not allowed`).
@@ -72,7 +72,7 @@ A plugin says what an agent can do where it registers the command, so the bridge
 - **Guide.** `PluginLogic` gets `title`, `summary` and `guide` (at most 15 lines on how to work with the plugin).
 - **Generic tools.** `canvas_look` (the nodes, or a view), `canvas_do {command, args}`, `canvas_help {plugin?, command?}` and `canvas_wait {view, args?}`, plus `canvas_list/log/undo` and `chat_*`. Every spec that carries a `tool` name also becomes a named tool, so the earlier tool names still work. The CLI gets the verbs from the specs' `cli` forms (`canvas help` is generated), and `canvas run|view|wait|help` reach everything. HTTP: `POST /agent/run`, `GET /agent/help`, `/view` and `/wait` take `args=<json>`; `/cmd` stays raw and unchecked.
 - **Bad args fail before dispatch**, with every problem listed: `chess.move: args.move: expected string, received undefined. Example: {"move":"Nf3"}. More: canvas_help {...}`.
-- **Plugin-only CLI verbs** that are not command calls (`sync-backlog`, `bot chess`) live in the plugin's Node-only `cli.ts` and are listed in `src/plugins/cli.ts`.
+- **Plugin-only CLI verbs** that are not command calls (`bot chess`) live in the plugin's Node-only `cli.ts` and are listed in `src/plugins/cli.ts`.
 - **Writing one:** put the spec next to the command, keep `args` strict, give a real `example`, describe in one or two sentences what it does and when to use it, and write the guide last. Logic files import `core/agent` directly, never the core index (it pulls CSS).
 
 Not described yet (undescribed commands show up in `canvas_help`): the other plugins; passes are filed as separate tasks.

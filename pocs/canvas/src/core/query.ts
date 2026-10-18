@@ -46,10 +46,11 @@ export function summarize(doc: DocView, n: CanvasNode, keep: ReadonlySet<string>
 }
 
 /** Filters: type, text (substring, case-insensitive), column (label), ext (namespace, e.g. x-sync). */
-export function queryNodes(doc: DocView, q: { type?: string; text?: string; column?: string; ext?: string }, keep?: ReadonlySet<string>): NodeSummary[] {
+export function queryNodes(doc: DocView, q: { type?: string; text?: string; column?: string; ext?: string }, keep?: ReadonlySet<string>, unlisted: readonly ((n: CanvasNode, doc: DocView) => boolean)[] = []): NodeSummary[] {
   const text = q.text?.toLowerCase();
   const column = q.column?.toLowerCase();
   return doc.nodes
+    .filter((n) => !unlisted.some((f) => f(n, doc)))
     .map((n) => summarize(doc, n, keep))
     .filter((s) => !q.type || s.type === q.type)
     .filter((s) => !text || (s.text ?? '').toLowerCase().includes(text))

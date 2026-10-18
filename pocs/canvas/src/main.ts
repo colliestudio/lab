@@ -18,6 +18,7 @@ import { stormPlugin } from './plugins/eventstorm';
 import { prototypePlugin } from './plugins/prototype';
 import { diagramPlugin } from './plugins/diagram';
 import { excalidrawPlugin } from './plugins/excalidraw';
+import { kanbanPlugin } from './plugins/kanban';
 import { registerPluginLogic } from './plugins/logic';
 import { mountHelp, removeHelpNote } from './help';
 import { attachFollow, createFramesPlugin, portalsEnabled, enterUrl, mountBreadcrumb, trailFromUrl } from './plugins/frames';
@@ -56,6 +57,7 @@ app.use(stormPlugin);
 app.use(prototypePlugin);
 app.use(diagramPlugin);
 app.use(excalidrawPlugin);
+app.use(kanbanPlugin);
 // frames' logic is last in PLUGIN_LOGIC (src/plugins/logic.ts): its rider rule must come after the others, so it is registered there
 const TRAIL = trailFromUrl();
 const frames = createFramesPlugin({ room: ROOM, portals: portalsEnabled(), enter: (room) => (location.href = enterUrl(room, ROOM, TRAIL)) });
@@ -293,6 +295,7 @@ function startLocal() {
 /** Bridge mode (?bridge=ws://host:5222): the table is a .canvas file a bridge process hosts; agents join it. A board of a canvas service (`served`) is the same, on this origin. */
 function startBridge(url: string, served?: { name: string }) {
   hosted = served ? 'served' : 'bridge';
+  app.hosted = hosted;
   const stored = loadPlayer();
   const room = joinBridge(app, url, { id: stored.id, name: stored.name, color: stored.color }, BRIDGE_ADDR?.token, { observer: !!AGENT_VIEW });
   (window as any).room = room;

@@ -1,0 +1,483 @@
+/* Kanban: a board node (columns) with a card node per task, and the task panel. */
+
+.kb-board {
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  background: #fff;
+  border: 1px solid #d5d5dd;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.08);
+  font: 13px/1.45 -apple-system, system-ui, sans-serif;
+  color: #1d1d1f;
+  cursor: default;
+}
+.cv-node[data-kind='kanban.board'].cv-drop-target[data-drop-label]::after {
+  display: none; /* the insertion marker says where */
+}
+.kb-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  border-bottom: 1px solid #eee;
+  cursor: grab;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.kb-name {
+  font-weight: 700;
+  font-size: 15px;
+  margin-right: 2px;
+}
+.kb-spacer {
+  flex: 1;
+}
+.kb-state,
+.kb-chip {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 99px;
+  background: #f1f1f4;
+  color: #555;
+  white-space: nowrap;
+  max-width: 340px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kb-chip {
+  cursor: pointer;
+}
+.kb-state.kb-live {
+  background: #e6f6ec;
+  color: #16794a;
+}
+.kb-state.kb-bad {
+  background: #fde8e8;
+  color: #b42318;
+}
+.kb-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 5px;
+  border-radius: 50%;
+  background: var(--c, #16a34a);
+  vertical-align: 1px;
+}
+.kb-menu {
+  border: 0;
+  background: #f1f1f4;
+  color: #555;
+  border-radius: 99px;
+  padding: 0 9px;
+  font: inherit;
+  line-height: 20px;
+  cursor: pointer;
+}
+.kb-menu:hover {
+  background: #e4e4ea;
+}
+.kb-note-line {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 8px;
+  color: #7a838c;
+  font-size: 11.5px;
+  pointer-events: none;
+}
+.kb-col {
+  position: absolute;
+  box-sizing: border-box;
+  border-radius: 10px;
+  background: #f4f4f7;
+}
+.kb-col-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  font-weight: 600;
+  font-size: 12px;
+  color: #555;
+}
+.kb-count {
+  color: #999;
+  font-weight: 500;
+}
+.kb-add {
+  margin-left: auto;
+  border: 0;
+  background: none;
+  font-size: 15px;
+  color: #888;
+  cursor: pointer;
+  padding: 0 2px;
+}
+.kb-add:hover {
+  color: #1d1d1f;
+}
+.kb-quick {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 3px 0;
+  padding: 5px 8px;
+  font: 12.5px/1.35 -apple-system, system-ui, sans-serif;
+  border: 2px solid #3b5bdb;
+  border-radius: 8px;
+  background: #fff;
+  resize: none;
+  outline: none;
+  overflow: hidden;
+}
+.kb-col-foot {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.kb-more {
+  border: 0;
+  background: none;
+  color: #777;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.kb-more:hover {
+  color: #1d1d1f;
+}
+
+/* cards */
+.kb-card,
+.kb-row {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  background: #fff;
+  border: 1px solid #e4e4ea;
+  border-radius: 8px;
+  color: #1d1d1f;
+  overflow: hidden;
+  cursor: pointer;
+  font: 13px/1.35 -apple-system, system-ui, sans-serif;
+}
+.kb-card {
+  padding: 7px 9px;
+}
+.kb-card:hover,
+.cv-selected .kb-card {
+  border-color: #8aa4ff;
+  box-shadow: 0 0 0 2px #dfe6ff;
+}
+.kb-card.kb-new {
+  border-color: #3aa76d;
+}
+.kb-card.kb-conflict {
+  border-color: #e0a100;
+}
+.kb-meta {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  color: #888;
+  font: 10.5px ui-monospace, monospace;
+}
+.kb-pending {
+  color: #16794a;
+  font-family: -apple-system, system-ui, sans-serif;
+}
+.kb-flag {
+  color: #a16207;
+  font-family: -apple-system, system-ui, sans-serif;
+}
+.kb-title {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-weight: 500;
+  font-size: 12.5px;
+  margin: 1px 0 4px;
+}
+.kb-foot-row {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.kb-prio {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #f1f1f4;
+  color: #555;
+}
+.kb-prio-high {
+  background: #fde8e8;
+  color: #b42318;
+}
+.kb-prio-medium {
+  background: #fff3d6;
+  color: #92600a;
+}
+.kb-ac {
+  font-size: 10px;
+  color: #666;
+  background: #f1f1f4;
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+.kb-ac-done {
+  background: #e6f6ec;
+  color: #16794a;
+}
+.kb-who {
+  font-size: 10px;
+  padding: 1px 7px;
+  border-radius: 99px;
+  background: #f1f1f4;
+  color: #555;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kb-who.kb-seated {
+  background: #f3e8ff;
+  color: #6b21a8;
+}
+.kb-who .kb-dot {
+  background: var(--c, #7c3aed);
+}
+.kb-row {
+  padding: 3px 8px;
+  border-color: transparent;
+  background: transparent;
+  border-radius: 4px;
+  border-bottom: 1px solid #e8e8ee;
+  font-size: 11.5px;
+  color: #555;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.kb-row:hover,
+.cv-selected .kb-row {
+  background: #fff;
+  border-color: #8aa4ff;
+}
+.kb-row .kb-id {
+  font: 10.5px ui-monospace, monospace;
+  color: #888;
+}
+.kb-id {
+  font-weight: 500;
+}
+.kb-marker {
+  position: absolute;
+  height: 4px;
+  border-radius: 2px;
+  background: #3b5bdb;
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* the task as a document */
+.kb-panel {
+  position: fixed;
+  top: 64px;
+  right: 12px;
+  bottom: 64px;
+  width: min(480px, 46vw);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  box-sizing: border-box;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+  font: 13px/1.45 -apple-system, system-ui, sans-serif;
+  color: #1d1d1f;
+}
+.kb-p-head {
+  display: flex;
+  gap: 4px;
+  align-items: baseline;
+  color: #888;
+  font: 11px ui-monospace, monospace;
+}
+.kb-p-id {
+  color: #555;
+}
+.kb-close {
+  border: 0;
+  background: none;
+  font-size: 22px;
+  line-height: 1;
+  color: #888;
+  cursor: pointer;
+}
+.kb-p-title {
+  font: 700 17px/1.3 -apple-system, system-ui, sans-serif;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+}
+.kb-p-title:hover,
+.kb-p-title:focus {
+  border-color: #ccd;
+  outline: none;
+}
+.kb-p-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.kb-p-row select {
+  font: inherit;
+  font-size: 12px;
+  padding: 2px 4px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background: #fff;
+}
+.kb-p-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+.kb-p-chip {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 99px;
+  background: var(--c, #666);
+  color: #fff;
+}
+.kb-p-chips[data-chips='assignee'] .kb-p-chip {
+  background: #f1f1f4;
+  color: #555;
+}
+.kb-p-chip button {
+  border: 0;
+  background: none;
+  color: inherit;
+  margin-left: 3px;
+  padding: 0;
+  cursor: pointer;
+  opacity: 0.7;
+}
+.kb-p-chip-add,
+.kb-p-add {
+  font: inherit;
+  font-size: 12px;
+  padding: 2px 8px;
+  border: 1px dashed #ccd;
+  border-radius: 99px;
+  width: 90px;
+}
+.kb-p-add {
+  width: auto;
+  border-radius: 6px;
+}
+.kb-p-note {
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: #fff3d6;
+  color: #92600a;
+  font-size: 12px;
+}
+.kb-p-body > * {
+  flex: none;
+}
+.kb-p-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.kb-p-body h4 {
+  margin: 8px 0 0;
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #888;
+}
+.kb-p-progress {
+  font-weight: 400;
+}
+.kb-panel textarea {
+  min-height: 64px;
+  font: 12.5px/1.45 -apple-system, system-ui, sans-serif;
+  padding: 6px 8px;
+  border: 1px solid #e4e4ea;
+  border-radius: 6px;
+  resize: vertical;
+}
+.kb-panel textarea:focus,
+.kb-panel input:focus {
+  outline: 2px solid #dfe6ff;
+}
+.kb-p-ac-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.kb-p-ac-row .ac-text {
+  flex: 1;
+  font: inherit;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+.kb-p-ac-row .ac-text:hover,
+.kb-p-ac-row .ac-text:focus {
+  border-color: #ddd;
+}
+.kb-p-ac-row button {
+  border: 0;
+  background: none;
+  color: #aaa;
+  cursor: pointer;
+}
+.kb-p-comment {
+  padding: 6px 9px;
+  border-radius: 8px;
+  background: #f4f4f7;
+  font-size: 12.5px;
+}
+.kb-p-comment b {
+  font-size: 12px;
+}
+.kb-p-comment span {
+  color: #888;
+  font-size: 11px;
+}
+.kb-p-comment.kb-sending {
+  opacity: 0.6;
+}
+.kb-p-links {
+  font-size: 12px;
+  color: #555;
+}
+.kb-p-links code {
+  font: 11.5px ui-monospace, monospace;
+}
+.kb-panel details summary {
+  cursor: pointer;
+  color: #666;
+  font-size: 12px;
+}
+.kb-panel details textarea {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 4px;
+}

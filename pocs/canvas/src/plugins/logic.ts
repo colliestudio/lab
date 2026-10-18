@@ -8,6 +8,7 @@ import { logic as diagram } from './diagram/logic';
 import { logic as eventstorm } from './eventstorm/logic';
 import { logic as excalidraw } from './excalidraw/logic';
 import { logic as frames } from './frames/logic';
+import { logic as kanban } from './kanban/logic';
 import { logic as mats } from './mats/logic';
 import { logic as prototype } from './prototype/logic';
 
@@ -29,7 +30,7 @@ export interface PluginLogic {
  * Every built-in plugin's logic, in registration order (rider rules run in this order: a piece rides
  * its board, the board its frame, so frames comes last). The browser and the bridge both use this.
  */
-export const PLUGIN_LOGIC: readonly PluginLogic[] = [cards, chess, clock, battleline, mats, board, diagram, eventstorm, prototype, excalidraw, frames];
+export const PLUGIN_LOGIC: readonly PluginLogic[] = [cards, chess, clock, battleline, mats, board, diagram, eventstorm, prototype, excalidraw, kanban, frames];
 
 export function registerPluginLogic(store: Store) {
   for (const entry of PLUGIN_LOGIC) useLogic(store, entry);
