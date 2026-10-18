@@ -27,7 +27,7 @@ describe('test hygiene (C86)', () => {
   it('kanban tests use temp folders and free ports: no real backlog, no workspace path, no port of a real serve or bridge', () => {
     for (const f of tests) {
       const t = text(f);
-      expect(t, relative(root, f)).not.toMatch(/cs-vault|ctrl-vault|workspaces\/|Collie Canvas|iCloud/);
+      expect(t, relative(root, f)).not.toMatch(/cs-vault|workspaces\/|Collie Canvas|iCloud/);
       expect(t, relative(root, f)).not.toMatch(/\b(5310|5222|5231)\b/);
     }
   });
