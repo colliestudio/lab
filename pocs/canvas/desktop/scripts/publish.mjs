@@ -13,6 +13,11 @@ import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+if (process.platform !== 'darwin') {
+  console.error('canvas desktop: the desktop app builds and runs on macOS only (Electron, arm64 .app packaging); this is ' + process.platform + '. Nothing was built.');
+  process.exit(1);
+}
+
 const here = join(dirname(fileURLToPath(import.meta.url)), '..');
 const arg = (name, def) => {
   const i = process.argv.indexOf(`--${name}`);

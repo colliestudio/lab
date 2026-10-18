@@ -14,6 +14,7 @@ import { freePort, root, startBridge, until, type TestBridge } from '../bridge/p
 // real MCP and CLI, and a pixel probe of the PNG that came back. Skipped without Chrome.
 
 const CHROME = [process.env.CANVAS_CHROME, '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/google-chrome', '/usr/bin/google-chrome-stable'].find((p) => p && existsSync(p));
+if (!CHROME) console.warn('shots.e2e: no Chrome found (set CANVAS_CHROME=<binary> or install google-chrome-stable): the screenshot e2e tests are SKIPPED');
 
 function newest(dir: string): number {
   let t = 0;
@@ -259,7 +260,7 @@ describe.skipIf(!CHROME)('screenshots in a Chrome that is already running (CANVA
     ensureBuild();
     sharedDir = mkdtempSync(join(tmpdir(), 'canvas-shots-cdp-'));
     const port = await freePort();
-    shared = spawn(CHROME!, ['--headless=new', `--remote-debugging-port=${port}`, `--user-data-dir=${sharedDir}`, '--no-first-run', 'about:blank'], { stdio: 'ignore' });
+    shared = spawn(CHROME!, ['--headless=new', `--remote-debugging-port=${port}`, `--user-data-dir=${sharedDir}`, '--no-first-run', ...(process.platform === 'linux' ? ['--no-sandbox'] : []), 'about:blank'], { stdio: 'ignore' });
     cdp = `http://127.0.0.1:${port}`;
     await until(alive);
     boardsDir = mkdtempSync(join(tmpdir(), 'canvas-shots-e2e-'));

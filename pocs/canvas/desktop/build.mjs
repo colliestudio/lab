@@ -5,6 +5,11 @@ import { copyFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+if (process.platform !== 'darwin') {
+  console.error('canvas desktop: the desktop app builds and runs on macOS only (Electron, arm64 .app packaging); this is ' + process.platform + '. Nothing was built.');
+  process.exit(1);
+}
+
 const here = dirname(fileURLToPath(import.meta.url));
 const t0 = Date.now();
 const common = { bundle: true, platform: 'node', target: 'node24', sourcemap: 'linked', logLevel: 'warning', format: 'cjs', external: ['electron'] };
