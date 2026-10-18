@@ -12,7 +12,7 @@
     "viewer:dev": "vite --config viewer/vite.config.ts",
     "viewer:build": "vite build --config viewer/vite.config.ts",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test 'test/**/*.test.ts'",
+    "test": "node --import tsx --test --test-concurrency=2 'test/**/*.test.ts'",
     "artifact": "tsx artifact/cli/run.ts"
   },
   "dependencies": {

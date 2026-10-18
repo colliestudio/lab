@@ -260,7 +260,7 @@ describe.skipIf(!CHROME)('screenshots in a Chrome that is already running (CANVA
     ensureBuild();
     sharedDir = mkdtempSync(join(tmpdir(), 'canvas-shots-cdp-'));
     const port = await freePort();
-    shared = spawn(CHROME!, ['--headless=new', `--remote-debugging-port=${port}`, `--user-data-dir=${sharedDir}`, '--no-first-run', ...(process.platform === 'linux' ? ['--no-sandbox'] : []), 'about:blank'], { stdio: 'ignore' });
+    shared = spawn(CHROME!, ['--headless=new', `--remote-debugging-port=${port}`, `--user-data-dir=${sharedDir}`, '--no-first-run', ...(process.platform === 'linux' ? ['--no-sandbox'] : []), 'about:blank'], { stdio: 'ignore', detached: true });
     cdp = `http://127.0.0.1:${port}`;
     await until(alive);
     boardsDir = mkdtempSync(join(tmpdir(), 'canvas-shots-e2e-'));
@@ -273,10 +273,12 @@ describe.skipIf(!CHROME)('screenshots in a Chrome that is already running (CANVA
   }, 120_000);
   afterAll(() => {
     serveProc?.kill('SIGKILL');
-    shared?.kill('SIGKILL');
+    try {
+      if (shared?.pid) process.kill(-shared.pid, 'SIGKILL'); // Chrome and its helper processes
+    } catch {}
     rmSync(boardsDir, { recursive: true, force: true });
     try {
-      rmSync(sharedDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+      rmSync(sharedDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
     } catch {} // Chrome's child processes may still be writing; a leftover temp dir is not a failure
   });
 
