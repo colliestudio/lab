@@ -1,6 +1,5 @@
 // Build the desktop app: the main process and the preload (esbuild, bundled: the packaged app has no
 // node_modules) and the app's own page. The board UI is not part of the app: it comes from the backend.
-import { build } from 'esbuild';
 import { copyFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,6 +8,8 @@ if (process.platform !== 'darwin') {
   console.error('canvas desktop: the desktop app builds and runs on macOS only (Electron, arm64 .app packaging); this is ' + process.platform + '. Nothing was built.');
   process.exit(1);
 }
+// (loaded after the check so the message shows even without the desktop dependencies installed)
+const { build } = await import('esbuild');
 
 const here = dirname(fileURLToPath(import.meta.url));
 const t0 = Date.now();
