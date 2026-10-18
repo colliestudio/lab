@@ -43,7 +43,8 @@ describe('serve with an evicted board', () => {
     expect(r.json).toEqual([expect.objectContaining({ name: 'Bar' }), expect.objectContaining({ name: 'Foo', evicted: true, error: expect.stringContaining('not downloaded') })]);
   });
 
-  it('asked the cloud store for the download', async () => {
+  // the download request (brctl) is only made on macOS
+  it.skipIf(process.platform !== 'darwin')('asked the cloud store for the download', async () => {
     await until(() => existsSync(join(dir, '..brctl.log')));
     expect(readFileSync(join(dir, '..brctl.log'), 'utf8')).toContain(`download ${join(realpathSync(dir), 'Foo.canvas')}`);
   });

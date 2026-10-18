@@ -138,7 +138,8 @@ describe('BacklogMdSource: writing', () => {
     expect(parseTask(readFileSync(join(p.tasks, 'task-1 - A.md'), 'utf8'))!.title).toBe('Totally different');
   });
 
-  it('a read-only file fails with a notice, writes nothing and leaves no temp file (C21)', async () => {
+  // root ignores file modes
+  it.skipIf(process.getuid?.() === 0)('a read-only file fails with a notice, writes nothing and leaves no temp file (C21)', async () => {
     const p = project({ 'task-1 - A.md': task('TASK-1', 'A'), 'task-2 - B.md': task('TASK-2', 'B') });
     const f = join(p.tasks, 'task-1 - A.md');
     const before = readFileSync(f, 'utf8');
