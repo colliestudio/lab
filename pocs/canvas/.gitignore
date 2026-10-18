@@ -3,3 +3,5 @@ dist
 *.local
 .wrangler
 .canvas-bridge/
+agent-eval/results/
+desktop/build/

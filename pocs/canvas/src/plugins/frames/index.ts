@@ -1,10 +1,12 @@
 import './frames.css';
-import type { App, CanvasNode, Command, Plugin, Store } from '../../core';
+import type { App, CanvasNode, Plugin } from '../../core';
+import { useLogic } from '../logic';
+import { freezeMembership, logic, thawMembership } from './logic';
+export { freezeMembership, registerFramesLogic, thawMembership } from './logic';
 import { askText } from '../mats/textDialog';
 import { flyTo, stopFlight } from './camera';
-import { commands } from './commands';
 import { seedDemo } from './demo';
-import { frameAt, frameField, frameTitle, isFrame, isPortal, isRoomId, memberships, orderedFrames, outline, portalRoom, portalTitle, slides } from './model';
+import { frameField, frameTitle, isFrame, isPortal, isRoomId, orderedFrames, outline, portalRoom, portalTitle, slides } from './model';
 import { mountOutline } from './outline';
 import { PortalViews, type Connect } from './portals';
 import { Presenter } from './present';
@@ -32,34 +34,6 @@ export function portalsEnabled(): boolean {
   return typeof location !== 'undefined' && new URLSearchParams(location.search).get('portals') === '1';
 }
 
-/**
- * Membership rule state: while a pointer is down the frame of every node is frozen at what it was
- * at the press, so a frame dragged over other objects doesn't scoop them up on the way (geometry
- * decides again on release).
- */
-let frozen: Map<string, string> | null = null;
-/** Freeze frame membership as it is in `nodes` (until `thaw`). */
-export function freezeMembership(nodes: readonly CanvasNode[]) {
-  frozen = memberships(nodes);
-}
-/** Back to geometry; true if it was frozen (the caller should invalidate its store). */
-export function thawMembership(): boolean {
-  const was = frozen !== null;
-  frozen = null;
-  return was;
-}
-
-/** The data side (commands, rider rule). No DOM; used by tests and could run in a bridge/agent host. */
-export function registerFramesLogic(store: Store) {
-  for (const [name, cmd] of Object.entries(commands)) store.register(`frames.${name}`, cmd as Command);
-  // Registered after other plugins' rider rules (a piece rides its board, the board rides the frame).
-  store.addRiderRule((n, get, all) => {
-    if (!frozen) return frameAt(n, all);
-    const f = frozen.get(n.id);
-    return f && get(f) ? f : undefined;
-  });
-}
-
 /** Which frame the camera is on: the one holding the screen center (innermost), else the nearest. */
 export function currentFrame(app: App): CanvasNode | undefined {
   const c = app.viewCenter();
@@ -79,7 +53,7 @@ export function createFramesPlugin(opts: FramesOptions): Plugin & { portals?: Po
   const plugin: Plugin & { portals?: PortalViews; presenter?: Presenter } = {
     id: 'frames',
     setup(app) {
-      registerFramesLogic(app.store);
+      useLogic(app.store, logic);
       const portalsOn = !!opts.portals;
       const portals = portalsOn ? new PortalViews(app, { currentRoom: opts.room, connect: opts.connect }) : undefined;
       const presenter = new Presenter(app);
@@ -302,7 +276,7 @@ export function createFramesPlugin(opts: FramesOptions): Plugin & { portals?: Po
 
       if (portalsOn && typeof document !== 'undefined') {
         const flag = Object.assign(document.createElement('span'), { className: 'fr-flag', textContent: 'portals on', title: 'Experimental: portals are on for this session (?portals=1)' });
-        document.getElementById('toolbar')?.append(flag);
+        document.querySelector('.cv-top-left')?.append(flag);
       }
       if (typeof document !== 'undefined') mountOutline(app, { portals: portalsOn, go, present: (id) => presenter.start(id), enter: opts.enter, rename, currentRoom: opts.room });
       // for agents and the console: what an outline reader sees

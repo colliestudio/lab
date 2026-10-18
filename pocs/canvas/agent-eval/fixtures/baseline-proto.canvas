@@ -1,0 +1,111 @@
+{
+	"nodes": [
+		{
+			"id": "d9aee6c02fd74577",
+			"type": "text",
+			"text": "### Sign in\n*Prototype page (HTML in `x-page.html`)*",
+			"x": 0,
+			"y": 0,
+			"width": 195,
+			"height": 416,
+			"x-page": {
+				"html": "<div style=\"font-family:system-ui,sans-serif;padding:32px 24px;display:flex;flex-direction:column;gap:14px;color:#111\"><div style=\"width:44px;height:44px;border-radius:12px;background:#4f46e5;margin-bottom:8px\"></div><h1 style=\"margin:0;font-size:26px\">Welcome back</h1><p style=\"margin:0;color:#666\">Sign in to your account</p><label style=\"font-size:13px;font-weight:600\">Email<input type=\"email\" placeholder=\"you@example.com\" style=\"display:block;width:100%;box-sizing:border-box;margin-top:6px;padding:12px;border:1px solid #ccc;border-radius:8px;font-size:15px\"></label><label style=\"font-size:13px;font-weight:600\">Password<input type=\"password\" placeholder=\"••••••••\" style=\"display:block;width:100%;box-sizing:border-box;margin-top:6px;padding:12px;border:1px solid #ccc;border-radius:8px;font-size:15px\"></label><a id=\"forgot\" href=\"#forgot-password\" style=\"align-self:flex-end;font-size:13px;color:#4f46e5;text-decoration:none\">Forgot password?</a><a id=\"signin\" href=\"#home\" style=\"display:block;text-align:center;padding:14px;background:#4f46e5;color:#fff;border-radius:8px;font-weight:600;text-decoration:none\">Sign in</a><p style=\"text-align:center;font-size:13px;color:#666\">Don't have an account? <a style=\"color:#4f46e5\">Sign up</a></p></div>",
+				"start": true,
+				"title": "Sign in",
+				"vw": 390
+			}
+		},
+		{
+			"id": "f3deed027fb4b8e3",
+			"type": "text",
+			"text": "### Forgot password\n*Prototype page (HTML in `x-page.html`)*",
+			"x": 260,
+			"y": 0,
+			"width": 195,
+			"height": 416,
+			"x-page": {
+				"html": "<div style=\"font-family:system-ui,sans-serif;padding:32px 24px;display:flex;flex-direction:column;gap:14px;color:#111\"><a id=\"back\" href=\"#sign-in\" style=\"font-size:14px;color:#4f46e5;text-decoration:none\">← Back to sign in</a><h1 style=\"margin:8px 0 0;font-size:26px\">Forgot password?</h1><p style=\"margin:0;color:#666\">Enter the email you signed up with and we'll send you a reset link.</p><label style=\"font-size:13px;font-weight:600\">Email<input type=\"email\" placeholder=\"you@example.com\" style=\"display:block;width:100%;box-sizing:border-box;margin-top:6px;padding:12px;border:1px solid #ccc;border-radius:8px;font-size:15px\"></label><a id=\"send\" href=\"#check-your-email\" style=\"display:block;text-align:center;padding:14px;background:#4f46e5;color:#fff;border-radius:8px;font-weight:600;text-decoration:none\">Send reset link</a></div>",
+				"title": "Forgot password",
+				"vw": 390
+			}
+		},
+		{
+			"id": "52d150b10eb051fe",
+			"type": "text",
+			"text": "### Check your email\n*Prototype page (HTML in `x-page.html`)*",
+			"x": 520,
+			"y": 0,
+			"width": 195,
+			"height": 416,
+			"x-page": {
+				"html": "<div style=\"font-family:system-ui,sans-serif;padding:48px 24px;display:flex;flex-direction:column;gap:14px;align-items:center;text-align:center;color:#111\"><div style=\"width:72px;height:72px;border-radius:50%;background:#eef2ff;display:flex;align-items:center;justify-content:center;font-size:34px\">✉️</div><h1 style=\"margin:8px 0 0;font-size:26px\">Check your email</h1><p style=\"margin:0;color:#666\">We sent a password reset link to <b>you@example.com</b>. It expires in 30 minutes.</p><a id=\"back-signin\" href=\"#sign-in\" style=\"display:block;width:100%;box-sizing:border-box;margin-top:12px;text-align:center;padding:14px;background:#4f46e5;color:#fff;border-radius:8px;font-weight:600;text-decoration:none\">Back to sign in</a><p style=\"font-size:13px;color:#666\">Didn't get it? <a id=\"resend\" href=\"#forgot-password\" style=\"color:#4f46e5\">Resend</a></p></div>",
+				"title": "Check your email",
+				"vw": 390
+			}
+		},
+		{
+			"id": "c3c95ddd542583b2",
+			"type": "text",
+			"text": "### Home\n*Prototype page (HTML in `x-page.html`)*",
+			"x": 0,
+			"y": 500,
+			"width": 195,
+			"height": 416,
+			"x-page": {
+				"html": "<div style=\"font-family:system-ui,sans-serif;color:#111\"><div style=\"display:flex;justify-content:space-between;align-items:center;padding:20px 24px;border-bottom:1px solid #eee\"><b style=\"font-size:18px\">Home</b><a id=\"signout\" href=\"#sign-in\" style=\"font-size:13px;color:#4f46e5;text-decoration:none\">Sign out</a></div><div style=\"padding:24px;display:flex;flex-direction:column;gap:14px\"><h1 style=\"margin:0;font-size:24px\">Hi, Alex 👋</h1><p style=\"margin:0;color:#666\">You're signed in. Here's what's new.</p><div style=\"padding:16px;border-radius:12px;background:#eef2ff\"><b>3 new messages</b><div style=\"color:#666;font-size:13px\">Last one 5 minutes ago</div></div><div style=\"padding:16px;border-radius:12px;background:#f5f5f5\"><b>Upcoming</b><div style=\"color:#666;font-size:13px\">Team sync · Tomorrow 10:00</div></div><div style=\"padding:16px;border-radius:12px;background:#f5f5f5\"><b>Your profile</b><div style=\"color:#666;font-size:13px\">80% complete</div></div></div></div>",
+				"title": "Home",
+				"vw": 390
+			}
+		}
+	],
+	"edges": [
+		{
+			"id": "00e6a8dabb32fb50",
+			"fromNode": "c3c95ddd542583b2",
+			"fromSide": "right",
+			"toNode": "d9aee6c02fd74577",
+			"toSide": "left",
+			"toEnd": "arrow"
+		},
+		{
+			"id": "2db61e9a62cb9222",
+			"fromNode": "d9aee6c02fd74577",
+			"fromSide": "right",
+			"toNode": "c3c95ddd542583b2",
+			"toSide": "left",
+			"toEnd": "arrow"
+		},
+		{
+			"id": "3fe9c366235a602f",
+			"fromNode": "52d150b10eb051fe",
+			"fromSide": "right",
+			"toNode": "d9aee6c02fd74577",
+			"toSide": "left",
+			"toEnd": "arrow"
+		},
+		{
+			"id": "cc6802ca54fc5ec3",
+			"fromNode": "f3deed027fb4b8e3",
+			"fromSide": "right",
+			"toNode": "52d150b10eb051fe",
+			"toSide": "left",
+			"toEnd": "arrow"
+		},
+		{
+			"id": "f6e9296da1eac396",
+			"fromNode": "f3deed027fb4b8e3",
+			"fromSide": "right",
+			"toNode": "d9aee6c02fd74577",
+			"toSide": "left",
+			"toEnd": "arrow"
+		},
+		{
+			"id": "fe1e998e3b1dc67a",
+			"fromNode": "d9aee6c02fd74577",
+			"fromSide": "right",
+			"toNode": "f3deed027fb4b8e3",
+			"toSide": "left",
+			"toEnd": "arrow"
+		}
+	]
+}

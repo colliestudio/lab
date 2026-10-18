@@ -1,4 +1,6 @@
-import { isIds, isNum, pick, set, type CanvasNode, type Change, type Command, type DocView } from '../../core';
+import { isIds, isNum, pick } from '../../core/commands';
+import { set } from '../../core/doc';
+import type { CanvasNode, Change, Command, DocView } from '../../core';
 import { FRAME, PORTAL, TITLE_H, frameField, isFrame, isPortal, isRoomId, orderedFrames, portalRoom } from './model';
 
 // Commands: plain data in, Changes out (agents can call them the same way the UI does).
@@ -8,7 +10,7 @@ export const MIN_H = 100;
 const PAD = 40;
 
 const lowestZ = (doc: DocView) => (doc.nodes.length ? Math.min(...doc.nodes.map((n) => n.z ?? 0)) : 0);
-const cleanLabel = (v: unknown) => (typeof v === 'string' ? v.trim().slice(0, 80) : undefined);
+export const cleanLabel = (v: unknown) => (typeof v === 'string' ? v.trim().slice(0, 80) : undefined);
 
 /** Bounding box of nodes (world). */
 export function bounds(nodes: readonly Pick<CanvasNode, 'x' | 'y' | 'width' | 'height'>[]) {
@@ -74,6 +76,38 @@ export const create: Command<{ x?: number; y?: number; width?: number; height?: 
     [FRAME]: { order: frames.length },
   };
   return { changes: [...pinned, { op: 'add', node }], select: [id], events: [{ type: 'frames.create', text: `added frame “${node.label}”`, targets: [id] }] };
+};
+
+/** Space right of everything visible (top-aligned with it), or centred on the origin on an empty canvas. */
+export function freeSpot(doc: DocView, w: number, h: number): { x: number; y: number } {
+  const all = doc.visible;
+  if (!all.length) return { x: Math.round(-w / 2), y: Math.round(-h / 2) };
+  return { x: Math.round(Math.max(...all.map((n) => n.x + n.width)) + 80), y: Math.round(Math.min(...all.map((n) => n.y))) };
+}
+
+/**
+ * Grow frame `id` so every node in `nodes` lies inside it, with the margins `create {around}` uses.
+ * Never shrinks. Growing can also take in other nodes now under the new box (membership is geometric).
+ */
+export function includeBox(f: CanvasNode, picked: readonly CanvasNode[]) {
+  const b = bounds(picked);
+  const x = Math.min(f.x, b.x - PAD);
+  const y = Math.min(f.y, b.y - PAD - TITLE_H);
+  return { x: Math.round(x), y: Math.round(y), width: Math.round(Math.max(f.x + f.width, b.x + b.width + PAD) - x), height: Math.round(Math.max(f.y + f.height, b.y + b.height + PAD) - y) };
+}
+
+export const include: Command<{ id: string; nodes: string[] }> = (doc, a) => {
+  const f = doc.get(a?.id);
+  if (!isFrame(f) || !isIds(a.nodes)) return [];
+  const picked = pick(doc, a.nodes).filter((n) => doc.isVisible(n.id));
+  if (!picked.length || picked.some((n) => n.id === f.id)) return [];
+  const box = includeBox(f, picked);
+  const sets = (['x', 'y', 'width', 'height'] as const).filter((k) => box[k] !== f[k]).map((k) => set(f.id, k, box[k]));
+  if (!sets.length) return [];
+  return {
+    changes: [...(box.x !== f.x || box.y !== f.y ? pinOrder(doc) : []), ...sets],
+    events: [{ type: 'frames.include', text: `put ${picked.length} in “${f.label ?? 'frame'}”`, targets: [f.id] }],
+  };
 };
 
 export const rename: Command<{ id: string; label: string }> = (doc, a) => {
@@ -147,4 +181,4 @@ export const retarget: Command<{ id: string; room: string }> = (doc, a) => {
   return [set(p.id, 'file', `${a.room}.canvas`), set(p.id, PORTAL, { room: a.room })];
 };
 
-export const commands = { create, pin, sink, rename, resize, reorder, skip, unframe, createPortal, retarget };
+export const commands = { create, include, pin, sink, rename, resize, reorder, skip, unframe, createPortal, retarget };

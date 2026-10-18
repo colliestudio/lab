@@ -1,7 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { sha256Base64, sha256Hex } from './sha256.js';
 import { DEV_APP_ORIGINS, frameHost, originRegex, parseConnect } from './framehost.js';
-import { frameOrigin, sandboxTemplate } from './client';
+import { frameOrigin, pageMode, sandboxTemplate } from './client';
+import { IDLE_THUMBNAIL_SCRIPTS, PAGE_CSP, TAG, frameAttrs, loadWatch, pageRuntime, runtimeMessage, srcdocDocument } from './srcdoc';
+import { readMessage } from '../plugins/prototype/bridge';
+import { PAGE_ESCAPE, PAGE_GONE, fromFrame, pageFrame } from './page';
 
 const subtle = globalThis.crypto.subtle;
 const hex = (b: ArrayBuffer) => Array.from(new Uint8Array(b), (x) => x.toString(16).padStart(2, '0')).join('');
@@ -96,5 +99,228 @@ describe('client config', () => {
     expect(sandboxTemplate({ protocol: 'http:', hostname: '127.0.0.1' }, '')).toBe('http://{label}.localhost:5227');
     expect(sandboxTemplate({ protocol: 'http:', hostname: 'localhost' }, 'https://{label}.frames.example/')).toBe('https://{label}.frames.example');
     expect(frameOrigin('p-dice-ab12', 'http://{label}.localhost:5227')).toBe('http://p-dice-ab12.localhost:5227');
+  });
+});
+
+describe('page mode', () => {
+  it('srcdoc unless a sandbox host is configured', () => {
+    expect(pageMode({})).toBe('srcdoc');
+    expect(pageMode({ VITE_SANDBOX_URL: '', VITE_SANDBOX_PORT: '' })).toBe('srcdoc');
+    expect(pageMode({ VITE_SANDBOX_URL: '   ' })).toBe('srcdoc');
+    expect(pageMode({ VITE_SANDBOX_URL: 'https://frames.example' })).toBe('srcdoc'); // no {label}
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(pageMode({ VITE_SANDBOX_URL: 'not a url {label}' })).toBe('srcdoc');
+    expect(pageMode({ VITE_SANDBOX_URL: 'https://{label}.frames.example' })).toBe('origin');
+    expect(pageMode({ VITE_SANDBOX_URL: ' https://{label}.frames.example/ ' })).toBe('origin');
+    expect(pageMode({ VITE_SANDBOX_PORT: '5227' })).toBe('origin');
+    vi.restoreAllMocks();
+  });
+});
+
+describe('srcdoc page frames', () => {
+  const key = 'k'.repeat(32);
+  const doc = (html: string, o: { scripts?: boolean; state?: Record<string, string> } = {}) => srcdocDocument(html, { scripts: true, key, ...o });
+
+  it('the CSP meta comes first and allows no network', () => {
+    const d = doc('<h1>Hi</h1>');
+    expect(d.startsWith(`<!doctype html><meta http-equiv="Content-Security-Policy" content="${PAGE_CSP}">`)).toBe(true);
+    for (const want of ["default-src 'none'", "script-src 'unsafe-inline'", "style-src 'unsafe-inline'", 'img-src data: blob:', 'font-src data:', 'media-src data: blob:', "connect-src 'none'", "frame-src 'none'", "worker-src 'none'", "form-action 'none'"]) expect(PAGE_CSP).toContain(want);
+    expect(PAGE_CSP).not.toMatch(/(?:https?:|\*)/);
+    expect(d.endsWith('<h1>Hi</h1>')).toBe(true);
+  });
+  it('page html and state cannot break out of the CSP meta or the runtime', () => {
+    const evil = '</head><meta http-equiv="refresh" content="0;url=http://x"><meta http-equiv="Content-Security-Policy" content="default-src *"></script><script>alert(1)</script>';
+    const d = doc(evil, { state: { name: evil } });
+    const at = d.indexOf(evil);
+    expect(d.indexOf('Content-Security-Policy')).toBe('<!doctype html><meta http-equiv="'.length);
+    expect(d.slice(0, at).match(/<meta/g)!.length).toBe(3); // CSP, charset, viewport
+    // the only </script> before the page's html is the runtime's own
+    expect(d.slice(0, at).match(/<\/script>/g)!.length).toBe(1);
+    expect(d.slice(0, at)).not.toContain('</head>');
+    expect(d.slice(0, at)).not.toContain('<meta http-equiv="refresh"');
+  });
+  it('state: idle frames carry none; Play / interact frames get it escaped', () => {
+    expect(doc('<p>', { state: {} })).toContain('const state = {};');
+    expect(doc('<p>', { state: { name: 'Ada' } })).toContain('const state = {"name":"Ada"};');
+    expect(doc('<p>', { scripts: false, state: { name: 'Ada' } })).not.toContain('Ada');
+    expect(doc('<p>', { scripts: false })).not.toContain('<script');
+  });
+  it('frame attributes: allow-scripts only, no same-origin; scripts off is the empty sandbox', () => {
+    expect(frameAttrs(true)).toEqual({ sandbox: 'allow-scripts', referrerpolicy: 'no-referrer', allow: '' });
+    expect(frameAttrs(false).sandbox).toBe('');
+    expect(typeof IDLE_THUMBNAIL_SCRIPTS).toBe('boolean');
+  });
+  it('runtime: key held in the closure, Escape only from a trusted key, getters captured, no Object.assign', () => {
+    const rt = pageRuntime(key, {});
+    expect(rt).toContain('ev.isTrusted');
+    expect(rt).toContain("apply(keyOf, ev, []) === 'Escape'");
+    expect(rt).toContain('Reflect.apply');
+    expect(rt).toContain('document.currentScript.remove()');
+    // in-page anchors set the hash from script instead of navigating the frame (a navigation would remove it)
+    expect(rt).toContain("closest('a[href], area[href]')");
+    expect(rt).toContain('location.hash = href');
+    expect(rt).toContain('if (e.defaultPrevented) return;');
+    expect(rt).toContain('.trim()');
+    // a navigation that commits no document (204, download, stop) still fires a trusted beforeunload first
+    expect(rt).toMatch(/addEventListener\('beforeunload', \(ev\) => \{ if \(ev\.isTrusted\) up\.postMessage\(\{[^}]*kind: 'leaving'/);
+    expect(rt.indexOf('beforeunload')).toBeLessThan(rt.indexOf('window.canvas = '));
+    // a page can dispatch a fake `load` to look vouched for: only a real one counts
+    expect(rt).toMatch(/addEventListener\('load', \(ev\) => \{ if \(ev\.isTrusted\)/);
+    expect(rt).not.toContain('Object.assign');
+    expect(rt.indexOf('Reflect.apply')).toBeLessThan(rt.indexOf('window.canvas'));
+    // every message to the parent has the key
+    // the state key is a different field from the frame key (a clash once dropped every `set`)
+    expect(rt).toContain("kind: 'set', key: String(k), value: String(v)");
+    expect(readMessage({ tag: TAG, auth: 'a'.repeat(32), kind: 'set', key: 'name', value: 'Ada' })).toEqual({ kind: 'set', key: 'name', value: 'Ada' });
+    for (const m of rt.match(/postMessage\(\{[^}]*\}/g)!) expect(m).toContain('auth: KEY');
+  });
+  it('runtime messages need the frame key', () => {
+    expect(runtimeMessage({ tag: TAG, auth: key, kind: 'loaded' }, key)).toBe('loaded');
+    expect(runtimeMessage({ tag: TAG, auth: key, kind: 'escape' }, key)).toBe('escape');
+    expect(runtimeMessage({ tag: TAG, auth: key, kind: 'leaving' }, key)).toBe('leaving');
+    expect(runtimeMessage({ tag: TAG, kind: 'leaving' }, key)).toBeUndefined();
+    expect(runtimeMessage({ tag: TAG, kind: 'escape' }, key)).toBeUndefined();
+    expect(runtimeMessage({ tag: TAG, auth: 'guess', kind: 'escape' }, key)).toBeUndefined();
+    expect(runtimeMessage({ tag: TAG, auth: key, kind: 'goto' }, key)).toBeUndefined();
+    expect(runtimeMessage('escape', key)).toBeUndefined();
+  });
+});
+
+describe('load watch', () => {
+  beforeEach(() => void vi.useFakeTimers());
+  afterEach(() => void vi.useRealTimers());
+  it('one load vouched for by the runtime is fine; a second load is foreign', () => {
+    const foreign = vi.fn();
+    const w = loadWatch(true, foreign);
+    w.onLoaded();
+    w.onLoad();
+    vi.advanceTimersByTime(5000);
+    expect(foreign).not.toHaveBeenCalled();
+    w.onLoad();
+    w.onLoad();
+    expect(foreign).toHaveBeenCalledTimes(1);
+    expect(foreign).toHaveBeenCalledWith('second-load');
+  });
+  it('says why: no handshake, leaving', () => {
+    const a = vi.fn();
+    loadWatch(true, a).onLoad();
+    vi.advanceTimersByTime(2001);
+    expect(a).toHaveBeenCalledWith('no-handshake');
+    const b = vi.fn();
+    loadWatch(true, b).onLeaving();
+    expect(b).toHaveBeenCalledWith('leaving');
+  });
+  it('a first load with no runtime message in time is foreign (the page navigated while parsing)', () => {
+    const foreign = vi.fn();
+    loadWatch(true, foreign).onLoad();
+    vi.advanceTimersByTime(1999);
+    expect(foreign).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(2);
+    expect(foreign).toHaveBeenCalledTimes(1);
+  });
+  it('the runtime message arriving after the load still counts', () => {
+    const foreign = vi.fn();
+    const w = loadWatch(true, foreign);
+    w.onLoad();
+    w.onLoaded();
+    vi.advanceTimersByTime(5000);
+    expect(foreign).not.toHaveBeenCalled();
+  });
+  it('scripts off: no runtime to wait for, only a second load is foreign', () => {
+    const foreign = vi.fn();
+    const w = loadWatch(false, foreign);
+    w.onLoad();
+    vi.advanceTimersByTime(5000);
+    expect(foreign).not.toHaveBeenCalled();
+    w.onLoad();
+    expect(foreign).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('srcdoc frame in the page', () => {
+  // just enough DOM for pageFrame in a node test
+  class FakeEl extends EventTarget {
+    attrs: Record<string, string> = {};
+    style: Record<string, string> = { cssText: '' };
+    srcdoc = '';
+    className = '';
+    textContent = '';
+    isConnected = true;
+    contentWindow = {};
+    replacedBy: FakeEl | null = null;
+    setAttribute(k: string, v: string) {
+      this.attrs[k] = v;
+    }
+    replaceWith(o: FakeEl) {
+      this.replacedBy = o;
+      this.isConnected = false;
+    }
+  }
+  const listeners: Array<(e: MessageEvent) => void> = [];
+  beforeEach(() => {
+    vi.stubGlobal('document', { createElement: () => new FakeEl() });
+    vi.stubGlobal('window', { addEventListener: (_: string, f: any) => listeners.push(f), removeEventListener: () => {} });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    listeners.length = 0;
+  });
+  const keyOf = (f: FakeEl) => /const TAG = "[^"]*", KEY = "([0-9a-f]+)"/.exec(f.srcdoc)![1];
+  const msg = (source: unknown, origin: string, data: unknown) => ({ source, origin, data }) as unknown as MessageEvent;
+  const make = (opts = {}) => pageFrame('<p>x</p>', 390, 800, 0.5, opts) as unknown as FakeEl;
+
+  it('idle: no state; live and Play: allow-scripts with state; none has a src or same-origin', () => {
+    const idle = make();
+    expect(idle.attrs.sandbox).toBe(IDLE_THUMBNAIL_SCRIPTS ? 'allow-scripts' : '');
+    expect(idle.srcdoc).not.toContain('Ada');
+    const play = make({ state: { name: 'Ada' } });
+    expect(play.attrs.sandbox).toBe('allow-scripts');
+    expect(play.srcdoc).toContain('{"name":"Ada"}');
+    const preview = make({ live: true });
+    expect(preview.attrs.sandbox).toBe('allow-scripts');
+    expect(preview.srcdoc).toContain('const state = {};');
+    for (const f of [idle, play, preview]) expect(JSON.stringify(f.attrs)).not.toContain('same-origin');
+    expect((idle as any).src).toBeUndefined();
+  });
+  it('trusts the frame only with its window, origin null and its key', () => {
+    const f = make({ live: true });
+    const k = keyOf(f);
+    const frame = f as unknown as HTMLIFrameElement;
+    expect(fromFrame(frame, msg(f.contentWindow, 'null', { tag: TAG, auth: k, kind: 'goto' }))).toBe(true);
+    expect(fromFrame(frame, msg(f.contentWindow, 'null', { tag: TAG, kind: 'goto' }))).toBe(false); // no key: a navigated-to document
+    expect(fromFrame(frame, msg(f.contentWindow, 'null', { tag: TAG, auth: 'guess', kind: 'goto' }))).toBe(false);
+    expect(fromFrame(frame, msg({}, 'null', { tag: TAG, auth: k }))).toBe(false);
+    expect(fromFrame(frame, msg(f.contentWindow, 'https://evil.example', { tag: TAG, auth: k }))).toBe(false);
+  });
+  it('Escape reaches the plugin only with the key', () => {
+    const f = make({ live: true });
+    const k = keyOf(f);
+    const heard = vi.fn();
+    f.addEventListener(PAGE_ESCAPE, heard);
+    const send = (data: unknown) => listeners.forEach((l) => l(msg(f.contentWindow, 'null', data)));
+    send({ tag: TAG, kind: 'escape' });
+    send({ tag: TAG, auth: 'guess', kind: 'escape' });
+    expect(heard).not.toHaveBeenCalled();
+    send({ tag: TAG, auth: k, kind: 'escape' });
+    expect(heard).toHaveBeenCalledTimes(1);
+  });
+  it('a frame announcing it is leaving is replaced at once, with no load at all', () => {
+    const f = make({ live: true });
+    const send = (data: unknown) => listeners.forEach((l) => l(msg(f.contentWindow, 'null', data)));
+    send({ tag: TAG, kind: 'leaving' });
+    expect(f.replacedBy).toBeNull();
+    send({ tag: TAG, auth: keyOf(f), kind: 'leaving' });
+    expect(f.replacedBy?.className).toBe('pg-gone');
+  });
+  it('a frame that loads a second document is replaced by a placeholder', () => {
+    const f = make({ live: true });
+    const gone = vi.fn();
+    f.addEventListener(PAGE_GONE, gone);
+    listeners.forEach((l) => l(msg(f.contentWindow, 'null', { tag: TAG, auth: keyOf(f), kind: 'loaded' })));
+    f.dispatchEvent(new Event('load'));
+    expect(f.replacedBy).toBeNull();
+    f.dispatchEvent(new Event('load'));
+    expect(f.replacedBy?.className).toBe('pg-gone');
+    expect(gone).toHaveBeenCalledTimes(1);
   });
 });

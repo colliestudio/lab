@@ -1,4 +1,6 @@
-import { isNum, set, type CanvasNode, type Change, type Command, type CommandResult, type DocView, type EventSpec } from '../../core';
+import { isNum } from '../../core/commands';
+import { set } from '../../core/doc';
+import type { CanvasNode, Change, Command, CommandResult, DocView, EventSpec } from '../../core';
 import { FIELD, H, W, baseOf, clock, clockNode, controlText, incOf, isClock, isSide, nameOf, other, remaining, ticking, type ClockField, type Rot, type Side } from './model';
 
 // Pure commands. Time comes in as `now` (the caller's clock), so they stay replayable and testable.

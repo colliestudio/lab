@@ -1,6 +1,7 @@
 import { WebrtcProvider } from 'y-webrtc';
 import { WebsocketProvider } from 'y-websocket';
 import type { App } from './app';
+import type { Store } from './store';
 import { mountPresenceView, Presence, type PlayerInfo } from './presence';
 import { openRelay, type RelayConnection } from './relay';
 
@@ -13,7 +14,7 @@ import { openRelay, type RelayConnection } from './relay';
 export interface Room {
   id: string;
   provider: { destroy(): void };
-  /** How the toolbar names this connection (default: "room <id>"). */
+  /** How the status pill names this connection (default: "room <id>"). */
   label?: string;
   presence: Presence;
   /** Is the signaling WebSocket up? */
@@ -93,14 +94,24 @@ export function joinRoom(app: App, id: string, me: PlayerInfo, signal = signalin
   };
 }
 
+export const HOSTED_REFUSAL = 'this canvas is a file the service or bridge keeps: it cannot be replaced from here';
+
+/** A board kept by a service or bridge: the store refuses whole-document replaces. */
+export function guardHosted(store: Store) {
+  store.refuseLoad = HOSTED_REFUSAL;
+}
+
 /**
  * Join a canvas bridge (bridge/server.ts): a Node process that hosts the doc for a .canvas file on
  * disk, over WebSocket (y-websocket protocol). Agents and tools edit through it; they show up here
- * as players. The bridge is the host and the persistence (the file), so nothing is stored locally.
+ * as players (an `observer` joins without being one). The bridge is the host and the persistence (the file), so nothing is stored locally.
  */
-export function joinBridge(app: App, url: string, me: PlayerInfo, token?: string): Room & { synced: Promise<void> } {
+export function joinBridge(app: App, url: string, me: PlayerInfo, token?: string, opts: { observer?: boolean } = {}): Room & { synced: Promise<void> } {
+  guardHosted(app.store);
   const provider = new WebsocketProvider(url.replace(/\/+$/, ''), 'canvas', app.store.ydoc, { params: token ? { token } : {} });
   const presence = new Presence(provider.awareness, me);
+  // an observer (the screenshot page) is never a peer: cleared before the socket opens, so nobody sees it
+  if (opts.observer) provider.awareness.setLocalState(null);
   app.presence = presence;
   app.viewer = me.id;
   mountPresenceView(app, presence);

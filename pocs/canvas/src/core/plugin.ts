@@ -20,6 +20,13 @@ export interface ObjectType {
   renderKey?(node: CanvasNode, ctx: RenderCtx): string;
   onDoubleClick?(node: CanvasNode, app: App): void;
   /**
+   * Edit the object's text in place. Core calls it for Enter on a lone selected object, and for a
+   * printable key typed on it (`seed` = that character). Double-click is up to `onDoubleClick`.
+   */
+  edit?(node: CanvasNode, app: App, seed?: string): void;
+  /** Dragging with ⌥ held moves a copy and leaves the original (every dragged object must say yes). */
+  altDragDuplicates?: boolean;
+  /**
    * Does this press grab the object? Return false to let it fall through to the table (box select,
    * click-to-deselect), e.g. on a locked board's surface. Default: true.
    */
@@ -143,10 +150,69 @@ export interface Kit {
 }
 
 /**
- * Builds the right-click menu for the selection (empty = the table). Providers' entries are joined
- * with separators; `title` (first one given wins) heads the menu, e.g. the kind of object.
+ * Context actions: builds the right-click menu for the selection (empty = the table). Providers'
+ * entries are joined with separators; `title` (first one given wins) heads the menu, e.g. the kind
+ * of object. Register with `app.registerMenu`.
  */
 export type MenuProvider = (app: App, selected: CanvasNode[]) => { title?: string; entries: MenuEntry[] } | undefined;
+
+/** A creation tool (toolbar button / key): the next press-drag on the table makes something there. */
+export interface Tool {
+  id: string;
+  label: string;
+  title?: string;
+  /** Single key that picks the tool (when nothing is selected). */
+  key?: string;
+  /** The key only works while this says so. Default: always. */
+  when?(app: App): boolean;
+  /**
+   * Is this node the tool's own kind of object? With the pointer over any other plugin's object the key
+   * is left to that plugin (S shuffles a deck, it does not pick the sticky tool). Without it, any node
+   * under the pointer takes the key from the tool.
+   */
+  owns?(node: CanvasNode): boolean;
+  /** Make the object. `box` = the dragged rectangle (world); width and height are 0 for a plain click. */
+  create(app: App, box: { x: number; y: number; width: number; height: number }): void;
+}
+
+/** A button in the bottom dock (`app.registerDockItem`). */
+export interface DockItem {
+  /** Registering the same id again replaces the earlier item in place. */
+  id: string;
+  /** Accessible name and the first line of the tooltip. */
+  label: string;
+  /** A name in `ICONS` (core/icons.ts) or inline SVG markup (trusted plugins only). */
+  icon: string;
+  /** Shown in the tooltip only ("V", "⇧↵"); bind the key itself with `registerKey`. */
+  shortcut?: string;
+  /** Groups of buttons with a separator between: 'tools' | 'create' | 'add' | any other (before 'add'). */
+  section?: string;
+  /** Within a section; default is registration order. */
+  order?: number;
+  /** Shown only while this is true (re-checked when the dock, the tool or the table changes). */
+  when?(app: App): boolean;
+  /** Pressed state, for modal tools. Leave out for plain buttons. */
+  active?(app: App): boolean;
+  /** `button` = the clicked element, to anchor a menu on (`app.view.openMenu(entries, button, title, { above: true })`). */
+  run(app: App, button: HTMLElement): void;
+}
+
+/**
+ * A row (or rows) of the main menu (top-left, `app.registerMainMenuItem`). The top level stays small:
+ * File, Edit, Room, Add, then one submenu per other `group` plugins name (e.g. "Game"), then ungrouped
+ * rows (Bridge…, Help). Plugins give a `group`; ungrouped rows are for core and the app shell.
+ * Built each time the menu opens, so labels, `disabled` and `when` are always current.
+ */
+export interface MainMenuItem {
+  id: string;
+  /** Submenu this row lives in; a group nobody fills is not shown. */
+  group?: string;
+  /** Within the group; default is registration order. */
+  order?: number;
+  when?(app: App): boolean;
+  /** One row, or several (e.g. one per kit). A row with `items` opens a submenu of its own. */
+  entry(app: App): MenuEntry | MenuEntry[];
+}
 
 export interface Plugin {
   id: string;

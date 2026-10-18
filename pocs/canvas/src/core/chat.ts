@@ -1,4 +1,6 @@
 import type * as Y from 'yjs';
+import type { CanvasNode } from './doc';
+import { titleOf } from './query';
 
 // Table chat: a text conversation next to the board, for everyone seated (people in browsers,
 // agents and tools through the bridge). DOM-free, so the bridge and tests use it too.
@@ -122,3 +124,10 @@ export const validMessage = (m: unknown): m is ChatMessage => {
 
 /** The well-formed messages, oldest first. */
 export const chatMessages = (ydoc: Y.Doc) => chatArray(ydoc).toArray().filter(validMessage);
+
+/** Messages as text lines for a terminal or an agent, naming the nodes they point at (by title). */
+export function chatText(msgs: ChatMessage[], doc: { nodes: readonly CanvasNode[] }): string {
+  const titles = new Map<string, string>();
+  if (msgs.some((m) => m.node)) for (const n of doc.nodes) titles.set(n.id, titleOf(n) || n.id);
+  return msgs.map((m) => chatLine(m, m.node ? (titles.get(m.node) ?? `${m.node} (removed)`) : undefined)).join('\n');
+}

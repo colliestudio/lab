@@ -3,8 +3,9 @@ import type { App } from './app';
 import { chatArray, chatMessages, mentions, sendChat, splitMentions, unread, validMessage, type ChatMessage } from './chat';
 import { anchorOf, jumpTo } from './logView';
 import { ago } from './log';
+import { chromeButton } from './chromeView';
 
-// The chat panel: a toolbar button with an unread badge, a panel on the right with the messages
+// The chat panel: a top-right button with an unread badge, a panel on the right with the messages
 // (attributed, colored), an input, and a way to point a message at a node. Everything it shows
 // comes from the synced chat array (chat.ts), so it works over any transport the doc has.
 
@@ -33,14 +34,12 @@ export function mountChat(app: App, bar: HTMLElement, key: string, parent: HTMLE
   const me = () => app.me();
   const msgs = () => chatMessages(app.store.ydoc);
 
-  // ---- toolbar button
-  const btn = el('button', 'chat-btn', 'Chat');
-  btn.title = 'Chat with everyone at the table (⇧C)';
+  // ---- top-right button
+  const btn = chromeButton('message-circle', 'Chat', '⇧C');
+  btn.classList.add('chat-btn');
   const badge = el('span', 'chat-badge');
   btn.append(badge);
-  const anchor = bar.querySelector('.help-btn');
-  if (anchor) anchor.before(btn);
-  else bar.append(btn);
+  bar.append(btn);
 
   // ---- panel
   const panel = el('div', 'cv-chat');

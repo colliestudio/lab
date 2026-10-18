@@ -1,39 +1,82 @@
 import { parse } from '../src/core/io';
 import type { CanvasDoc } from '../src/core/doc';
 import type { ChatMessage } from '../src/core/chat';
-import { resolveNode, type NodeSummary } from './query';
+import type { AgentApi } from '../src/core/agent';
+import type { NodeSummary } from '../src/core/query';
+import type { InView } from '../src/core/agentView';
 
 // Thin client for the bridge's HTTP API (used by the CLI and the MCP server). Agents never touch
 // Yjs: they send named commands; the bridge runs them as a seated player.
 
-export interface Client {
+export interface RunReply {
+  result: unknown;
+  text?: string;
+  changed?: number;
+  undescribed?: boolean;
+}
+
+export interface ShotArgs {
+  /** A node (id or title); the picture frames it. */
+  node?: string;
+  /** A world box to frame. */
+  region?: { x: number; y: number; width: number; height: number };
+  labels?: boolean;
+  width?: number;
+  height?: number;
+  padding?: number;
+}
+
+export interface ShotReply {
+  /** base64 */
+  png: string;
+  mime: 'image/png';
+  seat: string;
+  target: string;
+  width: number;
+  height: number;
+  ms: number;
+  nodes: InView[];
+}
+
+export interface Client extends AgentApi {
   doc(): Promise<CanvasDoc>;
   query(q: Record<string, string | undefined>): Promise<NodeSummary[]>;
+  /** Raw command, unchecked (compat; agents use `run`). */
   cmd(name: string, args: unknown): Promise<{ ok: boolean; error?: string; touched?: string[]; select?: string[]; changed?: number }>;
+  /** A command as an agent: args checked against the plugin's description (throws the reason, with the field and an example). */
+  run(name: string, args: object): Promise<RunReply>;
   undo(redo?: boolean): Promise<{ ok: boolean; error?: string }>;
   log(limit?: number): Promise<{ time: string; actor: string | null; text: string }[]>;
   status(): Promise<unknown>;
+  /** A picture of the board as this actor sees it (throws why not: no browser, node not shown, bad region). */
+  shot(args?: ShotArgs): Promise<ShotReply>;
   /** A plugin view as this actor (e.g. chess.state); throws its error. */
-  view<T = any>(name: string, args?: Record<string, string | undefined>): Promise<T>;
-  /** Long-poll a view until it's ready (e.g. chess.turn); `{waiting: true}` after `timeoutS`. */
-  wait<T = any>(name: string, args?: Record<string, string | undefined>, timeoutS?: number): Promise<T | { waiting: true }>;
-  /** Say something in the table chat; `node` = id of a node it is about. */
+  view<T = any>(name: string, args?: object): Promise<T>;
+  /** Long-poll a view until it's ready (e.g. chess.turn); undefined after `timeoutS` (≤ 290). */
+  wait<T = any>(name: string, args?: object, timeoutS?: number): Promise<T | undefined>;
+  /** `wait` repeated in slices until `totalS` has passed (a long call may be cut off by whoever called). */
+  waitLong<T = any>(name: string, args?: object, totalS?: number, slice?: number): Promise<T | undefined>;
+  /** The bridge's help for plugins (JSON). */
+  help(plugin?: string, command?: string): Promise<any>;
+  /** Say something in the table chat; `node` = id or title of a node it is about. */
   say(text: string, node?: string): Promise<ChatMessage>;
   /** Last `limit` messages, or only those since you last looked (`onlyNew`). Either marks everything as seen. */
   chatRead(opts?: { limit?: number; onlyNew?: boolean }): Promise<ChatMessage[]>;
   /** Long-poll for new messages from others; `[]` after `timeoutS` with none. */
   chatWait(timeoutS?: number): Promise<ChatMessage[]>;
-  /** Node id for an id or a title (see resolveNode). */
-  resolve(ref: string): Promise<string>;
 }
 
 const qs = (o: Record<string, string | undefined>) => new URLSearchParams(Object.entries(o).filter((e): e is [string, string] => e[1] !== undefined));
 
-export function client(opts: { url?: string; as?: string; kind?: 'agent' | 'tool' } = {}): Client {
+/** Replaces the HTTP hop: `path` is what would follow the base URL; resolves with the reply text. */
+export type Send = (path: string, init?: { body: unknown }) => Promise<string>;
+
+export function client(opts: { url?: string; as?: string; kind?: 'agent' | 'tool'; send?: Send } = {}): Client {
   const base = (opts.url ?? process.env.CANVAS_BRIDGE ?? 'http://localhost:5222').replace(/\/+$/, '');
   const as = opts.as ?? process.env.CANVAS_AS ?? 'Claude';
   const kind = opts.kind ?? 'agent';
-  const req = async (path: string, init?: { body: unknown }) => {
+  const req: Send = async (path, init) => {
+    if (opts.send) return opts.send(path, init);
     let res: Response;
     try {
       res = await fetch(base + path, init ? { method: 'POST', body: JSON.stringify(init.body), headers: { 'content-type': 'application/json' } } : undefined);
@@ -44,21 +87,47 @@ export function client(opts: { url?: string; as?: string; kind?: 'agent' | 'tool
     return text;
   };
   const json = async (path: string, init?: { body: unknown }) => JSON.parse(await req(path, init));
-  return {
+  const viewPath = (kindOf: 'view' | 'wait', name: string, args: object, extra: Record<string, string> = {}) => `/${kindOf}/${name}?${qs({ args: JSON.stringify(args), as, kind, ...extra })}`;
+  const self: Client = {
     doc: async () => parse(await req('/doc')),
     query: (q) => json(`/query?${new URLSearchParams(Object.entries(q).filter((e): e is [string, string] => !!e[1]))}`),
     cmd: (name, args) => json('/cmd', { body: { as, kind, name, args } }),
+    run: async (name, args) => {
+      const r = await json('/agent/run', { body: { as, kind, name, args } });
+      if (!r.ok) throw new Error(r.error ?? 'failed');
+      return r;
+    },
     undo: (redo = false) => json(redo ? '/redo' : '/undo', { body: { as, kind } }),
     log: (limit = 20) => json(`/log?limit=${limit}`),
     status: () => json('/status'),
+    shot: async (args = {}) => {
+      const r = await json(`/shot?${qs({ args: JSON.stringify(args), as, kind })}`);
+      if (r?.error) throw new Error(r.error);
+      return r;
+    },
     view: async (name, args = {}) => {
-      const r = await json(`/view/${name}?${qs({ ...args, as, kind })}`);
+      const r = await json(viewPath('view', name, args));
       if (r?.error) throw new Error(r.error);
       return r;
     },
     wait: async (name, args = {}, timeoutS = 50) => {
-      const r = await json(`/wait/${name}?${qs({ ...args, as, kind, timeout: String(timeoutS) })}`);
-      if (r?.error && !r.waiting) throw new Error(r.error);
+      const r = await json(viewPath('wait', name, args, { timeout: String(timeoutS) }));
+      if (r?.waiting) return undefined; // the server's answer for a timeout (a view value never has this key today)
+      if (r?.error) throw new Error(r.error);
+      return r;
+    },
+    waitLong: async (name, args = {}, totalS = 290, slice = 50) => {
+      const end = Date.now() + totalS * 1000;
+      while (Date.now() < end) {
+        const left = Math.max(1, Math.min(slice, Math.round((end - Date.now()) / 1000)));
+        const v = await self.wait(name, args, left);
+        if (v !== undefined) return v;
+      }
+      return undefined;
+    },
+    help: async (plugin, command) => {
+      const r = await json(`/agent/help?${qs({ plugin, command })}`);
+      if (r?.error) throw new Error(r.error);
       return r;
     },
     say: async (text, node) => {
@@ -77,6 +146,6 @@ export function client(opts: { url?: string; as?: string; kind?: 'agent' | 'tool
       if (r?.waiting) return [];
       throw new Error(r?.error ?? 'unexpected reply');
     },
-    resolve: async (ref) => resolveNode(await (async () => parse(await req('/doc')))(), ref).id,
   };
+  return self;
 }

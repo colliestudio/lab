@@ -1,10 +1,14 @@
 import './style.css';
-import { App, type Room, joinBridge, joinRoom, loadPlayer, mountChat, mountLog, mountZoomControl, savePlayer, openFile, parse, persistLocally, persistViewport, resetFileHandle, roomDbName, saveFile, type CanvasDoc } from './core';
+import { App, type Room, chromeButton, joinBridge, mountAgentView, joinRoom, loadPlayer, mountChat, mountChrome, mountLog, mountTheme, mountZoomControl, savePlayer, openFile, parse, serialize, persistLocally, persistViewport, resetFileHandle, roomDbName, saveFile, type CanvasDoc } from './core';
 import { copyText, createRoomFrom, mountRoomStatus, roomFromUrl, roomLink } from './share';
 import { openBridgeDialog } from './bridgeDialog';
 import { bridgeFromLocation, bridgeHref, rememberBridge } from './bridges';
 import { askName } from './nameDialog';
-import { cardsPlugin, handLabelOf, newHandEntries, newHandFor } from './plugins/cards';
+import { probeBoard } from './serve/probe';
+import { boardWsUrl, servedBoardName } from './serve/route';
+import { createUnique, fileStem, openServedBoard } from './serve/newBoard';
+import { showBoardScreen } from './serve/boardScreen';
+import { cardsPlugin } from './plugins/cards';
 import { chessPlugin } from './plugins/chess';
 import { clockPlugin } from './plugins/clock';
 import { battleLinePlugin } from './plugins/battleline';
@@ -12,12 +16,20 @@ import { matsPlugin } from './plugins/mats';
 import { boardPlugin } from './plugins/board';
 import { stormPlugin } from './plugins/eventstorm';
 import { prototypePlugin } from './plugins/prototype';
+import { diagramPlugin } from './plugins/diagram';
+import { excalidrawPlugin } from './plugins/excalidraw';
+import { kanbanPlugin } from './plugins/kanban';
+import { registerPluginLogic } from './plugins/logic';
 import { mountHelp, removeHelpNote } from './help';
 import { attachFollow, createFramesPlugin, portalsEnabled, enterUrl, mountBreadcrumb, trailFromUrl } from './plugins/frames';
 
 const BRIDGE_ADDR = bridgeFromLocation(location);
 const BRIDGE = BRIDGE_ADDR?.url ?? null;
-const ROOM = BRIDGE ? null : roomFromUrl();
+// on a canvas service, /b/<name> is a board it hosts (a ?bridge= address still wins; ?room= is ignored there)
+const SERVED = BRIDGE ? null : servedBoardName(location.pathname);
+// ?agentView=<actor id>: the page a screenshot provider keeps open (core/agentView.ts); only on a hosted board
+const AGENT_VIEW = BRIDGE || SERVED !== null ? new URLSearchParams(location.search).get('agentView') : null;
+const ROOM = BRIDGE || SERVED !== null ? null : roomFromUrl();
 const DB_NAME = ROOM ? roomDbName(ROOM) : 'canvas-poc';
 // per room: a room entered through a portal must not open at the camera of the table you came from
 const VIEW_KEY = ROOM ? `canvas-poc:view:${ROOM}` : 'canvas-poc:view';
@@ -29,6 +41,12 @@ const app = new App(document.getElementById('table')!);
   app.viewer = p.id;
   app.player = { id: p.id, name: p.name, color: p.color };
 }
+if (AGENT_VIEW) app.readOnly = true;
+const chrome = mountChrome(app);
+mountTheme(app, { forceLight: !!AGENT_VIEW });
+const flash = chrome.toast;
+// every plugin's data side from the shared list (the bridge registers the same list); `use` below adds the DOM side
+registerPluginLogic(app.store);
 app.use(cardsPlugin);
 app.use(chessPlugin);
 app.use(clockPlugin);
@@ -37,18 +55,21 @@ app.use(matsPlugin);
 app.use(boardPlugin);
 app.use(stormPlugin);
 app.use(prototypePlugin);
-// last: its rider rule (frame membership) must come after the others (a piece rides its board, the board its frame)
+app.use(diagramPlugin);
+app.use(excalidrawPlugin);
+app.use(kanbanPlugin);
+// frames' logic is last in PLUGIN_LOGIC (src/plugins/logic.ts): its rider rule must come after the others, so it is registered there
 const TRAIL = trailFromUrl();
 const frames = createFramesPlugin({ room: ROOM, portals: portalsEnabled(), enter: (room) => (location.href = enterUrl(room, ROOM, TRAIL)) });
 app.use(frames);
 app.store.migrations.push(removeHelpNote);
 
 
-function newTable() {
+/** An empty board: nothing is put on it (everything is in the Add menu). */
+function newBoard() {
   resetFileHandle();
   app.store.load({ nodes: [], edges: [] });
-  // the starter table: a shuffled deck, a wave of spades and three cards to flip (setup lays out about 940 x 400)
-  app.dispatch('cards.setup', { x: -470, y: -120 });
+  app.tableReplaced();
   app.store.undoManager.clear();
   app.store.select([]);
   app.view.fit();
@@ -56,30 +77,39 @@ function newTable() {
 
 function openDoc(doc: CanvasDoc & { skipped?: string[] }, name: string) {
   app.store.load(doc);
+  app.tableReplaced();
   app.view.fit();
   flash(doc.skipped?.length ? `Opened ${name} (skipped ${doc.skipped.length} bad entries)` : `Opened ${name}`);
 }
 
-// toolbar
-const bar = document.getElementById('toolbar')!;
-const status = document.createElement('span');
-status.className = 'status';
-const flash = (msg: string) => {
-  status.textContent = msg;
-  clearTimeout((flash as any).t);
-  (flash as any).t = setTimeout(() => (status.textContent = ''), 2500);
-};
-const button = (label: string, title: string, run: () => void) => {
-  const b = document.createElement('button');
-  b.textContent = label;
-  b.title = title;
-  b.addEventListener('click', run);
-  bar.append(b);
-  return b;
-};
+/**
+ * What this page's board is: 'served' / 'bridge' once connected (the store refuses `load` for both), 'pending' on a served
+ * page until the service answers (replaces are refused meanwhile), null for a local board.
+ * Runtime state, not the URL: on a static host `/b/x` boots local and behaves locally.
+ */
+let hosted: 'served' | 'bridge' | 'pending' | null = SERVED !== null ? 'pending' : null;
+/** New board / Open / drop while the board is not ours to replace: a bridge's file, or a served page still waiting for the service to answer. */
+const refuse = () => flash(hosted === 'pending' ? 'Opening the canvas…' : REFUSE);
+const REFUSE = 'This canvas is the bridge’s file: New canvas and Open would overwrite it';
+const failed = (what: string, e: unknown) => flash(`${what} failed: ${(e as Error).message}`);
 
-function playPrototype() {
-  app.keys.get('shift+enter')?.run(app);
+/** A served board is a file the service keeps: New board makes another board and opens it. */
+async function servedNew() {
+  try {
+    const { name, sameTab } = await openServedBoard(() => createUnique('Untitled', undefined));
+    flash(`Made ${name}${sameTab ? '' : ': opened in a new tab'}`);
+  } catch (e) {
+    failed('New canvas', e);
+  }
+}
+/** Open / drop on a served board: the file becomes a new served board. */
+async function servedImport(fileName: string, text: string) {
+  try {
+    const { name } = await openServedBoard(() => createUnique(fileStem(fileName), text));
+    flash(`Imported ${fileName} as ${name}`);
+  } catch (e) {
+    failed('Open', e);
+  }
 }
 
 async function doSave(saveAs = false) {
@@ -91,60 +121,57 @@ async function doSave(saveAs = false) {
   }
 }
 async function doOpen() {
+  if (hosted === 'bridge' || hosted === 'pending') return refuse();
   try {
     const res = await openFile();
     if (!res) return;
+    if (hosted === 'served') {
+      resetFileHandle(); // the picked file must not become the save target of the served board, whatever the import does
+      return void (await servedImport(res.name, serialize(res.doc)));
+    }
     openDoc(res.doc, res.name);
   } catch (e) {
     flash(`Open failed: ${(e as Error).message}`);
   }
 }
 
-button('New table', ROOM ? 'Clear the table and deal a fresh deck (for everyone in the room)' : 'Clear the table and deal a fresh deck', () => {
-  if (confirm(ROOM ? 'Start a new table for everyone in this room?' : 'Start a new table? Unsaved changes are lost.')) newTable();
+// the main menu: File / Edit / Room / Add / plugin groups / Bridge… / Help (core and plugins add their own rows)
+app.registerMainMenuItem({
+  id: 'file.new',
+  group: 'File',
+  order: 0,
+  entry: () => ({
+    label: 'New canvas',
+    run: () => {
+      if (hosted === 'served') return void servedNew();
+      if (hosted === 'bridge' || hosted === 'pending') return refuse();
+      if (confirm(ROOM ? 'Start a new canvas for everyone in this room?' : 'Start a new canvas? Unsaved changes are lost.')) newBoard();
+    },
+  }),
 });
-button('Reset', 'Put everything back to its starting state (keeps what is on the table)', () => {
-  if (confirm(ROOM ? 'Reset the table for everyone in this room? (Undo brings it back)' : 'Reset the table to its starting state? (Undo brings it back)'))
-    app.dispatch('core.reset', {});
+app.registerMainMenuItem({ id: 'file.open', group: 'File', order: 1, entry: () => ({ label: 'Open…', hint: '⌘O', run: doOpen }) });
+app.registerMainMenuItem({ id: 'file.save', group: 'File', order: 2, entry: () => ({ label: 'Save', hint: '⌘S', run: () => doSave() }) });
+app.registerMainMenuItem({ id: 'file.saveAs', group: 'File', order: 3, entry: () => ({ label: 'Save as…', hint: '⇧⌘S', run: () => doSave(true) }) });
+app.registerMainMenuItem({
+  id: 'edit.reset',
+  group: 'Edit',
+  order: 10,
+  entry: () => ({
+    label: 'Reset table…',
+    run: () => {
+      if (confirm(ROOM ? 'Reset the table for everyone in this room? (Undo brings it back)' : 'Reset the table to its starting state? (Undo brings it back)')) app.dispatch('core.reset', {});
+    },
+  }),
 });
-const addBtn = button('Add…', 'Put something on the table: a deck of cards, a chess set, a game clock…', () =>
-  app.view.openMenu(
-    app.kits.map((k) => ({ label: k.label, run: () => k.create(app, app.viewCenter()) })),
-    addBtn,
-    'Add to the table',
-  ),
-);
-button('▶ Play', 'Play the prototype pages full screen, like a clickable prototype (⇧↵)', () => playPrototype());
-button('Open…', 'Open a .canvas file (⌘O)', doOpen);
-button('Save', 'Save as .canvas (⌘S)', () => doSave());
-button('Undo', 'Undo (⌘Z)', () => app.store.undo());
-button('Redo', 'Redo (⇧⌘Z)', () => app.store.redo());
-// tools: select (V) / hand (H)
-const tools = document.createElement('span');
-tools.className = 'tools';
-const toolBtn = (tool: 'select' | 'hand', label: string, title: string) => {
-  const b = document.createElement('button');
-  b.textContent = label;
-  b.title = title;
-  b.dataset.tool = tool;
-  b.addEventListener('click', () => app.view.setTool(tool));
-  tools.append(b);
-  return b;
-};
-const toolBtns = [toolBtn('select', '↖', 'Select (V)'), toolBtn('hand', '✋\uFE0E', 'Hand: drag to pan (H, or hold Space)')];
-const syncTools = () => toolBtns.forEach((b) => b.classList.toggle('active', b.dataset.tool === app.view.tool));
-app.view.onToolChange(syncTools);
-syncTools();
-bar.prepend(tools);
+// Bridge…: connect to a bridge, see the one this tab is on, bring agents into a room (bridgeDialog.ts)
+app.registerMainMenuItem({ id: 'app.bridge', order: 0, entry: () => ({ label: 'Bridge…', run: () => openBridge() }) });
+app.registerMainMenuItem({ id: 'app.help', order: 1, entry: () => ({ label: 'Help and shortcuts', hint: '?', run: () => helpBtn.click() }) });
 
-const helpBtn = document.createElement('button');
-helpBtn.textContent = '?';
-helpBtn.title = 'Controls (?)';
-helpBtn.className = 'help-btn';
-if (!ROOM && !BRIDGE) {
+if (!ROOM && !BRIDGE && SERVED === null) {
   const share = document.createElement('button');
+  share.type = 'button';
   share.textContent = 'Share';
-  share.title = 'Play together: copy this table into a new room and copy its link';
+  share.dataset.tip = 'Play together: copy this table into a new room and its link';
   share.className = 'share-btn';
   share.addEventListener('click', async () => {
     const id = await createRoomFrom(app);
@@ -153,24 +180,14 @@ if (!ROOM && !BRIDGE) {
     sessionStorage.setItem('canvas-poc:shared', copied ? 'copied' : 'show');
     location.href = link;
   });
-  bar.append(share);
+  chrome.topRight.append(share);
 }
-// Hand: a new private group (others see backs), in free space near the bottom of the view. In a room:
-// New hand ▸ players (me first); solo: mine right away.
-const handBtn = document.createElement('button');
-handBtn.textContent = 'New hand';
-handBtn.title = 'New hand: a private group for cards someone holds (others see them face down)';
-handBtn.addEventListener('click', () => {
-  if (!app.presence) return newHandFor(app, { ...loadPlayer() });
-  app.view.openMenu(newHandEntries(app), handBtn, 'New hand for');
-});
-// Bridge…: connect to a bridge, see the one this tab is on, bring agents into a room (bridgeDialog.ts)
-button('Bridge…', 'Connect to a bridge, or bring agents into this room', () => openBridge());
-bar.append(handBtn, helpBtn, status);
-mountBreadcrumb(bar, ROOM, TRAIL);
-app.onNotify(flash);
+const helpBtn = chromeButton('circle-help', 'Help', '?');
+helpBtn.classList.add('help-btn');
+mountBreadcrumb(chrome.topLeft, ROOM, TRAIL);
+mountZoomControl(app, chrome.bottomRight);
+chrome.bottomRight.append(helpBtn);
 mountHelp(app, helpBtn);
-mountZoomControl(app);
 mountLog(app);
 
 app.registerKey({ key: 'mod+s', run: () => doSave() });
@@ -184,9 +201,12 @@ window.addEventListener('drop', async (e) => {
   e.preventDefault();
   const file = e.dataTransfer?.files[0];
   if (!file) return;
+  if (hosted === 'bridge' || hosted === 'pending') return refuse();
   try {
+    const doc = parse(await file.text()); // a file that is no canvas fails here, before a board is made for it
+    if (hosted === 'served') return void (await servedImport(file.name, serialize(doc)));
     resetFileHandle();
-    openDoc(parse(await file.text()), file.name);
+    openDoc(doc, file.name);
   } catch (err) {
     flash(`Open failed: ${(err as Error).message}`);
   }
@@ -206,11 +226,21 @@ function openBridge() {
   });
 }
 
-const view = persistViewport(app, VIEW_KEY);
+const view = AGENT_VIEW ? null : persistViewport(app, VIEW_KEY);
 if (BRIDGE) startBridge(BRIDGE);
-else persistLocally(app, DB_NAME).then(({ empty }) => {
+else if (SERVED !== null) void probeBoard(SERVED).then((p) => {
+    if (p.kind === 'ok') return startBridge(boardWsUrl(location, SERVED), { name: p.name });
+    // the screenshot page has no board screen to show: it says why it has nothing to shoot, at once
+    if (AGENT_VIEW) return agentViewFailed(p.kind === 'missing' ? `canvas not found: ${p.error}` : `canvas not available: ${p.kind === 'none' ? 'the service did not answer' : p.error}`);
+    return p.kind === 'none' ? ((hosted = null), startLocal()) : showBoardScreen(p, SERVED);
+  });
+else startLocal();
+
+/** No service: the board of this browser (IndexedDB), or a room. */
+function startLocal() {
+  persistLocally(app, DB_NAME).then(({ empty }) => {
   if (!ROOM) {
-    if (empty) newTable();
+    if (empty) newBoard();
     else if (view) app.viewport.set(view.x, view.y, view.zoom);
     else app.view.fit();
     return;
@@ -228,19 +258,19 @@ else persistLocally(app, DB_NAME).then(({ empty }) => {
     if (!choice) return;
     const me = info(savePlayer(choice));
     room.presence.setMe(me);
-    app.dispatch('cards.handLabel', { owner: me.id, label: handLabelOf(me.name), color: me.color });
+    app.playerRenamed(me);
   };
   mountRoomStatus(
     app,
     room,
-    bar,
+    chrome.topRight,
     () => {
       room.leave();
       location.href = location.pathname;
     },
     () => void rename(),
   );
-  mountChat(app, bar, ROOM);
+  mountChat(app, chrome.topRight, ROOM);
   if (!stored.named) void rename(true);
   const shared = sessionStorage.getItem('canvas-poc:shared');
   sessionStorage.removeItem('canvas-poc:shared');
@@ -259,14 +289,18 @@ else persistLocally(app, DB_NAME).then(({ empty }) => {
     app.view.fit();
     flash('Joined the table');
   });
-});
+  });
+}
 
-/** Bridge mode (?bridge=ws://host:5222): the table is a .canvas file a bridge process hosts; agents join it. */
-function startBridge(url: string) {
+/** Bridge mode (?bridge=ws://host:5222): the table is a .canvas file a bridge process hosts; agents join it. A board of a canvas service (`served`) is the same, on this origin. */
+function startBridge(url: string, served?: { name: string }) {
+  hosted = served ? 'served' : 'bridge';
+  app.hosted = hosted;
   const stored = loadPlayer();
-  const room = joinBridge(app, url, { id: stored.id, name: stored.name, color: stored.color }, BRIDGE_ADDR?.token);
+  const room = joinBridge(app, url, { id: stored.id, name: stored.name, color: stored.color }, BRIDGE_ADDR?.token, { observer: !!AGENT_VIEW });
   (window as any).room = room;
   bridgeRoom = room;
+  if (AGENT_VIEW) return startAgentView(room, AGENT_VIEW);
   // the token came in the link's fragment: keep it with the address (for next time) and take it out of the URL
   if (location.hash) history.replaceState(null, '', location.pathname + location.search);
   // pasting a link with a token into a tab already on this bridge only changes the #fragment: connect again with it
@@ -274,23 +308,48 @@ function startBridge(url: string) {
   mountRoomStatus(
     app,
     room,
-    bar,
+    chrome.topRight,
     () => {
       room.leave();
-      location.href = location.pathname;
+      location.href = served ? '/' : location.pathname;
     },
     async () => {
       const choice = await askName(room.presence.me, { title: 'Your name and color', action: 'Save' });
-      if (choice) room.presence.setMe(savePlayer(choice));
+      if (!choice) return;
+      const me = savePlayer(choice);
+      room.presence.setMe(me);
+      app.playerRenamed({ id: me.id, name: me.name, color: me.color });
     },
   );
-  mountChat(app, bar, url);
-  flash(`Connecting to the bridge at ${url}…`);
+  mountChat(app, chrome.topRight, url);
+  if (served) {
+    document.title = `${served.name} · Canvas`;
+    app.registerMainMenuItem({ id: 'app.allCanvases', order: -1, entry: () => ({ label: 'All canvases', run: () => (location.href = '/') }) });
+  }
+  flash(served ? `Opening ${served.name}…` : `Connecting to the bridge at ${url}…`);
   room.synced.then(() => {
-    rememberBridge({ url, token: BRIDGE_ADDR?.token });
+    // a served board is on this very origin: remembering it would fill the saved bridges
+    if (!served) rememberBridge({ url, token: BRIDGE_ADDR?.token });
     app.store.undoManager.clear();
     app.view.fit();
-    flash('Connected: this table is the bridge’s .canvas file');
+    flash(served ? `Opened ${served.name}` : 'Connected: this table is the bridge’s .canvas file');
+  });
+}
+
+function agentViewFailed(why: string) {
+  const failed = Promise.reject(new Error(why));
+  failed.catch(() => {});
+  (window as any).canvasSynced = failed;
+}
+
+/** The screenshot page: the seat's view of the board, read-only, no status pill, chat, toasts or remembered bridge. */
+function startAgentView(room: Room & { synced: Promise<void> }, seat: string) {
+  app.viewer = seat;
+  document.body.classList.add('agent-view');
+  mountAgentView(app);
+  (window as any).canvasSynced = room.synced.then(() => {
+    app.store.undoManager.clear();
+    app.view.fit();
   });
 }
 

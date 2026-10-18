@@ -1,4 +1,5 @@
 import type { App } from '../../core';
+import { placeholders } from '../../sandbox/page';
 import { PAGE_ESCAPE, fromFrame, pageFrame, readMessage } from './bridge';
 import { History } from './history';
 import { docHeight, isNote, isPage, note, outgoing, page, resolveLink, titleOf } from './model';
@@ -167,7 +168,7 @@ export class Player {
     if (!isPage(n)) return;
     if (reload || !this.frame) {
       const f = page(n);
-      this.frame = pageFrame(f.html, f.vw, docHeight(n), 1, this.state);
+      this.frame = pageFrame(f.html, f.vw, docHeight(n), 1, { state: this.state });
       this.frame.style.pointerEvents = 'auto';
       this.frame.addEventListener(PAGE_ESCAPE, () => this.close());
       r.querySelector('.pg-device')!.replaceChildren(this.frame);
@@ -237,6 +238,8 @@ export class Player {
     const vh = docHeight(n);
     const s = Math.min(1, (stage.clientWidth - 48) / vw, (stage.clientHeight - 32) / vh);
     this.frame.style.transform = `scale(${s})`;
+    const gone = placeholders.get(this.frame);
+    if (gone) gone.style.transform = `scale(${s})`;
     const dev = r.querySelector<HTMLElement>('.pg-device')!;
     dev.style.width = `${vw * s}px`;
     dev.style.height = `${vh * s}px`;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Store } from './core/store';
-import { removeHelpNote } from './help';
+import { GROUPS, removeHelpNote } from './help';
 
 describe('help note removal', () => {
   it('drops the old on-table help note on load, keeps other notes; idempotent', () => {
@@ -19,5 +19,20 @@ describe('help note removal', () => {
     expect(s.doc.nodes.map((n) => n.id).sort()).toEqual(['mine', 'other']);
     s.migrate();
     expect(s.doc.nodes).toHaveLength(2);
+  });
+});
+
+describe('help sheet', () => {
+  const text = GROUPS.flatMap(([, rows]) => rows.flat()).join('\n');
+  it('describes the screen: menu, dock, top right, bottom right', () => {
+    const screen = GROUPS.find(([t]) => t === 'Screen')!;
+    expect(screen[1].map(([k]) => k).join()).toMatch(/Menu.*Dock.*People.*Zoom/);
+  });
+  it('does not send people to buttons that no longer exist', () => {
+    expect(text).not.toMatch(/toolbar|Add…|▶ Play|\(toolbar\)/);
+  });
+  it('says where New hand and Play live', () => {
+    expect(text).toMatch(/Menu ▸ Game ▸ New hand/);
+    expect(text).toMatch(/Menu ▸ Game ▸ Play prototype/);
   });
 });

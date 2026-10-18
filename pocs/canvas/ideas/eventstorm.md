@@ -27,7 +27,7 @@ An event storming kit built as one plugin on the same "pieces on a table" model 
 ## Demo
 
 1. `pnpm exec vite --port 5213 --strictPort --host 127.0.0.1` in the worktree, open it (from another Mac: `http://mini.internal:5213`, through the Mini's proxy).
-2. New table (or not: the board lands in the middle of the view, on top of whatever is there; drag its tab to move it), then **Add… › Event storm board**.
+2. New board (or not: the board lands in the middle of the view, on top of whatever is there; drag its tab to move it), then **+ › Event storm board**.
 3. Pointer on the board, press **E**, type `Order placed`, **Tab**, `Payment taken`, **Tab**, `Order shipped`, **Enter**. Point lower left, **E**, `Cart checked out`, **Enter**. **Esc** (deselect: with a sticky selected, a new non-event sticky attaches to its event instead of going to the pointer), point elsewhere, **Q**, `Refunds?`, **Enter**.
 4. Click **2 Enforce the timeline**: the events snap into one sequence (Cart checked out first). ⌘Z and redo to see the chaos come back.
 5. Click **3 Commands & policies**. Click `Order placed`, press **C**, `Place order`, Enter; **A**, `Customer`, Enter. Click `Payment taken`, **X** `Stripe`, **P** `When paid, ship`.

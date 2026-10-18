@@ -6,11 +6,17 @@
   -webkit-user-select: none;
   outline: none;
   cursor: default;
-  /* felt with a faint grid that follows the viewport */
-  background-color: #1f5f3f;
-  background-image:
-    radial-gradient(circle, rgba(255, 255, 255, 0.07) 1.2px, transparent 1.6px),
-    radial-gradient(ellipse at center, rgba(255, 255, 255, 0.06), rgba(0, 0, 0, 0.35));
+  /* The board's look lives in these variables (the one place to make it a per-board setting later):
+     light paper with a faint dot grid that follows the viewport. */
+  --cv-bg: #f8f9fa;
+  --cv-dot: rgba(0, 0, 0, 0.14);
+  --cv-label-bg: var(--cv-bg);
+  /* what is drawn straight on the board (free text, arrows, their labels): follows the background */
+  --cv-ink: #1e1e1e;
+  --cv-label-fg: var(--cv-ink);
+  --cv-select: #4c8dff;
+  background-color: var(--cv-bg);
+  background-image: radial-gradient(circle, var(--cv-dot) 1.1px, transparent 1.5px);
 }
 .cv-root.cv-space,
 .cv-root.cv-space *,
@@ -45,7 +51,7 @@
   filter: drop-shadow(0 14px 14px rgba(0, 0, 0, 0.35));
 }
 .cv-node.cv-selected {
-  outline: 3px solid #ffd54a;
+  outline: 3px solid var(--cv-select);
   outline-offset: 3px;
   border-radius: 8px;
 }
@@ -170,39 +176,267 @@
   border-radius: 8px;
   filter: brightness(1.08);
 }
-.cv-zoom {
+/* ---- chrome: top-left menu, top-right people, bottom dock, bottom-right zoom + help */
+.cv-chrome {
   position: fixed;
   z-index: 10;
-  right: 12px;
-  bottom: 12px;
   display: flex;
   gap: 4px;
   align-items: center;
-  padding: 6px;
-  border-radius: 10px;
-  background: rgba(15, 25, 20, 0.75);
-  backdrop-filter: blur(6px);
-  color: #e8efe9;
+  padding: 4px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #1e1e1e;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(0, 0, 0, 0.06);
   font: 13px system-ui, sans-serif;
   user-select: none;
 }
-.cv-zoom button {
-  min-width: 30px;
+.cv-chrome:empty,
+.cv-chrome[hidden] {
+  display: none;
+}
+.cv-top-left {
+  left: 12px;
+  top: 12px;
+}
+.cv-top-right {
+  right: 12px;
+  top: 12px;
+}
+.cv-dock {
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+}
+.cv-bottom-right {
+  right: 12px;
+  bottom: 12px;
+}
+.cv-zoom {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.cv-chrome button,
+.cv-chrome .share-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  height: 36px;
+  padding: 0 8px;
   border: 0;
-  border-radius: 6px;
-  padding: 6px 8px;
-  background: rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: transparent;
   color: inherit;
   font: inherit;
+  white-space: nowrap;
   cursor: pointer;
 }
-.cv-zoom button:hover {
-  background: rgba(255, 255, 255, 0.24);
+.cv-chrome button:hover {
+  background: rgba(0, 0, 0, 0.07);
+}
+.cv-chrome button[hidden] {
+  display: none;
+}
+.cv-chrome button[aria-pressed='true'],
+.cv-chrome .chat-btn.active {
+  background: #e5efff;
+  color: #1f6feb;
+}
+.cv-chrome button:focus-visible {
+  outline: 2px solid #1f6feb;
+  outline-offset: -2px;
+}
+.cv-dock-sep {
+  width: 1px;
+  height: 20px;
+  margin: 0 2px;
+  background: #e3e3e3;
+}
+.cv-dock-sep[hidden] {
+  display: none;
 }
 .cv-zoom .cv-zoom-pct {
   min-width: 52px;
-  background: none;
   font-variant-numeric: tabular-nums;
+}
+/* tooltips: name and shortcut, on hover and keyboard focus */
+.cv-chrome [data-tip] {
+  position: relative;
+}
+.cv-chrome [data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: #1e1e1e;
+  color: #fff;
+  font: 12px system-ui, sans-serif;
+  white-space: pre;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.1s;
+  z-index: 1;
+}
+.cv-chrome [data-tip]:hover::after,
+.cv-chrome [data-tip]:focus-visible::after {
+  opacity: 1;
+  transition-delay: 0.4s;
+}
+.cv-dock [data-tip]::after,
+.cv-bottom-right [data-tip]::after {
+  top: auto;
+  bottom: calc(100% + 8px);
+}
+.cv-top-right [data-tip]::after,
+.cv-bottom-right [data-tip]::after {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+.cv-bottom-right .cv-zoom [data-tip]::after {
+  right: auto;
+  left: 50%;
+  transform: translateX(-50%);
+}
+.cv-bottom-right .help-btn[data-tip]::after {
+  right: 0;
+  left: auto;
+  transform: none;
+}
+@media (hover: none) {
+  .cv-chrome [data-tip]::after {
+    display: none;
+  }
+}
+.cv-toast {
+  position: fixed;
+  z-index: 11;
+  left: 50%;
+  bottom: 64px;
+  transform: translateX(-50%);
+  max-width: min(560px, 90vw);
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: #1e1e1e;
+  color: #fff;
+  font: 13px system-ui, sans-serif;
+  text-align: center;
+  pointer-events: none;
+}
+.cv-toast[hidden] {
+  display: none;
+}
+/* top-right order: people, chat, share */
+.cv-top-right .room {
+  order: 1;
+}
+.cv-top-right .chat-btn {
+  order: 2;
+}
+.cv-top-right .share-btn {
+  order: 3;
+  background: #2f7d55;
+  color: #fff;
+  font-weight: 600;
+}
+.cv-top-right .share-btn:hover {
+  background: #3a9668;
+}
+.cv-chrome .room {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px;
+}
+.cv-chrome .players {
+  display: flex;
+  gap: 4px;
+}
+.cv-chrome .player {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.cv-chrome .player i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+.cv-chrome .player.me {
+  height: 28px;
+  min-width: 0;
+  padding: 0 8px;
+  background: rgba(0, 0, 0, 0.05);
+}
+.cv-chrome .room-state {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #555;
+  white-space: nowrap;
+}
+.cv-chrome .room-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #2f9d5f;
+  display: none;
+}
+.cv-chrome .room-state[data-ok='false'] {
+  color: #c0392b;
+}
+.cv-chrome .room-state[data-ok='false'] .room-dot {
+  background: #c0392b;
+}
+.cv-chrome .chat-btn {
+  position: relative;
+}
+.cv-chrome .chat-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #e6194b;
+  color: #fff;
+  font: 700 11px/18px system-ui, sans-serif;
+  text-align: center;
+}
+.cv-chrome .chat-badge[hidden] {
+  display: none;
+}
+.cv-chrome .chat-badge-mention {
+  background: #f5a623;
+  color: #231;
+}
+@media (max-width: 640px) {
+  .cv-chrome .room-text {
+    display: none;
+  }
+  .cv-chrome .room-dot {
+    display: block;
+  }
+  .cv-chrome .player:not(.me) b {
+    display: none;
+  }
+  .cv-zoom button:not(.cv-zoom-pct) {
+    display: none;
+  }
+  .cv-top-left {
+    max-width: 40vw;
+  }
+  .fr-crumbs {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 }
 .cv-node.cv-remote-sel {
   box-shadow: 0 0 0 3px var(--cv-remote);
@@ -471,18 +705,20 @@
   z-index: 0;
 }
 .cv-edges line {
-  stroke: rgba(255, 255, 255, 0.75);
+  stroke: var(--cv-ink);
+  stroke-opacity: 0.7;
   stroke-width: 2.5;
 }
 .cv-edges marker path {
-  fill: rgba(255, 255, 255, 0.85);
+  fill: var(--cv-ink);
+  fill-opacity: 0.8;
 }
 .cv-edges text {
-  fill: #fff;
+  fill: var(--cv-ink);
   font: 13px system-ui, sans-serif;
   text-anchor: middle;
   paint-order: stroke;
-  stroke: rgba(0, 0, 0, 0.5);
+  stroke: var(--cv-bg);
   stroke-width: 3px;
 }
 
@@ -630,4 +866,110 @@
 .cv-chat-pin,
 .cv-chat-send {
   padding: 6px 8px;
+}
+
+/* ---- styled arrows (edges.ts) */
+.cv-edge-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 16px;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+.cv-edge-line {
+  fill: none;
+  stroke-width: 2.5px;
+  stroke-linecap: round;
+}
+.cv-edge-head {
+  stroke-width: 1.5px;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.cv-edge-sel .cv-edge-line {
+  filter: drop-shadow(0 0 3px #4c8dff);
+  stroke-width: 3.5px;
+}
+.cv-edge-labels {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  z-index: 0;
+}
+.cv-edge-label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  min-width: 16px;
+  min-height: 1.3em;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--cv-label-bg, #fafafa);
+  color: var(--cv-label-fg);
+  font: 14px/1.3 system-ui, sans-serif;
+  white-space: pre;
+  text-align: center;
+  cursor: pointer;
+}
+.cv-edge-label-sel {
+  outline: 2px solid #4c8dff;
+}
+.cv-edge-label.cv-editing {
+  cursor: text;
+  user-select: text;
+  -webkit-user-select: text;
+  outline: 2px solid #4c8dff;
+}
+.cv-editing {
+  outline: none;
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+}
+.cv-root.cv-drawing,
+.cv-root.cv-drawing * {
+  cursor: crosshair !important;
+}
+.cv-marquee.cv-ghost {
+  border: 2px solid #4c8dff;
+  background: rgba(76, 141, 255, 0.08);
+}
+
+/* Agent view (?agentView=): the page a headless browser keeps to take screenshots. No controls, no cues. */
+.agent-view .cv-chrome,
+.agent-view .cv-toast,
+.agent-view .cv-zoom,
+.agent-view .cv-log,
+.agent-view .cv-cues,
+.agent-view .cv-menu,
+.agent-view .help-overlay,
+.agent-view .pc-viewas,
+.agent-view .dg-panel,
+/* whatever a plugin (outline, banners, palettes) appends to <body> beside the table is app chrome */
+.agent-view > :not(#table):not(script) {
+  display: none !important;
+}
+.agent-view .cv-world * {
+  animation: none !important;
+}
+.cv-shot-labels {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1000000;
+  overflow: hidden;
+}
+.cv-shot-label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: #111;
+  color: #fff;
+  font: 600 11px/14px ui-monospace, Menlo, monospace;
+  box-shadow: 0 0 0 1px #fff;
+  white-space: nowrap;
 }

@@ -21,7 +21,9 @@ class_name = "SignalRoom"
 tag = "v1"
 new_sqlite_classes = ["SignalRoom"]
 
-# Sandbox origin (not enabled; see ideas/prototype.md). Frames for plugins and pages are served
+# Sandbox origin (optional, not enabled; see ideas/prototype.md). Prototype pages work without it
+# (srcdoc frames); it is their opt-in strict mode (build with VITE_SANDBOX_URL) and what plugin worker
+# frames need. Frames for plugins and pages are served
 # by this Worker on `<label>.<SANDBOX_HOST>`, one label per frame, chosen by host name in
 # src/index.ts. To turn it on: a wildcard host on a registrable domain of its own (cookie and
 # process isolation from the app), e.g. `*.canvas-frames.example` with a wildcard DNS record and

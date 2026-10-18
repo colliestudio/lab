@@ -7,7 +7,7 @@
 ```
  .canvas file ⇄ bridge (Node, :5222) ⇄ WebSocket (y-websocket protocol) ⇄ browsers (?bridge=ws://…:5222)
                   ↑ HTTP API (/cmd /undo /query /doc /log /status)
-          canvas CLI · MCP server · sync-backlog (any script)
+          canvas CLI · MCP server · any script
 ```
 
 - **Bridge = host.** One `Y.Doc`. Browsers sync over plain WebSocket (simplest local transport; no WebRTC in Node). `bridge/server.ts`.
@@ -16,16 +16,16 @@
 - **doc → file**: after every change (300 ms debounce) the bridge writes canonical text (`bridge/canonical.ts`): fixed key order, tabs, nodes in z order, edges by id. Editing one field (text, color, y) = a one-line git diff; a move changes the x and y lines.
 - **file → doc**: `fs.watch` on the directory (editors and `git checkout` replace the file). An edit becomes a **3-way field merge**: diff(file as the bridge last saw it → new file) applied to the live doc as per-field `Change`s. A field a person changed in the browser meanwhile, and the file didn't touch, survives. Logged as actor **File**. A pending doc → file write first merges any file change the watcher hasn't applied yet, so a save never gets overwritten; an invalid file is left alone (doc changes wait) until it parses.
 - **Restarts**: `<dir>/.canvas-bridge/<name>.ystate` keeps Yjs history, so a restarted bridge and still-open tabs agree on identity; file edits made while it was down merge in at start. Delete it any time; the file wins.
-- **Integration (existing system)**: `canvas sync-backlog` runs `backlog task list --plain` (read only) in `~/workspaces/cs`, parses it (`bridge/backlog.ts`) and dispatches one `board.sync`: statuses → columns, tasks → notes (ids `backlog:TASK-35`, `x-sync` metadata, color by priority). Re-runnable: unchanged input = no change; changed text updates; status change moves the note to the new column; notes a person rearranged within their column stay; deleted tasks go. Runs as actor "Backlog.md" (kind tool).
+- **Integration (existing system)**: the first integration was `canvas sync-backlog` (retired when the kanban node replaced it, see `ideas/kanban.md`): it ran `backlog task list --plain` (read only) in `~/workspaces/cs`, parsed it and dispatched one `board.sync`: statuses → columns, tasks → notes (ids `backlog:TASK-35`, `x-sync` metadata, color by priority). Re-runnable: unchanged input = no change; changed text updates; status change moves the note to the new column; notes a person rearranged within their column stay; deleted tasks go. Runs as actor "Backlog.md" (kind tool).
 
 ## What's built (branch `idea/agent-bridge`)
 
 - `src/plugins/board/` — new plugin. `logic.ts` (DOM-free): `board.add/update/remove/connect/disconnect/sync`, rider rule (a note rides the column its center is in). `index.ts`: note/column renderers (JSON Canvas colors 1–6, light markdown), Add ▸ Note / Column kits, right-click Edit / Link these two / Unlink / Color / Delete, double-click edit.
 - `bridge/server.ts` — WebSocket Yjs host + HTTP API + file watcher + state sidecar.
-- `bridge/host.ts` — doc, per-actor seats, file apply/merge. `bridge/canonical.ts` — stable serialize, diff. `bridge/query.ts` — summaries, filters, resolve node by id or title.
-- `bridge/cli.ts` — `canvas status|list|query|show|add-node|add-column|update|move|connect|disconnect|rm|undo|redo|log|cmd|sync-backlog`. Nodes by id or title (unique prefix/substring).
-- `bridge/mcp.ts` — MCP stdio server: `canvas_list, canvas_add_node, canvas_update_node, canvas_connect, canvas_remove, canvas_undo, canvas_log`.
-- App: `?bridge=ws://host:5222` joins the bridge (no IndexedDB, no starter deck; toolbar shows players incl. agents).
+- `bridge/host.ts` — doc, per-actor seats, file apply/merge. `bridge/canonical.ts` — stable serialize, diff. `src/core/query.ts` — summaries, filters, resolve node by id or title.
+- `bridge/cli.ts` — `canvas status|list|query|show|add-node|add-column|update|move|connect|disconnect|rm|undo|redo|log|cmd`. Nodes by id or title (unique prefix/substring).
+- `bridge/mcp.ts` — MCP stdio server; its tools are generated from what plugins describe (section above).
+- App: `?bridge=ws://host:5222` joins the bridge (no IndexedDB, no starter deck; top right shows players incl. agents).
 - Tests: +15 (edges, board commands, sync, canonical/diff/merge, host undo-per-actor, Yjs round trip, backlog parser). 244 total on the original branch; the merge branch adds the undo-step test, the guard and argument parser tests.
 - `bridge/guard.ts` + `bridge/args.ts`: request guard and argument parsing (a flag before the file is not the file; unknown flags are an error).
 
@@ -50,18 +50,32 @@ Reaching a bridge from the deployed app, a bridge joining an existing room, one-
 From the worktree `~/code/canvas-wt/agent-bridge` (ports are examples; `$APP` and `$BRIDGE` = the vite and bridge ports):
 
 1. `git init /tmp/demo` with `.canvas-bridge/` in its `.gitignore`, then `pnpm bridge /tmp/demo/board.canvas --port $BRIDGE --allow-origin http://localhost:$APP` (creates the file; add `--host 0.0.0.0` only to open it to the LAN, and then `--allow-origin` the LAN origin too).
-2. `pnpm exec vite --port $APP --strictPort`; open `http://mini.internal:$APP/?bridge=ws://mini.internal:$BRIDGE` (on the Mini itself `localhost` for both). `export CANVAS_BRIDGE=http://127.0.0.1:$BRIDGE` for the shell. Two tabs to see two people (tabs in one browser share a name and color: rename one from the toolbar).
+2. `pnpm exec vite --port $APP --strictPort`; open `http://mini.internal:$APP/?bridge=ws://mini.internal:$BRIDGE` (on the Mini itself `localhost` for both). `export CANVAS_BRIDGE=http://127.0.0.1:$BRIDGE` for the shell. Two tabs to see two people (tabs in one browser share a name and color: rename one from the top right or Menu ▸ Room).
 3. Agent from the shell, watch the browser:
    - `pnpm canvas add-node "Order placed"`
    - `pnpm canvas add-node "Payment taken" --near "Order placed" --color 4`
    - `pnpm canvas connect "Order" "Payment" --label then`
    - Claude's cursor jumps to each note, the log (bottom left) says "Claude added note …".
-4. `pnpm canvas sync-backlog` → three columns of cs's Backlog tasks appear (as "Backlog.md"). Run again: "board already up to date". Move a task in Backlog (`backlog task edit …`) and re-run: it moves column.
+4. (retired with `sync-backlog`) A Backlog.md folder is now shown by a kanban node on a canvas serve (`ideas/kanban.md`).
 5. Edit in the browser (double-click a note) → `git -C /tmp/demo diff` shows one line. Edit the file in an editor → browser updates, log says "File edited the file: 1 changed". `git checkout board.canvas` → the board reverts live.
 6. `pnpm canvas undo` → undoes Claude's last step only (people's and other agents' steps stay). `pnpm canvas undo --as Someone` → "nothing to undo". If another actor overwrote Claude's last step, `undo` says so and does nothing; the next `undo` goes to the step before.
 7. A web page cannot act: from a page on another origin, a `fetch` POST of `/chat/say` or `/cmd`, a read of `/chat/read`, and a `new WebSocket(...)` are all refused (bridge log: `refused POST /cmd: Origin … is not allowed`).
 8. MCP: `claude mcp add canvas -e CANVAS_AS=Claude -- ~/code/canvas-wt/agent-bridge/node_modules/.bin/tsx ~/code/canvas-wt/agent-bridge/bridge/mcp.ts` (via `pnpm --dir … canvas-mcp` fails where mise has no global pnpm, e.g. from `/tmp`), then ask Claude to "map the checkout flow on the canvas". It shows up as a second player "Claude" (use `CANVAS_AS` to name each agent).
 9. Ctrl-C the bridge: it writes the file and state; restart picks up where it was.
+
+## Plugins describe themselves; the bridge is generic
+
+A plugin says what an agent can do where it registers the command, so the bridge needs no plugin-specific code (a test keeps plugin names out of `bridge/`).
+
+- **Commands.** `store.register(name, cmd, spec)`; the spec (`src/core/agent.ts`) holds `description`, `args` (a `zod/mini` strict object, so unknown keys are errors), an `example` that must parse, and optionally a legacy `tool` name, `cli` forms and two small adapters: `toCommand` (agent args to the command's own args, may redirect to another command) and `result`/`text` (what the caller gets). Node arguments are `nodeRef()`: the bridge resolves ids or titles before the adapter runs. A command without a spec still runs, marked undescribed.
+- **Views.** `store.registerView(name, spec)`: `read(doc, args, actor)` per actor, `wait: true` for views a caller can block on (`undefined` = not yet), `text` for MCP/CLI.
+- **Guide.** `PluginLogic` gets `title`, `summary` and `guide` (at most 15 lines on how to work with the plugin).
+- **Generic tools.** `canvas_look` (the nodes, or a view), `canvas_do {command, args}`, `canvas_help {plugin?, command?}` and `canvas_wait {view, args?}`, plus `canvas_list/log/undo` and `chat_*`. Every spec that carries a `tool` name also becomes a named tool, so the earlier tool names still work. The CLI gets the verbs from the specs' `cli` forms (`canvas help` is generated), and `canvas run|view|wait|help` reach everything. HTTP: `POST /agent/run`, `GET /agent/help`, `/view` and `/wait` take `args=<json>`; `/cmd` stays raw and unchecked.
+- **Bad args fail before dispatch**, with every problem listed: `chess.move: args.move: expected string, received undefined. Example: {"move":"Nf3"}. More: canvas_help {...}`.
+- **Plugin-only CLI verbs** that are not command calls (`bot chess`) live in the plugin's Node-only `cli.ts` and are listed in `src/plugins/cli.ts`.
+- **Writing one:** put the spec next to the command, keep `args` strict, give a real `example`, describe in one or two sentences what it does and when to use it, and write the guide last. Logic files import `core/agent` directly, never the core index (it pulls CSS).
+
+Not described yet (undescribed commands show up in `canvas_help`): the other plugins; passes are filed as separate tasks.
 
 ## What it says about the core / plugin API
 
@@ -81,7 +95,7 @@ Had to change (small, listed):
 
 Gaps the API showed:
 - Bridge registers only core + board logic. Plugins' import/export filters (cards' `shapeExport`) and repairs don't run there, so a card table written by the bridge may differ from the browser's Save. Fix: plugin manifests that declare a DOM-free logic entry the host loads (fits the marketplace model).
-- No way for a plugin to declare a command's **arg schema**: MCP tool schemas are hand-written. A `describe` on commands (zod/JSON Schema + one-line doc) would let the bridge auto-expose every plugin command as a tool.
+- ~~No way for a plugin to declare a command's arg schema~~ Done: commands describe themselves at registration (section above).
 - Rider rule by geometry is O(notes × columns) per view build; fine to hundreds.
 
 ## Fit with the big vision
@@ -109,7 +123,7 @@ Gaps the API showed:
 - Browser in bridge mode doesn't persist offline edits if the bridge is down when the tab closes.
 - File edits with invalid JSON are skipped (logged) until fixed; meanwhile doc changes aren't written (the file isn't overwritten). Skipped malformed nodes in a valid file are dropped from the doc.
 - Per-agent undo: fixed in core `Store.step` (undo takes exactly the top step; one that someone else overwrote is dropped and reported as nothing to undo, instead of undoing the step before it). Not fixed: undoing an older step can still restore a value over a later File/person edit of the same field when the agent edited that field again in between (Yjs only protects what it can tell was overwritten).
-- Calling `undo --as X` (or any call) seats X: it shows in the toolbar as a player for 3 min.
+- Calling `undo --as X` (or any call) seats X: it shows top right as a player for 3 min.
 - `pnpm canvas` prints pnpm's command echo on stderr; stdout is clean for scripts.
 
 ## Effort to make it real

@@ -112,7 +112,7 @@ describe('bridge join', () => {
     other.stderr!.on('data', (d) => (err += d));
     cleanup.push(() => other.kill('SIGKILL'));
     expect(await new Promise((r) => other.on('exit', r))).toBe(2);
-    expect(err).toMatch(/already holds a board .* saved from room abc123; joining room other1/);
+    expect(err).toMatch(/already holds a canvas .* saved from room abc123; joining room other1/);
     expect(relay.paths.filter((p) => p.includes('other1'))).toEqual([]);
     expect(readFileSync(file, 'utf8')).toBe(saved);
   }, 30000);

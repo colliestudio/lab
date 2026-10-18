@@ -70,6 +70,11 @@ try {
   };
   const texts = (p) => p.evaluate(() => window.app.store.doc.nodes.map((n) => n.text).filter(Boolean));
   const chat = (p) => p.evaluate(() => window.app.store.ydoc.getArray('chat').toArray().map((m) => `${m.from?.name ?? m.actor?.name ?? '?'}: ${m.text}`));
+  // Bridge… lives in the main menu (top-left)
+  const openBridgeDialog = async (p) => {
+    await p.getByRole('button', { name: 'Main menu' }).click();
+    await p.getByRole('menuitem', { name: /Bridge…/ }).click();
+  };
   const roomText = (p) => p.evaluate(() => document.querySelector('.room-state')?.textContent ?? '');
 
   // 1. a room of two
@@ -82,7 +87,7 @@ try {
   // 2. the bridge joins
   const bridge = start('node_modules/.bin/tsx', ['bridge/server.ts', 'join', link, FILE, '--port', String(BPORT)]);
   await until(() => /Joined room/.test(bridge.out), 'bridge says it joined');
-  await until(async () => (await roomText(a)).includes('· bridge'), 'toolbar shows a bridge in the room');
+  await until(async () => (await roomText(a)).includes('· bridge'), 'status shows a bridge in the room');
   await until(() => existsSync(FILE) && readFileSync(FILE, 'utf8').includes('made in the room'), 'bridge saved the room to the file');
 
   // 3. the agent acts
@@ -105,14 +110,14 @@ try {
   await until(async () => (cli('list')).includes('from Sam'), 'the agent sees Sam’s note');
 
   // the Bridge… dialog in a room: the command to give an agent
-  await a.getByRole('button', { name: 'Bridge…' }).click();
+  await openBridgeDialog(a);
   await until(() => a.locator('.bridge-cmd').textContent().then((t) => t.includes(`pnpm bridge join '${link}'`)), 'dialog shows the join command');
   check((await a.locator('.bridge-dialog .bridge-state').first().textContent()).startsWith('Bridge connected'), 'dialog says the bridge is connected');
   await a.keyboard.press('Escape');
 
   // 5. the bridge leaves; the room carries on
   bridge.kill('SIGINT');
-  await until(async () => !(await roomText(a)).includes('· bridge'), 'toolbar drops the bridge');
+  await until(async () => !(await roomText(a)).includes('· bridge'), 'status drops the bridge');
   await until(() => a.evaluate(() => !document.querySelector('.players')?.textContent.includes('Claude')), 'Claude leaves the player list');
   await a.evaluate(() => window.app.dispatch('board.add', { type: 'text', text: 'after the bridge', x: 0, y: 200 }));
   await until(async () => (await texts(b)).includes('after the bridge'), 'room still syncs without the bridge');
@@ -153,7 +158,7 @@ try {
 
   const proxied = `ws://127.0.0.1:${PPORT}`;
   const c = await open('Alex', '#4363d8', APP + '/');
-  await c.getByRole('button', { name: 'Bridge…' }).click();
+  await openBridgeDialog(c);
   await c.locator('.bridge-form input').fill(proxied);
   await c.locator('.bridge-form button[type=submit]').click();
   await until(async () => (await c.evaluate(() => location.search)).includes('bridge='), 'tab navigates to ?bridge=');
@@ -165,17 +170,17 @@ try {
   await c.goto(printed.replace(encodeURIComponent(`ws://localhost:${SPORT}`), encodeURIComponent(proxied)));
   if (!(await until(async () => /bridge .*online/.test(await roomText(c)), 'with the token: connected, status online'))) console.log(await c.url(), '|', await roomText(c), '\n', shared.out.split('\n').slice(-6).join('\n'));
   check(!(await c.evaluate(() => location.hash)), 'token is taken out of the address bar');
-  await c.getByRole('button', { name: 'Bridge…' }).click();
+  await openBridgeDialog(c);
   check((await c.locator('.bridge-dialog .bridge-state').first().textContent()).startsWith('online'), 'dialog shows the active bridge online');
   await c.keyboard.press('Escape');
   // remembered: next time the list entry alone works (token saved)
   await c.goto(`${APP}/`);
-  await c.getByRole('button', { name: 'Bridge…' }).click();
+  await openBridgeDialog(c);
   check((await c.locator('.bridge-list li').count()) === 1, 'bridge is in the remembered list (once)');
   await c.locator('.bridge-list li button', { hasText: /^Connect$/ }).click();
   await until(async () => /bridge .*online/.test(await roomText(c)), 'reconnect from the list (token remembered)');
   // disconnect
-  await c.getByRole('button', { name: 'Bridge…' }).click();
+  await openBridgeDialog(c);
   await c.getByRole('button', { name: 'Disconnect' }).click();
   await until(async () => !(await c.evaluate(() => location.search)).includes('bridge='), 'disconnect leaves the bridge');
   proxy.close();

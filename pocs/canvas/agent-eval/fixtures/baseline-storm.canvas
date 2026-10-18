@@ -1,0 +1,463 @@
+{
+	"nodes": [
+		{
+			"id": "1111f491897da701",
+			"type": "text",
+			"text": "Event Storm — Online Shop Checkout (cart → shipped)\nBlue = command · Orange = domain event · time flows left → right",
+			"x": 0,
+			"y": -40,
+			"width": 900,
+			"height": 70,
+			"x-shape": {
+				"kind": "text",
+				"size": 24
+			}
+		},
+		{
+			"id": "218406be2e23efd1",
+			"type": "text",
+			"text": "Add Item to Cart",
+			"x": 0,
+			"y": 80,
+			"width": 180,
+			"height": 100,
+			"x-shape": {
+				"fill": "#a7c7f2",
+				"kind": "sticky"
+			}
+		},
+		{
+			"id": "10dca0ef73d20200",
+			"type": "text",
+			"text": "Start Checkout",
+			"x": 220,
+			"y": 80,
+			"width": 180,
+			"height": 100,
+			"x-shape": {
+				"fill": "#a7c7f2",
+				"kind": "sticky"
+			}
+		},
+		{
+			"id": "a77cb8a2667fdfbd",
+			"type": "text",
+			"text": "Enter Shipping Address",
+			"x": 440,
+			"y": 80,
+			"width": 180,
+			"height": 100,
+			"x-shape": {
+				"fill": "#a7c7f2",
+				"kind": "sticky"
+			}
+		},
+		{
+			"id": "0925510f7fafee66",
+			"type": "text",
+			"text": "Select Shipping Method",
+			"x": 660,
+			"y": 80,
+			"width": 180,
+			"height": 100,
+			"x-shape": {
+				"fill": "#a7c7f2",
+				"kind": "sticky"
+			}
+		},
+		{
+			"id": "856daf4b6448d127",
+			"type": "text",
+			"text": "Place Order",
+			"x": 880,
+			"y": 80,
+			"width": 180,
+			"height": 100,
+			"x-shape": {
+				"fill": "#a7c7f2",
+				"kind": "sticky"
+			}
+		},
+		{
+			"id": "14d020397f69f7c2",
+			"type": "text",
+			"text": "Authorize Payment",
+			"x": 1100,
+			"y": 80,
+			"width": 180,
+			"height": 100,
+			"x-shape": {
+				"fill": "#a7c7f2",
+				"kind": "sticky"
+			}
+		},
+		{
+			"id": "1c7f0aa40454a3cc",
+			"type": "text",
+			"text": "Reserve Inventory",
+			"x": 1320,
+			"y": 80,
+			"width": 180,
+			"height": 100,
+			"x-shape": {
+				"fill": "#a7c7f2",
+				"kind": "sticky"
+			}
+		},
+		{
+			"id": "ee7910f5d4972cfc",
+			"type": "text",
+			"text": "Send Order Confirmation",
+			"x": 1540,
+			"y": 80,
+			"width": 180,
+			"height": 100,
+			"x-shape": {
+				"fill": "#a7c7f2",
+				"kind": "sticky"
+			}
+		},
+		{
+			"id": "77d0ba2bdcc9e3d1",
+			"type": "text",
+			"text": "Pack Order",
+			"x": 1760,
+			"y": 80,
+			"width": 180,
+			"height": 100,
+			"x-shape": {
+				"fill": "#a7c7f2",
+				"kind": "sticky"
+			}
+		},
+		{
+			"id": "b5ab785fa2fcc1b5",
+			"type": "text",
+			"text": "Create Shipping Label",
+			"x": 1980,
+			"y": 80,
+			"width": 180,
+			"height": 100,
+			"x-shape": {
+				"fill": "#a7c7f2",
+				"kind": "sticky"
+			}
+		},
+		{
+			"id": "c3af3be35f74dd1f",
+			"type": "text",
+			"text": "Hand Parcel to Carrier",
+			"x": 2200,
+			"y": 80,
+			"width": 180,
+			"height": 100,
+			"x-shape": {
+				"fill": "#a7c7f2",
+				"kind": "sticky"
+			}
+		},
+		{
+			"id": "03a73be5be0317c3",
+			"type": "text",
+			"text": "Item Added to Cart",
+			"x": 0,
+			"y": 260,
+			"width": 180,
+			"height": 100,
+			"x-shape": {
+				"fill": "#f5a65b",
+				"kind": "sticky"
+			}
+		},
+		{
+			"id": "b0e9af88b570f8d6",
+			"type": "text",
+			"text": "Checkout Started",
+			"x": 220,
+			"y": 260,
+			"width": 180,
+			"height": 100,
+			"x-shape": {
+				"fill": "#f5a65b",
+				"kind": "sticky"
+			}
+		},
+		{
+			"id": "533c524ba8cfa879",
+			"type": "text",
+			"text": "Shipping Address Provided",
+			"x": 440,
+			"y": 260,
+			"width": 180,
+			"height": 100,
+			"x-shape": {
+				"fill": "#f5a65b",
+				"kind": "sticky"
+			}
+		},
+		{
+			"id": "b736de5ac3f5ee61",
+			"type": "text",
+			"text": "Shipping Method Selected",
+			"x": 660,
+			"y": 260,
+			"width": 180,
+			"height": 100,
+			"x-shape": {
+				"fill": "#f5a65b",
+				"kind": "sticky"
+			}
+		},
+		{
+			"id": "26905cd7542ef8b2",
+			"type": "text",
+			"text": "Order Placed",
+			"x": 880,
+			"y": 260,
+			"width": 180,
+			"height": 100,
+			"x-shape": {
+				"fill": "#f5a65b",
+				"kind": "sticky"
+			}
+		},
+		{
+			"id": "2e841a723c58ecae",
+			"type": "text",
+			"text": "Payment Authorized",
+			"x": 1100,
+			"y": 260,
+			"width": 180,
+			"height": 100,
+			"x-shape": {
+				"fill": "#f5a65b",
+				"kind": "sticky"
+			}
+		},
+		{
+			"id": "a11a94f5c546f587",
+			"type": "text",
+			"text": "Inventory Reserved",
+			"x": 1320,
+			"y": 260,
+			"width": 180,
+			"height": 100,
+			"x-shape": {
+				"fill": "#f5a65b",
+				"kind": "sticky"
+			}
+		},
+		{
+			"id": "ae8b1d8c704ba899",
+			"type": "text",
+			"text": "Order Confirmation Sent",
+			"x": 1540,
+			"y": 260,
+			"width": 180,
+			"height": 100,
+			"x-shape": {
+				"fill": "#f5a65b",
+				"kind": "sticky"
+			}
+		},
+		{
+			"id": "f73793e8b5ef061b",
+			"type": "text",
+			"text": "Order Packed",
+			"x": 1760,
+			"y": 260,
+			"width": 180,
+			"height": 100,
+			"x-shape": {
+				"fill": "#f5a65b",
+				"kind": "sticky"
+			}
+		},
+		{
+			"id": "678aac5a48a6178a",
+			"type": "text",
+			"text": "Shipping Label Created",
+			"x": 1980,
+			"y": 260,
+			"width": 180,
+			"height": 100,
+			"x-shape": {
+				"fill": "#f5a65b",
+				"kind": "sticky"
+			}
+		},
+		{
+			"id": "27c0467763949754",
+			"type": "text",
+			"text": "Order Shipped",
+			"x": 2200,
+			"y": 260,
+			"width": 180,
+			"height": 100,
+			"x-shape": {
+				"fill": "#f5a65b",
+				"kind": "sticky"
+			}
+		},
+		{
+			"id": "0cf6686315fe4faf",
+			"type": "text",
+			"text": "time →",
+			"x": 2200,
+			"y": 390,
+			"width": 180,
+			"height": 40,
+			"x-shape": {
+				"kind": "text"
+			}
+		}
+	],
+	"edges": [
+		{
+			"id": "10363652df07d4b3",
+			"fromNode": "533c524ba8cfa879",
+			"toNode": "b736de5ac3f5ee61",
+			"x-edge": {
+				"dashed": true
+			}
+		},
+		{
+			"id": "1219ee1886245abc",
+			"fromNode": "a77cb8a2667fdfbd",
+			"toNode": "533c524ba8cfa879",
+			"x-edge": {}
+		},
+		{
+			"id": "1d8d77a2d4eba339",
+			"fromNode": "218406be2e23efd1",
+			"toNode": "03a73be5be0317c3",
+			"x-edge": {}
+		},
+		{
+			"id": "278dd5f08ca912ee",
+			"fromNode": "10dca0ef73d20200",
+			"toNode": "b0e9af88b570f8d6",
+			"x-edge": {}
+		},
+		{
+			"id": "2a1864b9e5472292",
+			"fromNode": "a11a94f5c546f587",
+			"toNode": "ae8b1d8c704ba899",
+			"x-edge": {
+				"dashed": true
+			}
+		},
+		{
+			"id": "331da3387c3902c9",
+			"fromNode": "856daf4b6448d127",
+			"toNode": "26905cd7542ef8b2",
+			"x-edge": {}
+		},
+		{
+			"id": "4ac250611cf40071",
+			"fromNode": "14d020397f69f7c2",
+			"toNode": "2e841a723c58ecae",
+			"x-edge": {}
+		},
+		{
+			"id": "5eeaff2fd83f0840",
+			"fromNode": "c3af3be35f74dd1f",
+			"toNode": "27c0467763949754",
+			"x-edge": {}
+		},
+		{
+			"id": "69e8dfc2ae1addac",
+			"fromNode": "0925510f7fafee66",
+			"toNode": "b736de5ac3f5ee61",
+			"x-edge": {}
+		},
+		{
+			"id": "6d22a7a358787534",
+			"fromNode": "26905cd7542ef8b2",
+			"toNode": "2e841a723c58ecae",
+			"x-edge": {
+				"dashed": true
+			}
+		},
+		{
+			"id": "808970f5367fdd11",
+			"fromNode": "ae8b1d8c704ba899",
+			"toNode": "f73793e8b5ef061b",
+			"x-edge": {
+				"dashed": true
+			}
+		},
+		{
+			"id": "a7449e7473a6b2d8",
+			"fromNode": "1c7f0aa40454a3cc",
+			"toNode": "a11a94f5c546f587",
+			"x-edge": {}
+		},
+		{
+			"id": "ace61ddce06fbe42",
+			"fromNode": "03a73be5be0317c3",
+			"toNode": "b0e9af88b570f8d6",
+			"x-edge": {
+				"dashed": true
+			}
+		},
+		{
+			"id": "b04caa86d3bbd1e3",
+			"fromNode": "b5ab785fa2fcc1b5",
+			"toNode": "678aac5a48a6178a",
+			"x-edge": {}
+		},
+		{
+			"id": "bdf0c44fc99bccd5",
+			"fromNode": "b736de5ac3f5ee61",
+			"toNode": "26905cd7542ef8b2",
+			"x-edge": {
+				"dashed": true
+			}
+		},
+		{
+			"id": "d07d30cf7d0c861a",
+			"fromNode": "ee7910f5d4972cfc",
+			"toNode": "ae8b1d8c704ba899",
+			"x-edge": {}
+		},
+		{
+			"id": "da2fcdd94677ef9f",
+			"fromNode": "77d0ba2bdcc9e3d1",
+			"toNode": "f73793e8b5ef061b",
+			"x-edge": {}
+		},
+		{
+			"id": "dc9a28c83d8c2edd",
+			"fromNode": "b0e9af88b570f8d6",
+			"toNode": "533c524ba8cfa879",
+			"x-edge": {
+				"dashed": true
+			}
+		},
+		{
+			"id": "e019f1f68aba07ff",
+			"fromNode": "f73793e8b5ef061b",
+			"toNode": "678aac5a48a6178a",
+			"x-edge": {
+				"dashed": true
+			}
+		},
+		{
+			"id": "e93367dc84ed7ce5",
+			"fromNode": "2e841a723c58ecae",
+			"toNode": "a11a94f5c546f587",
+			"x-edge": {
+				"dashed": true
+			}
+		},
+		{
+			"id": "edf21a302062350e",
+			"fromNode": "678aac5a48a6178a",
+			"toNode": "27c0467763949754",
+			"x-edge": {
+				"dashed": true
+			}
+		}
+	]
+}

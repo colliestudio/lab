@@ -1,8 +1,8 @@
-import type { App, CanvasEdge, CanvasNode } from '../../core';
+import type { App, CanvasEdge, CanvasNode, DocView } from '../../core';
 import { isPage } from './model';
 
-// Draws JSON Canvas edges (core draws none yet) under the nodes: an arrow from page to page with
-// its action label. Forward links run right → left side; links back to an earlier column loop under
+// Draws the links between pages (core skips them, see ownsEdge) under the nodes: an arrow from page
+// to page with its action label. Forward links run right → left side; links back to an earlier column loop under
 // the pages; stacked pages connect bottom → top.
 
 const NS = 'http://www.w3.org/2000/svg';
@@ -47,6 +47,9 @@ function bez(p0: Pt, c0: Pt, c1: Pt, p1: Pt, t: number): Pt {
   };
 }
 
+/** A plain edge from one page to another is a link: drawn here, followed by Play. Core draws the rest. */
+export const ownsEdge = (e: CanvasEdge, doc: DocView) => !e['x-edge'] && isPage(doc.get(e.fromNode)) && isPage(doc.get(e.toNode));
+
 export interface EdgeLayer {
   /** Highlight an edge for a moment (a link was followed). */
   flash(id: string): void;
@@ -64,7 +67,7 @@ export function mountEdges(app: App): EdgeLayer {
   const draw = () => {
     const doc = app.store.doc;
     const shown = (n: CanvasNode | undefined) => !!n && doc.isVisible(n.id) && !app.isConcealed(n);
-    const edges = doc.edges.filter((e) => shown(doc.get(e.fromNode)) && shown(doc.get(e.toNode)));
+    const edges = doc.edges.filter((e) => ownsEdge(e, doc) && shown(doc.get(e.fromNode)) && shown(doc.get(e.toNode)));
     const key = JSON.stringify(edges.map((e) => [e.id, e.label, e.color, box(doc.get(e.fromNode)!), box(doc.get(e.toNode)!), flashing.has(e.id)]));
     if (key === lastKey) return;
     lastKey = key;

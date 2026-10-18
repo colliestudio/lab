@@ -27,12 +27,13 @@ export function mountOutline(app: App, hooks: OutlineHooks) {
     <canvas class="fr-ol-map" width="${MM_W * 2}" height="${MM_H * 2}" title="Click or drag to move the view"></canvas>
     <div class="fr-ol-hint">1–9 jump · [ ] prev/next · ⇧F frame selection</div>`;
   document.body.append(panel);
-  // camera moves keep frames clear of the toolbar and this panel (not while presenting: both hidden)
+  // camera moves keep frames clear of the top bars, the dock and this panel (not while presenting: all hidden)
   setInsets(app, () => {
     if (document.body.classList.contains('fr-presenting')) return { top: 0, right: 0, bottom: 0, left: 0 };
-    const tb = document.getElementById('toolbar')?.getBoundingClientRect();
+    const tops = ['.cv-top-left', '.cv-top-right'].map((q) => document.querySelector(q)?.getBoundingClientRect()).filter((r): r is DOMRect => !!r && r.height > 0);
+    const dock = document.querySelector('.cv-dock')?.getBoundingClientRect();
     const right = panel.classList.contains('fr-none') || panel.classList.contains('fr-folded') ? 0 : panel.getBoundingClientRect().width + 12;
-    return { top: tb ? tb.bottom : 0, right, bottom: 0, left: 0 };
+    return { top: Math.max(0, ...tops.map((r) => r.bottom)), right, bottom: dock && dock.height > 0 ? window.innerHeight - dock.top : 0, left: 0 };
   });
   const list = panel.querySelector<HTMLElement>('.fr-ol-list')!;
   const map = panel.querySelector<HTMLCanvasElement>('.fr-ol-map')!;
@@ -56,7 +57,7 @@ export function mountOutline(app: App, hooks: OutlineHooks) {
   };
   panel.querySelector('.fr-ol-fold')!.addEventListener('click', fold);
   panel.querySelector('.fr-ol-present')!.addEventListener('click', () => hooks.present());
-  app.registerKey({ key: 'o', label: 'Outline', run: fold });
+  app.registerKey({ key: 'o', label: 'Outline', when: () => !panel.classList.contains('fr-none'), run: fold });
 
   // ---------------------------------------------------------------- list
   let listKey = '';
@@ -66,7 +67,7 @@ export function mountOutline(app: App, hooks: OutlineHooks) {
     if (key === listKey) return;
     listKey = key;
     if (!entries.length) {
-      list.innerHTML = `<div class="fr-ol-empty">No frames yet. Select some objects and press ⇧F, or Add… → Frame.</div>`;
+      list.innerHTML = `<div class="fr-ol-empty">No frames yet. Select some objects and press ⇧F, or + › Frame.</div>`;
       return;
     }
     const frames = entries.filter((e) => e.kind === 'frame');

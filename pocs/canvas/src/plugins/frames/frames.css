@@ -152,7 +152,7 @@
   position: fixed;
   z-index: 10;
   right: 12px;
-  top: 68px; /* below the toolbar, which can run the full width in a room */
+  top: 68px; /* below the top bars, which can run the full width in a room */
   width: 236px;
   padding: 8px;
   border-radius: 10px;
@@ -264,7 +264,8 @@
 }
 
 /* ---- present mode: nothing but the canvas and a small bar */
-body.fr-presenting #toolbar,
+body.fr-presenting .cv-chrome,
+body.fr-presenting .cv-toast,
 body.fr-presenting .fr-outline,
 body.fr-presenting .cv-zoom,
 body.fr-presenting .cv-log,
@@ -343,7 +344,7 @@ body.fr-presenting .fr-follow {
   cursor: pointer;
 }
 
-/* ---- breadcrumb (in the toolbar) */
+/* ---- breadcrumb (top-left, next to the menu button) */
 .fr-crumbs {
   white-space: nowrap;
   display: flex;
@@ -352,7 +353,7 @@ body.fr-presenting .fr-follow {
   padding: 0 6px;
 }
 .fr-crumbs a {
-  color: #b9d7ff;
+  color: #1f6feb;
   text-decoration: none;
 }
 .fr-crumbs a:hover {
@@ -368,8 +369,8 @@ body.fr-presenting .fr-follow {
   margin: 0 8px;
   padding: 2px 8px;
   border-radius: 10px;
-  background: rgba(190, 140, 255, 0.25);
-  color: #e6d6ff;
+  background: rgba(150, 90, 230, 0.15);
+  color: #6a3db8;
   font-size: 11px;
 }
 .fr-outline.fr-none {
