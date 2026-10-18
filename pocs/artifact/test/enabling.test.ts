@@ -416,15 +416,20 @@ test("release samples build, check ok and use the new primitives (zoom, sheets, 
     await p.goto("file://" + join(dir, "a.html"));
     return { p, errs, dir };
   };
+  // View transitions take as long as the machine needs to render them: wait for them to finish, not for a fixed time.
+  const idle = async (p: import("playwright-core").Page) => {
+    await p.waitForTimeout(100);
+    await p.waitForFunction(() => !document.documentElement.dataset.navDir && !document.documentElement.dataset.navType, null, { timeout: 20_000 });
+  };
   try {
     // zoom: 29 routes from one module; zoom in names one tile; Esc zooms out and lights the tile we came from
     let r = await load("zoom");
     await r.p.waitForSelector(".zb-tile"); await r.p.waitForTimeout(300);
     assert.equal(await r.p.evaluate(() => (window as unknown as { __artifactPages: string[] }).__artifactPages.length), 29);
     await r.p.locator('[data-tile="map-fit"]').click();
-    await r.p.waitForSelector(".zf-title"); await r.p.waitForTimeout(800);
+    await r.p.waitForSelector(".zf-title"); await idle(r.p);
     await r.p.keyboard.press("Escape");
-    await r.p.waitForSelector(".zb-tile"); await r.p.waitForTimeout(800);
+    await r.p.waitForSelector(".zb-tile"); await idle(r.p);
     assert.equal(await r.p.evaluate(() => document.querySelector("[data-lit]")?.getAttribute("data-tile")), "map-fit");
     assert.deepEqual(r.errs, []);
     // launch: ?sheet= opens a sheet without scrolling; Esc closes; no name left behind
@@ -433,21 +438,21 @@ test("release samples build, check ok and use the new primitives (zoom, sheets, 
     await r.p.locator("#card-walkthrough").scrollIntoViewIfNeeded();
     const y = await r.p.evaluate(() => scrollY);
     await r.p.locator("#card-walkthrough").click();
-    await r.p.waitForSelector(".l-sheet"); await r.p.waitForTimeout(700);
+    await r.p.waitForSelector(".l-sheet"); await idle(r.p);
     assert.equal(await r.p.evaluate(() => location.hash), "#/home?sheet=walkthrough");
     assert.ok(Math.abs((await r.p.evaluate(() => scrollY)) - y) < 4, "the param is not a scroll target");
     await r.p.keyboard.press("Escape");
-    await r.p.waitForFunction(() => !document.querySelector(".l-sheet")); await r.p.waitForTimeout(700);
-    assert.equal(await r.p.evaluate(`[...document.querySelectorAll("*")].filter((e) => e.style.viewTransitionName).length`), 0);
+    await r.p.waitForFunction(() => !document.querySelector(".l-sheet")); await idle(r.p);
+    await r.p.waitForFunction(`![...document.querySelectorAll("*")].some((e) => e.style.viewTransitionName)`, null, { timeout: 20_000 }); // the name goes when the transition finishes
     assert.deepEqual(r.errs, []);
     // story: back from the deep-dive page restores the scroll
     r = await load("story");
     await r.p.waitForSelector(".st-hero"); await r.p.waitForTimeout(300);
     await r.p.evaluate(() => scrollTo(0, 2600)); await r.p.waitForTimeout(300);
     await r.p.locator("#rounds-link").evaluate((e) => (e as HTMLElement).click());
-    await r.p.waitForSelector(".rd-back"); await r.p.waitForTimeout(500);
+    await r.p.waitForSelector(".rd-back"); await idle(r.p);
     await r.p.keyboard.press("Escape");
-    await r.p.waitForSelector(".st-hero"); await r.p.waitForTimeout(1400);
+    await r.p.waitForSelector(".st-hero"); await idle(r.p);
     assert.ok(Math.abs((await r.p.evaluate(() => scrollY)) - 2600) < 6);
     assert.deepEqual(r.errs, []);
     // deck: one frame for 32 routes; p runs the deck (no kit present bar); the notes drawer survives page changes
@@ -455,15 +460,15 @@ test("release samples build, check ok and use the new primitives (zoom, sheets, 
     await r.p.waitForSelector(".deck"); await r.p.waitForTimeout(300);
     await r.p.keyboard.press("n");
     await r.p.keyboard.press("ArrowRight");
-    await r.p.waitForFunction(() => location.hash === "#/numbers"); await r.p.waitForTimeout(600);
+    await r.p.waitForFunction(() => location.hash === "#/numbers"); await idle(r.p);
     assert.equal(await r.p.locator(".d-notes[data-open]").count(), 1, "layout state survives the route change");
     await r.p.keyboard.press("p"); await r.p.waitForTimeout(300);
     assert.equal(await r.p.evaluate(() => document.documentElement.hasAttribute("data-deck-present")), true);
     assert.equal(await r.p.locator(".h-present-bar").count(), 0);
     await r.p.keyboard.press("Escape");
-    await r.p.keyboard.press("Escape"); await r.p.waitForSelector(".o-root"); await r.p.waitForTimeout(400);
+    await r.p.keyboard.press("Escape"); await r.p.waitForSelector(".o-root"); await idle(r.p);
     await r.p.locator('.o-tile[data-id="gallery"]').click();
-    await r.p.waitForFunction(() => location.hash === "#/gallery"); await r.p.waitForTimeout(700);
+    await r.p.waitForFunction(() => location.hash === "#/gallery"); await idle(r.p);
     assert.equal(await r.p.locator(".o-root").count(), 0);
     assert.deepEqual(r.errs, []);
   } finally { await b.close(); }

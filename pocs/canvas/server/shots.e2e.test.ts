@@ -275,7 +275,9 @@ describe.skipIf(!CHROME)('screenshots in a Chrome that is already running (CANVA
     serveProc?.kill('SIGKILL');
     shared?.kill('SIGKILL');
     rmSync(boardsDir, { recursive: true, force: true });
-    rmSync(sharedDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }); // Chrome's children may still be writing
+    try {
+      rmSync(sharedDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    } catch {} // Chrome's child processes may still be writing; a leftover temp dir is not a failure
   });
 
   it('takes the shot in the running Chrome (CANVAS_CHROME is a dead path, so it did not launch), and that Chrome is still up after', async () => {
